@@ -1398,7 +1398,7 @@
     const OPS_ACC_SECCIONES = [
         ["calendario", "Calendario"], ["servicios", "Servicios"], ["folios", "Folios"], ["clientes", "Clientes"],
         ["solicitudes", "Solicitudes"], ["dashboard", "Herramientas"], ["guardias", "Guardias"], ["vencimientos", "Vencimientos"],
-        ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías (próximamente)"], ["polizas", "Pólizas (próximamente)"],
+        ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías"], ["polizas", "Pólizas (próximamente)"],
         ["tecnicos", "Técnicos"], ["externos", "Externos"], ["permisos", "Permisos y vacaciones"], ["movimientos", "Movimientos"], ["resumen", "Resumen"],
     ];
     const OPS_ACC_ACCIONES = [["ver", "Ver"], ["editar", "Crear y editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"]];
@@ -1413,7 +1413,7 @@
     }
     function opsAccRolesSeed() {
         const almacen = opsAccMatrizTodas(["ver"]);
-        ["dashboard", "solicitudes", "movimientos"].forEach(s => { almacen[s] = ["ver", "editar"]; });
+        ["dashboard", "solicitudes", "movimientos", "garantias"].forEach(s => { almacen[s] = ["ver", "editar"]; });
         almacen.solicitudes.push("aprobar");
         const pagos = opsAccMatrizTodas(["ver", "contacto"]);
         pagos.viaticos = ["ver", "contacto", "aprobar"];
@@ -2006,6 +2006,7 @@
     };
 
     const NAV_ICONS = {
+        garantias: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
         accesos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
         permisos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
         externos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
@@ -2031,7 +2032,7 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
+            "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
             .filter(t => opsAccPuedeVer(t.split(":")[0]))
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
@@ -2095,6 +2096,7 @@
         else if (tab === "permisos") opsRenderPermisos();
         else if (tab === "vencimientos") opsRenderVencimientos();
         else if (tab === "accesos") opsRenderAccesos();
+        else if (tab === "garantias") opsRenderGarantias();
     };
 
     // ── Suscripciones en tiempo real ──────────────────────────────
@@ -7202,6 +7204,7 @@
                 </div>
 
                 ${opsPanelContactoHTML(f)}
+                <div id="ops-panel-garantias"></div>
 
                 ${f.estacionCatalogoId ? `
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
@@ -7266,6 +7269,8 @@
                 <button onclick="opsDescargarPdfFolio('${f.id}')" class="mkt-add-btn" style="background:#E7402B;width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Descargar PDF del servicio</button>
                 ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>` : ""}
             </div>`;
+
+        opsGarPintarEnPanel(f).catch(e => console.warn("[operaciones.js] garantías en panel:", e.message));
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
         tecnicos.forEach(async t => {
@@ -15133,6 +15138,7 @@
         opsNotifToggle(false);
         if (n.accion === "folios") window.opsCambiarTab("folios");
         else if (n.accion === "permisos") window.opsCambiarTab("permisos");
+        else if (n.accion === "garantias") { window.opsCambiarTab("garantias"); if (n.garantiaId) setTimeout(() => window.opsGarVer(n.garantiaId), 400); }
     };
 
     // ── Permisos y vacaciones (módulo compartido permisos.js) ──
@@ -15227,7 +15233,7 @@
                 </tbody>
             </table>
             </div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">"Crear y editar" activa los botones de alta y edición de esa sección. Si "Ver" está apagado, la sección desaparece del menú. Garantías y Pólizas se guardan desde ahora para cuando existan esas pantallas.</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">"Crear y editar" activa los botones de alta y edición de esa sección. Si "Ver" está apagado, la sección desaparece del menú. Pólizas se guarda desde ahora para cuando exista esa pantalla.</div>
             ${edit ? `<div style="display:flex;justify-content:flex-end;margin-top:12px;"><button onclick="opsAccGuardarRol()" class="mkt-add-btn" style="background:#E7402B;">Guardar cambios del rol</button></div>` : ""}
         </div>`;
     }
@@ -15399,6 +15405,489 @@
                 <div>${opsEsc(String(b.entidadId || "").replace(":", ": "))} — ${opsEsc(String(b.campo || "").replace(/_/g, " "))}: <span style="color:#94a3b8;">${opsEsc(corto(b.valorAnterior))}</span> → <b>${opsEsc(corto(b.valorNuevo))}</b></div>
             </div>`).join("") : `<div style="padding:16px;color:#94a3b8;font-size:12px;">Todavía no hay cambios registrados.</div>`}
         </div>`;
+    }
+
+    // ═══════════════════════ GARANTÍAS DE PIEZAS (oct-2026) ═══════════════════════
+    // Flujo aprobado por Glen:
+    //   Técnico/Operaciones abre la garantía desde el folio (datos prellenados) →
+    //   pide la pieza nueva a Almacén (solicitud ligada) → instala → la pieza dañada
+    //   llega PRIMERO a Operaciones y DESPUÉS a Almacén → Almacén la turna a Compras →
+    //   Compras la manda al proveedor → aceptada / rechazada → cerrada.
+    // Datos: ops_garantias (Supabase vía puente). Fotos: Supabase Storage, bucket privado
+    // "ops-externos", carpeta garantias/{id}/ (nada de base64 → sin límite de 1MB).
+    const COL_GARANTIAS = "ops_garantias";
+    const GAR_BUCKET = "ops-externos";
+    const GAR_ESTADOS = [
+        ["reportada", "Reportada", "#b45309", "#fef3c7"],
+        ["pieza_solicitada", "Pieza nueva solicitada a Almacén", "#1d4ed8", "#dbeafe"],
+        ["pieza_cambiada", "Pieza nueva instalada", "#0e7490", "#cffafe"],
+        ["danada_operaciones", "Pieza dañada recibida en Operaciones", "#6d28d9", "#ede9fe"],
+        ["danada_almacen", "Pieza dañada recibida en Almacén", "#6d28d9", "#ede9fe"],
+        ["en_compras", "Turnada a Compras", "#9333ea", "#f3e8ff"],
+        ["enviada_proveedor", "Enviada al proveedor", "#c2410c", "#ffedd5"],
+        ["aceptada", "Garantía aceptada", "#15803d", "#dcfce7"],
+        ["rechazada", "Garantía rechazada", "#b91c1c", "#fee2e2"],
+        ["cerrada", "Cerrada", "#475569", "#e2e8f0"],
+    ];
+    const GAR_ESTADOS_APROBAR = ["aceptada", "rechazada", "cerrada"];
+    const GAR_GRUPOS_FOTO = { pieza: "Foto de la pieza", cambio: "Evidencias del cambio", danada: "Evidencias de la pieza dañada" };
+    let cacheGarantias = [];
+    let opsGarCargadas = false;
+    let opsGarFiltro = { busca: "", estado: "abiertas" };
+    let opsGarForm = null;        // borrador del formulario abierto
+    let opsGarUrls = {};          // ruta → URL firmada (cache de 10 min)
+
+    function opsGarEstado(id) { return GAR_ESTADOS.find(e => e[0] === id) || GAR_ESTADOS[0]; }
+    function opsGarBadge(id) { const e = opsGarEstado(id); return `<span style="background:${e[3]};color:${e[2]};border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;white-space:nowrap;">${opsEsc(e[1])}</span>`; }
+    // Permisos: con rol asignado manda la matriz (sección Garantías); sin rol, quien ya editaba en Operaciones.
+    function opsGarPuede(accion) {
+        if (opsAccEsAdminPortal()) return true;
+        const r = opsAccTiene("garantias", accion);
+        if (r !== null) return r;
+        if (accion === "ver") return true;
+        return opsPuedeHacerLegado("gestionar_herramientas") || opsPuedeHacerLegado("admin_operaciones");
+    }
+    function opsGarFechaTxt(iso) {
+        if (!iso) return "—";
+        const s = String(iso); const d = new Date(s.length <= 10 ? s + "T12:00:00" : s);
+        return isNaN(d) ? s : d.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" }) + (s.length > 10 ? " " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "");
+    }
+
+    async function opsGarCargar() {
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.collection(db, COL_GARANTIAS));
+            cacheGarantias = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            opsGarCargadas = true;
+        } catch (e) { console.warn("[operaciones.js] garantías:", e.message); }
+        return cacheGarantias;
+    }
+    async function opsGarSiguienteFolio() {
+        const maxLocal = cacheGarantias.reduce((m, g) => { const r = /^GAR-(\d+)$/.exec(g.folio || ""); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.rpc("ops_siguiente_contador_min", { nombre_contador: "garantias", minimo: maxLocal });
+            if (error) throw error;
+            return "GAR-" + String(data).padStart(5, "0");
+        } catch (e) {
+            console.warn("[operaciones.js] contador de garantías, se usa respaldo:", e.message);
+            return "GAR-" + String(maxLocal + 1).padStart(5, "0");
+        }
+    }
+    async function opsGarUrlsFirmadas(rutas) {
+        const faltan = rutas.filter(r => r && !opsGarUrls[r]);
+        if (faltan.length) {
+            try {
+                const sb = await opsSb();
+                const { data, error } = await sb.storage.from(GAR_BUCKET).createSignedUrls(faltan, 600);
+                if (error) throw error;
+                (data || []).forEach(x => { if (x && x.signedUrl) opsGarUrls[x.path] = x.signedUrl; });
+            } catch (e) { console.warn("[operaciones.js] fotos de garantía:", e.message); }
+        }
+        return rutas.map(r => opsGarUrls[r] || "");
+    }
+    // Pinta miniaturas en los <img data-garruta="..."> que haya en pantalla.
+    async function opsGarPintarFotos(raiz) {
+        const imgs = [...(raiz || document).querySelectorAll("img[data-garruta]")];
+        if (!imgs.length) return;
+        const rutas = [...new Set(imgs.map(i => i.dataset.garruta))];
+        await opsGarUrlsFirmadas(rutas);
+        imgs.forEach(i => { const u = opsGarUrls[i.dataset.garruta]; if (u) { i.src = u; i.parentElement && i.parentElement.tagName === "A" && (i.parentElement.href = u); } });
+    }
+    function opsGarMiniaturas(fotos, editable, grupo) {
+        if (!(fotos || []).length) return `<div style="font-size:11.5px;color:#94a3b8;">Sin fotos.</div>`;
+        return `<div style="display:flex;gap:8px;flex-wrap:wrap;">${fotos.map((f, i) => `
+            <div style="position:relative;">
+                <a target="_blank" rel="noopener" style="display:block;width:76px;height:76px;border-radius:8px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;">
+                    <img data-garruta="${opsEsc(f.ruta)}" alt="" style="width:100%;height:100%;object-fit:cover;"></a>
+                ${editable ? `<button type="button" onclick="opsGarQuitarFoto('${grupo}',${i})" title="Quitar" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#E7402B;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;">${ICON.close}</button>` : ""}
+            </div>`).join("")}</div>`;
+    }
+
+    // ── Pestaña Garantías ──
+    async function opsRenderGarantias() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        if (!opsGarCargadas) { el.innerHTML = `<div style="padding:20px;color:#94a3b8;font-size:12.5px;">Cargando garantías…</div>`; await opsGarCargar(); if (tabActual !== "garantias") return; }
+        const q = opsGarFiltro.busca.toLowerCase().trim();
+        const abiertas = g => !["aceptada", "rechazada", "cerrada"].includes(g.estado);
+        const lista = cacheGarantias
+            .filter(g => opsGarFiltro.estado === "todas" ? true : opsGarFiltro.estado === "abiertas" ? abiertas(g) : g.estado === opsGarFiltro.estado)
+            .filter(g => !q || [g.folio, g.estacion, g.razonSocial, g.piezaDesc, g.piezaClave, g.numeroParte, g.folioOrigenTxt, g.remision, g.factura].some(v => String(v || "").toLowerCase().includes(q)))
+            .sort((a, b) => String(a.estacion || "").localeCompare(String(b.estacion || ""), "es") || String(b.folio || "").localeCompare(String(a.folio || "")));
+        const cuenta = id => cacheGarantias.filter(g => g.estado === id).length;
+        el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:#1D2E73;">Garantías</div>
+                    <div style="font-size:12px;color:#64748b;">Piezas que fallaron de fábrica: reporte, pieza nueva, pieza dañada y respuesta del proveedor.</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="opsGarRecargar()" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:#334155;cursor:pointer;">Actualizar</button>
+                    ${opsGarPuede("editar") ? `<button onclick="opsGarAbrirForm(null,null)" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva garantía</button>` : ""}
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <input placeholder="Buscar estación, pieza, folio, remisión…" value="${opsEsc(opsGarFiltro.busca)}" oninput="opsGarBuscar(this.value)" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <select onchange="opsGarFiltrarEstado(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                    <option value="abiertas" ${opsGarFiltro.estado === "abiertas" ? "selected" : ""}>Abiertas</option>
+                    <option value="todas" ${opsGarFiltro.estado === "todas" ? "selected" : ""}>Todas (${cacheGarantias.length})</option>
+                    ${GAR_ESTADOS.map(e => `<option value="${e[0]}" ${opsGarFiltro.estado === e[0] ? "selected" : ""}>${opsEsc(e[1])} (${cuenta(e[0])})</option>`).join("")}
+                </select>
+            </div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+                ${lista.length ? lista.map(g => `
+                <div onclick="opsGarVer('${g.id}')" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                    <div style="min-width:86px;font-weight:800;color:#1D2E73;font-size:12.5px;">${opsEsc(g.folio || "—")}</div>
+                    <div style="flex:1;min-width:200px;">
+                        <div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(g.estacion || "Sin estación")}</div>
+                        <div style="font-size:11.5px;color:#64748b;">${opsEsc(g.piezaDesc || "Sin pieza")}${g.numeroParte ? " · N/P " + opsEsc(g.numeroParte) : ""}${g.folioOrigenTxt ? " · Folio " + opsEsc(g.folioOrigenTxt) : ""}</div>
+                    </div>
+                    <div style="font-size:11px;color:#94a3b8;">${opsGarFechaTxt(g.creadoEn)}</div>
+                    ${opsGarBadge(g.estado)}
+                </div>`).join("") : `<div style="padding:18px;color:#94a3b8;font-size:12.5px;">No hay garantías con ese filtro.</div>`}
+            </div>`;
+    }
+    window.opsGarFiltrarEstado = function (v) { opsGarFiltro.estado = v; opsRenderGarantias(); };
+    window.opsGarCampo = function (campo, v) { if (opsGarForm) opsGarForm[campo] = v; };
+    window.opsGarRecargar = async function () { opsGarCargadas = false; await opsRenderGarantias(); };
+    window.opsGarBuscar = function (v) {
+        opsGarFiltro.busca = v; opsRenderGarantias();
+        const i = document.querySelector('#ops-tab-content input[placeholder^="Buscar estación"]');
+        if (i) { i.focus(); i.setSelectionRange(v.length, v.length); }
+    };
+
+    // ── Formulario (nueva / editar) ──
+    window.opsGarAbrirForm = async function (garantiaId, folioId) {
+        if (!opsGarPuede("editar")) { alert("Tu usuario no puede crear ni editar garantías."); return; }
+        if (!opsGarCargadas) await opsGarCargar();
+        opsCargarCatalogoProductos().catch(() => {});
+        const g = garantiaId ? cacheGarantias.find(x => x.id === garantiaId) : null;
+        const f = !g && folioId ? cacheFolios.find(x => x.id === folioId) : null;
+        opsGarForm = g ? JSON.parse(JSON.stringify(g)) : {
+            id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "gar_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+            nueva: true, estado: "reportada",
+            razonSocial: f ? (f.estacionRazonSocial || f.razonSocial || f.clienteNombre || "") : "",
+            estacion: f ? (f.estacion || "") : "", estacionId: f ? (f.estacionCatalogoId || null) : null,
+            permisoPL: f ? (f.estacionPermiso || "") : "",
+            direccion: f ? (f.estacionDireccion || f.destino || "") : "",
+            lat: f ? (f.estacionLat ?? null) : null, lng: f ? (f.estacionLng ?? null) : null,
+            clienteNombre: f ? (f.clienteNombre || "") : "",
+            folioOrigenId: f ? f.id : null, folioOrigenTxt: f ? (f.folioOS || f.folioClienteId || f.folio || "") : "",
+            tecnicoNombre: f ? (f.tecnicoResponsableNombre || f.responsable || "") : "",
+            piezaClave: "", piezaDesc: "", numeroParte: "", marcaProveedor: "",
+            fechaPrimerCambio: "", fechaSegundoCambio: "", remision: "", factura: "",
+            justificacion: "", notas: "", origenPrimerCambio: "",
+            fotos: { pieza: [], cambio: [], danada: [] }, historial: [],
+        };
+        opsGarForm.fotos = Object.assign({ pieza: [], cambio: [], danada: [] }, opsGarForm.fotos || {});
+        opsGarPintarForm();
+    };
+    function opsGarPintarForm() {
+        const s = opsGarForm; if (!s) return;
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        const inp = (campo, label, tipo, ph) => `<div><label style="font-size:11.5px;color:#64748b;font-weight:600;">${label}</label>
+            <input type="${tipo || "text"}" value="${opsEsc(s[campo] || "")}" placeholder="${opsEsc(ph || "")}" oninput="opsGarCampo('${campo}', this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;"></div>`;
+        const grupoFotos = (g, multiple) => `
+            <div style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:11.5px;color:#334155;font-weight:700;">${GAR_GRUPOS_FOTO[g]} (${s.fotos[g].length})</span>
+                    <label style="background:#E9ECF5;color:#1D2E73;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Agregar foto
+                        <input type="file" accept="image/*" ${multiple ? "multiple" : ""} onchange="opsGarAgregarFotos('${g}', this)" style="display:none;"></label>
+                </div>
+                ${opsGarMiniaturas(s.fotos[g], true, g)}
+            </div>`;
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:720px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                    <div>
+                        <div style="font-weight:700;font-size:16px;color:#1D2E73;">${s.nueva ? "Nueva garantía" : "Editar garantía " + opsEsc(s.folio || "")}</div>
+                        <div style="font-size:11.5px;color:#64748b;">${s.folioOrigenTxt ? "Desde el folio " + opsEsc(s.folioOrigenTxt) + " · " : ""}Los datos de la estación vienen del servicio; revísalos.</div>
+                    </div>
+                    <button onclick="opsGarCerrarForm()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+                </div>
+
+                <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;margin:6px 0 8px;">Estación</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;">
+                    ${inp("razonSocial", "Razón social")}${inp("estacion", "Estación")}
+                    ${inp("permisoPL", "Permiso (PL)")}${inp("folioOrigenTxt", "Folio / servicio de origen")}
+                </div>
+                ${inp("direccion", "Ubicación (dirección)")}
+                ${s.lat != null && s.lng != null ? `<div style="font-size:11.5px;margin:-4px 0 10px;"><a href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" rel="noopener" style="color:#1D2E73;">Ver en el mapa</a></div>` : ""}
+
+                <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;margin:10px 0 8px;">Pieza</div>
+                <div style="position:relative;margin-bottom:10px;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Buscar en el catálogo de Almacén</label>
+                    <input id="ops-gar-busca-pieza" placeholder="Clave o descripción…" oninput="opsGarBuscarPieza(this.value)" autocomplete="off" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;box-sizing:border-box;">
+                    <div id="ops-gar-res-pieza" style="position:absolute;left:0;right:0;z-index:5;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.12);display:none;max-height:220px;overflow-y:auto;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:0 12px;">
+                    ${inp("piezaClave", "Clave")}${inp("piezaDesc", "Descripción de la pieza")}
+                    ${inp("numeroParte", "Número de parte")}${inp("marcaProveedor", "Marca / proveedor")}
+                </div>
+                ${grupoFotos("pieza", false)}
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 8px;">
+                    <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;">Cambios y documentos</div>
+                    <button type="button" onclick="opsGarBuscarCambioAnterior()" style="background:#ecfdf3;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Buscar el cambio anterior</button>
+                </div>
+                ${s.origenPrimerCambio ? `<div style="font-size:11.5px;color:#166534;margin:-2px 0 8px;">${opsEsc(s.origenPrimerCambio)}</div>` : ""}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;">
+                    ${inp("fechaPrimerCambio", "Fecha del primer cambio", "date")}${inp("fechaSegundoCambio", "Fecha del segundo cambio", "date")}
+                    ${inp("remision", "Número de remisión")}${inp("factura", "Número de factura")}
+                </div>
+
+                <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;margin:10px 0 8px;">Evidencias</div>
+                ${grupoFotos("danada", true)}
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Por qué se considera falla de fábrica? (justificación del daño)</label>
+                <textarea oninput="opsGarCampo('justificacion', this.value)" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;box-sizing:border-box;">${opsEsc(s.justificacion || "")}</textarea>
+                ${grupoFotos("cambio", true)}
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Notas</label>
+                <textarea oninput="opsGarCampo('notas', this.value)" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;box-sizing:border-box;">${opsEsc(s.notas || "")}</textarea>
+
+                <div id="ops-gar-msg" style="font-size:12px;color:#E7402B;min-height:16px;margin-bottom:6px;"></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                    <button onclick="opsGarCerrarForm()" style="background:#f1f5f9;border:none;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button id="ops-gar-guardar" onclick="opsGarGuardar()" class="mkt-add-btn" style="background:#E7402B;">Guardar garantía</button>
+                </div>
+            </div>
+        </div>`;
+        opsGarPintarFotos(wrap);
+    }
+    window.opsGarCerrarForm = function () {
+        if (opsGarForm && opsGarForm.nueva && Object.values(opsGarForm.fotos).some(a => a.length) && !confirm("Hay fotos subidas sin guardar la garantía. ¿Salir de todos modos?")) return;
+        opsGarForm = null; document.getElementById("ops-modal-wrap").innerHTML = "";
+    };
+    window.opsGarBuscarPieza = function (txt) {
+        const box = document.getElementById("ops-gar-res-pieza"); if (!box) return;
+        const q = String(txt || "").toLowerCase().trim();
+        if (q.length < 2) { box.style.display = "none"; return; }
+        const res = (catalogoProductos || []).filter(p => String(p.clave || "").toLowerCase().includes(q) || String(p.desc || "").toLowerCase().includes(q))
+            .sort((a, b) => String(a.desc || "").localeCompare(String(b.desc || ""), "es")).slice(0, 12);
+        box.innerHTML = res.length ? res.map((p, i) => `<div onclick="opsGarElegirPieza(${(catalogoProductos || []).indexOf(p)})" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12.5px;cursor:pointer;"><b>${opsEsc(p.clave || "—")}</b> · ${opsEsc(p.desc || "")}</div>`).join("")
+            : `<div style="padding:8px 10px;font-size:12px;color:#94a3b8;">Sin resultados. Puedes escribir la pieza a mano abajo.</div>`;
+        box.style.display = "block";
+    };
+    window.opsGarElegirPieza = function (i) {
+        const p = (catalogoProductos || [])[i]; if (!p || !opsGarForm) return;
+        opsGarForm.piezaClave = p.clave || ""; opsGarForm.piezaDesc = p.desc || "";
+        if (p.numeroParte && !opsGarForm.numeroParte) opsGarForm.numeroParte = p.numeroParte;
+        opsGarPintarForm();
+    };
+    // Busca en las solicitudes de material ya surtidas a esa estación la última vez que se
+    // entregó la misma pieza → fecha del primer cambio y remisión.
+    window.opsGarBuscarCambioAnterior = function () {
+        const s = opsGarForm; if (!s) return;
+        const norm = v => String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+        const est = norm(s.estacion), clave = norm(s.piezaClave), desc = norm(s.piezaDesc);
+        if (!est || (!clave && !desc)) { alert("Primero captura la estación y la pieza."); return; }
+        const candidatos = (cacheSurtidos || []).filter(x => !x.eliminada && x.estado !== "cancelado")
+            .filter(x => (s.estacionId && x.estacionId === s.estacionId) || [x.estacionNombre, x.destino, x.cliente, x.razonSocial].some(v => { const n = norm(v); return n && (n.includes(est) || est.includes(n)); }))
+            .filter(x => (x.productos || []).some(p => (clave && norm(p.clave) === clave) || (desc && norm(p.desc) === desc)))
+            .sort((a, b) => (b.entregadoEn || b.createdAt || 0) - (a.entregadoEn || a.createdAt || 0));
+        const x = candidatos[0];
+        if (!x) { alert("No encontré una entrega anterior de esa pieza a esta estación en las solicitudes de material. Captura los datos a mano."); return; }
+        const fecha = new Date(x.entregadoEn || x.createdAt || Date.now()).toISOString().slice(0, 10);
+        if (!s.fechaPrimerCambio) s.fechaPrimerCambio = fecha;
+        if (!s.remision) s.remision = x.remisionAspelFolio || "";
+        s.origenPrimerCambio = `Encontrado en la solicitud ${x.folio}${x.remisionAspelFolio ? " (remisión " + x.remisionAspelFolio + ")" : ""} del ${opsGarFechaTxt(fecha)}.`;
+        opsGarPintarForm();
+    };
+    window.opsGarAgregarFotos = async function (grupo, input) {
+        const files = [...(input.files || [])]; if (!files.length || !opsGarForm) return;
+        const msg = document.getElementById("ops-gar-msg"); if (msg) { msg.style.color = "#1D2E73"; msg.textContent = "Subiendo " + files.length + " foto(s)…"; }
+        try {
+            const sb = await opsSb();
+            for (const file of files) {
+                const blob = await opsComprimirImagen(file, 1600, 0.82);
+                const ruta = `garantias/${opsGarForm.id}/${grupo}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
+                const { error } = await sb.storage.from(GAR_BUCKET).upload(ruta, blob, { contentType: "image/jpeg", upsert: false });
+                if (error) throw error;
+                const foto = { ruta, fecha: opsFechaHora(), por: opsNombreActual() };
+                if (grupo === "pieza") opsGarForm.fotos.pieza = [foto]; else opsGarForm.fotos[grupo].push(foto);
+            }
+            opsGarPintarForm();
+        } catch (e) { if (msg) { msg.style.color = "#E7402B"; msg.textContent = "No se pudo subir la foto: " + (e.message || e); } }
+    };
+    window.opsGarQuitarFoto = function (grupo, i) { if (!opsGarForm) return; opsGarForm.fotos[grupo].splice(i, 1); opsGarPintarForm(); };
+
+    window.opsGarGuardar = async function () {
+        const s = opsGarForm; if (!s) return;
+        const msg = document.getElementById("ops-gar-msg");
+        if (!String(s.estacion || "").trim()) { msg.textContent = "Falta la estación."; return; }
+        if (!String(s.piezaDesc || "").trim()) { msg.textContent = "Falta la pieza."; return; }
+        if (!String(s.justificacion || "").trim()) { msg.textContent = "Escribe por qué se considera falla de fábrica."; return; }
+        const btn = document.getElementById("ops-gar-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const datos = { ...s }; delete datos.nueva; delete datos.id;
+            const antes = s.nueva ? null : cacheGarantias.find(x => x.id === s.id);
+            if (s.nueva) {
+                datos.folio = await opsGarSiguienteFolio();
+                datos.creadoEn = opsFechaHora(); datos.creadoPor = opsNombreActual(); datos.creadoPorEmail = opsUsuarioActual();
+                datos.historial = [{ estado: "reportada", fecha: opsFechaHora(), por: opsNombreActual(), nota: "Garantía reportada" }];
+            }
+            datos.actualizadoEn = opsFechaHora(); datos.actualizadoPor = opsNombreActual();
+            await fs.setDoc(fs.doc(db, COL_GARANTIAS, s.id), JSON.parse(JSON.stringify(datos)), { merge: true });
+            const guardada = { id: s.id, ...(antes || {}), ...datos };
+            cacheGarantias = cacheGarantias.filter(x => x.id !== s.id).concat([guardada]);
+            await opsAuditar("garantia", s.id, s.nueva ? "alta" : "edicion", null, datos.folio || s.folio);
+            if (s.nueva) {
+                try {
+                    await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                        tipo: "ops_garantia", accion: "garantias", garantiaId: s.id, folio: datos.folio,
+                        mensaje: `Nueva garantía ${datos.folio}: ${datos.piezaDesc} en ${datos.estacion}.`,
+                        creadoPor: opsNombreActual(), leida: false, fecha: opsFechaHora(),
+                    });
+                } catch (e) { console.warn("[garantías] aviso:", e.message); }
+            }
+            opsGarForm = null;
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (tabActual === "garantias") opsRenderGarantias();
+            window.opsGarVer(s.id);
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar garantía"; }
+            msg.textContent = "No se pudo guardar: " + (e.message || e);
+        }
+    };
+
+    // ── Detalle + seguimiento ──
+    window.opsGarVer = async function (id) {
+        if (!opsGarCargadas) await opsGarCargar();
+        const g = cacheGarantias.find(x => x.id === id); if (!g) { alert("No se encontró la garantía."); return; }
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        const editar = opsGarPuede("editar"), aprobar = opsGarPuede("aprobar");
+        const fila = (l, v) => v ? `<div><div style="font-size:10px;color:#94a3b8;font-weight:700;text-transform:uppercase;">${l}</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(v)}</div></div>` : "";
+        const fotos = g.fotos || {};
+        const opcEstados = GAR_ESTADOS.filter(e => e[0] !== g.estado && (aprobar || !GAR_ESTADOS_APROBAR.includes(e[0])));
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:720px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;font-weight:700;">GARANTÍA</div>
+                        <div style="font-weight:800;font-size:18px;color:#1D2E73;">${opsEsc(g.folio || "")}</div>
+                        <div style="margin-top:4px;">${opsGarBadge(g.estado)}</div>
+                    </div>
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">
+                    ${fila("Razón social", g.razonSocial)}${fila("Estación", g.estacion)}${fila("Permiso (PL)", g.permisoPL)}
+                    ${fila("Ubicación", g.direccion)}${fila("Folio de origen", g.folioOrigenTxt)}${fila("Técnico", g.tecnicoNombre)}
+                    ${fila("Pieza", g.piezaDesc)}${fila("Clave", g.piezaClave)}${fila("Número de parte", g.numeroParte)}
+                    ${fila("Marca / proveedor", g.marcaProveedor)}${fila("Primer cambio", g.fechaPrimerCambio && opsGarFechaTxt(g.fechaPrimerCambio))}${fila("Segundo cambio", g.fechaSegundoCambio && opsGarFechaTxt(g.fechaSegundoCambio))}
+                    ${fila("Remisión", g.remision)}${fila("Factura", g.factura)}${fila("Solicitud a Almacén", g.surtidoFolio)}
+                </div>
+                ${g.lat != null && g.lng != null ? `<div style="margin:-6px 0 12px;font-size:12px;"><a href="https://www.google.com/maps?q=${g.lat},${g.lng}" target="_blank" rel="noopener" style="color:#1D2E73;">Ver ubicación en el mapa</a></div>` : ""}
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:12px;">
+                    <div style="font-size:11px;font-weight:800;color:#1D2E73;margin-bottom:6px;">Justificación del daño</div>
+                    <div style="font-size:12.5px;color:#334155;white-space:pre-wrap;">${opsEsc(g.justificacion || "—")}</div>
+                    ${g.notas ? `<div style="font-size:12px;color:#64748b;margin-top:6px;white-space:pre-wrap;">Notas: ${opsEsc(g.notas)}</div>` : ""}
+                </div>
+                ${Object.keys(GAR_GRUPOS_FOTO).map(k => `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:800;color:#1D2E73;margin-bottom:6px;">${GAR_GRUPOS_FOTO[k]}</div>${opsGarMiniaturas(fotos[k] || [], false, k)}</div>`).join("")}
+
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:12px;">
+                    <div style="font-size:11px;font-weight:800;color:#1D2E73;margin-bottom:8px;">Seguimiento de la pieza</div>
+                    ${(g.historial || []).slice().reverse().map(h => `<div style="display:flex;gap:10px;margin-bottom:8px;font-size:12px;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:${opsGarEstado(h.estado)[2]};margin-top:5px;flex-shrink:0;"></div>
+                        <div><b>${opsEsc(opsGarEstado(h.estado)[1])}</b> <span style="color:#94a3b8;">· ${opsEsc(opsGarFechaTxt(h.fecha))} · ${opsEsc(h.por || "")}</span>${h.nota ? `<div style="color:#475569;">${opsEsc(h.nota)}</div>` : ""}</div>
+                    </div>`).join("") || `<div style="font-size:12px;color:#94a3b8;">Sin movimientos.</div>`}
+                    ${editar && opcEstados.length ? `
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;background:#f8fafc;border-radius:10px;padding:10px;">
+                        <select id="ops-gar-nuevo-estado" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${opcEstados.map(e => `<option value="${e[0]}">${opsEsc(e[1])}</option>`).join("")}</select>
+                        <input id="ops-gar-nota" placeholder="Nota (opcional): quién la recibió, guía de envío, respuesta del proveedor…" style="flex:1;min-width:200px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                        <button onclick="opsGarCambiarEstado('${g.id}')" class="mkt-add-btn" style="background:#1D2E73;">Registrar</button>
+                    </div>` : ""}
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                    ${g.folioOrigenId && cacheFolios.some(x => x.id === g.folioOrigenId) ? `<button onclick="document.getElementById('ops-modal-wrap').innerHTML='';opsAbrirPanelFolio('${g.folioOrigenId}')" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;">Ver folio de origen</button>` : ""}
+                    ${editar && !g.surtidoId ? `<button onclick="opsGarPedirPieza('${g.id}')" class="mkt-add-btn" style="background:#0e7490;">${ICON.box || ""} Pedir pieza nueva a Almacén</button>` : ""}
+                    ${editar ? `<button onclick="opsGarAbrirForm('${g.id}',null)" class="mkt-add-btn" style="background:#1D2E73;">Editar datos y fotos</button>` : ""}
+                </div>
+            </div>
+        </div>`;
+        opsGarPintarFotos(wrap);
+    };
+    async function opsGarActualizar(g, cambios, notaHist) {
+        const { db, fs } = await opsGetFB();
+        const historial = (g.historial || []).concat(notaHist ? [notaHist] : []);
+        const datos = { ...cambios, historial, actualizadoEn: opsFechaHora(), actualizadoPor: opsNombreActual() };
+        await fs.setDoc(fs.doc(db, COL_GARANTIAS, g.id), JSON.parse(JSON.stringify(datos)), { merge: true });
+        Object.assign(g, datos);
+    }
+    window.opsGarCambiarEstado = async function (id) {
+        const g = cacheGarantias.find(x => x.id === id); if (!g) return;
+        const nuevo = document.getElementById("ops-gar-nuevo-estado").value;
+        const nota = document.getElementById("ops-gar-nota").value.trim();
+        if (GAR_ESTADOS_APROBAR.includes(nuevo) && !opsGarPuede("aprobar")) { alert("Tu usuario no puede aprobar ni cerrar garantías."); return; }
+        if (nuevo === "rechazada" && !nota) { alert("Escribe en la nota por qué el proveedor la rechazó."); return; }
+        const antes = g.estado;
+        try {
+            const extra = {};
+            if (nuevo === "pieza_cambiada" && !g.fechaSegundoCambio) extra.fechaSegundoCambio = opsHoy();
+            await opsGarActualizar(g, { estado: nuevo, ...extra }, { estado: nuevo, fecha: opsFechaHora(), por: opsNombreActual(), nota: nota || null });
+            await opsAuditar("garantia", id, "estado", antes, nuevo);
+            if (["danada_almacen", "en_compras"].includes(nuevo)) {
+                try {
+                    const { db, fs } = await opsGetFB();
+                    await fs.addDoc(fs.collection(db, COL_NOTIFICACIONES), {
+                        tipo: "ops_garantia", accion: "garantias", garantiaId: id, folio: g.folio,
+                        mensaje: `Garantía ${g.folio}: ${opsGarEstado(nuevo)[1]} (${g.piezaDesc || ""}).`,
+                        creadoPor: opsNombreActual(), leida: false, fecha: opsFechaHora(),
+                    });
+                } catch (e) { console.warn("[garantías] aviso:", e.message); }
+            }
+            if (tabActual === "garantias") opsRenderGarantias();
+            window.opsGarVer(id);
+        } catch (e) { alert("No se pudo registrar: " + (e.message || e)); }
+    };
+    // Crea la solicitud de material en `surtidos` (misma tabla que usa Almacén), ligada a la garantía y al folio.
+    window.opsGarPedirPieza = async function (id) {
+        const g = cacheGarantias.find(x => x.id === id); if (!g) return;
+        if (!window.tcSbCrearSurtido) { alert("No está cargado el módulo de Almacén. Recarga la página."); return; }
+        const cant = Number(prompt(`Cantidad de "${g.piezaDesc}" que se pide a Almacén:`, "1"));
+        if (!cant || cant <= 0) return;
+        try {
+            const folioInfo = await opsSiguienteFolioMaterial();
+            const surtidoId = await window.tcSbCrearSurtido({
+                tipo: "material", folio: folioInfo.folio, folioNum: folioInfo.folioNum, folioPrefijo: folioInfo.folioPrefijo,
+                cliente: g.razonSocial || g.estacion || "Garantía", razonSocial: g.razonSocial || null,
+                estacionId: g.estacionId || null, estacionNombre: g.estacion || null, direccion: g.direccion || null,
+                lat: g.lat ?? null, lng: g.lng ?? null,
+                solicitante: opsNombreActual(), vendedor: opsNombreActual(), solicitanteEmail: opsUsuarioActual(),
+                area: "Operaciones · Garantías", destino: g.estacion || "", uso: `Reposición por garantía ${g.folio}${g.folioOrigenTxt ? " (folio " + g.folioOrigenTxt + ")" : ""}`,
+                prioridad: "urgente", estado: "pendiente",
+                productos: [{ clave: g.piezaClave || "", cant, unidad: "pza", desc: g.piezaDesc || "" }],
+                origen: "operaciones", folioServicio: g.folioOrigenTxt || null,
+                garantiaId: g.id, garantiaFolio: g.folio, numeroParte: g.numeroParte || null,
+                createdAt: new Date().toISOString(),
+            });
+            await opsGarActualizar(g, { estado: "pieza_solicitada", surtidoId: surtidoId || null, surtidoFolio: folioInfo.folio },
+                { estado: "pieza_solicitada", fecha: opsFechaHora(), por: opsNombreActual(), nota: `Solicitud ${folioInfo.folio} enviada a Almacén (${cant} pza)` + (window.tcSbUltimoEnCola ? " — sin conexión, se enviará al volver la señal" : "") });
+            await opsAuditar("garantia", id, "pieza_solicitada", null, folioInfo.folio);
+            if (tabActual === "garantias") opsRenderGarantias();
+            window.opsGarVer(id);
+        } catch (e) { alert("No se pudo crear la solicitud: " + (e.message || e)); }
+    };
+
+    // ── Dentro del panel del folio: garantías ligadas + botón para abrir una ──
+    async function opsGarPintarEnPanel(f) {
+        const box = document.getElementById("ops-panel-garantias"); if (!box) return;
+        if (!opsGarCargadas) await opsGarCargar();
+        const ligadas = cacheGarantias.filter(g => g.folioOrigenId === f.id);
+        const el = document.getElementById("ops-panel-garantias"); if (!el) return;
+        if (!ligadas.length && !opsGarPuede("editar")) { el.innerHTML = ""; return; }
+        el.innerHTML = `
+            <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;">Garantías de este servicio (${ligadas.length})</div>
+                    ${opsGarPuede("editar") ? `<button onclick="opsGarAbrirForm(null,'${f.id}')" style="background:#E9ECF5;border:none;color:#1D2E73;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir garantía</button>` : ""}
+                </div>
+                ${ligadas.map(g => `<div onclick="opsGarVer('${g.id}')" style="display:flex;justify-content:space-between;gap:8px;align-items:center;background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:12px;">
+                    <span><b>${opsEsc(g.folio || "")}</b> · ${opsEsc(g.piezaDesc || "")}</span>${opsGarBadge(g.estado)}</div>`).join("")}
+            </div>`;
     }
 
     async function opsRenderPermisos() {
