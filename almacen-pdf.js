@@ -501,6 +501,11 @@
       + '.alm-estacion-selected button{margin-top:8px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;}'
       + '.alm-estacion-link{margin-top:8px;background:none;border:none;color:#0e7490;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;}'
       + '.alm-whatsapp-btn{background:#25D366;color:#fff;}'
+      + '.alm-libreta{border:1px solid #c7d2fe;background:#eef2ff;border-radius:12px;padding:10px 12px;margin:6px 0 10px;}'
+      + '.alm-libreta-t{font-size:10.5px;font-weight:800;color:#3730a3;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}'
+      + '.alm-libreta-i{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;background:#fff;border:1px solid #e0e7ff;border-radius:9px;padding:7px 10px;margin-top:6px;cursor:pointer;font-family:inherit;}'
+      + '.alm-libreta-i:hover{border-color:#6366f1;box-shadow:0 2px 8px rgba(99,102,241,.15);}'
+      + '.alm-libreta-i b{font-size:12.5px;color:#1e1b4b;} .alm-libreta-i span{font-size:11px;color:#475569;} .alm-libreta-i i{font-size:10.5px;color:#6366f1;font-style:normal;font-weight:700;}'
       + '.alm-tbl .ctipo{width:132px;} .alm-tbl .ctipo select{width:100%;font-size:11.5px;padding:5px 4px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;}'
       + '.alm-espec{display:block;width:100%;margin-top:4px;font-size:11px;color:#475569;border:1px dashed #cbd5e1 !important;}'
       + '.alm-clasif-box{border-radius:12px;padding:10px 14px;margin:10px 0 6px;border:1px solid;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;}'
@@ -586,6 +591,11 @@
       + '</div>'
       + '</div>';
     document.body.appendChild(wrap);
+    // Si cambia el cliente con un destino ya elegido, se vuelven a sugerir sus direcciones.
+    wrap.querySelector('#alm-cliente').addEventListener('change', function () {
+      var t = (document.getElementById('alm-destino-tipo') || {}).value;
+      if (t === 'paqueteria') pintarLibreta('paqueteria'); else if (t === 'entrega_chihuahua') pintarLibreta('local');
+    });
  
     // Prioridades
     var sel = wrap.querySelector('#alm-prio');
@@ -823,9 +833,14 @@
         + '<div class="alm-destino-fld" style="margin-top:12px;"><label>\u00bfYa tienes la car\u00e1tula en papel? (opcional)</label>' + prev
         + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfElegirCaratula()">' + (estado.caratulaImg?'Cambiar foto':'Subir foto en su lugar') + '</button>'
         + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none"></div>';
+      extra.insertAdjacentHTML('afterbegin', '<div id="alm-libreta"></div>');
       renderPuntoRecoleccion();
+      pintarLibreta('paqueteria');
     } else if (tipo === 'entrega_chihuahua'){
+      extra.innerHTML = '<div id="alm-libreta"></div><div id="alm-estacion-wrap"></div><div id="alm-local-box"></div>';
       renderDestinoEstacion();
+      renderCajaLocal();
+      pintarLibreta('local');
     } else if (tipo === 'traslado_almacenes'){
       extra.innerHTML =
           '<div id="alm-almacen-wrap-almacenOrigen"></div>'
@@ -842,7 +857,7 @@
   //    del catálogo (fuente única); "usar dirección escrita a mano" conserva
   //    la captura manual de siempre para excepciones fuera del catálogo. ──
   function renderDestinoEstacion(){
-    var extra = document.getElementById('alm-destino-extra');
+    var extra = document.getElementById('alm-estacion-wrap') || document.getElementById('alm-destino-extra');
     if (!extra) return;
     var sel = estado.estacionSeleccionada;
     if (sel){
@@ -909,7 +924,7 @@
 
   // Modo manual (excepción — estación no está en el catálogo)
   window.__almPdfEstacionManual = function(){
-    var extra = document.getElementById('alm-destino-extra');
+    var extra = document.getElementById('alm-estacion-wrap') || document.getElementById('alm-destino-extra');
     if (!extra) return;
     extra.innerHTML =
         '<div class="alm-destino-fld"><label>Dirección de la estación (manual)</label><textarea id="alm-destino-dir" rows="2" placeholder="Dirección completa de la estación de servicio"></textarea></div>'
@@ -1296,6 +1311,226 @@
   };
  
  
+  // =====================================================================
+  //  CARÁTULA DE ENTREGA LOCAL + LIBRETA DE DIRECCIONES (oct-2026)
+  // =====================================================================
+  function latLngEstacion(e){
+    if (!e) return null;
+    var lat = Number(e.lat != null ? e.lat : (e.latitud != null ? e.latitud : (e.ubicacion && e.ubicacion.lat)));
+    var lng = Number(e.lng != null ? e.lng : (e.longitud != null ? e.longitud : (e.ubicacion && (e.ubicacion.lng != null ? e.ubicacion.lng : e.ubicacion.lon))));
+    return (isFinite(lat) && isFinite(lng) && lat && lng) ? { lat: lat, lng: lng } : null;
+  }
+  function ligaMaps(c){
+    if (c.lat && c.lng) return 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng;
+    var q = [c.direccion, c.municipio, 'Chihuahua'].filter(Boolean).join(', ');
+    return q ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q) : '';
+  }
+  function vCampo(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+  function renderCajaLocal(){
+    var box = document.getElementById('alm-local-box');
+    if (!box) return;
+    box.innerHTML = '<div class="alm-caratula-box" style="margin-top:10px;">'
+      + '<div class="alm-caratula-tit">Car\u00e1tula de entrega local</div>'
+      + '<div style="font-size:11.5px;color:#64748b;margin:-4px 0 8px;">Se genera sola con la estaci\u00f3n, la direcci\u00f3n, un QR a la ubicaci\u00f3n y las partidas. Agrega qui\u00e9n recibe para que el chofer llegue directo.</div>'
+      + '<div class="alm-destino-fld"><label>Recibe / contacto</label><input id="cx-loc-recibe" placeholder="Nombre de quien recibe"></div>'
+      + '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-loc-tel" placeholder="614..."></div>'
+      + '<div class="alm-destino-fld"><label>Horario de recepci\u00f3n</label><input id="cx-loc-horario" placeholder="Ej. 8:00 a 14:00"></div>'
+      + '<div class="alm-destino-fld"><label>Referencias</label><input id="cx-loc-ref" placeholder="Entre calles, color de fachada, a un lado de\u2026"></div>'
+      + '<div class="alm-destino-fld"><label>Instrucciones de entrega</label><textarea id="cx-loc-instr" rows="2" placeholder="Opcional"></textarea></div>'
+      + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfVerCaratulaLocal()">Vista previa de la car\u00e1tula</button>'
+      + '</div>';
+  }
+
+  function leerCaratulaLocal(productos){
+    var est = estado.estacionSeleccionada;
+    var ll = latLngEstacion(est);
+    var c = {
+      tipo: 'local',
+      folio: vCampo('alm-folio'), cliente: vCampo('alm-cliente'), vendedor: vCampo('alm-vendedor'), almacen: vCampo('alm-almacen'),
+      fechaEntrega: vCampo('alm-fecha-entrega'), fecha: new Date().toLocaleDateString('es-MX'),
+      destino: est ? (est.razonSocial || '') : (vCampo('alm-cliente') || ''),
+      estacionId: est ? est.id : '', permiso: est ? (est.permiso || '') : '',
+      direccion: est ? (est.direccionNormalizada || est.domicilioRaw || '') : vCampo('alm-destino-dir'),
+      municipio: est ? (est.municipio || '') : '',
+      lat: ll ? ll.lat : null, lng: ll ? ll.lng : null,
+      recibe: vCampo('cx-loc-recibe'), telefono: vCampo('cx-loc-tel'), horario: vCampo('cx-loc-horario'),
+      referencias: vCampo('cx-loc-ref'), instrucciones: vCampo('cx-loc-instr'),
+      comentarios: vCampo('alm-comentarios'),
+      remitente: { nombre: REMITENTE_DEFAULT.nombre, direccion: REMITENTE_DEFAULT.direccion + ', ' + REMITENTE_DEFAULT.colonia, telefono: REMITENTE_DEFAULT.telefono },
+      partidas: (productos || estado.productos || []).filter(function (p) { return (p.tipo || 'producto') !== 'servicio' && p.tipo !== 'viaticos'; })
+        .map(function (p) { return { cant: p.cant, clave: p.clave || '', desc: p.desc || '', espec: p.espec || '' }; })
+    };
+    c.maps = ligaMaps(c);
+    return c;
+  }
+
+  // QR: librería ligera desde cdnjs (solo se carga al imprimir una carátula local)
+  var _qrPromise = null;
+  function cargarQR(){
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (_qrPromise) return _qrPromise;
+    _qrPromise = new Promise(function (res, rej) {
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+      sc.onload = function () { window.qrcode ? res(window.qrcode) : rej(new Error('QR no disponible')); };
+      sc.onerror = function () { _qrPromise = null; rej(new Error('No se pudo cargar el generador de QR')); };
+      document.head.appendChild(sc);
+    });
+    return _qrPromise;
+  }
+  function qrSvg(texto){
+    try { var q = window.qrcode(0, 'M'); q.addData(texto); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
+    catch (e) { return ''; }
+  }
+
+  function construirCaratulaLocalHTML(c, imprimir){
+    var qr = c.maps ? qrSvg(c.maps) : '';
+    function dato(label, valor, grande){ return valor ? '<div class="cl-d"><span>' + esc(label) + '</span><b' + (grande ? ' class="g"' : '') + '>' + esc(valor) + '</b></div>' : ''; }
+    var filas = (c.partidas || []).map(function (p) {
+      return '<tr><td class="q">' + esc(p.cant) + '</td><td>' + esc(p.desc) + (p.espec ? '<div class="es">' + esc(p.espec) + '</div>' : '') + '</td><td class="cl">' + esc(p.clave) + '</td><td class="ck"><span></span></td></tr>';
+    }).join('');
+    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Entrega local ' + esc(c.folio) + '</title><style>'
+      + '@page{size:letter portrait;margin:10mm;}*{box-sizing:border-box;}'
+      + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#0f172a;margin:0;padding:18px;max-width:800px;}'
+      + '.cl-h{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:4px solid #E2231A;padding-bottom:12px;}'
+      + '.cl-h img{height:46px;}.cl-h .t{text-align:right}.cl-h .t b{display:block;font-size:18px;color:#13246B;letter-spacing:.3px}.cl-h .t span{font-size:11px;color:#64748b}'
+      + '.cl-fol{display:flex;justify-content:space-between;align-items:center;background:#13246B;color:#fff;border-radius:10px;padding:12px 16px;margin:14px 0;border-left:8px solid #E2231A}'
+      + '.cl-fol .f{font-size:26px;font-weight:800;letter-spacing:.5px}.cl-fol .x{text-align:right;font-size:12px;line-height:1.5}'
+      + '.cl-main{display:-webkit-box;display:flex;gap:16px;align-items:flex-start}.cl-main>.cl-box{-webkit-box-flex:1;flex:1;min-width:0}'
+      + '.cl-box{border:1.5px solid #dbe3f5;border-radius:12px;padding:12px 14px}'
+      + '.cl-lb{font-size:10px;font-weight:800;color:#E2231A;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}'
+      + '.cl-dest{font-size:21px;font-weight:800;color:#13246B;line-height:1.2}'
+      + '.cl-dir{font-size:13.5px;margin-top:6px;line-height:1.4}'
+      + '.cl-d{display:flex;gap:8px;font-size:12.5px;margin-top:6px}.cl-d span{color:#64748b;min-width:118px}.cl-d b.g{font-size:15px}'
+      + '.cl-qr{width:190px;flex-shrink:0;margin-left:16px;border:1.5px solid #dbe3f5;border-radius:12px;padding:10px;text-align:center}.cl-qr svg{width:168px;height:168px;display:block;margin:0 auto}'
+      + '.cl-qr .c{font-size:10.5px;color:#475569;margin-top:6px;font-weight:700}'
+      + 'table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px}'
+      + 'th{background:#EEF2FF;color:#13246B;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:7px 8px}'
+      + 'td{border-bottom:1px solid #e2e8f0;padding:7px 8px;vertical-align:top}td.q{font-weight:800;width:50px}td.cl{color:#64748b;width:110px;font-size:11px}'
+      + 'td.ck{width:44px}td.ck span{display:inline-block;width:16px;height:16px;border:1.6px solid #13246B;border-radius:3px}.es{color:#475569;font-size:11px;margin-top:2px}'
+      + '.cl-firmas{display:-webkit-box;display:flex;margin-top:38px}.cl-firmas div{-webkit-box-flex:1;flex:1;margin:0 9px;border-top:1.5px solid #0f172a;padding-top:5px;font-size:11px;color:#475569;text-align:center}'
+      + '.cl-rem{margin-top:16px;font-size:10.5px;color:#64748b;text-align:center}'
+      + '.cl-liga{font-size:10px;color:#1473E6;word-break:break-all;margin-top:4px}'
+      + '@media print{.no-print{display:none}}'
+      + '</style></head><body>'
+      + '<div class="cl-h"><img src="data:image/png;base64,' + LOGO_TECNOCONTROL_B64 + '" alt="Tecnocontrol"><div class="t"><b>CAR\u00c1TULA DE ENTREGA LOCAL</b><span>Elaborada ' + esc(c.fecha) + (c.almacen ? ' \u00b7 Almac\u00e9n ' + esc(c.almacen) : '') + '</span></div></div>'
+      + '<div class="cl-fol"><div class="f">' + esc(c.folio || '\u2014') + '</div><div class="x">' + (c.fechaEntrega ? 'Entregar el <b>' + esc(c.fechaEntrega) + '</b><br>' : '') + 'Vendedor: ' + esc(c.vendedor || '\u2014') + '</div></div>'
+      + '<div class="cl-main"><div class="cl-box">'
+      +   '<div class="cl-lb">Entregar a</div><div class="cl-dest">' + esc(c.destino || c.cliente || '\u2014') + '</div>'
+      +   (c.destino && c.cliente && c.destino !== c.cliente ? '<div class="cl-d"><span>Cliente</span><b>' + esc(c.cliente) + '</b></div>' : '')
+      +   '<div class="cl-dir">' + esc(c.direccion || 'Sin direcci\u00f3n capturada') + (c.municipio ? '<br><b>' + esc(c.municipio) + '</b>' : '') + '</div>'
+      +   dato('Recibe', c.recibe, true) + dato('Tel\u00e9fono', c.telefono, true) + dato('Horario', c.horario) + dato('Permiso (PL)', c.permiso)
+      +   dato('Referencias', c.referencias) + dato('Instrucciones', c.instrucciones) + dato('Comentarios', c.comentarios)
+      + '</div>'
+      + '<div class="cl-qr">' + (qr || '<div style="font-size:11px;color:#94a3b8;padding:30px 0">Sin ubicaci\u00f3n</div>') + '<div class="c">Escanea para abrir la ubicaci\u00f3n en el mapa</div>'
+      +   (c.lat && c.lng ? '<div style="font-size:10px;color:#64748b;margin-top:2px">' + Number(c.lat).toFixed(5) + ', ' + Number(c.lng).toFixed(5) + '</div>' : '')
+      + '</div></div>'
+      + (c.maps ? '<div class="cl-liga no-print">Liga: <a href="' + esc(c.maps) + '" target="_blank">' + esc(c.maps) + '</a></div>' : '')
+      + '<table><thead><tr><th>Cant.</th><th>Descripci\u00f3n</th><th>Clave</th><th>Revisado</th></tr></thead><tbody>' + (filas || '<tr><td colspan="4" style="color:#94a3b8">Sin partidas</td></tr>') + '</tbody></table>'
+      + '<div class="cl-firmas"><div>Entreg\u00f3 (chofer)</div><div>Recibi\u00f3 (nombre y firma)</div><div>Fecha y hora</div></div>'
+      + '<div class="cl-rem">Remite: ' + esc((c.remitente || {}).nombre || '') + ' \u00b7 ' + esc((c.remitente || {}).direccion || '') + ' \u00b7 Tel. ' + esc((c.remitente || {}).telefono || '') + '</div>'
+      + (imprimir ? '<script>window.onload=function(){setTimeout(function(){window.print();},350);}<\/script>' : '')
+      + '</body></html>';
+  }
+  // Para Almacén (almacen.js) y cualquier módulo que quiera imprimir una carátula local.
+  window.tcCaratulaLocalHTML = function (c, imprimir) {
+    return cargarQR().catch(function () { return null; }).then(function () { return construirCaratulaLocalHTML(c, imprimir !== false); });
+  };
+  window.__almPdfVerCaratulaLocal = function () {
+    var w = window.open('', '_blank');
+    var c = leerCaratulaLocal(estado.productos);
+    window.tcCaratulaLocalHTML(c, false).then(function (html) { if (w) { w.document.open(); w.document.write(html); w.document.close(); } });
+  };
+
+  // ── Libreta de direcciones por cliente (tabla destinos_envio) ──
+  function normCli(s){ return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function cargarLibreta(cliente){
+    var cn = normCli(cliente);
+    if (!cn || !window.tcSbDocs) return Promise.resolve([]);
+    return window.tcSbDocs.getDocs('destinos_envio', { clienteNorm: cn }).then(function (snap) {
+      return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
+        .sort(function (a, b) { return (b.usos || 0) - (a.usos || 0) || String(b.ultimoUso || '').localeCompare(String(a.ultimoUso || '')); });
+    }).catch(function () { return []; });
+  }
+  function llaveDestino(d){ return d.tipo + '|' + (d.estacionId || normCli(d.direccion || d.nombre)); }
+  var _libretaCache = [];
+  function pintarLibreta(tipo){
+    var box = document.getElementById('alm-libreta');
+    if (!box) return;
+    var cliente = vCampo('alm-cliente');
+    if (!cliente) { box.innerHTML = ''; return; }
+    cargarLibreta(cliente).then(function (lista) {
+      _libretaCache = lista.filter(function (d) { return d.tipo === tipo; });
+      if (!document.getElementById('alm-libreta')) return;
+      if (!_libretaCache.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="alm-libreta"><div class="alm-libreta-t">Direcciones usadas antes con ' + esc(cliente) + '</div>'
+        + _libretaCache.slice(0, 6).map(function (d, i) {
+            return '<button type="button" class="alm-libreta-i" onclick="window.__almPdfUsarDestino(' + i + ')">'
+              + '<b>' + esc(d.nombre || d.direccion || 'Destino') + '</b>'
+              + '<span>' + esc([d.direccion, d.municipio || d.ciudadEstado].filter(Boolean).join(' \u00b7 ') || (d.paqueteria ? 'Paqueter\u00eda ' + d.paqueteria : '')) + '</span>'
+              + '<i>' + (d.usos || 1) + (d.usos === 1 || !d.usos ? ' vez' : ' veces') + (d.recibe || d.atencion ? ' \u00b7 ' + esc(d.recibe || d.atencion) : '') + '</i></button>';
+          }).join('') + '</div>';
+    });
+  }
+  function ponerValor(id, v){ var el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; }
+  window.__almPdfUsarDestino = function (i) {
+    var d = _libretaCache[i]; if (!d) return;
+    if (d.tipo === 'paqueteria') {
+      ponerValor('cx-dest-nombre', d.nombre); ponerValor('cx-dest-rfc', d.rfc); ponerValor('cx-dest-regimen', d.regimen);
+      ponerValor('cx-dest-dir', d.direccion); ponerValor('cx-dest-col', d.colonia); ponerValor('cx-dest-cp', d.cp);
+      ponerValor('cx-dest-ciu', d.ciudadEstado); ponerValor('cx-dest-tel', d.telefono); ponerValor('cx-dest-correo', d.correo);
+      ponerValor('cx-paqueteria', d.paqueteria); ponerValor('cx-tipo-envio', d.tipoEnvio); ponerValor('cx-atencion', d.atencion);
+      ponerValor('cx-referencias', d.referencias); ponerValor('cx-instrucciones', d.instrucciones);
+      ponerValor('cx-flete', d.flete); ponerValor('cx-entrega-tipo', d.entregaTipo);
+    } else {
+      var aplicarCampos = function () {
+        ponerValor('cx-loc-recibe', d.recibe); ponerValor('cx-loc-tel', d.telefono); ponerValor('cx-loc-horario', d.horario);
+        ponerValor('cx-loc-ref', d.referencias); ponerValor('cx-loc-instr', d.instrucciones);
+      };
+      if (d.estacionId) {
+        cargarCatalogoEstaciones().then(function (lista) {
+          var e = lista.find(function (x) { return x.id === d.estacionId; });
+          if (e) { estado.estacionSeleccionada = e; renderDestinoEstacion(); }
+          else { window.__almPdfEstacionManual(); ponerValor('alm-destino-dir', d.direccion); }
+          aplicarCampos();
+        });
+      } else {
+        estado.estacionSeleccionada = null;
+        window.__almPdfEstacionManual(); ponerValor('alm-destino-dir', d.direccion); aplicarCampos();
+      }
+    }
+    if (window.mostrarPush) window.mostrarPush('Destino', 'Se llenaron los datos de ' + (d.nombre || 'la direcci\u00f3n guardada'), '\u2705');
+  };
+  // Al guardar el pedido: alta o actualización del destino en la libreta del cliente.
+  function guardarEnLibreta(cliente, destinoTipo, dd){
+    try {
+      var cn = normCli(cliente);
+      if (!cn || !window.tcSbDocs) return;
+      var reg = null, yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+      if (destinoTipo === 'entrega_chihuahua' && dd.caratulaEnvio) {
+        var c = dd.caratulaEnvio;
+        if (!c.direccion && !c.estacionId) return;
+        reg = { tipo: 'local', nombre: c.destino, estacionId: c.estacionId || '', direccion: c.direccion, municipio: c.municipio, lat: c.lat, lng: c.lng,
+          recibe: c.recibe, telefono: c.telefono, horario: c.horario, referencias: c.referencias, instrucciones: c.instrucciones };
+      } else if (destinoTipo === 'paqueteria' && dd.caratulaEnvio && dd.caratulaEnvio.destinatario) {
+        var D = dd.caratulaEnvio.destinatario, k = dd.caratulaEnvio;
+        if (!D.nombre && !D.direccion) return;
+        reg = { tipo: 'paqueteria', nombre: D.nombre, rfc: D.rfc, regimen: D.regimen, direccion: D.direccion, colonia: D.colonia, cp: D.cp, ciudadEstado: D.ciudadEstado,
+          telefono: D.telefono, correo: D.correo, paqueteria: k.paqueteria, tipoEnvio: k.tipoEnvio, atencion: k.atencion, referencias: k.referencias,
+          instrucciones: k.instrucciones, flete: k.flete, entregaTipo: k.entregaTipo };
+      }
+      if (!reg) return;
+      Object.keys(reg).forEach(function (x) { if (reg[x] == null || reg[x] === '') delete reg[x]; });
+      reg.cliente = cliente; reg.clienteNorm = cn; reg.ultimoUso = new Date().toISOString(); reg.actualizadoPor = yo;
+      cargarLibreta(cliente).then(function (lista) {
+        var ya = lista.find(function (d) { return llaveDestino(d) === llaveDestino(reg); });
+        if (ya) return window.tcSbDocs.updateDoc('destinos_envio', ya.id, Object.assign({}, reg, { usos: (ya.usos || 1) + 1 }));
+        return window.tcSbDocs.addDoc('destinos_envio', Object.assign({}, reg, { usos: 1, creadoPor: yo }));
+      }).catch(function (e) { console.warn('[almacen-pdf] libreta:', e && e.message); });
+    } catch (e) { console.warn('[almacen-pdf] libreta:', e && e.message); }
+  }
+
   var DOC_TAM_MAX = 700 * 1024; // ~700KB por archivo; deja margen para el tope de 1MB por documento en Firestore
  
   // =====================================================================
@@ -1422,10 +1657,15 @@
           datosDestino.destinoEstacionId = est.id;
           datosDestino.destinoEstacionRazonSocial = est.razonSocial;
           datosDestino.destinoEstacionMunicipio = est.municipio;
+          var ll = latLngEstacion(est);
+          if (ll) { datosDestino.destinoLat = ll.lat; datosDestino.destinoLng = ll.lng; }
         } else {
           // Excepción: estación fuera del catálogo, captura manual (como antes).
           datosDestino.destinoDireccion = ((document.getElementById('alm-destino-dir') || {}).value || '').trim();
         }
+        // Carátula de entrega local (oct-2026): se genera sola con estación, dirección,
+        // ubicación (QR a Google Maps), quién recibe y las partidas del pedido.
+        datosDestino.caratulaEnvio = leerCaratulaLocal(productos);
       } else if (destinoTipo === 'traslado_almacenes') {
         // Almacenes elegidos del catálogo puntos_referencia (tipo:'almacen'): se
         // congela nombre + lat/lng en el propio pedido, igual que "paquetería" con
@@ -1496,6 +1736,7 @@
     .then(function () {
       msg('✔ Surtido ' + folio + ' creado.', '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
+      guardarEnLibreta(cliente, destinoTipo, datosDestino);
       estado.ultimoGuardado = { folio: folio, cliente: cliente, vendedor: vendedor, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo,
         productos: productos, clasificacion: clasificarPedido(productos) };
       btn.style.display = 'none';

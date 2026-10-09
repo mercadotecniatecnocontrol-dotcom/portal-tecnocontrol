@@ -2163,6 +2163,11 @@
     var p = buscarP(id) || (_repEntregas||[]).find(function(x){ return x.id===id; });
     if (!p || !p.caratulaEnvio) return;
     var w = window.open();
+    // Carátula de entrega local (con QR a la ubicación) — la arma almacen-pdf.js
+    if (p.caratulaEnvio.tipo === 'local' && window.tcCaratulaLocalHTML){
+      window.tcCaratulaLocalHTML(p.caratulaEnvio, true).then(function(html){ if (w){ w.document.open(); w.document.write(html); w.document.close(); } });
+      return;
+    }
     if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
   };
 
