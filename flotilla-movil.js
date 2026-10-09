@@ -573,13 +573,129 @@ async function _solEncolar(item){
     fotos:(item.fotos||[]).map(f=>{const c=Object.assign({},f);delete c._blob;return c;}),
     videos:(item.videos||[]).map(v=>Object.assign({},v)),
   };
-  await _idbPut(limpio);
+  try{
+    await _idbPut(limpio);
+  }catch(e){
+    if(e&&(e.name==='QuotaExceededError'||/quota/i.test(e.message||'')))
+      throw new Error('No hay espacio en el teléfono para guardar esta solicitud'+(limpio.videos.length?' (los videos pesan mucho)':'')+'. Libera espacio o envíala cuando tengas señal.');
+    throw new Error('No se pudo guardar en el teléfono: '+(e&&e.message||e));
+  }
+  // Verificación: volver a leer lo guardado y confirmar que fotos y videos se pueden abrir.
+  // Si algo falla, el técnico se entera AHORA (frente al vehículo) y no horas después.
+  await _solVerificarGuardado(limpio);
+  _fmPedirPersistencia();
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
   if(!q.some(x=>x._idb===d.solicitudId)){
     q.push({tipo:d.tipo,vehiculoEco:d.vehiculoEco,creadoEn:d.creadoEn,prioridad:d.prioridad,
       numFotos:limpio.fotos.length,numVideos:limpio.videos.length,
       _idb:d.solicitudId,_offlineId:Date.now(),_pendiente:true});
     localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
+  }
+}
+
+async function _solVerificarGuardado(limpio){
+  let back=null;
+  try{ back=await _idbGet(limpio.id); }catch(e){}
+  const falla=(m)=>{ _idbDel(limpio.id).catch(()=>{}); throw new Error('No se pudo guardar en el teléfono ('+m+'). NO cierres esta pantalla: busca señal y vuelve a tocar Crear solicitud.'); };
+  if(!back)falla('no quedó registrada');
+  const fs=back.fotos||[], vs=back.videos||[];
+  if(fs.length!==limpio.fotos.length)falla('faltan fotos');
+  if(vs.length!==limpio.videos.length)falla('faltan videos');
+  for(const f of fs){ if(!f.ruta&&!(typeof f.dataUrl==='string'&&f.dataUrl.length>100))falla('una foto quedó vacía'); }
+  for(const v of vs){
+    if(v.ruta)continue;
+    if(!v.blob||!v.blob.size)falla('un video quedó vacío');
+    try{ await v.blob.slice(0,64).arrayBuffer(); }catch(e){ falla('un video no se puede leer'); }
+  }
+}
+
+// ── Almacenamiento persistente + detección de app instalada ──
+function _fmPedirPersistencia(){
+  try{
+    if(navigator.storage&&navigator.storage.persist){
+      navigator.storage.persisted().then(p=>{ if(!p)return navigator.storage.persist(); }).catch(()=>{});
+    }
+  }catch(e){}
+}
+function _fmEsInstalada(){
+  try{
+    if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())return true;
+    if(window.navigator.standalone===true)return true;
+    if(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)return true;
+  }catch(e){}
+  return false;
+}
+function _fmEsIOS(){ return /iPhone|iPad|iPod/i.test(navigator.userAgent||''); }
+const _FM_INSTALAR_KEY='fm_aviso_instalar_oculto';
+window.fmOcultarAvisoInstalar=function(){
+  try{localStorage.setItem(_FM_INSTALAR_KEY,String(Date.now()));}catch(e){}
+  if(vistaAct==='vehiculo')renderVehiculo();
+};
+function _fmAvisoInstalarHTML(){
+  if(_fmEsInstalada())return '';
+  try{ const t=Number(localStorage.getItem(_FM_INSTALAR_KEY)||0); if(t&&Date.now()-t<3*864e5)return ''; }catch(e){}
+  const pasos=_fmEsIOS()
+    ?'En Safari toca <b>Compartir</b> (cuadro con flecha) → <b>Agregar a inicio</b>, y abre la app desde ese ícono.'
+    :'En el menú del navegador (⋮) toca <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.';
+  return `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+      <div style="font-size:12px;font-weight:800;color:#1D4ED8">Instala la app en tu pantalla de inicio</div>
+      <button onclick="fmOcultarAvisoInstalar()" style="background:none;border:none;color:#64748B;font-size:15px;cursor:pointer;padding:0 2px;line-height:1">×</button>
+    </div>
+    <div style="font-size:11.5px;color:#1E3A8A;margin-top:3px;line-height:1.4">Así el teléfono no borra las solicitudes que guardas sin señal. ${pasos}</div>
+  </div>`;
+}
+
+// ── Reporte de la cola pendiente a Supabase (para verla desde administración) ──
+function _fmDispositivoId(){
+  let id='';
+  try{ id=localStorage.getItem('fm_dispositivo_id')||''; }catch(e){}
+  if(!id){
+    id='dev_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
+    try{localStorage.setItem('fm_dispositivo_id',id);}catch(e){}
+  }
+  return id;
+}
+let _fmReportando=false;
+async function _fmReportarCola(){
+  const tc=window.tcFlSb;
+  if(!tc||!tc._rest||!onlineStatus||_fmReportando)return;
+  _fmReportando=true;
+  try{
+    const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+    const dev=_fmDispositivoId();
+    const u=window.auth?.currentUser;
+    const ahora=new Date().toISOString();
+    const ids=[];
+    const rows=q.map(doc=>{
+      const id=(dev+'_'+String(doc._idb||doc.solicitudId||doc._offlineId||'x')).replace(/[^A-Za-z0-9_\-]/g,'');
+      ids.push(id);
+      return {
+        id, dispositivo:dev,
+        usuario_email:u?.email||doc.creadoPor||null,
+        usuario_nombre:u?.displayName||doc.solicitante||null,
+        eco:doc.vehiculoEco!=null?String(doc.vehiculoEco):null,
+        tipo:doc.tipo||null,
+        creado_en:doc.creadoEn||null,
+        num_fotos:Number(doc.numFotos!=null?doc.numFotos:(doc.evidencias||[]).length)||0,
+        num_videos:Number(doc.numVideos||0)||0,
+        ultimo_error:doc._error||null,
+        error_en:doc._errorEn||null,
+        app_instalada:_fmEsInstalada(),
+        user_agent:String(navigator.userAgent||'').slice(0,250),
+        reportado_en:ahora,
+      };
+    });
+    if(rows.length){
+      await tc._rest('flotilla_cola_pendiente?on_conflict=id',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:rows});
+    }
+    // Quitar del reporte lo que este teléfono ya no tiene pendiente (enviado o borrado)
+    const filtro='dispositivo=eq.'+encodeURIComponent(dev)+(ids.length?'&id=not.in.('+ids.map(x=>'"'+x+'"').join(',')+')':'');
+    await tc._rest('flotilla_cola_pendiente?'+filtro,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+  }catch(e){
+    console.warn('[MOVIL cola→supabase]',e.message||e);
+  }finally{
+    _fmReportando=false;
   }
 }
 
@@ -621,7 +737,7 @@ let _fmSincronizando=false;
 async function offlineSync(){
   if(_fmSincronizando)return;
   const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
-  if(!q.length)return;
+  if(!q.length){_fmReportarCola();return;}
   _fmSincronizando=true;
   let synced=0;
   const pendientes=[];
@@ -637,6 +753,7 @@ async function offlineSync(){
   }
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
   _fmSincronizando=false;
+  _fmReportarCola();
   if(synced>0){
     toast(`${synced} solicitud(es) sincronizada(s)`, 'ok');
     await cargarMisSols();
@@ -666,6 +783,7 @@ window.fmSyncOffline=async function(){
   }
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
   _fmSincronizando=false;
+  _fmReportarCola();
   toast(ok+' sincronizada(s)'+(fail?' · '+fail+' sin poder sincronizar. Motivo: '+ultErr:''),ok>0?'ok':'err');
   await cargarMisSols();
   if(vistaAct==='vehiculo')renderVehiculo();
@@ -699,7 +817,7 @@ window.fmVerOffline=function(){
   }
   const footer=document.createElement('div');footer.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px';
   const bS=document.createElement('button');bS.style.cssText='padding:10px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bS.textContent='Sincronizar todo';bS.onclick=function(){fmSyncOffline();cerrar();};
-  const bB=document.createElement('button');bB.style.cssText='padding:10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bB.textContent='Borrar todas';bB.onclick=function(){if(confirm('Borrar todas las solicitudes pendientes?')){localStorage.setItem(C.OFFLINE_KEY,'[]');_idbClear().catch(()=>{});cerrar();renderVehiculo();}};
+  const bB=document.createElement('button');bB.style.cssText='padding:10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer';bB.textContent='Borrar todas';bB.onclick=function(){if(confirm('Borrar todas las solicitudes pendientes?')){localStorage.setItem(C.OFFLINE_KEY,'[]');_idbClear().catch(()=>{});cerrar();renderVehiculo();_fmReportarCola();}};
   footer.appendChild(bS);footer.appendChild(bB);panel.appendChild(footer);
   ov.appendChild(panel);ov.addEventListener('click',function(e){if(e.target===ov)cerrar();});
   document.body.appendChild(ov);
@@ -713,6 +831,7 @@ window.fmBorrarOffline=function(idx,btn){
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(q));
   btn.closest('div').parentElement.remove();
   toast('Solicitud eliminada','ok');
+  _fmReportarCola();
   if(vistaAct==='vehiculo')renderVehiculo();
 };
 
@@ -985,6 +1104,7 @@ window.addEventListener('unhandledrejection',(e)=>{
 
 window.initFlotillaMovil=async function(){
   injectCSS();buildHTML();
+  _fmPedirPersistencia();
   // Detectar online/offline
   window.addEventListener('online',()=>{
     onlineStatus=true;
@@ -1025,6 +1145,12 @@ window.initFlotillaMovil=async function(){
 
   // Sincronizar offline queue si hay conexión
   if(onlineStatus)await offlineSync();
+  setInterval(()=>{
+    try{
+      const q=JSON.parse(localStorage.getItem(C.OFFLINE_KEY)||'[]');
+      if(q.length&&navigator.onLine&&!_fmSincronizando)offlineSync();
+    }catch(e){}
+  },10*60*1000);
 
   // Registrar Service Worker
   if('serviceWorker' in navigator){
@@ -1574,6 +1700,20 @@ function renderVehiculo(){
       <div style="font-size:12px;color:#854D0E;margin-top:2px">Desde ${hF(miVehEstado.desde)}${(()=>{const s=(misSols||[]).find(x=>x.id===miVehEstado.solicitud_id);return s?` · ${esc(s.folio||'')} ${esc(s.tipo||'')}`:'';})()}. Vuelve a quedar activo al cerrarse la solicitud.</div>
     </div>`:''}
 
+    ${_fmAvisoInstalarHTML()}
+    ${(()=>{
+      if(!offline.length)return '';
+      const masVieja=offline.reduce((m,d)=>{const t=Date.parse(d.creadoEn||'')||d._offlineId||Date.now();return Math.min(m,t);},Date.now());
+      const horas=(Date.now()-masVieja)/36e5;
+      if(horas<2)return '';
+      const conErr=offline.find(d=>d._error);
+      const txtH=horas>=48?Math.floor(horas/24)+' días':Math.floor(horas)+' h';
+      return `<div style="background:#FEE2E2;border:2px solid #EF4444;border-radius:12px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:900;color:#991B1B">⚠ Tienes una solicitud sin enviar desde hace ${txtH}</div>
+        <div style="font-size:11.5px;color:#991B1B;margin-top:3px;line-height:1.4">Conéctate a una red con buena señal y toca <b>Sincronizar</b>. Si sigue fallando, avisa a Flotilla. No la borres.</div>
+        ${conErr?`<div style="font-size:11px;color:#7F1D1D;margin-top:6px;background:#FEF2F2;border-radius:6px;padding:6px 8px"><b>Motivo:</b> ${esc(conErr._error)}</div>`:''}
+      </div>`;
+    })()}
     ${offline.length?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#B45309">${IC.wifi} ${offline.length} solicitud(es) sin sincronizar</div>
