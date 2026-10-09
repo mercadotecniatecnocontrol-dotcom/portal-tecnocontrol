@@ -1160,20 +1160,75 @@ function reproducirGrabacionVoz(){
       .catch(()=>{ try{ const a=new Audio(VOZ_NUEVO_PEDIDO_MP3); a.volume=1; a.play().catch(()=>{}); }catch(e){} });
   }catch(e){}
 }
-function vozNuevoPedido(texto){
+/* Orden de preferencia para la voz (oct-2026, "estilo asistente"):
+   1) Voz NEURAL del sistema si existe (Microsoft Edge trae "Dalia/Jorge Online (Natural)";
+      Chrome trae voces "Google español"). Suena natural y puede decir el cliente.
+   2) Archivo sonidos/nuevo-pedido.mp3 del repositorio (una grabación de calidad que
+      se puede cambiar sin tocar código).
+   3) Otra voz del sistema en español.
+   4) Grabación incluida en este archivo (último recurso). */
+const VOZ_ARCHIVO='sonidos/nuevo-pedido.mp3';
+let _vozArchivoBuf=null, _vozArchivoEstado='?';
+function cargarVozArchivo(){
+  if(_vozArchivoEstado!=='?') return Promise.resolve(_vozArchivoBuf);
+  return fetch(VOZ_ARCHIVO,{cache:'no-cache'})
+    .then(r=>{ if(!r.ok) throw new Error('sin archivo'); return r.arrayBuffer(); })
+    .then(ab=>new Promise((res,rej)=>AC().decodeAudioData(ab,res,rej)))
+    .then(b=>{ _vozArchivoBuf=b; _vozArchivoEstado='si'; return b; })
+    .catch(()=>{ _vozArchivoEstado='no'; return null; });
+}
+function tocarBuffer(buf){
+  try{ const ac=AC(), src=ac.createBufferSource(), g=ac.createGain(); g.gain.value=1; src.buffer=buf; src.connect(g); g.connect(ac.destination); src.start(); }catch(e){}
+}
+function vocesEs(){ return ('speechSynthesis' in window) ? window.speechSynthesis.getVoices().filter(v=>/^es([-_]|$)/i.test(v.lang)) : []; }
+function puntajeVoz(v){
+  return (/natural|neural|online/i.test(v.name)?100:0) + (/google/i.test(v.name)?40:0)
+    + (/dalia|paulina|sabina|elvira|helena|lupe|camila|marisol|monica|paloma|renata|ximena|larissa/i.test(v.name)?20:0)
+    + (/es[-_]mx/i.test(v.lang)?10:(/es[-_](us|419)/i.test(v.lang)?6:0));
+}
+function mejorVozEs(){ return vocesEs().sort((a,b)=>puntajeVoz(b)-puntajeVoz(a))[0]||null; }
+function vozNeural(v){ return !!(v && /natural|neural|online|google/i.test(v.name)); }
+function decir(v, frase, siFalla){
   try{
-    const voces=('speechSynthesis' in window) ? window.speechSynthesis.getVoices() : [];
-    const esVoz=voces.find(v=>/^es([-_]|$)/i.test(v.lang));
-    if(!esVoz){ reproducirGrabacionVoz(); return; }
-    const u=new SpeechSynthesisUtterance(texto||'Nuevo pedido');
-    u.lang=esVoz.lang||'es-MX'; u.rate=0.95; u.pitch=1; u.volume=1; u.voice=esVoz;
+    const u=new SpeechSynthesisUtterance(frase);
+    u.voice=v; u.lang=v.lang||'es-MX'; u.rate=1.0; u.pitch=1.05; u.volume=1;
     let arranco=false;
     u.onstart=()=>{ arranco=true; };
-    u.onerror=()=>{ if(!arranco){ arranco=true; reproducirGrabacionVoz(); } };
-    window.speechSynthesis.cancel(); // por si venía uno sonando, no encimar voces
+    u.onerror=()=>{ if(!arranco){ arranco=true; siFalla(); } };
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
-    setTimeout(()=>{ if(!arranco && !window.speechSynthesis.speaking){ arranco=true; window.speechSynthesis.cancel(); reproducirGrabacionVoz(); } },1500);
-  }catch(e){ reproducirGrabacionVoz(); }
+    setTimeout(()=>{ if(!arranco && !window.speechSynthesis.speaking){ arranco=true; window.speechSynthesis.cancel(); siFalla(); } },1500);
+  }catch(e){ siFalla(); }
+}
+function nombreParaVoz(t){ return String(t||'').toLowerCase().replace(/\b([a-záéíóúñ])/g,m=>m.toUpperCase()).replace(/\s+/g,' ').trim(); }
+function vozNuevoPedido(texto, cliente){
+  const v=mejorVozEs();
+  const frase = texto || (cliente ? ('Nuevo pedido de ' + nombreParaVoz(cliente)) : 'Nuevo pedido');
+  const respaldo = ()=>cargarVozArchivo().then(buf=>{
+    if(buf){ tocarBuffer(buf); return; }
+    if(v && !vozNeural(v)){ decir(v, texto||'Nuevo pedido', reproducirGrabacionVoz); return; }
+    reproducirGrabacionVoz();
+  });
+  if(vozNeural(v)){ decir(v, frase, respaldo); return; }
+  respaldo();
+}
+/* Campanita elegante (reemplaza los pitidos agudos): tres notas suaves en arpegio. */
+function chimeElegante(){
+  try{
+    const ac=AC(), t0=ac.currentTime+0.02;
+    [659.25, 987.77, 1318.51].forEach((f,i)=>{
+      const t=t0+i*0.12;
+      [0,4].forEach(det=>{
+        const o=ac.createOscillator(), g=ac.createGain();
+        o.type= det ? 'triangle' : 'sine'; o.frequency.value=f; o.detune.value=det;
+        o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(0,t);
+        g.gain.linearRampToValueAtTime(det?0.035:0.11,t+0.015);
+        g.gain.exponentialRampToValueAtTime(0.0008,t+0.9);
+        o.start(t); o.stop(t+0.95);
+      });
+    });
+  }catch(e){}
 }
 // Algunos navegadores cargan la lista de voces async; la precalentamos.
 if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = ()=>window.speechSynthesis.getVoices(); }
@@ -1217,7 +1272,7 @@ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.spee
    grande + pitidos + voz). No muta datos. ===== */
 function flashNuevo(p){
   bFolio.textContent=p.folio; bClient.textContent=p.cliente; bVend.textContent=p.vendedor||'—';
-  banner.classList.add('show'); beep();
+  banner.classList.add('show'); if(!document.getElementById('npOverlay')) beep();
   setTimeout(()=>banner.classList.remove('show'),4200);
 
   const ov=document.getElementById('npOverlay');
@@ -1226,8 +1281,8 @@ function flashNuevo(p){
     document.getElementById('npClient').textContent=p.cliente;
     document.getElementById('npVend').textContent=p.vendedor||'—';
     ov.classList.add('show');
-    pitidosFinos();
-    vozNuevoPedido();
+    chimeElegante();
+    setTimeout(()=>vozNuevoPedido(null, p.cliente), 650);
     setTimeout(()=>ov.classList.remove('show'),4800);
   }
 }
@@ -1434,7 +1489,7 @@ render(true); setInterval(()=>render(false),1000);
 </script>
 
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js?v=8"></script>
+<script src="surtidos-supabase.js?v=9"></script>
 
 <!-- ===== DATOS EN VIVO · Supabase · SOLO LECTURA (oct-2026: sin Firebase) =====
      surtidos, recolecciones_locales, puntos_referencia y tv_avisos viven en

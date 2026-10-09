@@ -1873,14 +1873,14 @@
       reader.onload = function(e){
         var img = new Image();
         img.onload = function(){
-          var maxW = 2200;
+          var maxW = 1600; // suficiente para leer una remisión; antes 2200 @0.9 (~2 MB por foto)
           var scale = Math.min(1, maxW/img.width);
           var w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
           var c = document.createElement('canvas'); c.width=w; c.height=h;
           var cx = c.getContext('2d');
           cx.fillStyle = '#ffffff'; cx.fillRect(0,0,w,h);
           cx.drawImage(img,0,0,w,h);
-          resolve(c.toDataURL('image/jpeg',0.9));
+          resolve(c.toDataURL('image/jpeg',0.82));
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -1919,9 +1919,11 @@
     // websockets, sin que sea culpa de nadie), esto se autocorrige solo cada
     // 30s en vez de quedarse desactualizado hasta un refresco de página completo.
     if(!_pollRespaldo){
+      // oct-2026: cada 2 min y solo con la pestaña visible (antes 30 s siempre).
       _pollRespaldo = setInterval(function(){
+        if (document.visibilityState !== 'visible') return;
         window.tcSbListarTodosSurtidos().then(_alPedidosActualizados).catch(function(){});
-      }, 30000);
+      }, 120000);
     }
   }
 
@@ -2858,7 +2860,15 @@
     // Trae evidencia/documentos completos de cada pedido de la lista (uno por
     // uno — necesitamos la imagen real, no solo si existe o no).
     Promise.all(lista.map(function(e){
-      return window.tcSbListarEvidencias(e.id).then(function(evid){ return { e:e, evid:evid }; }).catch(function(){ return { e:e, evid:[] }; });
+      return window.tcSbListarEvidencias(e.id).then(function(evid){
+        // Las fotos ya viven en Storage (liga https): jsPDF necesita la imagen en base64.
+        return Promise.all(evid.map(function(ev){
+          if (!ev.imagen || /^data:/.test(ev.imagen)) return ev;
+          return fetch(ev.imagen).then(function(r){ return r.blob(); }).then(function(b){
+            return new Promise(function(res){ var fr=new FileReader(); fr.onload=function(){ res(Object.assign({}, ev, { imagen: fr.result })); }; fr.onerror=function(){ res(Object.assign({}, ev, { imagen:'' })); }; fr.readAsDataURL(b); });
+          }).catch(function(){ return Object.assign({}, ev, { imagen:'' }); });
+        })).then(function(ev2){ return { e:e, evid:ev2 }; });
+      }).catch(function(){ return { e:e, evid:[] }; });
     })).then(function(items){
       items.forEach(function(item, idx){
         var e = item.e, evid = item.evid;

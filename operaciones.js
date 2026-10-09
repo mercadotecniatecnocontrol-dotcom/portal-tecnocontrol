@@ -1987,7 +1987,9 @@
                 if (tabActual === "alertas") opsRenderAlertas();
             }, err => { console.warn("[operaciones.js] error en suscripción de Supabase (surtidos):", err && err.message); });
             if (!unsubSurtPoll) {
+                // Respaldo del tiempo real: cada 3 min y solo con la pestaña visible (antes 30 s siempre).
                 unsubSurtPoll = setInterval(() => {
+                    if (document.visibilityState !== "visible") return;
                     if (window.tcSbListarTodosSurtidos) {
                         window.tcSbListarTodosSurtidos().then(lista => {
                             cacheSurtidos = lista || [];
@@ -1997,7 +1999,7 @@
                             if (tabActual === "alertas") opsRenderAlertas();
                         }).catch(() => {});
                     }
-                }, 30000);
+                }, 180000);
             }
         }
         if (!unsubFolios) {

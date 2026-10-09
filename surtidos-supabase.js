@@ -366,10 +366,40 @@
       return (r.data || []).map(function (e) { return { id: e.id, tipo: e.tipo, imagen: e.imagen, nombre: e.nombre, url: e.url, subidoEn: e.subido_en, subidoPor: e.subido_por, categoria: e.categoria || 'general' }; });
     });
   };
+  // Fotos de evidencia (oct-2026): ya NO se guardan en base64 dentro de la base.
+  // Se suben al bucket público portal_evidencias y en la tabla queda solo la liga.
+  // Si la subida falla, se guarda como antes (base64) para no perder la foto.
+  var BUCKET_EVID = 'portal_evidencias';
+  function dataUrlABlob(dataUrl) {
+    var partes = String(dataUrl).split(','), mime = (partes[0].match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+    var bin = atob(partes[1] || ''), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function subirImagenEvidencia(sb, surtidoId, dataUrl) {
+    var blob = dataUrlABlob(dataUrl);
+    var ext = /png/.test(blob.type) ? 'png' : (/webp/.test(blob.type) ? 'webp' : 'jpg');
+    var ruta = 'surtidos/' + surtidoId + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    return sb.storage.from(BUCKET_EVID).upload(ruta, blob, { contentType: blob.type, upsert: false }).then(function (res) {
+      if (res.error) throw res.error;
+      return sb.storage.from(BUCKET_EVID).getPublicUrl(ruta).data.publicUrl;
+    });
+  }
+  window.tcSbSubirImagenEvidencia = function (surtidoId, dataUrl) {
+    return cargarSupabase().then(function (sb) { return subirImagenEvidencia(sb, surtidoId, dataUrl); });
+  };
   window.tcSbAgregarEvidencia = function (id, datos) {
     return cargarSupabase().then(function (sb) {
+      var img = datos.imagen || null;
+      if (img && /^data:image\//.test(img)) {
+        return subirImagenEvidencia(sb, id, img).then(function (url) { return { sb: sb, img: url }; })
+          .catch(function (e) { console.warn('[surtidos] evidencia a Storage fall\u00f3, se guarda en la base:', e && e.message); return { sb: sb, img: img }; });
+      }
+      return { sb: sb, img: img };
+    }).then(function (x) {
+      var sb = x.sb;
       return sb.from('surtido_evidencias').insert({
-        surtido_id: id, tipo: datos.tipo || null, imagen: datos.imagen || null,
+        surtido_id: id, tipo: datos.tipo || null, imagen: x.img,
         nombre: datos.nombre || null, url: datos.url || null, subido_por: datos.subidoPor || null,
         categoria: datos.categoria || 'general',
       });
@@ -489,6 +519,30 @@
       (r[1].data || []).forEach(function (d) { docs[d.surtido_id] = (docs[d.surtido_id] || 0) + 1; });
       return { evidencias: evid, documentos: docs };
     });
+  };
+
+  // ── Migración única: evidencias viejas en base64 → Storage ───────────
+  //    Uso (consola del portal): tcSbMigrarEvidenciasAStorage()
+  window.tcSbMigrarEvidenciasAStorage = function () {
+    var hechas = 0, fallas = 0;
+    return cargarSupabase().then(function (sb) {
+      return sb.from('surtido_evidencias').select('id,surtido_id').like('imagen', 'data:image/%').then(function (r) {
+        if (r.error) throw r.error;
+        var filas = r.data || [];
+        console.log('[evidencias] por mover:', filas.length);
+        return filas.reduce(function (p, f, i) {
+          return p.then(function () {
+            return sb.from('surtido_evidencias').select('imagen').eq('id', f.id).maybeSingle().then(function (r2) {
+              if (r2.error || !r2.data || !/^data:image\//.test(r2.data.imagen || '')) return;
+              return subirImagenEvidencia(sb, f.surtido_id, r2.data.imagen).then(function (url) {
+                return sb.from('surtido_evidencias').update({ imagen: url }).eq('id', f.id);
+              }).then(function (r3) { if (r3 && r3.error) throw r3.error; hechas++; });
+            }).catch(function (e) { fallas++; console.warn('[evidencias] fall\u00f3', f.id, e && e.message); })
+              .then(function () { if ((i + 1) % 10 === 0) console.log('[evidencias]', i + 1, '/', filas.length); return new Promise(function (res) { setTimeout(res, 200); }); });
+          });
+        }, Promise.resolve());
+      });
+    }).then(function () { console.log('[evidencias] TERMINADO \u00b7 movidas:', hechas, '\u00b7 con error:', fallas); return { movidas: hechas, errores: fallas }; });
   };
 
   // ── Borrado permanente (solo para la limpieza automática de la papelera) ─

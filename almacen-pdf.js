@@ -501,6 +501,8 @@
       + '.alm-estacion-selected button{margin-top:8px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;}'
       + '.alm-estacion-link{margin-top:8px;background:none;border:none;color:#0e7490;font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;padding:0;}'
       + '.alm-whatsapp-btn{background:#25D366;color:#fff;}'
+      + '.alm-loc-ok{font-size:11.5px;color:#166534;background:#dcfce7;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;} .alm-loc-ok a{color:#1D2E73;font-weight:700;}'
+      + '.alm-loc-no{font-size:11.5px;color:#991b1b;background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;font-weight:600;}'
       + '.alm-libreta{border:1px solid #c7d2fe;background:#eef2ff;border-radius:12px;padding:10px 12px;margin:6px 0 10px;}'
       + '.alm-libreta-t{font-size:10.5px;font-weight:800;color:#3730a3;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}'
       + '.alm-libreta-i{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;background:#fff;border:1px solid #e0e7ff;border-radius:9px;padding:7px 10px;margin-top:6px;cursor:pointer;font-family:inherit;}'
@@ -594,7 +596,7 @@
     // Si cambia el cliente con un destino ya elegido, se vuelven a sugerir sus direcciones.
     wrap.querySelector('#alm-cliente').addEventListener('change', function () {
       var t = (document.getElementById('alm-destino-tipo') || {}).value;
-      if (t === 'paqueteria') pintarLibreta('paqueteria'); else if (t === 'entrega_chihuahua') pintarLibreta('local');
+      if (t === 'paqueteria') pintarLibreta('paqueteria'); else if (t === 'entrega_chihuahua') { pintarLibreta('local'); resolverUbicLocal(); }
     });
  
     // Prioridades
@@ -857,6 +859,7 @@
   //    del catálogo (fuente única); "usar dirección escrita a mano" conserva
   //    la captura manual de siempre para excepciones fuera del catálogo. ──
   function renderDestinoEstacion(){
+    setTimeout(function(){ if (document.getElementById('alm-loc-ubic')) resolverUbicLocal(); }, 0);
     var extra = document.getElementById('alm-estacion-wrap') || document.getElementById('alm-destino-extra');
     if (!extra) return;
     var sel = estado.estacionSeleccionada;
@@ -967,7 +970,7 @@
         snap.forEach(function(d){
           var c = d.data()||{};
           if (c.lat == null || c.lng == null) return; // sin ubicaci\u00f3n capturada, no sirve para el mapa
-          lista.push({ id: d.id, nombre: c.nombre||'\u2014', tipo:'oficina', direccion: c.direccionEntrega||c.direccion||c.dir||'', lat: c.lat, lng: c.lng });
+          lista.push({ id: d.id, nombre: c.nombre||'\u2014', tipo:'oficina', direccion: c.direccionEntrega||c.direccion||c.dir||'', ciudad: c.ciudad||'', lat: c.lat, lng: c.lng, contacto: c.contacto||'', tel: c.tel||c.telefono||'' });
         });
         _clientesOficinasCache = lista;
         return lista;
@@ -1322,6 +1325,7 @@
   }
   function ligaMaps(c){
     if (c.lat && c.lng) return 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng;
+    if (c.tipo === 'local') return '';   // sin coordenadas no se imprime un QR que lleve a un lugar adivinado
     var q = [c.direccion, c.municipio, 'Chihuahua'].filter(Boolean).join(', ');
     return q ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q) : '';
   }
@@ -1333,6 +1337,12 @@
     box.innerHTML = '<div class="alm-caratula-box" style="margin-top:10px;">'
       + '<div class="alm-caratula-tit">Car\u00e1tula de entrega local</div>'
       + '<div style="font-size:11.5px;color:#64748b;margin:-4px 0 8px;">Se genera sola con la estaci\u00f3n, la direcci\u00f3n, un QR a la ubicaci\u00f3n y las partidas. Agrega qui\u00e9n recibe para que el chofer llegue directo.</div>'
+      + '<div class="alm-destino-fld"><label>Ubicaci\u00f3n exacta para el QR</label><div id="alm-loc-ubic"></div>'
+      +   '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocCliente()">Usar la del cliente</button>'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocMapa()">Marcar en el mapa</button>'
+      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocLiga()">Pegar liga de Google Maps</button>'
+      +   '</div><div id="alm-loc-mapa-wrap"></div></div>'
       + '<div class="alm-destino-fld"><label>Recibe / contacto</label><input id="cx-loc-recibe" placeholder="Nombre de quien recibe"></div>'
       + '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-loc-tel" placeholder="614..."></div>'
       + '<div class="alm-destino-fld"><label>Horario de recepci\u00f3n</label><input id="cx-loc-horario" placeholder="Ej. 8:00 a 14:00"></div>'
@@ -1340,13 +1350,84 @@
       + '<div class="alm-destino-fld"><label>Instrucciones de entrega</label><textarea id="cx-loc-instr" rows="2" placeholder="Opcional"></textarea></div>'
       + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfVerCaratulaLocal()">Vista previa de la car\u00e1tula</button>'
       + '</div>';
+    estado.locUbic = null;
+    resolverUbicLocal();
   }
+
+  // ── Ubicación exacta de la entrega local ──
+  // Prioridad: punto marcado a mano / liga pegada > estación del catálogo > ubicación
+  // del cliente en Ventas. Sin ninguna, el pedido no se guarda (el QR debe llevar
+  // a un lugar real, no a una búsqueda por texto).
+  function pintarUbicLocal(){
+    var el = document.getElementById('alm-loc-ubic'); if (!el) return;
+    var u = estado.locUbic;
+    var FUENTE = { mapa:'Marcada en el mapa', liga:'Tomada de la liga de Google Maps', estacion:'De la estaci\u00f3n del cat\u00e1logo', cliente:'De la ficha del cliente en Ventas' };
+    el.innerHTML = u
+      ? '<div class="alm-loc-ok"><b>\u2713 ' + FUENTE[u.fuente] + '</b> \u00b7 ' + u.lat.toFixed(5) + ', ' + u.lng.toFixed(5)
+        + ' \u00b7 <a href="https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng + '" target="_blank" rel="noopener">Ver en Google Maps</a></div>'
+      : '<div class="alm-loc-no">Sin ubicaci\u00f3n exacta. Usa la del cliente o m\u00e1rcala en el mapa; sin ella no se puede guardar el pedido.</div>';
+  }
+  function buscarClienteVentas(nombre){
+    var n = normCli(nombre);
+    if (!n) return Promise.resolve(null);
+    return cargarCatalogoClientesOficinas().then(function (lista) {
+      return lista.find(function (c) { return normCli(c.nombre) === n; }) || null;
+    });
+  }
+  function resolverUbicLocal(){
+    var u = estado.locUbic;
+    if (u && (u.fuente === 'mapa' || u.fuente === 'liga')) { pintarUbicLocal(); return; }
+    var ll = latLngEstacion(estado.estacionSeleccionada);
+    if (ll) { estado.locUbic = { lat: ll.lat, lng: ll.lng, fuente: 'estacion' }; pintarUbicLocal(); return; }
+    estado.locUbic = null; pintarUbicLocal();
+    window.__almPdfLocCliente(true);
+  }
+  window.__almPdfLocCliente = function (silencioso) {
+    var cliente = vCampo('alm-cliente');
+    buscarClienteVentas(cliente).then(function (c) {
+      if (c && c.lat != null && c.lng != null) {
+        estado.locUbic = { lat: Number(c.lat), lng: Number(c.lng), fuente: 'cliente' };
+        if (!vCampo('cx-loc-recibe') && c.contacto) ponerValor('cx-loc-recibe', c.contacto);
+        if (!vCampo('cx-loc-tel') && c.tel) ponerValor('cx-loc-tel', c.tel);
+        if (!estado.estacionSeleccionada && !vCampo('alm-destino-dir') && c.direccion) ponerValor('alm-destino-dir', [c.direccion, c.ciudad].filter(Boolean).join(', '));
+      } else if (!silencioso) {
+        alert(cliente ? 'El cliente "' + cliente + '" no tiene ubicaci\u00f3n guardada en Ventas. M\u00e1rcala en el mapa.' : 'Primero escribe el cliente.');
+      }
+      pintarUbicLocal();
+    });
+  };
+  window.__almPdfLocMapa = function () {
+    var wrap = document.getElementById('alm-loc-mapa-wrap'); if (!wrap) return;
+    wrap.innerHTML = '<div id="alm-loc-mapa" class="alm-punto-mapa" style="height:260px;margin-top:8px;"></div>'
+      + '<div style="font-size:10.5px;color:#64748b;margin-top:4px;">Toca el mapa o arrastra el marcador al punto exacto de entrega. Puedes acercar con la rueda o los botones.</div>';
+    cargarLeafletPunto().then(function (L) {
+      var u = estado.locUbic;
+      var centro = u ? [u.lat, u.lng] : [28.6353, -106.0889];
+      var mapa = L.map('alm-loc-mapa').setView(centro, u ? 17 : 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapa);
+      var marcador = L.marker(centro, { draggable: true }).addTo(mapa);
+      var fijar = function (ll) { estado.locUbic = { lat: ll.lat, lng: ll.lng, fuente: 'mapa' }; pintarUbicLocal(); };
+      marcador.on('dragend', function () { fijar(marcador.getLatLng()); });
+      mapa.on('click', function (e) { marcador.setLatLng(e.latlng); fijar(e.latlng); });
+      setTimeout(function () { mapa.invalidateSize(); }, 150);
+    }).catch(function (err) { wrap.innerHTML = '<div class="alm-loc-no">No se pudo cargar el mapa: ' + esc(err && err.message || err) + '</div>'; });
+  };
+  window.__almPdfLocLiga = function () {
+    var t = prompt('Pega la liga de Google Maps o las coordenadas (ej. 28.842437, -105.923245):');
+    if (!t) return;
+    var m = String(t).match(/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{2,3}\.\d{3,})/) || String(t).match(/@(-?\d{1,2}\.\d+),(-?\d{2,3}\.\d+)/) || String(t).match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    if (!m) { alert('No encontr\u00e9 coordenadas en ese texto. En Google Maps toca el punto, copia los n\u00fameros que aparecen (lat, lng) y p\u00e9galos aqu\u00ed.'); return; }
+    var lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+    if (!(lat > 14 && lat < 33 && lng < -86 && lng > -119)) { alert('Esas coordenadas no parecen estar en M\u00e9xico. Rev\u00edsalas.'); return; }
+    estado.locUbic = { lat: lat, lng: lng, fuente: 'liga' };
+    pintarUbicLocal();
+  };
 
   function leerCaratulaLocal(productos){
     var est = estado.estacionSeleccionada;
-    var ll = latLngEstacion(est);
+    var ll = estado.locUbic ? { lat: estado.locUbic.lat, lng: estado.locUbic.lng } : latLngEstacion(est);
     var c = {
-      tipo: 'local',
+      tipo: 'local', ubicacionFuente: estado.locUbic ? estado.locUbic.fuente : '',
       folio: vCampo('alm-folio'), cliente: vCampo('alm-cliente'), vendedor: vCampo('alm-vendedor'), almacen: vCampo('alm-almacen'),
       fechaEntrega: vCampo('alm-fecha-entrega'), fecha: new Date().toLocaleDateString('es-MX'),
       destino: est ? (est.razonSocial || '') : (vCampo('alm-cliente') || ''),
@@ -1392,6 +1473,7 @@
     }).join('');
     return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Entrega local ' + esc(c.folio) + '</title><style>'
       + '@page{size:letter portrait;margin:10mm;}*{box-sizing:border-box;}'
+      + 'html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
       + 'body{font-family:"Segoe UI",Arial,sans-serif;color:#0f172a;margin:0;padding:18px;max-width:800px;}'
       + '.cl-h{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:4px solid #E2231A;padding-bottom:12px;}'
       + '.cl-h img{height:46px;}.cl-h .t{text-align:right}.cl-h .t b{display:block;font-size:18px;color:#13246B;letter-spacing:.3px}.cl-h .t span{font-size:11px;color:#64748b}'
@@ -1415,7 +1497,7 @@
       + '@media print{.no-print{display:none}}'
       + '</style></head><body>'
       + '<div class="cl-h"><img src="data:image/png;base64,' + LOGO_TECNOCONTROL_B64 + '" alt="Tecnocontrol"><div class="t"><b>CAR\u00c1TULA DE ENTREGA LOCAL</b><span>Elaborada ' + esc(c.fecha) + (c.almacen ? ' \u00b7 Almac\u00e9n ' + esc(c.almacen) : '') + '</span></div></div>'
-      + '<div class="cl-fol"><div class="f">' + esc(c.folio || '\u2014') + '</div><div class="x">' + (c.fechaEntrega ? 'Entregar el <b>' + esc(c.fechaEntrega) + '</b><br>' : '') + 'Vendedor: ' + esc(c.vendedor || '\u2014') + '</div></div>'
+      + '<div class="cl-fol"><div class="f">' + esc(c.folio || '\u2014') + '</div><div class="x">' + (c.fechaEntrega ? 'Entregar el <b>' + esc(String(c.fechaEntrega).slice(0, 10)) + '</b><br>' : '') + 'Vendedor: ' + esc(c.vendedor || '\u2014') + '</div></div>'
       + '<div class="cl-main"><div class="cl-box">'
       +   '<div class="cl-lb">Entregar a</div><div class="cl-dest">' + esc(c.destino || c.cliente || '\u2014') + '</div>'
       +   (c.destino && c.cliente && c.destino !== c.cliente ? '<div class="cl-d"><span>Cliente</span><b>' + esc(c.cliente) + '</b></div>' : '')
@@ -1485,6 +1567,7 @@
       ponerValor('cx-flete', d.flete); ponerValor('cx-entrega-tipo', d.entregaTipo);
     } else {
       var aplicarCampos = function () {
+        if (d.lat != null && d.lng != null) { estado.locUbic = { lat: Number(d.lat), lng: Number(d.lng), fuente: 'mapa' }; pintarUbicLocal(); }
         ponerValor('cx-loc-recibe', d.recibe); ponerValor('cx-loc-tel', d.telefono); ponerValor('cx-loc-horario', d.horario);
         ponerValor('cx-loc-ref', d.referencias); ponerValor('cx-loc-instr', d.instrucciones);
       };
@@ -1666,6 +1749,7 @@
         // Carátula de entrega local (oct-2026): se genera sola con estación, dirección,
         // ubicación (QR a Google Maps), quién recibe y las partidas del pedido.
         datosDestino.caratulaEnvio = leerCaratulaLocal(productos);
+        if (estado.locUbic) { datosDestino.destinoLat = estado.locUbic.lat; datosDestino.destinoLng = estado.locUbic.lng; }
       } else if (destinoTipo === 'traslado_almacenes') {
         // Almacenes elegidos del catálogo puntos_referencia (tipo:'almacen'): se
         // congela nombre + lat/lng en el propio pedido, igual que "paquetería" con
@@ -1682,6 +1766,7 @@
     if (!cliente) { msg('Falta el cliente.', '#dc2626'); return; }
     if (!fechaEntrega) { msg('Falta la fecha de entrega.', '#dc2626'); return; }
     if (!productos.length) { msg('Agrega al menos un producto con cantidad y descripción.', '#dc2626'); return; }
+    if (destinoTipo === 'entrega_chihuahua' && !estado.locUbic) { msg('Falta la ubicaci\u00f3n exacta de la entrega: usa la del cliente o m\u00e1rcala en el mapa.', '#dc2626'); var lu = document.getElementById('alm-loc-ubic'); if (lu) lu.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
  
     if (!window.db) { msg('Firestore no está disponible (window.db).', '#dc2626'); return; }
  
