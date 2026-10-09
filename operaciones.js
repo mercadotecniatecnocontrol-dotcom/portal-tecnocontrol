@@ -1382,8 +1382,139 @@
         return [...new Set([...basePorRolLegado, ...opsPermisosPorPuestoDeCorreo(email), "consulta"])];
     }
 
-    function opsPuedeHacer(accion) {
+    // Reglas anteriores (listas fijas + puesto). Siguen mandando para quien NO tiene
+    // un rol asignado en "Control de acceso" — nadie gana ni pierde acceso por el cambio.
+    function opsPuedeHacerLegado(accion) {
         return opsPermisosActuales().includes(accion) || opsPermisosActuales().includes("admin_operaciones");
+    }
+
+    // ═══════════════ CONTROL DE ACCESO — matriz de permisos (oct-2026) ═══════════════
+    // Una sola fuente: doc ops_config_permisos/general (va a Supabase por el puente).
+    //   roles:    { idRol: { nombre, matriz: { seccion: ["ver","editar","eliminar","aprobar","contacto"] } } }
+    //   usuarios: { correo: { rol: idRol, soloLectura: bool } }
+    //   dinero:   [correos] → únicos que ven precio, costo, utilidad y comisiones
+    // Solo los admins del portal (esAdminTotal) editan esto; todo cambio va a ops_auditoria.
+    const COL_CONFIG_PERMISOS = "ops_config_permisos";
+    const OPS_ACC_SECCIONES = [
+        ["calendario", "Calendario"], ["servicios", "Servicios"], ["folios", "Folios"], ["clientes", "Clientes"],
+        ["solicitudes", "Solicitudes"], ["dashboard", "Herramientas"], ["guardias", "Guardias"], ["vencimientos", "Vencimientos"],
+        ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías (próximamente)"], ["polizas", "Pólizas (próximamente)"],
+        ["tecnicos", "Técnicos"], ["externos", "Externos"], ["permisos", "Permisos y vacaciones"], ["movimientos", "Movimientos"], ["resumen", "Resumen"],
+    ];
+    const OPS_ACC_ACCIONES = [["ver", "Ver"], ["editar", "Crear y editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"]];
+    const OPS_ACC_DINERO_SEED = [
+        "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
+        "mercadotecnia@tecnocontrol.com.mx", "mercadotecniatecnocontrol@gmail.com", "rh@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx",
+    ];
+    function opsAccMatrizTodas(acciones, excepto) {
+        const m = {};
+        OPS_ACC_SECCIONES.forEach(([s]) => { if (!(excepto || []).includes(s)) m[s] = acciones.slice(); });
+        return m;
+    }
+    function opsAccRolesSeed() {
+        const almacen = opsAccMatrizTodas(["ver"]);
+        ["dashboard", "solicitudes", "movimientos"].forEach(s => { almacen[s] = ["ver", "editar"]; });
+        almacen.solicitudes.push("aprobar");
+        const pagos = opsAccMatrizTodas(["ver", "contacto"]);
+        pagos.viaticos = ["ver", "contacto", "aprobar"];
+        return {
+            administrador: { nombre: "Administrador de Operaciones", matriz: opsAccMatrizTodas(["ver", "editar", "eliminar", "aprobar", "contacto"]) },
+            coordinador: { nombre: "Coordinador", matriz: opsAccMatrizTodas(["ver", "editar", "aprobar", "contacto"]) },
+            almacen: { nombre: "Almacén", matriz: almacen },
+            tecnico: { nombre: "Técnico", matriz: { calendario: ["ver", "contacto"], servicios: ["ver", "contacto"], folios: ["ver", "contacto"] } },
+            consulta_contacto: { nombre: "Consulta con contacto", matriz: opsAccMatrizTodas(["ver", "contacto"]) },
+            pagos: { nombre: "Pagos (consulta + aprueba viáticos)", matriz: pagos },
+            consulta_basica: { nombre: "Consulta básica", matriz: opsAccMatrizTodas(["ver"]) },
+        };
+    }
+    function opsAccUsuariosSeed() {
+        const u = {};
+        ["miguel@tecnocontrol.com.mx", "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx"].forEach(c => { u[c] = { rol: "administrador", soloLectura: false }; });
+        ["gestoria@tecnocontrol.com.mx", "gestoria1@tecnocontrol.com.mx", "gestoria2@tecnocontrol.com.mx", "gestoria3@tecnocontrol.com.mx",
+            "gestoria4@tecnocontrol.com.mx", "gestoria5@tecnocontrol.com.mx", "d.gutierrez@tecnocontrol.com.mx", "calidad@tecnocontrol.com.mx",
+            "contabilidad@tecnocontrol.com.mx", "compras@tecnocontrol.com.mx", "aux.compras@tecnocontrol.com.mx"]
+            .forEach(c => { u[c] = { rol: "consulta_contacto", soloLectura: true }; });
+        u["pagos@tecnocontrol.com.mx"] = { rol: "pagos", soloLectura: false };
+        return u;
+    }
+    let opsAccCfg = null;          // null = todavía no carga → todos usan las reglas anteriores
+    let opsAccRespaldo = false;    // true = no se pudo leer la base; se usa la matriz de fábrica sin poder editarla
+    let opsAccVista = "roles";     // pestaña interna de la pantalla: roles | usuarios | dinero | bitacora
+    let opsAccRolSel = "consulta_contacto";
+    let opsAccBitacora = null;
+
+    async function opsAccCargar() {
+        opsAccRespaldo = false;
+        try {
+            const { db, fs } = await opsGetFB();
+            const ref = fs.doc(db, COL_CONFIG_PERMISOS, "general");
+            const snap = await Promise.race([fs.getDoc(ref), new Promise((_, ko) => setTimeout(() => ko(new Error("tiempo agotado")), 8000))]);
+            if (snap.exists() && snap.data().roles) {
+                const d = snap.data();
+                opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice() };
+            } else {
+                // Primera vez: se siembra con las reglas que ya existían (mismo resultado que hoy)
+                opsAccCfg = { roles: opsAccRolesSeed(), usuarios: opsAccUsuariosSeed(), dinero: OPS_ACC_DINERO_SEED.slice() };
+                if (window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
+                    await fs.setDoc(ref, { ...opsAccCfg, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
+                    await opsAuditar("permisos", "general", "configuracion_inicial", null, "Matriz sembrada con las reglas anteriores");
+                }
+            }
+        } catch (e) {
+            // Respaldo: mismas reglas sembradas, en memoria y SIN permitir editar (para no
+            // sobrescribir la configuración real con la de fábrica si fue solo un fallo de red).
+            console.warn("[operaciones.js] Control de acceso no cargó; se usa el respaldo de fábrica:", e.message);
+            opsAccCfg = { roles: opsAccRolesSeed(), usuarios: opsAccUsuariosSeed(), dinero: OPS_ACC_DINERO_SEED.slice() };
+            opsAccRespaldo = true;
+        }
+    }
+    function opsAccCorreo() { return String(opsUsuarioActual() || "").toLowerCase().trim(); }
+    function opsAccEsAdminPortal() { return !!(window.esAdminTotal && window.esAdminTotal(opsAccCorreo())); }
+    // Rol asignado al usuario actual, o null si sigue con las reglas anteriores.
+    function opsAccAsignacion() {
+        if (!opsAccCfg || opsAccEsAdminPortal()) return null;
+        const a = opsAccCfg.usuarios[opsAccCorreo()];
+        return a && opsAccCfg.roles[a.rol] ? a : null;
+    }
+    function opsAccTiene(seccion, accion) {
+        const a = opsAccAsignacion();
+        if (!a) return null; // null = "decide la regla anterior"
+        if (a.soloLectura && !["ver", "contacto"].includes(accion)) return false;
+        const m = (opsAccCfg.roles[a.rol].matriz || {})[seccion] || [];
+        return m.includes(accion);
+    }
+    function opsAccPuedeVer(seccion) {
+        const r = opsAccTiene(seccion, "ver");
+        return r === null ? true : r;
+    }
+    function opsAccVerContacto(seccion) {
+        if (opsAccEsAdminPortal()) return true;
+        const r = opsAccTiene(seccion || tabActual, "contacto");
+        if (r !== null) return r;
+        // Sin rol asignado: lo ve quien ya podía editar (igual que hoy, que lo ve en el formulario)
+        return opsPuedeHacerLegado("gestionar_herramientas") || opsPuedeHacerLegado("admin_operaciones");
+    }
+    function opsAccVerDinero() {
+        const lista = (opsAccCfg ? opsAccCfg.dinero : OPS_ACC_DINERO_SEED).map(x => String(x).toLowerCase().trim());
+        return lista.includes(opsAccCorreo());
+    }
+    function opsAccNombreRol() {
+        const a = opsAccAsignacion();
+        if (!a) return null;
+        return opsAccCfg.roles[a.rol].nombre + (a.soloLectura ? " · Solo lectura" : "");
+    }
+
+    // Traduce los permisos que ya usa el código a la matriz, según la sección abierta.
+    function opsPuedeHacer(accion) {
+        const a = opsAccAsignacion();
+        if (!a) return opsPuedeHacerLegado(accion);
+        if (accion === "consulta") return true;
+        if (accion === "admin_operaciones") return a.rol === "administrador" && !a.soloLectura;
+        if (accion === "autorizar_material") return opsAccTiene("solicitudes", "aprobar") === true;
+        if (accion === "eliminar_solicitudes") return opsAccTiene("solicitudes", "eliminar") === true;
+        if (accion === "consulta_propia") return true;
+        // gestionar_herramientas / gestionar_tecnicos / solicitar_material → "Crear y editar" de la sección abierta
+        return opsAccTiene(tabActual, "editar") === true;
     }
     // Alias de compatibilidad con el código ya escrito en este archivo.
     function opsPuedeGestionar() {
@@ -1847,6 +1978,7 @@
     window.opsAbrirHerramientas = async function () {
         const cont = document.getElementById("ops-herramientas-overlay");
         if (!cont) return;
+        await opsAccCargar();
         cont.innerHTML = opsRenderShell();
         cont.style.display = "block";
         document.body.style.overflow = "hidden";
@@ -1874,6 +2006,7 @@
     };
 
     const NAV_ICONS = {
+        accesos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
         permisos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
         externos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>',
         vencimientos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M12 14v3l2 1"/></svg>',
@@ -1898,7 +2031,9 @@
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"];
+            "vencimientos:Vencimientos", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
+            .filter(t => opsAccPuedeVer(t.split(":")[0]))
+            .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
             <div style="background:#1D2E73;border-bottom:3px solid #062F73;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -1906,7 +2041,7 @@
                     <span style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
                     <div>
                         <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;">Operaciones</div>
-                        <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${rolLabel}</div>
+                        <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${opsEsc(opsAccNombreRol() || rolLabel)}</div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;">${opsNotifBotonHTML()}<button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
@@ -1932,6 +2067,12 @@
     }
 
     window.opsCambiarTab = function (tab) {
+        if (tab === "accesos" && !(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones"))) tab = "calendario";
+        if (tab !== "accesos" && !opsAccPuedeVer(tab)) {
+            const primera = OPS_ACC_SECCIONES.map(x => x[0]).find(s => opsAccPuedeVer(s) && document.getElementById("ops-tab-" + s));
+            if (!primera) { const c = document.getElementById("ops-tab-content"); if (c) c.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Tu usuario no tiene secciones visibles en Operaciones. Pide acceso a un administrador.</div>`; return; }
+            tab = primera;
+        }
         tabActual = tab;
         document.querySelectorAll(".ops-tab-btn").forEach(b => {
             b.style.color = "#64748b"; b.style.background = "none"; b.style.borderLeftColor = "transparent";
@@ -1953,6 +2094,7 @@
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
         else if (tab === "vencimientos") opsRenderVencimientos();
+        else if (tab === "accesos") opsRenderAccesos();
     };
 
     // ── Suscripciones en tiempo real ──────────────────────────────
@@ -6992,6 +7134,27 @@
         } catch (e) { alert("No se pudo quitar el servicio: " + (e.message || e)); }
     };
 
+    // Bloque "Contacto que solicita" del panel de consulta. Solo si la matriz de
+    // Control de acceso le da "Ver contacto" en la sección abierta.
+    function opsPanelContactoHTML(f) {
+        if (!(f.contactoNombre || f.contactoTelefono || f.contactoWhatsapp || f.contactoCorreo || f.estacionEncargado)) return "";
+        if (!opsAccVerContacto()) return `
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;font-size:11.5px;color:#94a3b8;">Datos de contacto ocultos para tu usuario.</div>`;
+        const solo = v => String(v || "").replace(/\D/g, "");
+        const wa = solo(f.contactoWhatsapp || f.contactoTelefono);
+        return `
+                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Contacto que solicita</div>
+                    <div style="font-size:12px;color:#334155;line-height:1.8;">
+                        ${f.contactoNombre ? `${opsEsc(f.contactoNombre)}${f.contactoPuesto ? ` <span style="color:#94a3b8;">· ${opsEsc(f.contactoPuesto)}</span>` : ""}<br>` : ""}
+                        ${f.contactoTelefono ? `Teléfono: <a href="tel:${opsEsc(solo(f.contactoTelefono))}" style="color:#1D2E73;">${opsEsc(f.contactoTelefono)}</a><br>` : ""}
+                        ${wa ? `WhatsApp: <a href="https://wa.me/${opsEsc(wa.length === 10 ? "52" + wa : wa)}" target="_blank" rel="noopener" style="color:#15803d;">${opsEsc(f.contactoWhatsapp || f.contactoTelefono)}</a><br>` : ""}
+                        ${f.contactoCorreo ? `Correo: <a href="mailto:${opsEsc(f.contactoCorreo)}" style="color:#1D2E73;">${opsEsc(f.contactoCorreo)}</a><br>` : ""}
+                        ${!f.contactoNombre && f.estacionEncargado ? `Encargado de estación: ${opsEsc(f.estacionEncargado)}<br>` : ""}
+                    </div>
+                </div>`;
+    }
+
     window.opsAbrirPanelFolio = async function (folioId) {
       try {
         const f = cacheFolios.find(x => x.id === folioId);
@@ -7038,6 +7201,8 @@
                     ${rolesReq !== null && tecnicos.length < rolesReq ? `<div style="margin-top:6px;font-size:10.5px;color:#E7402B;font-weight:600;">Falta personal contra lo que pide la receta.</div>` : ""}
                 </div>
 
+                ${opsPanelContactoHTML(f)}
+
                 ${f.estacionCatalogoId ? `
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Estación (del catálogo)</div>
@@ -7083,7 +7248,7 @@
                     <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Estos campos todavía se capturan a mano (la integración con GPS es la Fase D).</div>
                 </div>
 
-                ${(f.precioServicio || (f.comisiones || []).length) ? `
+                ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? `
                 <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Precio y comisiones</div>
                     <div style="font-size:12px;color:#334155;line-height:1.8;">
@@ -8369,7 +8534,7 @@
             seccion("Cliente y seguimiento");
             pares([["Cliente", f.clienteNombre], ["Prioridad", f.prioridad], ["Fecha de solicitud", f.fechaSolicitud ? fechaTxt(f.fechaSolicitud) : null], ["Vencimiento SLA", f.vencimiento ? fechaTxt(f.vencimiento) : null], ["Fecha de atención", f.fechaAtencion ? fechaTxt(f.fechaAtencion) : null], ["Fecha de solución", f.fechaSolucion ? fechaTxt(f.fechaSolucion) : null], ["Completado por", f.completadoPor]]);
         }
-        if (f.contactoNombre || f.contactoTelefono || f.contactoCorreo) {
+        if (opsAccVerContacto() && (f.contactoNombre || f.contactoTelefono || f.contactoCorreo)) {
             seccion("Contacto que solicita");
             pares([["Nombre", f.contactoNombre], ["Puesto", f.contactoPuesto], ["Teléfono", f.contactoTelefono], ["WhatsApp", f.contactoWhatsapp], ["Correo", f.contactoCorreo]]);
         }
@@ -8395,7 +8560,7 @@
             seccion("Facturación");
             pares([["A quién se factura", f.facturarA], ["Proyecto", f.proyecto], ["Encargado interno", f.encargadoInterno], ["Gasto estimado", f.gastoEstimado ? "$" + Number(f.gastoEstimado).toLocaleString("es-MX") : null]]);
         }
-        if (f.precioServicio || f.costosServicio) {
+        if (opsAccVerDinero() && (f.precioServicio || f.costosServicio)) {
             seccion("Precio y costos");
             const P = f.precioServicio || {}, C = f.costosServicio || {};
             pares([["Precio del servicio", P.precio != null ? opsDinero(P.precio) + (P.lista ? "  (" + P.lista + ")" : "") : null],
@@ -8406,7 +8571,7 @@
                 ["Personal (costo-día)", C.personal ? opsDinero(C.personal) : null], ["Comisiones", C.comisiones ? opsDinero(C.comisiones) : null],
                 ["Costo total", C.costoTotal != null ? opsDinero(C.costoTotal) : null], ["Utilidad estimada", C.utilidad != null ? opsDinero(C.utilidad) : null]]);
         }
-        if ((f.comisiones || []).length) {
+        if (opsAccVerDinero() && (f.comisiones || []).length) {
             seccion("Comisiones al personal");
             f.comisiones.slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre)).forEach(c => parrafo(`•  ${c.nombre}${c.concepto ? " — " + c.concepto : ""}: ${opsDinero(c.monto)}${c.tipo === "porcentaje" ? "  (" + c.valor + "% del precio)" : ""}`));
             parrafo("Total: " + opsDinero(f.comisiones.reduce((a, c) => a + (Number(c.monto) || 0), 0)), { bold: true });
@@ -12371,6 +12536,7 @@
     const opsViaNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
     function opsViaPuedeAutorizar() {
         const yo = (opsUsuarioActual() || "").toLowerCase();
+        if (opsAccTiene("viaticos", "aprobar") === true) return true;
         return opsRolActual() === "administrador" || (opsViaCfg.correosNotificar || []).map(x => x.toLowerCase()).includes(yo) || yo === "c.acosta@tecnocontrol.com.mx";
     }
     async function opsViaCargarCfg() {
@@ -14981,6 +15147,260 @@
         });
         return opsPermisosP;
     }
+    // ═══════════════ PANTALLA "CONTROL DE ACCESO" (oct-2026) ═══════════════
+    // Roles (casillas por sección), Usuarios (rol + solo lectura), Ver dinero y Bitácora.
+    // Editan solo los admins del portal; los admins de Operaciones la ven en consulta.
+    let opsAccBorrador = null; // copia de la matriz del rol que se está editando (se guarda con botón)
+
+    function opsAccEditable() { return opsAccEsAdminPortal() && !opsAccRespaldo; }
+
+    async function opsAccGuardarCfg(entidadId, campo, antes, despues) {
+        const { db, fs } = await opsGetFB();
+        await fs.setDoc(fs.doc(db, COL_CONFIG_PERMISOS, "general"),
+            { roles: opsAccCfg.roles, usuarios: opsAccCfg.usuarios, dinero: opsAccCfg.dinero, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
+        await opsAuditar("permisos", entidadId, campo,
+            antes == null ? null : (typeof antes === "string" ? antes : JSON.stringify(antes)),
+            despues == null ? null : (typeof despues === "string" ? despues : JSON.stringify(despues)));
+        opsAccBitacora = null;
+    }
+
+    function opsRenderAccesos() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        if (!opsAccCfg) {
+            el.innerHTML = `<div style="padding:24px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#475569;">
+                No se pudo cargar la configuración de permisos. Mientras tanto se usan las reglas anteriores. Cierra y vuelve a abrir Operaciones.</div>`;
+            return;
+        }
+        const edit = opsAccEditable();
+        const pest = [["roles", "Roles"], ["usuarios", "Usuarios"], ["dinero", "Ver dinero"], ["bitacora", "Bitácora"]];
+        let cuerpo = "";
+        if (opsAccVista === "roles") cuerpo = opsAccHTMLRoles(edit);
+        else if (opsAccVista === "usuarios") cuerpo = opsAccHTMLUsuarios(edit);
+        else if (opsAccVista === "dinero") cuerpo = opsAccHTMLDinero(edit);
+        else cuerpo = opsAccHTMLBitacora();
+        el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:#1D2E73;">Control de acceso</div>
+                    <div style="font-size:12px;color:#64748b;">Qué puede ver y hacer cada persona dentro de Operaciones.${edit ? "" : opsAccRespaldo ? " <b style=\"color:#E7402B;\">No se pudo leer la configuración guardada; se muestra la de fábrica y no se puede editar. Cierra y vuelve a abrir Operaciones.</b>" : " <b>Vista de consulta:</b> solo los administradores del portal pueden cambiar esto."}</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+                ${pest.map(([id, t]) => `<button onclick="opsAccIr('${id}')" style="border:1px solid ${opsAccVista === id ? "#1D2E73" : "#cbd5e1"};background:${opsAccVista === id ? "#1D2E73" : "#fff"};color:${opsAccVista === id ? "#fff" : "#334155"};border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">${t}</button>`).join("")}
+            </div>
+            ${cuerpo}`;
+        if (opsAccVista === "bitacora" && opsAccBitacora === null) opsAccCargarBitacora();
+    }
+    window.opsAccIr = function (v) { opsAccVista = v; opsAccBorrador = null; opsRenderAccesos(); };
+
+    // ── Roles ──
+    function opsAccHTMLRoles(edit) {
+        const roles = opsAccCfg.roles;
+        if (!roles[opsAccRolSel]) opsAccRolSel = Object.keys(roles)[0];
+        const rol = roles[opsAccRolSel];
+        if (!opsAccBorrador || opsAccBorrador.id !== opsAccRolSel) opsAccBorrador = { id: opsAccRolSel, matriz: JSON.parse(JSON.stringify(rol.matriz || {})) };
+        const usan = Object.entries(opsAccCfg.usuarios).filter(([, u]) => u.rol === opsAccRolSel).map(([c]) => c).sort();
+        const nombres = Object.entries(roles).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, "es"));
+        return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <label style="font-size:12px;font-weight:700;color:#334155;">Rol</label>
+                <select onchange="opsAccElegirRol(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:13px;min-width:240px;">
+                    ${nombres.map(([id, r]) => `<option value="${opsEsc(id)}" ${id === opsAccRolSel ? "selected" : ""}>${opsEsc(r.nombre)}</option>`).join("")}
+                </select>
+                ${edit ? `<button onclick="opsAccNuevoRol()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo rol</button>` : ""}
+                ${edit && !usan.length && opsAccRolSel !== "administrador" ? `<button onclick="opsAccEliminarRol()" style="background:#fef2f2;border:none;color:#E7402B;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Eliminar rol</button>` : ""}
+            </div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Personas con este rol (${usan.length}): ${usan.length ? usan.map(opsEsc).join(", ") : "nadie todavía"}</div>
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;">
+                <thead><tr style="background:#f8fafc;color:#475569;">
+                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #e2e8f0;">Sección</th>
+                    ${OPS_ACC_ACCIONES.map(([a, t]) => `<th style="padding:8px 6px;border-bottom:1px solid #e2e8f0;font-size:11.5px;">${t}${edit ? `<div><button onclick="opsAccMarcarColumna('${a}')" title="Marcar o desmarcar toda la columna" style="background:none;border:none;color:#1D2E73;font-size:10.5px;cursor:pointer;text-decoration:underline;">todas</button></div>` : ""}</th>`).join("")}
+                </tr></thead>
+                <tbody>
+                ${OPS_ACC_SECCIONES.map(([s, t]) => `<tr style="border-bottom:1px solid #f1f5f9;">
+                    <td style="padding:7px 10px;font-weight:600;color:#1e293b;">${opsEsc(t)}</td>
+                    ${OPS_ACC_ACCIONES.map(([a]) => `<td style="text-align:center;padding:6px;"><input type="checkbox" ${(opsAccBorrador.matriz[s] || []).includes(a) ? "checked" : ""} ${edit ? `onchange="opsAccMarcar('${s}','${a}',this.checked)"` : "disabled"} style="width:16px;height:16px;cursor:${edit ? "pointer" : "default"};"></td>`).join("")}
+                </tr>`).join("")}
+                </tbody>
+            </table>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">"Crear y editar" activa los botones de alta y edición de esa sección. Si "Ver" está apagado, la sección desaparece del menú. Garantías y Pólizas se guardan desde ahora para cuando existan esas pantallas.</div>
+            ${edit ? `<div style="display:flex;justify-content:flex-end;margin-top:12px;"><button onclick="opsAccGuardarRol()" class="mkt-add-btn" style="background:#E7402B;">Guardar cambios del rol</button></div>` : ""}
+        </div>`;
+    }
+    window.opsAccElegirRol = function (id) { opsAccRolSel = id; opsAccBorrador = null; opsRenderAccesos(); };
+    window.opsAccMarcar = function (s, a, on) {
+        const m = opsAccBorrador.matriz;
+        const set = new Set(m[s] || []);
+        if (on) { set.add(a); if (a !== "ver") set.add("ver"); } else { set.delete(a); if (a === "ver") set.clear(); }
+        m[s] = OPS_ACC_ACCIONES.map(x => x[0]).filter(x => set.has(x));
+        opsRenderAccesos();
+    };
+    window.opsAccMarcarColumna = function (a) {
+        const m = opsAccBorrador.matriz;
+        const todas = OPS_ACC_SECCIONES.every(([s]) => (m[s] || []).includes(a));
+        OPS_ACC_SECCIONES.forEach(([s]) => window.opsAccMarcar(s, a, !todas));
+    };
+    window.opsAccGuardarRol = async function () {
+        if (!opsAccEditable()) return;
+        const id = opsAccBorrador.id, antes = opsAccCfg.roles[id].matriz;
+        opsAccCfg.roles[id].matriz = JSON.parse(JSON.stringify(opsAccBorrador.matriz));
+        try { await opsAccGuardarCfg("rol:" + id, "matriz", antes, opsAccCfg.roles[id].matriz); alert("Rol guardado. Los cambios aplican la próxima vez que cada persona abra Operaciones."); }
+        catch (e) { opsAccCfg.roles[id].matriz = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccNuevoRol = async function () {
+        if (!opsAccEditable()) return;
+        const nombre = (prompt("Nombre del rol nuevo (ej. Supervisor de plaza):") || "").trim();
+        if (!nombre) return;
+        const id = nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || ("rol_" + Date.now());
+        if (opsAccCfg.roles[id]) { alert("Ya existe un rol con ese nombre."); return; }
+        opsAccCfg.roles[id] = { nombre, matriz: opsAccMatrizTodas(["ver"]) };
+        try { await opsAccGuardarCfg("rol:" + id, "rol_creado", null, nombre); } catch (e) { delete opsAccCfg.roles[id]; alert("No se pudo crear: " + (e.message || e)); return; }
+        opsAccRolSel = id; opsAccBorrador = null; opsRenderAccesos();
+    };
+    window.opsAccEliminarRol = async function () {
+        if (!opsAccEditable()) return;
+        const id = opsAccRolSel, r = opsAccCfg.roles[id];
+        if (Object.values(opsAccCfg.usuarios).some(u => u.rol === id)) { alert("Primero cambia de rol a las personas que lo usan."); return; }
+        if (!confirm(`¿Eliminar el rol "${r.nombre}"?`)) return;
+        delete opsAccCfg.roles[id];
+        try { await opsAccGuardarCfg("rol:" + id, "rol_eliminado", r.nombre, null); } catch (e) { opsAccCfg.roles[id] = r; alert("No se pudo eliminar: " + (e.message || e)); }
+        opsAccRolSel = Object.keys(opsAccCfg.roles)[0]; opsAccBorrador = null; opsRenderAccesos();
+    };
+
+    // ── Usuarios ──
+    let opsAccBusca = "";
+    function opsAccHTMLUsuarios(edit) {
+        const roles = opsAccCfg.roles;
+        const opcRoles = sel => Object.entries(roles).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, "es"))
+            .map(([id, r]) => `<option value="${opsEsc(id)}" ${id === sel ? "selected" : ""}>${opsEsc(r.nombre)}</option>`).join("");
+        const lista = Object.entries(opsAccCfg.usuarios).sort((a, b) => a[0].localeCompare(b[0], "es"))
+            .filter(([c]) => !opsAccBusca || c.includes(opsAccBusca.toLowerCase()));
+        const sugeridos = Object.keys(window.EMAIL_AREA_MAP || {}).filter(c => !opsAccCfg.usuarios[c]).sort();
+        return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Quien <b>no</b> aparece aquí sigue con las reglas anteriores. Los administradores del portal (Glen, Paloma, Martín, Cristina, Erika) siempre tienen acceso total y no se pueden bloquear.</div>
+            <input placeholder="Buscar correo…" value="${opsEsc(opsAccBusca)}" oninput="opsAccBuscar(this.value)" style="width:100%;max-width:340px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:10px;">
+            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                ${lista.length ? lista.map(([c, u]) => `
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;">
+                    <div style="flex:1;min-width:200px;font-weight:600;color:#1e293b;">${opsEsc(c)}<div style="font-size:10.5px;color:#94a3b8;font-weight:400;">${opsEsc((window.nombreUsuario && window.nombreUsuario(c)) || "")}</div></div>
+                    <select ${edit ? `onchange="opsAccCambiarRolUsuario('${opsEsc(c)}', this.value)"` : "disabled"} style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">${opcRoles(u.rol)}</select>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:${edit ? "pointer" : "default"};"><input type="checkbox" ${u.soloLectura ? "checked" : ""} ${edit ? `onchange="opsAccSoloLectura('${opsEsc(c)}', this.checked)"` : "disabled"}> Solo lectura total</label>
+                    ${edit ? `<button onclick="opsAccQuitarUsuario('${opsEsc(c)}')" title="Quitar (vuelve a las reglas anteriores)" style="background:#fef2f2;border:none;color:#E7402B;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>` : ""}
+                </div>`).join("") : `<div style="padding:12px;color:#94a3b8;font-size:12px;">Sin resultados.</div>`}
+            </div>
+            ${edit ? `
+            <div style="border-top:1px dashed #e2e8f0;margin-top:14px;padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <input id="ops-acc-nuevo-correo" list="ops-acc-sugeridos" placeholder="correo@tecnocontrol.com.mx" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <datalist id="ops-acc-sugeridos">${sugeridos.map(c => `<option value="${opsEsc(c)}">`).join("")}</datalist>
+                <select id="ops-acc-nuevo-rol" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">${opcRoles("consulta_basica")}</select>
+                <button onclick="opsAccAgregarUsuario()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Agregar persona</button>
+            </div>` : ""}
+        </div>`;
+    }
+    window.opsAccBuscar = function (v) {
+        opsAccBusca = v; opsRenderAccesos();
+        const i = document.querySelector('#ops-tab-content input[placeholder="Buscar correo…"]');
+        if (i) { i.focus(); i.setSelectionRange(v.length, v.length); }
+    };
+    window.opsAccAgregarUsuario = async function () {
+        if (!opsAccEditable()) return;
+        const c = (document.getElementById("ops-acc-nuevo-correo").value || "").toLowerCase().trim();
+        const rol = document.getElementById("ops-acc-nuevo-rol").value;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)) { alert("Escribe un correo válido."); return; }
+        if (opsAccCfg.usuarios[c]) { alert("Esa persona ya está en la lista; cámbiale el rol ahí mismo."); return; }
+        opsAccCfg.usuarios[c] = { rol, soloLectura: false };
+        try { await opsAccGuardarCfg("usuario:" + c, "rol", null, opsAccCfg.roles[rol].nombre); } catch (e) { delete opsAccCfg.usuarios[c]; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccCambiarRolUsuario = async function (c, rol) {
+        if (!opsAccEditable()) return;
+        const antes = opsAccCfg.usuarios[c].rol;
+        opsAccCfg.usuarios[c].rol = rol;
+        try { await opsAccGuardarCfg("usuario:" + c, "rol", (opsAccCfg.roles[antes] || {}).nombre || antes, opsAccCfg.roles[rol].nombre); }
+        catch (e) { opsAccCfg.usuarios[c].rol = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccSoloLectura = async function (c, on) {
+        if (!opsAccEditable()) return;
+        opsAccCfg.usuarios[c].soloLectura = !!on;
+        try { await opsAccGuardarCfg("usuario:" + c, "solo_lectura", on ? "no" : "sí", on ? "sí" : "no"); }
+        catch (e) { opsAccCfg.usuarios[c].soloLectura = !on; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccQuitarUsuario = async function (c) {
+        if (!opsAccEditable()) return;
+        if (!confirm(`¿Quitar a ${c} de la matriz? Volverá a las reglas anteriores.`)) return;
+        const antes = opsAccCfg.usuarios[c];
+        delete opsAccCfg.usuarios[c];
+        try { await opsAccGuardarCfg("usuario:" + c, "quitado", (opsAccCfg.roles[antes.rol] || {}).nombre || antes.rol, null); }
+        catch (e) { opsAccCfg.usuarios[c] = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+
+    // ── Ver dinero ──
+    function opsAccHTMLDinero(edit) {
+        const lista = opsAccCfg.dinero.slice().sort();
+        return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Solo estas personas ven <b>precio, costo, utilidad y comisiones</b> en el panel del servicio y en el PDF. No depende del rol: es una lista aparte.</div>
+            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                ${lista.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;">
+                    <div style="flex:1;font-weight:600;color:#1e293b;">${opsEsc(c)}</div>
+                    ${edit ? `<button onclick="opsAccQuitarDinero('${opsEsc(c)}')" title="Quitar" style="background:#fef2f2;border:none;color:#E7402B;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>` : ""}
+                </div>`).join("")}
+            </div>
+            ${edit ? `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+                <input id="ops-acc-dinero-correo" placeholder="correo@tecnocontrol.com.mx" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <button onclick="opsAccAgregarDinero()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Agregar</button>
+            </div>` : ""}
+        </div>`;
+    }
+    window.opsAccAgregarDinero = async function () {
+        if (!opsAccEditable()) return;
+        const c = (document.getElementById("ops-acc-dinero-correo").value || "").toLowerCase().trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c)) { alert("Escribe un correo válido."); return; }
+        if (opsAccCfg.dinero.includes(c)) return;
+        opsAccCfg.dinero.push(c);
+        try { await opsAccGuardarCfg("dinero:" + c, "ver_dinero", "no", "sí"); } catch (e) { opsAccCfg.dinero = opsAccCfg.dinero.filter(x => x !== c); alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccQuitarDinero = async function (c) {
+        if (!opsAccEditable()) return;
+        if (!confirm(`¿Quitar a ${c}? Ya no verá precios ni comisiones.`)) return;
+        const antes = opsAccCfg.dinero.slice();
+        opsAccCfg.dinero = opsAccCfg.dinero.filter(x => x !== c);
+        try { await opsAccGuardarCfg("dinero:" + c, "ver_dinero", "sí", "no"); } catch (e) { opsAccCfg.dinero = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+
+    // ── Bitácora ──
+    async function opsAccCargarBitacora() {
+        opsAccBitacora = "cargando";
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.query(fs.collection(db, COL_AUDITORIA), fs.where("entidad", "==", "permisos")));
+            opsAccBitacora = snap.docs.map(d => d.data()).sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || ""))).slice(0, 150);
+        } catch (e) { opsAccBitacora = []; console.warn("[operaciones.js] bitácora de permisos:", e.message); }
+        if (tabActual === "accesos" && opsAccVista === "bitacora") opsRenderAccesos();
+    }
+    function opsAccHTMLBitacora() {
+        if (opsAccBitacora === null || opsAccBitacora === "cargando") return `<div style="padding:16px;color:#94a3b8;font-size:12px;">Cargando…</div>`;
+        const corto = v => { const t = v == null ? "—" : String(v); return t.length > 120 ? t.slice(0, 120) + "…" : t; };
+        return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+            ${opsAccBitacora.length ? opsAccBitacora.map(b => `<div style="padding:9px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">
+                <div><b>${opsEsc(b.usuarioNombre || b.usuarioEmail || "")}</b> <span style="color:#94a3b8;">· ${opsEsc(b.fecha ? new Date(b.fecha).toLocaleString("es-MX") : "")}</span></div>
+                <div>${opsEsc(String(b.entidadId || "").replace(":", ": "))} — ${opsEsc(String(b.campo || "").replace(/_/g, " "))}: <span style="color:#94a3b8;">${opsEsc(corto(b.valorAnterior))}</span> → <b>${opsEsc(corto(b.valorNuevo))}</b></div>
+            </div>`).join("") : `<div style="padding:16px;color:#94a3b8;font-size:12px;">Todavía no hay cambios registrados.</div>`}
+        </div>`;
+    }
+
     async function opsRenderPermisos() {
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         el.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Cargando permisos…</div>`;
