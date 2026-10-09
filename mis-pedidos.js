@@ -166,7 +166,7 @@
         + '</div></div>';
     });
     html += '</div>';
-    var notas = hist.filter(function(h){ return h.nota && /^(Compras:|Programado|Gestionado|Material sobre pedido)/.test(h.nota); });
+    var notas = hist.filter(function(h){ return h.nota && /^(Compras:|Programado|Gestionado|Material sobre pedido|Almac\u00e9n movi\u00f3)/.test(h.nota); });
     if (notas.length){
       html += '<div style="margin-top:6px;font-size:11.5px;color:#475569;">' + notas.map(function(h){
         return '<div style="padding:4px 0;border-top:1px dashed #e6ebf2;"><b>'+esc(h.nota)+'</b><br><span style="color:#94a3b8;">'+fechaHora(h.ts)+(h.por?(' \u00b7 '+esc(h.por)):'')+'</span></div>';
@@ -218,7 +218,7 @@
 
   // ── Áreas que también atienden el pedido (oct-2026) ──
   var PRO_TXT = { pendiente:'Por pedir al proveedor', pedido:'Pedido al proveedor', en_camino:'En camino', recibido:'Material recibido en almac\u00e9n' };
-  function esPro(p){ return p.clasificacion==='pro' || p.clasificacion==='pro_mixto'; }
+  function esPro(p){ return p.clasificacion==='pro' || p.clasificacion==='pro_mixto' || p.clasificacion==='sobre_stock'; }
   function esServ(p){ return p.clasificacion==='servicio' || p.clasificacion==='servicio_piezas'; }
   function bloqueArea(p){
     var html='';
@@ -228,7 +228,8 @@
       if (p.compraFechaEstimada && paso!=='recibido') det.push('llega aprox. '+esc(p.compraFechaEstimada));
       if (p.compraGuia) det.push('gu\u00eda '+esc(p.compraGuia));
       if (p.compraNotas) det.push(esc(p.compraNotas));
-      html += '<div class="mp-area" style="--c:#b45309"><span class="lb">Compras \u00b7 sobre pedido</span><b>'+esc(PRO_TXT[paso]||paso)+'</b>'
+      var stock = p.clasificacion==='sobre_stock';
+      html += '<div class="mp-area" style="--c:'+(stock?'#be185d':'#b45309')+'"><span class="lb">'+(stock?'Sobre stock \u00b7 sin existencia':'Compras \u00b7 sobre pedido')+'</span><b>'+esc(stock && paso==='pendiente' ? 'Esperando reabasto' : (PRO_TXT[paso]||paso))+'</b>'
         + (det.length?('<span class="dt">'+det.join(' \u00b7 ')+'</span>'):'')+'</div>';
     }
     if (esServ(p)){
@@ -241,6 +242,7 @@
   function estadoVisible(p){
     if (p.clasificacion==='servicio') return { t: p.opsGestionado ? 'Programado' : 'En Operaciones', c: '#7c3aed' };
     if (p.clasificacion==='pro' && p.compraEstado!=='recibido' && ['pendiente','en_preparacion'].indexOf(p.estado)!==-1) return { t:'En Compras', c:'#b45309' };
+    if (p.clasificacion==='sobre_stock' && p.compraEstado!=='recibido' && ['pendiente','en_preparacion'].indexOf(p.estado)!==-1) return { t:'Sobre stock', c:'#be185d' };
     return { t: estadoLabel(p.estado), c: estadoColor(p.estado) };
   }
   window.__mpVerPdf = function(id){

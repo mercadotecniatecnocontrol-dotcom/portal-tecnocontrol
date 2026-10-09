@@ -40,8 +40,8 @@
   <div class="card">
     <label>Tu nombre (quién sube la evidencia) *</label>
     <input type="text" id="f-nombre" placeholder="Ej. Ricardo Torres" autocomplete="off">
-    <input type="file" accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="f-file" style="display:none">
-    <button class="upload-btn" id="btn-subir" type="button">📷 Tomar foto / subir documento</button>
+    <input type="file" accept="image/*,.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="f-file" multiple style="display:none">
+    <button class="upload-btn" id="btn-subir" type="button">📷 Tomar fotos / subir documentos (puedes elegir varios)</button>
     <div class="msg" id="msg"></div>
   </div>
   <div class="card">
@@ -51,7 +51,7 @@
 </div>
 
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js"></script>
+<script src="surtidos-supabase.js?v=10"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,14 +94,14 @@ if(!pedidoId){
       reader.onload = e=>{
         const img = new Image();
         img.onload = ()=>{
-          const maxW = 2200;
+          const maxW = 1600;
           const scale = Math.min(1, maxW/img.width);
           const w = Math.max(1,Math.round(img.width*scale)), h = Math.max(1,Math.round(img.height*scale));
           const c = document.createElement('canvas'); c.width=w; c.height=h;
           const cx = c.getContext('2d');
           cx.fillStyle='#ffffff'; cx.fillRect(0,0,w,h);
           cx.drawImage(img,0,0,w,h);
-          resolve(c.toDataURL('image/jpeg',0.9));
+          resolve(c.toDataURL('image/jpeg',0.82));
         };
         img.onerror = reject;
         img.src = e.target.result;
@@ -120,39 +120,30 @@ if(!pedidoId){
     $('f-file').click();
   };
 
+  // Varias fotos o documentos a la vez (oct-2026): se suben uno tras otro.
   $('f-file').onchange = async ()=>{
-    const file = $('f-file').files && $('f-file').files[0];
+    const archivos = Array.from($('f-file').files || []);
     $('f-file').value = '';
-    if(!file) return;
+    if(!archivos.length) return;
     const nombre = $('f-nombre').value.trim();
-    setMsg('Subiendo…','var(--teal)');
     $('btn-subir').disabled = true;
-    try{
-      if(file.type && file.type.startsWith('image/')){
-        // Foto: se comprime y se guarda incrustada en el propio registro — igual que siempre.
-        const dataUrl = await comprimirImagen(file);
-        await window.tcSbAgregarEvidencia(pedidoId, {
-          tipo:'imagen', imagen: dataUrl, subidoPor: nombre, categoria: categoriaEvid
-        });
-      } else {
-        // Documento (PDF/Word/etc.) — se guarda igual, como base64, dentro del propio registro.
-        const dataUrl = await new Promise((resolve,reject)=>{
-          const r = new FileReader();
-          r.onload = ()=>resolve(r.result);
-          r.onerror = reject;
-          r.readAsDataURL(file);
-        });
-        await window.tcSbAgregarEvidencia(pedidoId, {
-          tipo:'archivo', nombre: file.name, url: dataUrl, subidoPor: nombre, categoria: categoriaEvid
-        });
-      }
-      setMsg('✓ Subido','var(--ok)');
-    }catch(e){
-      console.error('[evidencia] error al subir:', e);
-      setMsg('No se pudo subir ('+(e.code||e.message||'error')+').');
-    }finally{
-      $('btn-subir').disabled = false;
+    let ok = 0, fallas = 0;
+    for (let i = 0; i < archivos.length; i++){
+      const file = archivos[i];
+      setMsg('Subiendo ' + (i+1) + ' de ' + archivos.length + '…','var(--teal)');
+      try{
+        if(file.type && file.type.startsWith('image/')){
+          const dataUrl = await comprimirImagen(file);
+          await window.tcSbAgregarEvidencia(pedidoId, { tipo:'imagen', imagen: dataUrl, subidoPor: nombre, categoria: categoriaEvid });
+        } else {
+          const dataUrl = await new Promise((resolve,reject)=>{ const r = new FileReader(); r.onload = ()=>resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
+          await window.tcSbAgregarEvidencia(pedidoId, { tipo:'archivo', nombre: file.name, url: dataUrl, subidoPor: nombre, categoria: categoriaEvid });
+        }
+        ok++;
+      }catch(e){ fallas++; console.error('[evidencia] error al subir:', file.name, e); }
     }
+    setMsg(fallas ? ('Se subieron ' + ok + ' de ' + archivos.length + '. Reintenta los que faltaron.') : ('\u2713 ' + ok + (ok===1?' archivo subido':' archivos subidos')), fallas ? '' : 'var(--ok)');
+    $('btn-subir').disabled = false;
   };
 
   /* Vista en vivo de las evidencias ya subidas — mismo esquema que usa el portal de escritorio,

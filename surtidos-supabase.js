@@ -397,6 +397,19 @@
       }
       return { sb: sb, img: img };
     }).then(function (x) {
+      // Documento que llega en base64 (p. ej. desde el celular): también a Storage.
+      var u = datos.url || null;
+      if (u && /^data:/.test(u)) {
+        var blob = dataUrlABlob(u);
+        var ruta = 'surtidos/' + id + '/' + Date.now() + '_' + String(datos.nombre || 'documento').replace(/[^a-zA-Z0-9_.-]/g, '_');
+        return x.sb.storage.from(BUCKET_EVID).upload(ruta, blob, { contentType: blob.type, upsert: false }).then(function (res) {
+          if (res.error) throw res.error;
+          datos = Object.assign({}, datos, { url: x.sb.storage.from(BUCKET_EVID).getPublicUrl(ruta).data.publicUrl });
+          return x;
+        }).catch(function (e) { console.warn('[surtidos] documento a Storage fall\u00f3, se guarda en la base:', e && e.message); return x; });
+      }
+      return x;
+    }).then(function (x) {
       var sb = x.sb;
       return sb.from('surtido_evidencias').insert({
         surtido_id: id, tipo: datos.tipo || null, imagen: x.img,

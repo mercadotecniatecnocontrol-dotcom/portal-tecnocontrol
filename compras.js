@@ -555,13 +555,17 @@
   ];
   var _proLista = [], _proUnsub = null, _proTexto = '', _proFiltro = '';
   function proPaso(p){ return p.compraEstado && PRO_PASOS.some(function(x){ return x.k===p.compraEstado; }) ? p.compraEstado : 'pendiente'; }
-  function proPartidas(p){ return (Array.isArray(p.productos)?p.productos:[]).filter(function(x){ return x.tipo==='pro'; }); }
+  function proPartidas(p){
+    var todas = Array.isArray(p.productos)?p.productos:[];
+    if (p.clasificacion==='sobre_stock') return todas.filter(function(x){ return x.tipo!=='servicio' && x.tipo!=='viaticos'; });
+    return todas.filter(function(x){ return x.tipo==='pro'; });
+  }
   function escucharPro(){
     if(_proUnsub || !window.tcSbSuscribirSurtidos) return;
     _proUnsub = window.tcSbSuscribirSurtidos(function(arr){
       var hace30 = Date.now() - 30*86400000;
       _proLista = (arr||[]).filter(function(p){
-        if(p.clasificacion!=='pro' && p.clasificacion!=='pro_mixto') return false;
+        if(p.clasificacion!=='pro' && p.clasificacion!=='pro_mixto' && p.clasificacion!=='sobre_stock') return false;
         if(p.estado==='cancelado' || p.eliminada) return false;
         if(proPaso(p)==='recibido'){ var t=Date.parse(p.compraRecibidoEn||'')||0; return t>=hace30; }
         return true;
@@ -602,7 +606,7 @@
     if(p.compraGuia) info.push('Gu\u00eda: <b>'+esc(p.compraGuia)+'</b>');
     if(p.compraNotas) info.push(esc(p.compraNotas));
     return '<div class="cp-pro-card" style="--c:'+paso.c+'">'
-      + '<div class="r1"><span class="fol">'+esc(p.folio||'\u2014')+'</span>'+emp+(p.clasificacion==='pro_mixto'?'<span class="cp-pro-mix">+ productos</span>':'')+'<span class="dias">'+proDias(p)+'</span></div>'
+      + '<div class="r1"><span class="fol">'+esc(p.folio||'\u2014')+'</span>'+emp+(p.clasificacion==='pro_mixto'?'<span class="cp-pro-mix">+ productos</span>':'')+(p.clasificacion==='sobre_stock'?'<span class="cp-pro-mix" style="background:#be185d">Sobre stock</span>':'')+'<span class="dias">'+proDias(p)+'</span></div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
       + '<div class="ven">Vendedor: '+esc(p.vendedor||'\u2014')+(p.fechaEntrega?(' \u00b7 Compromiso: '+esc(p.fechaEntrega)):'')+'</div>'
       + '<div class="parts">'+parts.map(function(x){
@@ -670,7 +674,7 @@
         '<div style="display:flex;gap:22px;margin-bottom:22px;border-bottom:1px solid #EEF2F7;overflow-x:auto">' +
           '<button id="cp-mtab-req" onclick="window.__cpSetVistaModulo(\'req\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#0A1628;border-bottom:2px solid #0A1628;cursor:pointer">Requisiciones</button>' +
           '<button id="cp-mtab-cot" onclick="window.__cpSetVistaModulo(\'cot\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">Cotizaciones<span id="cp-mtab-cot-n" style="display:none;background:#E7402B;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:9px">0</span></button>' +
-          '<button id="cp-mtab-pro" onclick="window.__cpSetVistaModulo(\'pro\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">Sobre pedido (PRO)<span id="cp-mtab-pro-n" style="display:none;background:#b45309;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:9px">0</span></button>' +
+          '<button id="cp-mtab-pro" onclick="window.__cpSetVistaModulo(\'pro\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px">Sobre pedido y stock<span id="cp-mtab-pro-n" style="display:none;background:#b45309;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:9px">0</span></button>' +
           '<button id="cp-mtab-ras" onclick="window.__cpSetVistaModulo(\'ras\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Rastreo</button>' +
           '<button id="cp-mtab-prov" onclick="window.__cpSetVistaModulo(\'prov\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Proveedores</button>' +
           '<button id="cp-mtab-cxp" onclick="window.__cpSetVistaModulo(\'cxp\')" style="padding:10px 2px;border:none;background:none;font-size:13.5px;font-weight:700;color:#94A3B8;border-bottom:2px solid transparent;cursor:pointer">Cuentas por pagar</button>' +
@@ -781,8 +785,8 @@
         '</div>' +
 
         '<div id="cp-vista-pro" class="cp-scope" style="display:none">' +
-          '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px"><div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Mercanc\u00eda sobre pedido (PRO)</h2>' +
-          '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Partidas PRO de los pedidos que Ventas subi\u00f3 a Almac\u00e9n. Actualiza cada paso: el vendedor lo ve en <b>Mis pedidos</b> y le llega aviso.</p></div></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px"><div><h2 style="font-size:19px;font-weight:700;margin:0;color:#0A1628">Sobre pedido (PRO) y sobre stock</h2>' +
+          '<p style="font-size:12px;color:#5C7089;margin:4px 0 0">Partidas PRO de los pedidos de Ventas y pedidos que Almac\u00e9n marc\u00f3 como <b>sobre stock</b> (sin existencia). Actualiza cada paso: el vendedor lo ve en <b>Mis pedidos</b> y le llega aviso.</p></div></div>' +
           '<div id="cp-pro-kpis" class="cp-pro-kpis"></div>' +
           '<input class="cp-in" type="search" style="width:100%;margin-bottom:12px;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;box-sizing:border-box" placeholder="Buscar folio, cliente, vendedor o pieza\u2026" oninput="window.__proTexto(this.value)" aria-label="Buscar pedido PRO">' +
           '<div id="cp-pro-board"></div>' +

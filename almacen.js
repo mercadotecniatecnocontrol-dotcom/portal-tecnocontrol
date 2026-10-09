@@ -81,12 +81,14 @@
     servicio:        { t:'Servicio',             c:'#7c3aed' },
     servicio_piezas: { t:'Servicio con piezas',  c:'#7c3aed' },
     pro:             { t:'PRO \u00b7 sobre pedido', c:'#b45309' },
-    pro_mixto:       { t:'PRO + productos',      c:'#b45309' }
+    pro_mixto:       { t:'PRO + productos',      c:'#b45309' },
+    sobre_stock:     { t:'Sobre stock',          c:'#be185d' }
   };
   function clasif(p){ return (p && p.clasificacion && CLASIF[p.clasificacion]) ? p.clasificacion : 'productos'; }
-  function cuentaMetricas(p){ var c=clasif(p); return c!=='servicio' && c!=='servicio_piezas' && c!=='pro'; }
+  function cuentaMetricas(p){ var c=clasif(p); return c!=='servicio' && c!=='servicio_piezas' && c!=='pro' && c!=='sobre_stock'; }
   function esServicio(p){ var c=clasif(p); return c==='servicio' || c==='servicio_piezas'; }
   function esPro(p){ var c=clasif(p); return c==='pro' || c==='pro_mixto'; }
+  function esStock(p){ return clasif(p)==='sobre_stock'; }
   var EMPRESA_CORTA = { TECNOCONTROL:'Tecnocontrol', JOMAR:'JOMAR', TECNOLAB:'TecnoLab', AKURIS:'Akuris', VH:'VH' };
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
   var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
@@ -283,6 +285,7 @@
     var c = clasif(p);
     if (filtro.area==='almacen' && c!=='productos' && c!=='pro_mixto') return false;
     if (filtro.area==='pro' && !esPro(p)) return false;
+    if (filtro.area==='stock' && !esStock(p)) return false;
     if (!filtro.area && c==='servicio') return false;   // servicio sin piezas: solo en la vista Servicios
     if (filtro.prio && p.prioridad !== filtro.prio) return false;
     if (filtro.tipo && p.tipo !== filtro.tipo) return false;
@@ -485,43 +488,45 @@
         + '<span style="font-size:20px;">\ud83d\udcc4</span><span style="font-size:9px;text-align:center;padding:0 3px;word-break:break-word;">'+esc(ev.nombre||'Documento')+'</span></a>';
     }).join('');
   }
+  // Varias fotos y documentos a la vez (oct-2026): se suben uno tras otro y
+  // al final se avisa cuántos quedaron.
+  function subirUnArchivoEvidencia(id, file, categoria){
+    var esImagen = file.type && file.type.indexOf('image/')===0;
+    if (esImagen) return comprimirImagenEvidencia(file).then(function(dataUrl){
+      return window.tcSbAgregarEvidencia(id, { tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), categoria:categoria });
+    });
+    return cargarSupabaseStorage().then(function(sb){
+      var ruta = id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
+      return sb.storage.from('portal_evidencias').upload(ruta, file, { upsert:false }).then(function(res){
+        if (res.error) throw res.error;
+        return sb.storage.from('portal_evidencias').getPublicUrl(ruta).data.publicUrl;
+      });
+    }).then(function(url){
+      return window.tcSbAgregarEvidencia(id, { tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre(), categoria:categoria });
+    });
+  }
   window.__almSubirEvidencia = function(id, categoriaForzada){
     var input=document.getElementById('alm-evid-file-'+id); if (!input) return;
     input.onchange = function(){
-      var file=input.files&&input.files[0]; input.value='';
-      if (!file) return;
+      var archivos = Array.prototype.slice.call(input.files || []); input.value='';
+      if (!archivos.length) return;
       var catEl = document.querySelector('input[name="alm-evid-cat-'+id+'"]:checked');
       var categoria = categoriaForzada || (catEl ? catEl.value : 'salida');
-      var esImagen = file.type && file.type.indexOf('image/')===0;
-      var subida = esImagen
-        ? comprimirImagenEvidencia(file).then(function(dataUrl){
-            return window.tcSbAgregarEvidencia(id, {
-              tipo:'imagen', imagen:dataUrl, subidoPor:yoNombre(), categoria:categoria
-            });
-          })
-        // Documento (PDF/Word/etc.): va a Supabase Storage — un documento normal no cabe
-        // comprimido en el registro de evidencia, a diferencia de la foto.
-        : cargarSupabaseStorage().then(function(sb){
-            var ruta = id + '/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9_.-]/g,'_');
-            return sb.storage.from('portal_evidencias').upload(ruta, file, { upsert:false }).then(function(res){
-              if (res.error) throw res.error;
-              return sb.storage.from('portal_evidencias').getPublicUrl(ruta).data.publicUrl;
-            });
-          }).then(function(url){
-            return window.tcSbAgregarEvidencia(id, {
-              tipo:'archivo', nombre:file.name, url:url, subidoPor:yoNombre(), categoria:categoria
-            });
-          });
-      subida.then(function(){
+      var ok = 0, fallas = 0;
+      if (window.mostrarPush && archivos.length>1) window.mostrarPush('Almac\u00e9n','Subiendo '+archivos.length+' archivos\u2026','\u23f3');
+      archivos.reduce(function(prom, file){
+        return prom.then(function(){
+          return subirUnArchivoEvidencia(id, file, categoria).then(function(){ ok++; })
+            .catch(function(err){ fallas++; console.error('[almacen] subirEvidencia:', file.name, err); });
+        });
+      }, Promise.resolve()).then(function(){
         delete _evidenciasCache[id];
         return cargarEvidencias(id);
       }).then(function(){
         render();
         if (document.getElementById('alm-hist-evid-salida-'+id)) window.__almRefrescarEvidHist(id);
-        if (window.mostrarPush) window.mostrarPush(esImagen?'📷 Evidencia agregada':'📄 Documento agregado','','✅');
-      }).catch(function(err){
-        console.error('[almacen] subirEvidencia:',err);
-        if (window.mostrarPush) window.mostrarPush('Almacén','No se pudo subir la evidencia','⚠️');
+        if (window.mostrarPush) window.mostrarPush(fallas ? 'Almac\u00e9n' : 'Evidencia agregada',
+          fallas ? ('Se subieron '+ok+' de '+archivos.length+'; reintenta los que faltaron') : (ok===1 ? '1 archivo subido' : ok+' archivos subidos'), fallas ? '\u26a0\ufe0f' : '\u2705');
       });
     };
     input.click();
@@ -580,7 +585,7 @@
       +   '</div>'
       + '</div>'
       + '<button type="button" class="alm-evid-add" style="width:100%;margin-bottom:14px;box-sizing:border-box;" onclick="window.__almSubirEvidencia(\''+id+'\')">📎 Elegir foto o documento desde esta computadora</button>'
-      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+id+'" style="display:none">'
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+id+'" multiple style="display:none">'
       + '<div style="border-top:1px dashed #e2e8f0;padding-top:14px;text-align:center;">'
       +   '<div style="font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:10px;">O escanea con el celular para subir la evidencia de <span id="alm-evid-qr-etq" style="color:#0e7490;">'+(ETIQ_CAT_EVID[cat])+'</span></div>'
       +   '<img id="alm-evid-qr-img" src="'+qrDeLink(link)+'" alt="Código QR" style="border:1px solid #e2e8f0;border-radius:12px;padding:8px;background:#fff;">'
@@ -660,7 +665,16 @@
     + '.alm-fchips{display:flex;gap:6px;flex-wrap:wrap;}'
     + '.alm-notif-btn{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:9px;border:1px solid #e6ebf2;background:#fff;color:#475569;cursor:pointer;flex-shrink:0;}'
     + '.alm-notif-btn:hover{background:#f1f5f9;}'
-    + '.alm-areas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 12px;}'
+    + '.alm-mover-ov{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;}'
+    + '.alm-mover-card{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:18px;max-height:92vh;overflow:auto;box-shadow:0 20px 50px rgba(15,23,42,.3);}'
+    + '.alm-mover-t{font-size:16px;font-weight:800;color:#0f172a;}.alm-mover-s{font-size:12px;color:#64748b;margin:2px 0 12px;}'
+    + '.alm-mover-op{display:flex;gap:10px;align-items:flex-start;border:1.5px solid #e2e8f0;border-left:4px solid var(--c);border-radius:10px;padding:9px 11px;margin-bottom:7px;cursor:pointer;}'
+    + '.alm-mover-op.on{border-color:var(--c);background:#f8fafc;box-shadow:0 2px 8px rgba(15,23,42,.08);}'
+    + '.alm-mover-op span{display:flex;flex-direction:column;}.alm-mover-op b{font-size:13px;color:#0f172a;}.alm-mover-op i{font-size:11px;color:#64748b;font-style:normal;}'
+    + '.alm-mover-lb{display:block;font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px;}'
+    + '#alm-mover-nota{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;font-family:inherit;font-size:12.5px;}'
+    + '.alm-mover-acc{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}'
+    + '.alm-areas{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 12px;}'
     + '.alm-area{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:10px 12px;cursor:pointer;font-family:inherit;position:relative;overflow:hidden;transition:box-shadow .15s,border-color .15s,transform .15s;box-shadow:0 1px 2px rgba(15,23,42,.04);}'
     + '.alm-area:hover{border-color:var(--ac);box-shadow:0 4px 14px rgba(15,23,42,.08);}'
     + '.alm-area::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ac);opacity:.25;}'
@@ -1184,7 +1198,7 @@
     var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
     var nPro = todosActivos.filter(esPro).length;
     var nAlm = todosActivos.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length;
-    pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro });
+    pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro, stock: todosActivos.filter(esStock).length });
 
     var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
     var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
@@ -1203,8 +1217,8 @@
       + kpi(COLORS.teal,    kEntregadosHoy, 'Entregados hoy');
 
     var html='';
-    if (filtro.area==='servicios' || filtro.area==='pro'){
-      var cols = filtro.area==='servicios' ? colsServicios() : colsPro(visibles);
+    if (filtro.area==='servicios' || filtro.area==='pro' || filtro.area==='stock'){
+      var cols = filtro.area==='servicios' ? colsServicios() : (filtro.area==='stock' ? colsStock(visibles) : colsPro(visibles));
       cols.forEach(function(col){
         var lista = ordenar(col.lista.filter(pasaBusqueda));
         html += '<div class="alm-col"><div class="alm-col-h">'
@@ -1236,7 +1250,9 @@
     { k:'servicios', t:'Servicios',        d:'Para Operaciones', c:'#7c3aed',
       i:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' },
     { k:'pro',       t:'PRO',              d:'Sobre pedido \u00b7 Compras', c:'#b45309',
-      i:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>' }
+      i:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>' },
+    { k:'stock',     t:'Sobre stock',      d:'Lo manejamos \u00b7 sin existencia', c:'#be185d',
+      i:'<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M8 14l8-4"/><path d="M16 14l-8-4"/>' }
   ];
   function pintarAreas(cuentas){
     var el=document.getElementById('alm-areas'); if(!el) return;
@@ -1277,6 +1293,16 @@
         lista: pro.filter(function(p){ return p.compraEstado==='recibido'; }), card: tarjeta }
     ];
   }
+  // Vista Sobre stock: artículos que sí manejamos pero hoy no hay existencia.
+  function colsStock(visibles){
+    var st = visibles.filter(esStock);
+    return [
+      { titulo:'Sin existencia', sub:'Esperando reabasto \u00b7 Compras', color:'#be185d',
+        lista: st.filter(function(p){ return p.compraEstado!=='recibido'; }), card: function(p){ return tarjetaArea(p,'stock'); } },
+      { titulo:'Ya lleg\u00f3', sub:'Listo para surtir', color:'#1473E6',
+        lista: st.filter(function(p){ return p.compraEstado==='recibido'; }), card: tarjeta }
+    ];
+  }
   function lineasPartidas(p, tipos){
     var prods = Array.isArray(p.productos)?p.productos:[];
     var sel = prods.filter(function(it){ return !tipos || tipos.indexOf(it.tipo||'producto')!==-1; });
@@ -1300,22 +1326,27 @@
     var esOps = modo==='ops';
     var boton = esOps
       ? '<button class="alm-btn alm-btn-go" onclick="window.__almOpsGestionado(\''+p.id+'\')">Gestionado por Operaciones</button>'
-      : '<button class="alm-btn alm-btn-go" onclick="window.__almProRecibido(\''+p.id+'\')">Material recibido</button>';
+      : '<button class="alm-btn alm-btn-go" onclick="window.__almProRecibido(\''+p.id+'\')">'+(modo==='stock'?'Ya lleg\u00f3 el material':'Material recibido')+'</button>';
     var estadoTxt = esOps
       ? (clasif(p)==='servicio' ? 'Pendiente de programar' : 'Piezas entregadas'+(p.recibioNombre?(' a '+esc(p.recibioNombre)):''))
-      : 'Pedido al proveedor';
+      : (modo==='stock' ? 'Sin existencia' : 'Pedido al proveedor');
     return '<div class="alm-card" data-id="'+p.id+'" style="border-left-color:'+CLASIF[clasif(p)].c+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'\u2014')+'</span>'+tagClasif(p)+tagEmpresa(p)+'</div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'\u2014')+' \u00b7 '+estadoTxt+'</div>'
-      + lineasPartidas(p, esOps ? ['servicio','viaticos'] : ['pro'])
+      + lineasPartidas(p, esOps ? ['servicio','viaticos'] : (modo==='stock' ? ['producto','pro'] : ['pro']))
       + '<div class="alm-actions">'
       +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
       +   (p.tienePdfOriginal?('<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver PDF original" onclick="window.__almVerPDF(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></button>'):'')
+      +   botonMover(p)
       +   boton
       + '</div></div>';
+  }
+  function botonMover(p){
+    return '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Mover a otro espacio" onclick="window.__almMover(\''+p.id+'\')">'
+      + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg></button>';
   }
 
   function kpi(color,n,label){
@@ -1359,7 +1390,7 @@
               ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Remisionado'+(p.remisionadoPor?(' · '+esc(p.remisionadoPor)):'')+'</span>'
               : '<button type="button" class="alm-evid-add" style="border-style:solid;border-color:#16a34a;color:#16a34a;" onclick="window.__almConfirmarRemision(\''+p.id+'\')">✅ Confirmar y remisionar</button>')
         + '</div>'
-        + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
+        + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" multiple style="display:none">'
         + '</div>';
     }
 
@@ -1385,6 +1416,7 @@
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+tagClasif(p)+tagEmpresa(p)+badgePrep+'</div>'
       + (clasif(p)==='servicio_piezas' ? '<div class="vend" style="color:#7c3aed;font-weight:700;">Surtiendo material para Operaciones \u00b7 no cuenta en m\u00e9tricas</div>' : '')
+      + (esStock(p) ? '<div class="vend" style="color:#be185d;font-weight:700;">'+(p.compraEstado==='recibido'?'Sobre stock \u00b7 ya lleg\u00f3 el material':'Sobre stock \u00b7 sin existencia, esperando reabasto')+'</div>' : '')
       + (esPro(p) ? '<div class="vend" style="color:#b45309;font-weight:700;">'+(p.compraEstado==='recibido'?'Material sobre pedido recibido':'Sobre pedido \u00b7 esperando material de Compras')+'</div>' : '')
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
@@ -1396,7 +1428,7 @@
       + '<div class="alm-actions">'
       +   (PREV[p.estado]?'<button class="alm-btn alm-btn-back" title="Regresar etapa" onclick="window.__almBack(\''+p.id+'\')">‹</button>':'')
       +   '<button class="alm-btn alm-btn-ghost" onclick="window.__almToggle(\''+p.id+'\')">'+(abierta?'Ocultar':'Ver')+'</button>'
-      +   '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
+      +   botonMover(p) + '<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Ver historial" onclick="window.__almVerHistorial(\''+p.id+'\')">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></button>'
       +   (!esperandoFirma?'<button class="alm-btn alm-btn-ghost alm-btn-icon" title="Cancelar pedido" onclick="window.__almAbrirCancelar(\''+p.id+'\')" style="color:#dc2626;">'
       +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></button>':'')
@@ -1507,7 +1539,7 @@
       + '<div class="alm-evid-block" style="border-top:none;padding-top:0;"><span class="lbl">Evidencia fotogr\u00e1fica (embarque / entrega)</span>'
       +   '<div class="alm-evid-grid" id="alm-evid-grid-'+p.id+'">'+renderEvidenciasThumbs(p)+'</div>'
       +   '<button type="button" class="alm-evid-add" onclick="window.__almAbrirModalEvidencia(\''+p.id+'\')">+ Agregar foto o documento</button>'
-      +   '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" style="display:none">'
+      +   '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+p.id+'" multiple style="display:none">'
       + '</div>'
       + '<label style="display:block;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#64748b;margin:14px 0 6px">Observaciones</label>'
       + '<textarea id="alm-entrega-obs" placeholder="Ej. Se entreg\u00f3 completo / falta 1 pieza que se enviar\u00e1 despu\u00e9s\u2026" style="width:100%;min-height:70px;padding:11px 13px;border:2px solid #e6ebf2;border-radius:10px;font-size:14px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box;">'+esc(p.entregaObservaciones||'')+'</textarea>'
@@ -1650,6 +1682,78 @@
   };
   window.__almCheck  = function(id,idx){ toggleCheck(id,idx); };
   window.__almArea = function(v){ filtro.area=v||''; render(); };
+  // =====================================================================
+  //  MOVER UN PEDIDO DE ESPACIO (oct-2026)
+  //  Almacén puede corregir o cambiar a dónde va un pedido, además de la
+  //  clasificación automática del PDF. Queda en el historial y avisa (campana
+  //  del portal) al vendedor y a las áreas que lo atienden.
+  // =====================================================================
+  var DESTINOS_MOVER = [
+    { k:'productos',       d:'Lo surte Almac\u00e9n normalmente' },
+    { k:'sobre_stock',     d:'Lo manejamos, pero hoy no hay existencia' },
+    { k:'pro',             d:'Mercanc\u00eda sobre pedido, la consigue Compras' },
+    { k:'pro_mixto',       d:'Parte la surte Almac\u00e9n y parte la consigue Compras' },
+    { k:'servicio',        d:'Lo programa Operaciones; no lleva piezas' },
+    { k:'servicio_piezas', d:'Lo programa Operaciones; Almac\u00e9n surte las piezas' }
+  ];
+  function areaAvisos(c){
+    if (c==='servicio' || c==='servicio_piezas') return 'avisosOperaciones';
+    if (c==='pro' || c==='pro_mixto' || c==='sobre_stock') return 'avisosCompras';
+    return 'avisosAlmacen';
+  }
+  window.__almMover = function(id){
+    var p=buscarP(id); if(!p) return;
+    var actual=clasif(p);
+    var ov=document.createElement('div'); ov.className='alm-mover-ov';
+    ov.innerHTML='<div class="alm-mover-card">'
+      + '<div class="alm-mover-t">Mover '+esc(p.folio||'')+'</div>'
+      + '<div class="alm-mover-s">'+esc(p.cliente||'')+' \u00b7 hoy est\u00e1 en <b>'+CLASIF[actual].t+'</b></div>'
+      + DESTINOS_MOVER.map(function(x){
+          return '<label class="alm-mover-op'+(x.k===actual?' on':'')+'" style="--c:'+CLASIF[x.k].c+'"><input type="radio" name="alm-mover" value="'+x.k+'"'+(x.k===actual?' checked':'')+'>'
+            + '<span><b>'+CLASIF[x.k].t+'</b><i>'+x.d+'</i></span></label>';
+        }).join('')
+      + '<label class="alm-mover-lb">Motivo o nota (la ven todos los avisados)</label>'
+      + '<textarea id="alm-mover-nota" rows="2" placeholder="Ej. No hay existencia, se pidi\u00f3 al proveedor; llega el martes"></textarea>'
+      + '<div class="alm-mover-acc"><button class="alm-btn alm-btn-ghost" id="alm-mover-cancel">Cancelar</button><button class="alm-btn alm-btn-go" id="alm-mover-ok">Mover y avisar</button></div>'
+      + '</div>';
+    document.body.appendChild(ov);
+    ov.querySelectorAll('input[name="alm-mover"]').forEach(function(r){ r.onchange=function(){ ov.querySelectorAll('.alm-mover-op').forEach(function(l){ l.classList.toggle('on', l.querySelector('input').checked); }); }; });
+    ov.querySelector('#alm-mover-cancel').onclick=function(){ ov.remove(); };
+    ov.querySelector('#alm-mover-ok').onclick=function(){
+      var nuevo=(ov.querySelector('input[name="alm-mover"]:checked')||{}).value;
+      var nota=ov.querySelector('#alm-mover-nota').value.trim();
+      if(!nuevo || nuevo===actual){ ov.remove(); return; }
+      var btn=ov.querySelector('#alm-mover-ok'); btn.disabled=true; btn.textContent='Guardando\u2026';
+      var cambios={ clasificacion:nuevo, clasificacionManual:true, clasificacionPor:yoNombre(), clasificacionEn:new Date().toISOString() };
+      // Al entrar a Sobre stock / PRO empieza a esperar material; al salir de Operaciones se reabre.
+      if ((nuevo==='sobre_stock' || nuevo==='pro' || nuevo==='pro_mixto') && !(actual==='sobre_stock'||actual==='pro'||actual==='pro_mixto')) cambios.compraEstado='pendiente';
+      if ((nuevo==='servicio' || nuevo==='servicio_piezas') && p.opsGestionado) cambios.opsGestionado=false;
+      var textoMov='Almac\u00e9n movi\u00f3 el pedido de '+CLASIF[actual].t+' a '+CLASIF[nuevo].t+(nota?(': '+nota):'');
+      window.tcSbActualizarSurtido(id, cambios).then(function(){
+        Object.assign(p, cambios);
+        window.tcSbAgregarHistorial(id, { de:p.estado, a:p.estado, por:yoNombre(), nota:textoMov }).catch(function(){});
+        avisarMovimiento(p, actual, nuevo, nota);
+        ov.remove(); render();
+        if(window.mostrarPush) window.mostrarPush('Almac\u00e9n', (p.folio||'')+' \u2192 '+CLASIF[nuevo].t+' \u00b7 avisos enviados', '\u2705');
+      }).catch(function(err){ btn.disabled=false; btn.textContent='Mover y avisar'; alert('No se pudo mover: '+(err&&err.message||err)); });
+    };
+  };
+  function avisarMovimiento(p, de, a, nota){
+    if (!window.tcNotificar) return;
+    var cargar = (window.tcClasifPedidos && window.tcClasifPedidos.cargar) ? window.tcClasifPedidos.cargar(true) : Promise.resolve({});
+    cargar.then(function(cfg){
+      var lista = [];
+      var agrega = function(x){ (Array.isArray(x)?x:String(x||'').split(',')).forEach(function(e){ e=String(e||'').trim().toLowerCase(); if(e && e.indexOf('@')>0 && lista.indexOf(e)===-1) lista.push(e); }); };
+      agrega(p.creadoPor);
+      agrega(cfg[areaAvisos(a)]); agrega(cfg[areaAvisos(de)]);
+      var yo=((window.auth&&window.auth.currentUser&&window.auth.currentUser.email)||'').toLowerCase();
+      var msg='Pedido '+(p.folio||'')+' ('+(p.cliente||'')+') pas\u00f3 de '+CLASIF[de].t+' a '+CLASIF[a].t+(nota?(': '+nota):'')+'.';
+      lista.filter(function(e){ return e!==yo; }).forEach(function(e){
+        window.tcNotificar({ tipo:'pedido_movido', para:e, mensaje:msg, modulo:'Almac\u00e9n', surtidoId:p.id, folio:p.folio||'' }).catch(function(){});
+      });
+    }).catch(function(){});
+  }
+
   window.__almOpsGestionado = function(id){
     var p=buscarP(id); if(!p) return;
     if (!confirm('\u00bfMarcar el folio '+(p.folio||'')+' como gestionado por Operaciones? Saldr\u00e1 de esta lista.')) return;
@@ -2149,7 +2253,7 @@
       + '<div class="alm-evid-grid" id="alm-hist-evid-remision-'+e.id+'"><div style="color:#94a3b8;font-size:12px;">Cargando…</div></div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin:14px 0 6px;">Documentos adjuntos (órdenes de compra, etc.)</div>'
       + '<div id="alm-hist-docs-'+e.id+'" style="font-size:12px;color:#94a3b8;">Cargando…</div>'
-      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" style="display:none">';
+      + '<input type="file" accept="image/*,.pdf,.doc,.docx" id="alm-evid-file-'+e.id+'" multiple style="display:none">';
     document.getElementById('alm-modal-hist').classList.add('show');
     window.__almRefrescarEvidHist(e.id);
     window.tcSbListarDocumentos(e.id).then(function(docs){

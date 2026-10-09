@@ -1083,7 +1083,7 @@ function tickPanel(tk, list){
 
 function updateChips(){
   // Contadores: solo lo que Almacén surte por su cuenta (sin piezas para servicios ni PRO).
-  const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1 && p.clasificacion!=='servicio_piezas' && p.clasificacion!=='pro');
+  const a=pedidos.filter(p=>['finalizado','cancelado','entregado'].indexOf(p.estado)===-1 && p.clasificacion!=='servicio_piezas' && p.clasificacion!=='pro' && p.clasificacion!=='sobre_stock');
   cActivos.textContent=a.length;
   const nParciales=a.filter(p=>p.estado==='parcial').length;
   cParciales.textContent=nParciales;
@@ -1489,7 +1489,7 @@ render(true); setInterval(()=>render(false),1000);
 </script>
 
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js?v=9"></script>
+<script src="surtidos-supabase.js?v=10"></script>
 
 <!-- ===== DATOS EN VIVO · Supabase · SOLO LECTURA (oct-2026: sin Firebase) =====
      surtidos, recolecciones_locales, puntos_referencia y tv_avisos viven en
@@ -1532,7 +1532,7 @@ function iniciarEscucha(){
       // Servicio sin piezas: lo programa Operaciones, Almacén no surte nada → no sale en la TV.
       // PRO: solo aparece cuando el material sobre pedido ya llegó.
       if(d.clasificacion === 'servicio') return;
-      if(d.clasificacion === 'pro' && d.compraEstado !== 'recibido') return;
+      if((d.clasificacion === 'pro' || d.clasificacion === 'sobre_stock') && d.compraEstado !== 'recibido') return;
       const p = {
         id: d.id,
         clasificacion: d.clasificacion || '',

@@ -746,6 +746,9 @@
         + '<label>Claves de vi\u00e1ticos (van a Operaciones)</label><textarea id="cfg-via" rows="2">' + esc(lista(cfg.clavesViaticos)) + '</textarea>'
         + '<label>Claves PRO \u00b7 sobre pedido (van a Compras)</label><textarea id="cfg-pro" rows="2">' + esc(lista(cfg.clavesPro)) + '</textarea>'
         + '<label>WhatsApp de Compras (con 52 al inicio)</label><input id="cfg-wa" value="' + esc(cfg.whatsappCompras || '') + '">'
+        + '<label>Avisar a Compras (correos, separados por coma)</label><input id="cfg-av-comp" value="' + esc(lista(cfg.avisosCompras)) + '">'
+        + '<label>Avisar a Operaciones (correos)</label><input id="cfg-av-ops" value="' + esc(lista(cfg.avisosOperaciones)) + '">'
+        + '<label>Avisar a Almac\u00e9n (correos)</label><input id="cfg-av-alm" value="' + esc(lista(cfg.avisosAlmacen)) + '">'
         + '<label>Empresas (una por l\u00ednea: CLAVE | Nombre | textos a buscar en el encabezado del PDF separados por coma)</label>'
         + '<textarea id="cfg-emp" rows="6">' + esc((cfg.empresas || []).map(function (e) { return e.clave + ' | ' + e.nombre + ' | ' + (e.buscar || []).join(', '); }).join('\n')) + '</textarea>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">'
@@ -753,6 +756,7 @@
         + '</div></div>';
       document.body.appendChild(ov);
       var aLista = function (id) { return document.getElementById(id).value.split(',').map(normClave).filter(Boolean); };
+      var correos = function (id) { return document.getElementById(id).value.split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(function (x) { return x.indexOf('@') > 0; }); };
       ov.querySelector('#cfg-cancel').onclick = function () { ov.remove(); };
       ov.querySelector('#cfg-ok').onclick = function () {
         var empresas = document.getElementById('cfg-emp').value.split('\n').map(function (l) {
@@ -761,7 +765,8 @@
           return { clave: p[0].toUpperCase(), nombre: p[1] || p[0], buscar: (p[2] || p[0]).split(',').map(function (x) { return x.trim(); }).filter(Boolean) };
         }).filter(Boolean);
         var datos = { clavesServicio: aLista('cfg-serv'), clavesViaticos: aLista('cfg-via'), clavesPro: aLista('cfg-pro'),
-          whatsappCompras: document.getElementById('cfg-wa').value.replace(/\D/g, ''), empresas: empresas };
+          whatsappCompras: document.getElementById('cfg-wa').value.replace(/\D/g, ''), empresas: empresas,
+          avisosCompras: correos('cfg-av-comp'), avisosOperaciones: correos('cfg-av-ops'), avisosAlmacen: correos('cfg-av-alm') };
         window.tcSbDocs.updateDoc('config_portal', 'clasificacion_pedidos', datos).then(function () {
           _clasifCfg = Object.assign({}, CLASIF_DEFAULT, cfg, datos);
           estado.productos.forEach(function (p) { if (!p.tipoManual) p.tipo = tipoLinea(p); });
