@@ -525,10 +525,10 @@ function dbg(msg, tipo='info'){
 function toast(txt,tipo='info'){
   const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C'}[tipo]||'#1E3A5F';
   const t=document.createElement('div');
-  t.style.cssText=`position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${col};color:#fff;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;z-index:9999;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:85vw;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+  t.style.cssText=`position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${col};color:#fff;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;z-index:9999;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:88vw;text-align:center;white-space:normal;line-height:1.35`;
   t.textContent=txt;
   document.body.appendChild(t);
-  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},2500);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},txt.length>70?6000:2500);
 }
 
 // ── OFFLINE QUEUE ──
@@ -631,6 +631,7 @@ async function offlineSync(){
       synced++;
     }catch(e){
       console.warn('[MOVIL offline]',doc.tipo,e.message||e);
+      doc._error=String(e&&e.message||e||'Error desconocido').slice(0,240);doc._errorEn=new Date().toISOString();
       pendientes.push(doc); // se conserva en la cola para reintentar — nunca se borra sola
     }
   }
@@ -649,7 +650,7 @@ window.fmSyncOffline=async function(){
   if(_fmSincronizando){toast('Ya se está sincronizando…','info');return;}
   _fmSincronizando=true;
   toast('Sincronizando…','info');
-  let ok=0,fail=0;
+  let ok=0,fail=0,ultErr='';
   const pendientes=[];
   for(const doc of q){
     try{
@@ -657,13 +658,15 @@ window.fmSyncOffline=async function(){
       ok++;
     }catch(e){
       console.warn('[MOVIL syncOffline]',doc.tipo,e.message||e);
+      doc._error=String(e&&e.message||e||'Error desconocido').slice(0,240);doc._errorEn=new Date().toISOString();
+      ultErr=doc._error;
       fail++;
       pendientes.push(doc); // se conserva en la cola — nunca se borra sola
     }
   }
   localStorage.setItem(C.OFFLINE_KEY,JSON.stringify(pendientes));
   _fmSincronizando=false;
-  toast(ok+' sincronizada(s)'+(fail?' · '+fail+' sin poder sincronizar — revisa "Ver / Borrar"':''),ok>0?'ok':'err');
+  toast(ok+' sincronizada(s)'+(fail?' · '+fail+' sin poder sincronizar. Motivo: '+ultErr:''),ok>0?'ok':'err');
   await cargarMisSols();
   if(vistaAct==='vehiculo')renderVehiculo();
 };
@@ -687,7 +690,8 @@ window.fmVerOffline=function(){
       const card=document.createElement('div');card.style.cssText='border:1px solid #E2E8F0;border-radius:10px;padding:12px;margin-bottom:8px';
       const row=document.createElement('div');row.style.cssText='display:flex;align-items:flex-start;justify-content:space-between;gap:8px';
       const info=document.createElement('div');
-      info.innerHTML='<div style="font-size:12px;font-weight:700">'+(doc.tipo||'—')+'</div><div style="font-size:10.5px;color:#64748B;margin-top:2px">ECO '+(doc.vehiculoEco||'—')+' · '+(doc.creadoEn?doc.creadoEn.substring(0,10):'—')+'</div><div style="font-size:10.5px;color:#94A3B8;margin-top:1px">'+(doc.descripcion||'')+'</div>';
+      info.innerHTML='<div style="font-size:12px;font-weight:700">'+(doc.tipo||'—')+'</div><div style="font-size:10.5px;color:#64748B;margin-top:2px">ECO '+(doc.vehiculoEco||'—')+' · '+(doc.creadoEn?doc.creadoEn.substring(0,10):'—')+'</div><div style="font-size:10.5px;color:#94A3B8;margin-top:1px">'+(doc.descripcion||'')+(doc._idb?(' · '+(doc.numFotos||0)+' foto(s), '+(doc.numVideos||0)+' video(s)'):'')+'</div>'
+        +(doc._error?'<div style="font-size:11px;color:#B91C1C;font-weight:700;margin-top:6px;background:#FEF2F2;border-radius:6px;padding:6px 8px">⚠ '+String(doc._error).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</div>':'');
       const bD=document.createElement('button');bD.style.cssText='padding:4px 10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0';bD.textContent='Borrar';
       bD.dataset.idx=i;bD.onclick=function(){fmBorrarOffline(Number(this.dataset.idx),this);};
       row.appendChild(info);row.appendChild(bD);card.appendChild(row);panel.appendChild(card);
