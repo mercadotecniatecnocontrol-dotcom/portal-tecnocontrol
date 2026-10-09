@@ -5870,6 +5870,7 @@
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
+                    ${opsPuedeGestionar() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
@@ -8406,8 +8407,9 @@
         return n ? { clave: "rs:" + n, nombre: s.estTexto } : null;
     }
     function opsAsPrecioRegistro() { const k = opsAsClaveServicio(); return k ? cachePreciosServicio.get(k.clave) || null : null; }
-    function opsAsMultiplicador(reg) {
-        const s = opsAS; const u = opsAsEsSCFI() ? "manguera" : (reg?.unidad || "servicio");
+    function opsAsMultiplicador(reg) { return opsAsMultUnidad(opsAsEsSCFI() ? "manguera" : (reg?.unidad || "servicio")); }
+    function opsAsMultUnidad(u) {
+        const s = opsAS;
         if (u === "manguera") return Math.max(1, Number(s.mangueras) || 1);
         if (u === "dispensario") return Math.max(1, Number(s.dispensarios) || 1);
         if (u === "unidad") return Math.max(1, Number(s.cantidad) || 1);
@@ -8454,19 +8456,45 @@
         const v = Number(c.valor) || 0;
         return c.tipo === "pct" ? Math.round((precio || 0) * v) / 100 : v;
     }
+    // ── Precio de las otras normas de una visita conjunta (oct-2026) ──
+    // Glen: "si agrego dos servicios que me salgan los precios de los dos servicios". Antes solo
+    // se capturaba el precio de la norma principal y las demás quedaban en $0. Ahora cada norma
+    // extra tiene su propio precio (lista 1/2/3, extras o personalizado, con sugerido del cliente),
+    // se suman en el total de la visita y cada folio se guarda con el precio de SU norma.
+    function opsAsPrecioNorma(n) {
+        const s = opsAS, reg = cachePreciosServicio.get("norma:" + n) || null;
+        const pn = (s.preciosNorma || {})[n] || {}, sel = pn.sel || "";
+        let unit = null;
+        if (sel === "personalizado") unit = pn.pers === "" || pn.pers == null ? null : Number(pn.pers);
+        else if (sel.startsWith("extra:")) { const x = (reg?.extras || [])[Number(sel.slice(6))]; unit = x ? Number(x.precio) : null; }
+        else if (sel && reg && reg[sel] != null) unit = Number(reg[sel]);
+        const unidad = n === "SCFI" ? "manguera" : (reg?.unidad || "servicio");
+        const mult = sel === "personalizado" ? 1 : opsAsMultUnidad(unidad);
+        return { norma: n, reg, sel, pers: pn.pers ?? "", deSug: !!pn.deSug, unit, mult, unidad, precio: unit == null ? 0 : unit * mult, lista: opsAsNombreLista(sel, reg) };
+    }
+    // Mientras se guarda folio por folio (__soloEsta) cada uno lleva solo su propio precio.
+    function opsAsExtrasPrecio() {
+        const s = opsAS; if (!s || s.__soloEsta || s.tipo !== "inspeccion") return [];
+        return opsAsNormasVisita().slice(1).map(opsAsPrecioNorma);
+    }
     function opsAsResumenPrecio() {
         const s = opsAS, reg = opsAsPrecioRegistro();
         const unit = opsAsPrecioUnitario();
         const mult = s.precioSel === "personalizado" ? 1 : opsAsMultiplicador(reg);
         const precio = unit == null ? 0 : unit * mult;
+        const extras = opsAsExtrasPrecio();
+        const precioExtras = extras.reduce((a, x) => a + x.precio, 0);
+        const precioVisita = precio + precioExtras;
+        // Comisión en % se calcula sobre el total de la visita (todas las normas).
+        const baseComision = s.__soloEsta && s.__precioVisitaBase != null ? s.__precioVisitaBase : precioVisita;
         const auto = opsAsCostosAuto();
         const viaticos = Number(s.costoViaticos) || 0, herramienta = Number(s.costoHerr) || 0, otros = Number(s.costoOtros) || 0;
-        const comisiones = (s.comisiones || []).reduce((a, c) => a + opsAsComisionMonto(c, precio), 0);
+        const comisiones = (s.comisiones || []).reduce((a, c) => a + opsAsComisionMonto(c, baseComision), 0);
         const cobrables = auto.materiales + viaticos + herramienta + otros;
-        const totalCobrar = precio + (s.cobrarGastos ? cobrables : 0);
+        const totalCobrar = precioVisita + (s.cobrarGastos ? cobrables : 0);
         const costoTotal = auto.materiales + auto.personal + viaticos + herramienta + otros + comisiones;
         const utilidad = totalCobrar - costoTotal;
-        return { unit, mult, precio, ...auto, viaticos, herramienta, otros, comisiones, cobrables, totalCobrar, costoTotal, utilidad,
+        return { unit, mult, precio, extras, precioExtras, precioVisita, baseComision, ...auto, viaticos, herramienta, otros, comisiones, cobrables, totalCobrar, costoTotal, utilidad,
             margen: totalCobrar > 0 ? Math.round((utilidad / totalCobrar) * 1000) / 10 : null, lista: opsAsNombreLista(s.precioSel, reg) };
     }
 
@@ -8490,6 +8518,78 @@
         } catch (e) { console.warn("[Precios] sugerido:", e.message || e); }
     }
 
+    async function opsAsCargarSugeridosExtra() {
+        const s = opsAS; if (!s || s.tipo !== "inspeccion" || s.__soloEsta) return;
+        const kc = opsAsClaveCliente(); if (!kc) return;
+        s.__sugExtra = s.__sugExtra || {};
+        for (const n of opsAsNormasVisita().slice(1)) {
+            const llave = "norma:" + n + "|" + kc.clave;
+            if (llave in s.__sugExtra) continue;
+            s.__sugExtra[llave] = null;
+            try {
+                const sb = await opsSb();
+                const { data } = await sb.from("ops_ventas_servicio").select("precio,lista,creado_en").eq("cliente_clave", kc.clave).eq("servicio_clave", "norma:" + n).order("creado_en", { ascending: false }).limit(1);
+                if (opsAS !== s) return;
+                const v = (data || [])[0];
+                if (v) {
+                    s.__sugExtra[llave] = { precio: Number(v.precio), lista: v.lista, fecha: (v.creado_en || "").slice(0, 10) };
+                    s.preciosNorma = s.preciosNorma || {};
+                    const pn = s.preciosNorma[n] || (s.preciosNorma[n] = { sel: "", pers: "" });
+                    if (!pn.sel) { pn.sel = "personalizado"; pn.pers = String(v.precio); pn.deSug = true; }
+                    opsAsPintar();
+                }
+            } catch (e) { console.warn("[Precios] sugerido de " + n + ":", e.message || e); }
+        }
+    }
+    function opsAsPreciosExtraHTML() {
+        const s = opsAS, ext = opsAsExtrasPrecio(); if (!ext.length) return "";
+        const kc = opsAsClaveCliente();
+        const filas = ext.map((x, i) => {
+            const reg = x.reg;
+            const ops = [...(reg ? [["lista1", "Lista de precios 1", reg.lista1], ["lista2", "Lista de precios 2", reg.lista2], ["lista3", "Lista de precios 3", reg.lista3]].filter(o => o[2] != null) : []),
+                ...(reg?.extras || []).map((e, k) => ["extra:" + k, e.nombre, e.precio])];
+            const sug = kc && s.__sugExtra ? s.__sugExtra["norma:" + x.norma + "|" + kc.clave] : null;
+            const pideMangueras = x.unidad === "manguera" && !(s.tipo === "inspeccion" && OPS_AS_NORMA_MATERIAL.includes(s.norma));
+            return `<div class="opsas-box" style="margin-top:8px;background:#fff;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <span style="flex:1;font-size:12.5px;font-weight:800;color:#1e293b;">Inspección ${opsEsc(x.norma)}${reg ? ` <small style="color:#94a3b8;font-weight:500;">· ${OPS_PRECIO_UNIDADES[x.unidad] || ""}</small>` : ""}</span>
+                    <span style="font-size:14px;font-weight:800;color:${x.sel ? "#1D2E73" : "#94a3b8"};">${x.sel ? opsDinero(x.precio) : "Sin precio"}</span>
+                </div>
+                <div class="opsas-grid">
+                    <div><label class="opsas-lb">Precio</label><select class="opsas-in" onchange="opsAsSetPrecioNorma(${i},this.value)">
+                        <option value="" ${!x.sel ? "selected" : ""}>Selecciona…</option>
+                        ${ops.map(([v, t, m]) => `<option value="${v}" ${x.sel === v ? "selected" : ""}>${opsEsc(t)} · ${opsDinero(Number(m) * x.mult)}</option>`).join("")}
+                        <option value="personalizado" ${x.sel === "personalizado" ? "selected" : ""}>Personalizado</option>
+                    </select></div>
+                    ${x.sel === "personalizado" ? `<div><label class="opsas-lb">Precio personalizado (total)</label><input type="number" min="0" step="0.01" class="opsas-in" value="${opsEsc(x.pers)}" onchange="opsAsSetPrecioNormaPers(${i},this.value)"></div>` : ""}
+                    ${pideMangueras ? `<div><label class="opsas-lb">Mangueras (SCFI se cobra por manguera)</label><input type="number" min="0" class="opsas-in" value="${opsEsc(s.mangueras)}" onchange="opsAS.mangueras=this.value;opsAsPintar()"></div>` : ""}
+                </div>
+                ${x.mult > 1 && x.sel && x.sel !== "personalizado" ? `<div class="opsas-note">${opsDinero(x.unit)} × ${x.mult} ${x.unidad === "manguera" ? "mangueras" : x.unidad === "dispensario" ? "dispensarios" : "unidades"} = <strong>${opsDinero(x.precio)}</strong></div>` : ""}
+                ${sug ? `<div class="opsas-note" style="color:#166534;">A este cliente se le cobró <strong>${opsDinero(sug.precio)}</strong> por esta norma el ${opsEsc(sug.fecha)}.${x.deSug ? " <b>Aplicado</b>" : ` <a href="javascript:void(0)" onclick="opsAsUsarSugNorma(${i})" style="color:#15803d;font-weight:700;">Usar este precio</a>`}</div>` : ""}
+                ${!ops.length ? `<div class="opsas-note opsas-warn">Esta norma todavía no tiene lista de precios.</div>` : ""}
+                ${opsPuedeGestionar() ? `<div style="margin-top:6px;"><a href="javascript:void(0)" onclick="opsAsAbrirEditorPrecios(${i})" style="font-size:11.5px;color:#1D2E73;font-weight:600;text-decoration:underline;">${reg ? "Editar lista de precios de esta norma" : "+ Dar de alta lista de precios de esta norma"}</a></div>` : ""}
+            </div>`;
+        }).join("");
+        return `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:16px 0 4px;">Precio de las otras normas de la visita</div>
+            <div class="opsas-note" style="margin:0 0 2px;">Arriba va el precio de <strong>${opsEsc(s.norma)}</strong>. Cada norma se guarda como su propio servicio con su precio; abajo se suman todas.</div>${filas}`;
+    }
+    function opsAsPnDe(i) {
+        const s = opsAS, x = opsAsExtrasPrecio()[i]; if (!s || !x) return null;
+        s.preciosNorma = s.preciosNorma || {};
+        return s.preciosNorma[x.norma] || (s.preciosNorma[x.norma] = { sel: "", pers: "" });
+    }
+    window.opsAsSetPrecioNorma = function (i, v) { const pn = opsAsPnDe(i); if (!pn) return; pn.sel = v; pn.deSug = false; opsAsPintar(); };
+    window.opsAsSetPrecioNormaPers = function (i, v) { const pn = opsAsPnDe(i); if (!pn) return; pn.pers = v; pn.deSug = false; opsAsPintar(); };
+    window.opsAsUsarSugNorma = function (i) {
+        const s = opsAS, x = opsAsExtrasPrecio()[i], kc = opsAsClaveCliente(); if (!s || !x || !kc) return;
+        const sug = (s.__sugExtra || {})["norma:" + x.norma + "|" + kc.clave]; if (!sug) return;
+        const pn = opsAsPnDe(i); pn.sel = "personalizado"; pn.pers = String(sug.precio); pn.deSug = true; opsAsPintar();
+    };
+    // Clave de la lista que se edita: la del servicio principal o la de una norma extra.
+    function opsAsClaveEditor() {
+        const s = opsAS; if (!s) return null;
+        return s.precioEditorNorma ? { clave: "norma:" + s.precioEditorNorma, nombre: "Inspección " + s.precioEditorNorma } : opsAsClaveServicio();
+    }
     function opsAsPrecioHTML(numero, cls) {
         const s = opsAS, ks = opsAsClaveServicio();
         if (!ks) return "";
@@ -8503,9 +8603,10 @@
             <input type="radio" name="opsas-precio" ${s.precioSel === val ? "checked" : ""} onchange="opsAsSetPrecio('${val}')" style="width:15px;height:15px;">
             <span style="flex:1;font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(titulo)}</span>
             ${monto != null ? `<span style="font-size:13px;font-weight:800;color:#1D2E73;">${opsDinero(monto)}</span>` : ""}</label>`;
+        const kEd = opsAsClaveEditor() || ks, regEd = cachePreciosServicio.get(kEd.clave) || null;
         const editor = s.precioEditor ? `
             <div class="opsas-box" style="margin-top:10px;">
-                <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:8px;">${reg ? "Editar precios de" : "Dar de alta precios para"} "${opsEsc(ks.nombre)}"</div>
+                <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:8px;">${regEd ? "Editar precios de" : "Dar de alta precios para"} "${opsEsc(kEd.nombre)}"</div>
                 <div class="opsas-grid">
                     ${[["l1", "Lista de precios 1"], ["l2", "Lista de precios 2"], ["l3", "Lista de precios 3"]].map(([k, t]) => `<div><label class="opsas-lb">${t}</label><input type="number" min="0" step="0.01" class="opsas-in" value="${opsEsc(s.precioEdit[k])}" oninput="opsAS.precioEdit.${k}=this.value"></div>`).join("")}
                     <div><label class="opsas-lb">Se cobra</label><select class="opsas-in" onchange="opsAS.precioEdit.unidad=this.value">${Object.entries(OPS_PRECIO_UNIDADES).map(([k, t]) => `<option value="${k}" ${s.precioEdit.unidad === k ? "selected" : ""}>${t}</option>`).join("")}</select></div>
@@ -8514,7 +8615,7 @@
                 ${(s.precioEdit.extras || []).map((x, i) => `<div style="display:flex;gap:8px;margin-bottom:6px;"><input class="opsas-in" placeholder="Nombre (ej. Precio OXXO GAS)" value="${opsEsc(x.nombre)}" oninput="opsAS.precioEdit.extras[${i}].nombre=this.value"><input type="number" min="0" step="0.01" class="opsas-in" style="width:140px;" placeholder="$" value="${opsEsc(x.precio)}" oninput="opsAS.precioEdit.extras[${i}].precio=this.value"><button type="button" onclick="opsAS.precioEdit.extras.splice(${i},1);opsAsPintar()" style="background:#fef2f2;border:none;color:#E7402B;border-radius:8px;padding:0 11px;cursor:pointer;font-weight:700;">×</button></div>`).join("")}
                 <button type="button" class="opsas-ghost" onclick="opsAS.precioEdit.extras.push({nombre:'',precio:''});opsAsPintar()">+ Agregar nuevo precio</button>
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
-                    <button type="button" class="opsas-btn" style="background:#f1f5f9;color:#475569;" onclick="opsAS.precioEditor=false;opsAsPintar()">Cancelar</button>
+                    <button type="button" class="opsas-btn" style="background:#f1f5f9;color:#475569;" onclick="opsAS.precioEditor=false;opsAS.precioEditorNorma=null;opsAsPintar()">Cancelar</button>
                     <button type="button" id="opsas-precio-guardar" class="opsas-btn" style="background:#1D2E73;color:#fff;" onclick="opsAsGuardarListaPrecios()">Guardar lista de precios</button>
                 </div>
             </div>` : "";
@@ -8532,6 +8633,7 @@
             ${R.mult > 1 && s.precioSel !== "personalizado" ? `<div class="opsas-note">${opsDinero(R.unit)} × ${R.mult} ${opsAsEsSCFI() || reg?.unidad === "manguera" ? "mangueras" : reg?.unidad === "dispensario" ? "dispensarios" : "unidades"} = <strong>${opsDinero(R.precio)}</strong></div>` : ""}
             ${!s.precioEditor && opsPuedeGestionar() ? `<div style="margin-top:10px;"><button type="button" class="opsas-ghost" onclick="opsAsAbrirEditorPrecios()">${reg ? "Editar lista de precios / agregar nuevo precio" : "+ Dar de alta lista de precios"}</button></div>` : ""}
             ${editor}
+            ${opsAsPreciosExtraHTML()}
 
             <div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px;">Gastos del servicio</div>
             <div class="opsas-grid">
@@ -8542,7 +8644,11 @@
             <label class="opsas-chk" style="margin-top:8px;"><input type="checkbox" ${s.cobrarGastos ? "checked" : ""} onchange="opsAS.cobrarGastos=this.checked;opsAsPintar()"><span>Cobrar al cliente los gastos (materiales, viáticos, herramienta y otros) además del precio</span></label>
 
             <div class="opsas-box" style="margin-top:12px;background:#fff;">
-                ${fila("Precio del servicio", opsDinero(R.precio), false, R.lista ? "· " + opsEsc(R.lista) : "")}
+                ${R.extras.length
+                    ? fila("Precio " + opsEsc(s.norma), opsDinero(R.precio), false, R.lista ? "· " + opsEsc(R.lista) : "")
+                        + R.extras.map(x => fila("Precio " + opsEsc(x.norma), x.sel ? opsDinero(x.precio) : `<span style="color:#b45309;">Sin precio</span>`, false, x.lista ? "· " + opsEsc(x.lista) : "")).join("")
+                        + fila("Total de servicios (" + (R.extras.length + 1) + ")", opsDinero(R.precioVisita), false)
+                    : fila("Precio del servicio", opsDinero(R.precio), false, R.lista ? "· " + opsEsc(R.lista) : "")}
                 ${fila("Materiales de la receta", opsDinero(R.materiales))}
                 ${fila("Viáticos", opsDinero(R.viaticos))}
                 ${fila("Herramienta / equipo", opsDinero(R.herramienta))}
@@ -8557,14 +8663,17 @@
         </div>`;
     }
     window.opsAsSetPrecio = function (v) { if (!opsAS) return; opsAS.precioSel = v; opsAS.precioDeSugerido = false; opsAsPintar(); };
-    window.opsAsAbrirEditorPrecios = function () {
+    window.opsAsAbrirEditorPrecios = function (i) {
         const s = opsAS; if (!s) return;
-        const reg = opsAsPrecioRegistro();
-        s.precioEdit = { l1: reg?.lista1 ?? "", l2: reg?.lista2 ?? "", l3: reg?.lista3 ?? "", unidad: opsAsEsSCFI() ? "manguera" : (reg?.unidad || (opsAsEsCalDispensarios() ? "dispensario" : "servicio")), extras: (reg?.extras || []).map(x => ({ ...x })) };
+        const x = i == null ? null : opsAsExtrasPrecio()[i];
+        s.precioEditorNorma = x ? x.norma : null;
+        const reg = x ? x.reg : opsAsPrecioRegistro();
+        const unidad = x ? x.unidad : (opsAsEsSCFI() ? "manguera" : (reg?.unidad || (opsAsEsCalDispensarios() ? "dispensario" : "servicio")));
+        s.precioEdit = { l1: reg?.lista1 ?? "", l2: reg?.lista2 ?? "", l3: reg?.lista3 ?? "", unidad, extras: (reg?.extras || []).map(x => ({ ...x })) };
         s.precioEditor = true; opsAsPintar();
     };
     window.opsAsGuardarListaPrecios = async function () {
-        const s = opsAS, ks = opsAsClaveServicio(); if (!s || !ks) return;
+        const s = opsAS, ks = opsAsClaveEditor(); if (!s || !ks) return;
         const E = s.precioEdit, num = v => (v === "" || v == null) ? null : Number(v);
         const fila = { clave: ks.clave, nombre: ks.nombre, lista1: num(E.l1), lista2: num(E.l2), lista3: num(E.l3), unidad: E.unidad,
             extras: (E.extras || []).filter(x => (x.nombre || "").trim() && x.precio !== "").map(x => ({ nombre: x.nombre.trim(), precio: Number(x.precio) })).sort((a, b) => opsAsAlfa(a.nombre, b.nombre)),
@@ -8577,7 +8686,13 @@
             if (error) throw error;
             cachePreciosServicio.set(fila.clave, fila);
             s.precioEditor = false;
-            if (!s.precioSel) s.precioSel = fila.lista1 != null ? "lista1" : fila.lista2 != null ? "lista2" : fila.lista3 != null ? "lista3" : "extra:0";
+            const primera = fila.lista1 != null ? "lista1" : fila.lista2 != null ? "lista2" : fila.lista3 != null ? "lista3" : "extra:0";
+            if (s.precioEditorNorma) {
+                s.preciosNorma = s.preciosNorma || {};
+                const pn = s.preciosNorma[s.precioEditorNorma] || (s.preciosNorma[s.precioEditorNorma] = { sel: "", pers: "" });
+                if (!pn.sel) pn.sel = primera;
+                s.precioEditorNorma = null;
+            } else if (!s.precioSel) s.precioSel = primera;
             opsAsPintar();
         } catch (e) {
             alert("No se pudo guardar la lista de precios: " + (e.message || e));
@@ -8596,7 +8711,7 @@
                 <div><label class="opsas-lb">Concepto</label><input class="opsas-in" value="${opsEsc(c.concepto)}" placeholder="Ej. Líder de servicio" oninput="opsAS.comisiones[${i}].concepto=this.value"></div>
                 <div><label class="opsas-lb">Tipo</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].tipo=this.value;opsAsPintar()"><option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo</option><option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% precio</option></select></div>
                 <div><label class="opsas-lb">${c.tipo === "pct" ? "Porcentaje" : "Monto"}</label><input type="number" min="0" step="0.01" class="opsas-in" value="${opsEsc(c.valor)}" onchange="opsAS.comisiones[${i}].valor=this.value;opsAsPintar()"></div>
-                <div><label class="opsas-lb">A pagar</label><div style="padding:8px 4px;font-size:13px;font-weight:800;color:#1D2E73;">${opsDinero(opsAsComisionMonto(c, R.precio))}</div></div>
+                <div><label class="opsas-lb">A pagar</label><div style="padding:8px 4px;font-size:13px;font-weight:800;color:#1D2E73;">${opsDinero(opsAsComisionMonto(c, R.baseComision))}</div></div>
                 <button type="button" onclick="opsAS.comisiones.splice(${i},1);opsAsPintar()" title="Quitar" style="height:36px;background:#fef2f2;border:none;color:#E7402B;border-radius:8px;cursor:pointer;font-weight:800;">×</button>
             </div>`).join("");
         return `
@@ -8762,6 +8877,7 @@
             servicios: [], servBusca: "", // Solo programación: varios servicios en una misma programación
             multiEst: false, estaciones: [], semFin: "", reparto: "dias", // varias estaciones · varios días
             normasExtra: [], // Visita de inspección: otras normas en la misma visita (ej. ASEA + Anexo 21 y 22 + SCFI)
+            preciosNorma: {}, precioEditorNorma: null, // precio de cada norma extra de la visita: { [norma]: { sel, pers } }
         };
         // Flota real (Supabase) — la misma que usa Viáticos; se carga en segundo plano.
         if (typeof opsViaCargarFlota === "function") opsViaCargarFlota().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {});
@@ -8847,7 +8963,7 @@
 
     function opsAsPintar() {
         const s = opsAS; if (!s) return;
-        opsAsCargarSugerido();
+        opsAsCargarSugerido(); opsAsCargarSugeridosExtra();
         const wrap = document.getElementById("ops-modal-wrap");
         const scroll = wrap.querySelector("[data-opsas-scroll]")?.scrollTop || 0;
         const tipo = OPS_AS_TIPOS.find(t => t.k === s.tipo);
@@ -9106,7 +9222,7 @@
                 const on = extra.includes(n);
                 return `<button type="button" onclick="opsAsToggleNormaExtra('${opsEsc(n)}')" style="display:inline-flex;align-items:center;gap:5px;border:1.5px solid ${on ? "#1D2E73" : "#e2e8f0"};background:${on ? "#1D2E73" : "#fff"};color:${on ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${OPS_SVG(on ? '<path d="M20 6 9 17l-5-5"/>' : '<path d="M12 5v14M5 12h14"/>', 12)}${opsEsc(n)}</button>`;
             }).join("")}</div>
-            ${extra.length ? `<div class="opsas-note">Se crearán <strong>${extra.length + 1} servicios</strong> en la misma visita: ${opsEsc([s.norma].concat(extra).join(" + "))}. Van uno tras otro el mismo día; cada uno con su propio reporte y estatus. El precio de arriba es el de <strong>${opsEsc(s.norma)}</strong>; el de las demás se captura después en cada folio.</div>` : ""}
+            ${extra.length ? `<div class="opsas-note">Se crearán <strong>${extra.length + 1} servicios</strong> en la misma visita: ${opsEsc([s.norma].concat(extra).join(" + "))}. Van uno tras otro el mismo día; cada uno con su propio reporte y estatus. Cada una lleva su propio precio en la sección <strong>Precio del servicio</strong> y se suman en el total.</div>` : ""}
         </div>`;
     }
     window.opsAsToggleNormaExtra = function (n) {
@@ -9382,16 +9498,19 @@
     //   3) ventas_clientes en Firestore (Clientes de Ventas, con estacionCatalogoId)
     let opsNE = null, opsNeMapa = null;
     Object.defineProperty(window, "opsNE", { get: () => opsNE, configurable: true });
+    const OPS_NE_CAMPOS_DIR = ["direccion", "colonia", "cp", "municipio", "estado"];
+    let opsNeTimer = null, opsNeMarcador = null;
     const OPS_NE_SECTORES = ["Hidrocarburos", "Industria", "Comercial", "Gobierno", "Construcción", "Otro"];
     window.opsNeAbrir = function () {
-        const s = opsAS; if (!s) return;
+        // Desde "Nuevo servicio" (opsAS) o directo desde Operaciones con el botón "+ Alta de estación".
+        const s = opsAS || { estTexto: "", plaza: opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? opsCalFiltroPlaza : "Chihuahua" };
         const texto = (s.estTexto || "").trim();
         const plazaCentro = { "Chihuahua": [28.6353, -106.0889], "Juárez": [31.6904, -106.4245], "Parral": [26.9318, -105.6664], "Monterrey": [25.6866, -100.3161] }[s.plaza] || [28.6353, -106.0889];
         opsNE = {
             razonSocial: texto, nombreComercial: "", permiso: "", codigoCre: "",
             direccion: "", colonia: "", cp: "", municipio: s.plaza === "Juárez" ? "Juárez" : s.plaza === "Parral" ? "Hidalgo del Parral" : s.plaza === "Monterrey" ? "Monterrey" : "Chihuahua",
             estado: s.plaza === "Monterrey" ? "Nuevo León" : "Chihuahua",
-            lat: null, lng: null, centro: plazaCentro, ubicando: false,
+            lat: null, lng: null, centro: plazaCentro, ubicando: false, ubiAuto: false, pinManual: false, ubiMsg: "",
             encargado: "", telefono: "", correo: "", dispensarios: "", tanques: "", sondas: "", zona: "",
             sector: "Hidrocarburos", notas: "", guardando: false,
         };
@@ -9403,7 +9522,7 @@
         let ov = document.getElementById("opsne-wrap");
         if (!ov) { ov = document.createElement("div"); ov.id = "opsne-wrap"; ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px;"; document.body.appendChild(ov); }
         const sc = ov.querySelector("[data-opsne-scroll]")?.scrollTop || 0;
-        const inp = (k, label, ph, tipo, extra) => `<div${extra || ""}><label class="opsas-lb">${label}</label><input class="opsas-in" type="${tipo || "text"}" value="${opsEsc(n[k] ?? "")}" placeholder="${opsEsc(ph || "")}" oninput="opsNE.${k}=this.value"></div>`;
+        const inp = (k, label, ph, tipo, extra) => `<div${extra || ""}><label class="opsas-lb">${label}</label><input class="opsas-in" type="${tipo || "text"}" value="${opsEsc(n[k] ?? "")}" placeholder="${opsEsc(ph || "")}" oninput="opsNE.${k}=this.value${k === "municipio" ? ";opsNE.__munEscrito=true" : k === "estado" ? ";opsNE.__edoEscrito=true" : ""}${OPS_NE_CAMPOS_DIR.includes(k) ? ";opsNeAutoUbicar()" : ""}"></div>`;
         const razones = [...new Set((window.__opsAsEstCatalogo || []).map(e => e.razonSocial).filter(Boolean))].sort(opsAsAlfa);
         const dup = opsNeDuplicado();
         ov.innerHTML = `
@@ -9430,7 +9549,7 @@
                     </div>
                 </div>
                 <div class="opsas-sec">
-                    <div class="opsas-sh"><div class="opsas-tt">Dirección y ubicación</div><div class="opsas-hint">Clic en el mapa o arrastra el pin</div></div>
+                    <div class="opsas-sh"><div class="opsas-tt">Dirección y ubicación</div><div class="opsas-hint">La ubicación sale sola al escribir la dirección · o clic en el mapa y se llena la dirección</div></div>
                     <div class="opsas-grid">
                         ${inp("direccion", "Calle y número *", "Ej. Av. Tecnológico 4500")}${inp("colonia", "Colonia", "")}${inp("cp", "C.P.", "")}
                         ${inp("municipio", "Municipio / ciudad *", "")}${inp("estado", "Estado", "")}
@@ -9438,7 +9557,7 @@
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px;">
                         <button type="button" class="opsas-ghost" onclick="opsNeUbicarDireccion()">${n.ubicando ? "Buscando…" : "Ubicar por dirección"}</button>
                         <button type="button" class="opsas-ghost" onclick="opsNeMiUbicacion()">Usar mi ubicación actual</button>
-                        <span style="font-size:11.5px;align-self:center;color:${n.lat ? "#15803d" : "#b45309"};font-weight:600;">${n.lat ? `Ubicación: ${Number(n.lat).toFixed(5)}, ${Number(n.lng).toFixed(5)}` : "Sin ubicación todavía"}</span>
+                        <span id="opsne-ubi-estado" style="font-size:11.5px;align-self:center;font-weight:600;">${opsNeUbiEstadoHTML()}</span>
                     </div>
                     <div id="opsne-mapa" style="height:260px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;"></div>
                 </div>
@@ -9451,7 +9570,7 @@
             <div id="opsne-error" style="display:none;padding:10px 20px;background:#FEF2F2;border-top:1px solid #FECACA;color:#991B1B;font-size:12.5px;"></div>
             <div style="display:flex;gap:10px;justify-content:flex-end;padding:12px 20px;background:#fff;border-top:1px solid #e2e8f0;">
                 <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsNeCerrar()">Cancelar</button>
-                <button id="opsne-guardar" class="opsas-btn" style="background:#15803D;color:#fff;display:inline-flex;align-items:center;gap:7px;" onclick="opsNeGuardar()"><span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>Dar de alta y usar en el servicio</button>
+                <button id="opsne-guardar" class="opsas-btn" style="background:#15803D;color:#fff;display:inline-flex;align-items:center;gap:7px;" onclick="opsNeGuardar()"><span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>${opsAS ? "Dar de alta y usar en el servicio" : "Dar de alta estación"}</button>
             </div>
         </div>`;
         const scEl = ov.querySelector("[data-opsne-scroll]"); if (scEl) scEl.scrollTop = sc;
@@ -9464,13 +9583,93 @@
         const centro = n.lat ? [n.lat, n.lng] : n.centro;
         opsNeMapa = L.map(el, { attributionControl: false, zoomAnimation: false, fadeAnimation: false }).setView(centro, n.lat ? 16 : 12);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(opsNeMapa);
-        const icono = L.divIcon({ className: "", html: `<div style="width:18px;height:18px;border-radius:50%;background:#E7402B;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
-        if (n.lat) {
-            const m = L.marker([n.lat, n.lng], { icon: icono, draggable: true }).addTo(opsNeMapa);
-            m.on("dragend", () => { const p = m.getLatLng(); n.lat = p.lat; n.lng = p.lng; opsNePintar(); });
-        }
-        opsNeMapa.on("click", ev => { n.lat = ev.latlng.lat; n.lng = ev.latlng.lng; opsNePintar(); });
+        opsNeMarcador = null;
+        if (n.lat) opsNePonerPin(false);
+        opsNeMapa.on("click", ev => { n.lat = ev.latlng.lat; n.lng = ev.latlng.lng; n.pinManual = true; n.ubiAuto = false; opsNePonerPin(false); opsNeRefrescarUbiEstado(); opsNeLlenarDireccion(); });
         setTimeout(() => { try { opsNeMapa && opsNeMapa.invalidateSize(); } catch (e) {} }, 60);
+    }
+    // ── Ubicación automática (oct-2026) ──
+    // Glen: "que la ubicación salga sola". Al escribir la dirección se busca sola (Nominatim, con
+    // pausa de 1.2 s para no saturar el servicio); al hacer clic en el mapa o usar "mi ubicación"
+    // se llena sola la dirección (búsqueda inversa). Si el usuario ya puso el pin a mano, escribir
+    // la dirección ya no lo mueve. Todo se actualiza sin repintar el formulario (no pierde el foco).
+    function opsNeUbiEstadoHTML() {
+        const n = opsNE; if (!n) return "";
+        if (n.ubicando) return `<span style="color:#1D2E73;">Buscando ubicación…</span>`;
+        if (n.lat) return `<span style="color:${n.ubiMsg === "aprox" ? "#b45309" : "#15803d"};">${n.ubiAuto ? (n.ubiMsg === "aprox" ? "Ubicación aproximada (por colonia/C.P.)" : "Ubicación encontrada sola por la dirección") : "Ubicación"}: ${Number(n.lat).toFixed(5)}, ${Number(n.lng).toFixed(5)}</span>${n.ubiAuto ? ` <span style="color:#64748b;font-weight:500;">· si no es exacta, arrastra el pin</span>` : ""}`;
+        return `<span style="color:#b45309;">${opsEsc(n.ubiMsg || "Sin ubicación todavía — escribe la dirección y sale sola")}</span>`;
+    }
+    function opsNeRefrescarUbiEstado() { const el = document.getElementById("opsne-ubi-estado"); if (el) el.innerHTML = opsNeUbiEstadoHTML(); }
+    function opsNePonerPin(centrar) {
+        const n = opsNE; if (!n || !opsNeMapa || !n.lat) return;
+        if (opsNeMarcador) { opsNeMarcador.setLatLng([n.lat, n.lng]); }
+        else {
+            const icono = L.divIcon({ className: "", html: `<div style="width:18px;height:18px;border-radius:50%;background:#E7402B;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+            opsNeMarcador = L.marker([n.lat, n.lng], { icon: icono, draggable: true }).addTo(opsNeMapa);
+            opsNeMarcador.on("dragend", () => { const q = opsNeMarcador.getLatLng(); n.lat = q.lat; n.lng = q.lng; n.pinManual = true; n.ubiAuto = false; opsNeRefrescarUbiEstado(); });
+        }
+        if (centrar) opsNeMapa.setView([n.lat, n.lng], 16);
+    }
+    window.opsNeAutoUbicar = function () {
+        const n = opsNE; if (!n || n.pinManual) return;
+        clearTimeout(opsNeTimer);
+        opsNeTimer = setTimeout(() => { if (opsNE === n && !n.pinManual) opsNeBuscarUbicacion(false); }, 1200);
+    };
+    async function opsNeBuscarUbicacion(conAviso) {
+        const n = opsNE; if (!n) return;
+        const calle = n.direccion.trim(), mun = n.municipio.trim();
+        if (!calle && !mun) { if (conAviso) alert("Escribe la dirección o el municipio primero."); return; }
+        const llave = [calle, n.colonia, n.cp, mun, n.estado].map(x => String(x || "").trim().toLowerCase()).join("|");
+        if (!conAviso && n.__ultimaBusqueda === llave) return;
+        n.__ultimaBusqueda = llave;
+        n.ubicando = true; opsNeRefrescarUbiEstado();
+        const intentos = [
+            [calle, n.colonia, n.cp, mun, n.estado, "México"],
+            [calle, mun, n.estado, "México"],
+            [n.colonia, n.cp, mun, n.estado, "México"],
+        ].map(a => a.filter(x => String(x || "").trim()).join(", "));
+        let p = null, nivel = 0;
+        for (let i = 0; i < intentos.length && !p; i++) {
+            if (i > 0 && intentos[i] === intentos[i - 1]) continue;
+            if (!calle && i < 2) continue;
+            p = await opsGeocodificarNominatim(intentos[i]); nivel = i;
+        }
+        let soloCiudad = false;
+        if (!p && mun) { p = await opsGeocodificarNominatim([mun, n.estado, "México"].filter(Boolean).join(", ")); soloCiudad = !!p; }
+        if (opsNE !== n) return;
+        n.ubicando = false;
+        if (n.pinManual && !conAviso) { opsNeRefrescarUbiEstado(); return; }
+        if (!p) { n.ubiMsg = "No se encontró esa dirección — marca el punto en el mapa con un clic"; opsNeRefrescarUbiEstado(); if (conAviso) alert("No se encontró esa dirección. Marca el punto en el mapa con un clic."); return; }
+        if (soloCiudad) {
+            // Solo se encontró la ciudad: se centra el mapa ahí, pero no se pone pin (sería falso).
+            n.ubiMsg = "Solo se ubicó la ciudad — completa calle y número o marca el punto en el mapa";
+            if (opsNeMapa) opsNeMapa.setView([p.lat, p.lng], 13);
+            opsNeRefrescarUbiEstado(); return;
+        }
+        n.lat = p.lat; n.lng = p.lng; n.ubiAuto = true; n.ubiMsg = "";
+        if (nivel === 2) n.ubiMsg = "aprox";
+        opsNePonerPin(true); opsNeRefrescarUbiEstado();
+    }
+    // Búsqueda inversa: del punto en el mapa a la dirección (solo llena lo que esté vacío).
+    async function opsNeLlenarDireccion() {
+        const n = opsNE; if (!n || !n.lat) return;
+        const lat = n.lat, lng = n.lng;
+        try {
+            const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=es&lat=${lat}&lon=${lng}`);
+            const d = await r.json();
+            if (opsNE !== n || n.lat !== lat || n.lng !== lng || !d || !d.address) return;
+            const a = d.address;
+            const calle = [a.road || a.pedestrian || a.highway || "", a.house_number || ""].filter(Boolean).join(" ").trim();
+            const col = a.neighbourhood || a.suburb || a.quarter || a.residential || "";
+            const mun = a.city || a.town || a.village || a.municipality || a.county || "";
+            let cambio = false;
+            const poner = (k, v) => { if (v && !String(n[k] || "").trim()) { n[k] = v; cambio = true; } };
+            poner("direccion", calle); poner("colonia", col); poner("cp", a.postcode || "");
+            if (mun && (!n.municipio.trim() || !n.__munEscrito)) { if (n.municipio !== mun) { n.municipio = mun; cambio = true; } }
+            if (a.state && n.estado !== a.state && !n.__edoEscrito) { n.estado = a.state; cambio = true; }
+            n.__ultimaBusqueda = [n.direccion, n.colonia, n.cp, n.municipio, n.estado].map(x => String(x || "").trim().toLowerCase()).join("|");
+            if (cambio) opsNePintar();
+        } catch (e) { console.warn("[Alta estación] dirección desde el mapa:", e.message || e); }
     }
     function opsNeDuplicado() {
         const n = opsNE; if (!n) return null;
@@ -9482,27 +9681,29 @@
         return null;
     }
     window.opsNeCerrar = function () {
+        clearTimeout(opsNeTimer); opsNeMarcador = null;
         if (opsNeMapa) { try { opsNeMapa.remove(); } catch (e) {} opsNeMapa = null; }
         opsNE = null; document.getElementById("opsne-wrap")?.remove();
     };
-    window.opsNeUsarExistente = function (id) { window.opsNeCerrar(); window.opsAsElegirEstacion(id); };
-    window.opsNeUbicarDireccion = async function () {
+    window.opsNeUsarExistente = function (id) {
+        window.opsNeCerrar();
+        if (opsAS) window.opsAsElegirEstacion(id);
+        else alert("Esa estación ya está en el catálogo; no hace falta darla de alta otra vez.");
+    };
+    window.opsNeUbicarDireccion = function () {
         const n = opsNE; if (!n) return;
-        const dir = [n.direccion, n.colonia, n.cp, n.municipio, n.estado, "México"].filter(x => String(x || "").trim()).join(", ");
-        if (!n.direccion.trim() && !n.municipio.trim()) { alert("Escribe la dirección o el municipio primero."); return; }
-        n.ubicando = true; opsNePintar();
-        let p = await opsGeocodificarNominatim(dir);
-        if (!p) p = await opsGeocodificarNominatim([n.municipio, n.estado, "México"].filter(Boolean).join(", "));
-        if (opsNE !== n) return;
-        n.ubicando = false;
-        if (!p) { opsNePintar(); alert("No se encontró esa dirección. Marca el punto en el mapa con un clic."); return; }
-        n.lat = p.lat; n.lng = p.lng; opsNePintar();
+        n.pinManual = false;
+        opsNeBuscarUbicacion(true);
     };
     window.opsNeMiUbicacion = function () {
         const n = opsNE; if (!n) return;
         if (!navigator.geolocation) { alert("Este navegador no permite obtener la ubicación."); return; }
-        navigator.geolocation.getCurrentPosition(pos => { if (opsNE !== n) return; n.lat = pos.coords.latitude; n.lng = pos.coords.longitude; opsNePintar(); },
-            err => alert("No se pudo obtener tu ubicación: " + err.message), { enableHighAccuracy: true, timeout: 15000 });
+        n.ubicando = true; opsNeRefrescarUbiEstado();
+        navigator.geolocation.getCurrentPosition(pos => {
+            if (opsNE !== n) return;
+            n.ubicando = false; n.lat = pos.coords.latitude; n.lng = pos.coords.longitude; n.pinManual = true; n.ubiAuto = false;
+            opsNePonerPin(true); opsNeRefrescarUbiEstado(); opsNeLlenarDireccion();
+        }, err => { n.ubicando = false; opsNeRefrescarUbiEstado(); alert("No se pudo obtener tu ubicación: " + err.message); }, { enableHighAccuracy: true, timeout: 15000 });
     };
     // Promesa con límite de tiempo: si la base no responde, se informa en vez de quedarse "Guardando…".
     function opsConLimite(prom, ms, que) {
@@ -9786,7 +9987,7 @@
                 const R = opsAsResumenPrecio(), ks = opsAsClaveServicio(), kc = opsAsClaveCliente();
                 const coms = (s.comisiones || []).filter(c => c.tecId).map(c => {
                     const tt = cacheTec.find(x => x.id === c.tecId);
-                    return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: (c.concepto || "").trim() || null, tipo: c.tipo === "pct" ? "porcentaje" : "monto", valor: Number(c.valor) || 0, monto: opsAsComisionMonto(c, R.precio) };
+                    return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: (c.concepto || "").trim() || null, tipo: c.tipo === "pct" ? "porcentaje" : "monto", valor: Number(c.valor) || 0, monto: opsAsComisionMonto(c, R.baseComision) };
                 }).filter(c => c.monto > 0);
                 return {
                     precioServicio: s.precioSel ? { servicioClave: ks?.clave || null, servicioNombre: ks?.nombre || null, clienteClave: kc?.clave || null, listaClave: s.precioSel, lista: R.lista, precioUnitario: R.unit, multiplicador: R.mult, precio: R.precio } : null,
@@ -9899,7 +10100,9 @@
         const servTxt = s.tipo === "programacion" ? opsProgServiciosTxt(s.servicios) : (receta ? receta.nombre : s.tipo === "inspeccion" ? normas.join(" + ") : "");
         const respaldo = { est: s.est, estTexto: s.estTexto, fecha: s.fecha, plaza: s.plaza, plNuevo: s.plNuevo, dur: s.dur, durU: s.durU, dispensarios: s.dispensarios,
             contacto: s.contacto, telefono: s.telefono, whatsapp: s.whatsapp, correo: s.correo, puesto: s.puesto, contactoId: s.contactoId, facturarA: s.facturarA,
-            norma: s.norma, precioSel: s.precioSel, comisiones: s.comisiones };
+            norma: s.norma, precioSel: s.precioSel, precioPers: s.precioPers, comisiones: s.comisiones };
+        const preciosNorma = { ...(s.preciosNorma || {}) };
+        s.__precioVisitaBase = opsAsResumenPrecio().precioVisita; s.__soloEsta = true;
         const ventanaIni = (respaldo.fecha || "").slice(0, 10), ventanaFin = multi ? s.semFin : ventanaIni;
         const guardados = [];
         let tecs = [], durH0 = 0, errorFinal = null, orden = 0;
@@ -9924,8 +10127,11 @@
                         s.puesto = c ? (c.puesto || respaldo.puesto) : respaldo.puesto; s.contactoId = c ? (c.id || null) : null;
                         s.facturarA = e ? (e.razonSocial || respaldo.facturarA) : respaldo.facturarA;
                     }
-                    // El precio/comisiones capturados son de la norma principal; las demás quedan sin precio.
-                    s.precioSel = j === 0 ? respaldo.precioSel : ""; s.comisiones = j === 0 ? respaldo.comisiones : [];
+                    // Cada norma con SU precio (la principal con el de arriba, las demás con el suyo).
+                    // Las comisiones van una sola vez, en el primer folio de la visita.
+                    if (j === 0) { s.precioSel = respaldo.precioSel; s.precioPers = respaldo.precioPers; }
+                    else { const pn = preciosNorma[normas[j]] || {}; s.precioSel = pn.sel || ""; s.precioPers = pn.pers ?? ""; }
+                    s.comisiones = j === 0 ? respaldo.comisiones : [];
                     const r = opsAsArmarDatos(receta);
                     tecs = r.tecs; if (orden === 1) durH0 = r.durH;
                     const datos = { ...r.datos, estacion: e ? (e.nombreComercial || e.razonSocial) : x.texto,
@@ -9953,6 +10159,7 @@
             }
         } catch (err) { errorFinal = err; console.error("[Alta grupo] Error:", err); }
         Object.assign(s, respaldo);
+        delete s.__soloEsta; delete s.__precioVisitaBase;
         if (errorFinal) {
             const msg = (guardados.length ? `Se guardaron ${guardados.length} de ${total} servicios (${guardados.map(g => g.estacion + (g.normaInspeccion ? " · " + g.normaInspeccion : "")).join(", ")}); quítalos antes de reintentar. ` : "")
                 + (errorFinal && errorFinal.code === "permission-denied" ? "Tu usuario no tiene permiso de escritura." : "Motivo: " + (errorFinal && errorFinal.message ? errorFinal.message : String(errorFinal)));
@@ -10002,7 +10209,13 @@
         }
         if (opsAsEsSCFI() && !(Number(s.mangueras) > 0)) avisos.push({ c: "#B45309", t: "SCFI se cobra por manguera y no capturaste mangueras." });
         let precioTxt = "";
-        try { const R = opsAsResumenPrecio(); if (s.precioSel && R.precio) precioTxt = opsDinero(R.precio) + (R.mult > 1 ? ` (${opsDinero(R.unit)} × ${R.mult})` : "") + (R.totalCobrar && R.totalCobrar !== R.precio ? ` · total a cobrar ${opsDinero(R.totalCobrar)}` : ""); } catch (x) { /* sin precio */ }
+        try {
+            const R = opsAsResumenPrecio();
+            if (R.extras.length) {
+                const partes = [`${s.norma}: ${s.precioSel && R.precio ? opsDinero(R.precio) : "sin precio"}`].concat(R.extras.map(x => `${x.norma}: ${x.sel && x.precio ? opsDinero(x.precio) : "sin precio"}`));
+                precioTxt = partes.join(" · ") + ` · total ${opsDinero(R.precioVisita)}` + (R.totalCobrar && R.totalCobrar !== R.precioVisita ? ` · total a cobrar ${opsDinero(R.totalCobrar)}` : "");
+            } else if (s.precioSel && R.precio) precioTxt = opsDinero(R.precio) + (R.mult > 1 ? ` (${opsDinero(R.unit)} × ${R.mult})` : "") + (R.totalCobrar && R.totalCobrar !== R.precio ? ` · total a cobrar ${opsDinero(R.totalCobrar)}` : "");
+        } catch (x) { /* sin precio */ }
         const fila = (k, v, fuerte) => v ? `<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px;"><div style="width:130px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#1e293b;font-weight:${fuerte ? 800 : 600};">${v}</div></div>` : "";
         const ov = document.createElement("div");
         ov.id = "opsas-revision";
