@@ -1981,6 +1981,7 @@
             // con respaldo de sondeo cada 30s por si se pierde un evento en vivo.
             unsubSurt = window.tcSbSuscribirSurtidos(lista => {
                 cacheSurtidos = lista || [];
+                opsAvisarServiciosNuevos();
                 if (tabActual === "calendario") opsCalPintarPedidosVentas();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
@@ -5960,11 +5961,92 @@
                     <div style="font-size:12.5px;font-weight:800;color:#5b21b6;">Servicios vendidos por programar <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;margin-left:4px;font-size:11px;">${lista.length}</span></div>
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
+                <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
                 <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
             </div>
             ${opsPedVentasAbierto ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : ""}
         </div>`;
     }
+    // ── Aviso discreto de servicio nuevo (oct-2026) ──
+    // Cuando Ventas sube un pedido de servicio mientras Operaciones tiene el portal
+    // abierto: tarjetita en la esquina (se va sola), campanita suave y, si hay voz
+    // en español en el equipo, "Nuevo servicio por programar". No abre ventanas ni
+    // interrumpe lo que se esté capturando. Cada quien puede silenciar la voz.
+    let opsServVistos = null;
+    let opsVozServicios = (function () { try { return localStorage.getItem("ops_voz_servicios") !== "off"; } catch (e) { return true; } })();
+    window.opsToggleVozServicios = function () {
+        opsVozServicios = !opsVozServicios;
+        try { localStorage.setItem("ops_voz_servicios", opsVozServicios ? "on" : "off"); } catch (e) {}
+        opsCalPintarPedidosVentas();
+        if (opsVozServicios) opsHablarServicio("Avisos de voz activados");
+    };
+    function opsAvisarServiciosNuevos() {
+        const pend = opsPedidosVentasPendientes();
+        if (opsServVistos === null) { opsServVistos = new Set(pend.map(p => p.id)); return; }   // primera carga: no avisar lo que ya estaba
+        const nuevos = pend.filter(p => !opsServVistos.has(p.id) && (Date.now() - (p.createdAt || 0)) < 2 * 3600000);
+        pend.forEach(p => opsServVistos.add(p.id));
+        if (!nuevos.length || !opsPuedeGestionar()) return;
+        nuevos.forEach(opsToastServicio);
+        opsCampanita();
+        if (opsVozServicios) setTimeout(() => opsHablarServicio(nuevos.length === 1 ? ("Nuevo servicio por programar de " + opsNombreVoz(nuevos[0].cliente)) : (nuevos.length + " servicios nuevos por programar")), 700);
+    }
+    function opsNombreVoz(t) { return String(t || "").toLowerCase().replace(/\b([a-záéíóúñ])/g, m => m.toUpperCase()).trim(); }
+    let opsAudioCtx = null;
+    function opsCampanita() {
+        try {
+            opsAudioCtx = opsAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            if (opsAudioCtx.state === "suspended") opsAudioCtx.resume();
+            const t0 = opsAudioCtx.currentTime + 0.02;
+            [783.99, 1174.66].forEach((f, i) => {
+                const o = opsAudioCtx.createOscillator(), g = opsAudioCtx.createGain(), t = t0 + i * 0.14;
+                o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(opsAudioCtx.destination);
+                g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0006, t + 0.8);
+                o.start(t); o.stop(t + 0.85);
+            });
+        } catch (e) {}
+    }
+    function opsHablarServicio(frase) {
+        try {
+            if (!("speechSynthesis" in window)) return;
+            const voces = window.speechSynthesis.getVoices().filter(v => /^es([-_]|$)/i.test(v.lang));
+            if (!voces.length) return;   // sin voz en español: solo la campanita, nunca una voz robótica
+            const puntaje = v => (/natural|neural|online/i.test(v.name) ? 100 : 0) + (/google/i.test(v.name) ? 40 : 0) + (/es[-_]mx/i.test(v.lang) ? 10 : 0);
+            const v = voces.sort((a, b) => puntaje(b) - puntaje(a))[0];
+            const u = new SpeechSynthesisUtterance(frase);
+            u.voice = v; u.lang = v.lang; u.rate = 1; u.pitch = 1.05; u.volume = 0.75;
+            if (window.speechSynthesis.speaking) return;   // no encimar con otra voz
+            window.speechSynthesis.speak(u);
+        } catch (e) {}
+    }
+    if ("speechSynthesis" in window) { try { window.speechSynthesis.getVoices(); window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } catch (e) {} }
+    function opsToastServicio(p) {
+        let pila = document.getElementById("ops-toast-serv");
+        if (!pila) {
+            pila = document.createElement("div"); pila.id = "ops-toast-serv";
+            pila.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:9000;display:flex;flex-direction:column;gap:8px;max-width:330px;pointer-events:none;";
+            document.body.appendChild(pila);
+        }
+        const serv = (p.productos || []).filter(x => x.tipo === "servicio" || x.tipo === "viaticos")[0];
+        const t = document.createElement("div");
+        t.style.cssText = "pointer-events:auto;background:#fff;border:1px solid #ede9fe;border-left:4px solid #7c3aed;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.18);padding:11px 13px;font-family:inherit;opacity:0;transform:translateY(8px);transition:all .25s;";
+        t.innerHTML = `<div style="display:flex;align-items:center;gap:6px;"><span style="font-size:10.5px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.4px;">Nuevo servicio por programar</span>
+            <button style="margin-left:auto;background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;" title="Cerrar">\u00d7</button></div>
+            <div style="font-weight:800;font-size:13px;color:#1D2E73;margin-top:3px;">${opsEsc(p.cliente || "Sin cliente")}</div>
+            <div style="font-size:11.5px;color:#475569;margin-top:2px;">${opsEsc(p.folio || "")}${serv ? " · " + opsEsc((serv.espec || serv.desc || "").slice(0, 60)) : ""}</div>
+            <button style="margin-top:8px;background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver en la lista</button>`;
+        const cerrar = () => { t.style.opacity = "0"; setTimeout(() => t.remove(), 260); };
+        t.querySelectorAll("button")[0].onclick = cerrar;
+        t.querySelectorAll("button")[1].onclick = () => {
+            cerrar();
+            if (tabActual !== "calendario") window.opsCambiarTab("calendario");
+            opsPedVentasAbierto = true;
+            setTimeout(() => { opsCalPintarPedidosVentas(); const b = document.getElementById("ops-cal-pedidos-ventas"); if (b) b.scrollIntoView({ behavior: "smooth", block: "start" }); }, 250);
+        };
+        pila.appendChild(t);
+        requestAnimationFrame(() => { t.style.opacity = "1"; t.style.transform = "none"; });
+        setTimeout(cerrar, 15000);
+    }
+
     window.opsCalTogglePedidosVentas = function () { opsPedVentasAbierto = !opsPedVentasAbierto; opsCalPintarPedidosVentas(); };
     window.opsCalVerPdfPedido = function (id) {
         const w = window.open("", "_blank");
