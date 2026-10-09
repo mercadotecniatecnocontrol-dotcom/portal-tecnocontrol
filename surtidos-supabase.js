@@ -515,8 +515,10 @@
   window.tcSbResumenEvidenciasDocs = function (ids) {
     if (!ids || !ids.length) return Promise.resolve({ evidencias: {}, documentos: {} });
     return cargarSupabase().then(function (sb) {
+      // oct-2026: la base devuelve solo la evidencia más reciente por categoría y sin
+      // base64 (antes bajaba TODAS las fotos completas: más de 100 MB por apertura).
       return Promise.all([
-        sb.from('surtido_evidencias').select('surtido_id,categoria,imagen,url,nombre,subido_en').in('surtido_id', ids),
+        sb.rpc('tc_resumen_evidencias', { p_ids: ids.map(String) }),
         sb.from('surtido_documentos').select('surtido_id').in('surtido_id', ids),
       ]);
     }).then(function (r) {
@@ -527,7 +529,7 @@
         var cat = e.categoria || 'general';
         evid[e.surtido_id] = evid[e.surtido_id] || {};
         // Guarda la más reciente de cada categoría, para poder previsualizarla directo.
-        if (!evid[e.surtido_id][cat]) evid[e.surtido_id][cat] = { imagen: e.imagen, url: e.url, nombre: e.nombre };
+        if (!evid[e.surtido_id][cat]) evid[e.surtido_id][cat] = { imagen: e.imagen === 'pendiente' ? null : e.imagen, url: e.url, nombre: e.nombre };
       });
       (r[1].data || []).forEach(function (d) { docs[d.surtido_id] = (docs[d.surtido_id] || 0) + 1; });
       return { evidencias: evid, documentos: docs };

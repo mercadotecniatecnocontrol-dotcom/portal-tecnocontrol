@@ -286,7 +286,7 @@
     if (filtro.area==='almacen' && c!=='productos' && c!=='pro_mixto') return false;
     if (filtro.area==='pro' && !esPro(p)) return false;
     if (filtro.area==='stock' && !esStock(p)) return false;
-    if (!filtro.area && c==='servicio') return false;   // servicio sin piezas: solo en la vista Servicios
+    if (!filtro.area && c==='servicio' && !filtro.q) return false;   // servicio sin piezas: solo en Servicios (salvo al buscar)
     if (filtro.prio && p.prioridad !== filtro.prio) return false;
     if (filtro.tipo && p.tipo !== filtro.tipo) return false;
     if (filtro.q){
@@ -674,6 +674,8 @@
     + '.alm-mover-lb{display:block;font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px;}'
     + '#alm-mover-nota{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;font-family:inherit;font-size:12.5px;}'
     + '.alm-mover-acc{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}'
+    + '.alm-area.hit{border-color:var(--ac);box-shadow:0 0 0 3px rgba(250,204,21,.55);}'
+    + '.alm-busq-aviso{grid-column:1/-1;background:#fffbeb;border:1px solid #fde68a;color:#78350f;border-radius:12px;padding:10px 14px;font-size:12.5px;margin-bottom:4px;}'
     + '.alm-areas{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:0 0 12px;}'
     + '.alm-area{display:flex;align-items:center;gap:10px;text-align:left;background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:10px 12px;cursor:pointer;font-family:inherit;position:relative;overflow:hidden;transition:box-shadow .15s,border-color .15s,transform .15s;box-shadow:0 1px 2px rgba(15,23,42,.04);}'
     + '.alm-area:hover{border-color:var(--ac);box-shadow:0 4px 14px rgba(15,23,42,.08);}'
@@ -1198,7 +1200,17 @@
     var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
     var nPro = todosActivos.filter(esPro).length;
     var nAlm = todosActivos.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length;
-    pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro, stock: todosActivos.filter(esStock).length });
+    if (filtro.q){
+      // Al buscar, cada pestaña muestra cuántos resultados tiene: así se ve en qué espacio quedó el pedido.
+      var coincide = function(p){ return pasaBusqueda(p); };
+      var activosQ = todosActivos.filter(coincide);
+      pintarAreas({ '': activosQ.length,
+        almacen: activosQ.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length,
+        servicios: colsServicios().reduce(function(a,c){ return a+c.lista.filter(coincide).length; },0),
+        pro: activosQ.filter(esPro).length, stock: activosQ.filter(esStock).length }, true);
+    } else {
+      pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro, stock: todosActivos.filter(esStock).length });
+    }
 
     var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
     var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
@@ -1238,7 +1250,21 @@
       html += lista.length ? lista.map(tarjeta).join('') : '<div class="alm-empty">Sin pedidos</div>';
       html += '</div>';
     });
-    boardEl.innerHTML=html;
+    boardEl.innerHTML=avisoBusqueda(visibles) + html;
+  }
+  // Si lo buscado no está activo en el tablero, dice dónde está (entregado, cancelado, en otra pestaña).
+  function avisoBusqueda(visibles){
+    if (!filtro.q || visibles.length) return '';
+    var fuera = pedidos.filter(function(p){ return pasaBusqueda(p) && !p.eliminada; }).slice(0, 3);
+    if (!fuera.length) return '<div class="alm-busq-aviso">No hay ning\u00fan pedido con \u201c'+esc(filtro.q)+'\u201d.</div>';
+    return fuera.map(function(p){
+      var donde;
+      if (p.estado==='entregado'||p.estado==='finalizado') donde = 'ya fue <b>entregado</b>'+(p.entregadoEn?(' el '+esc(new Date(p.entregadoEn).toLocaleDateString('es-MX'))):'')+'. B\u00fascalo en el Historial de entregas.';
+      else if (p.estado==='cancelado') donde = 'est\u00e1 <b>cancelado</b>.';
+      else if (esServicio(p) && p.opsGestionado) donde = 'es un <b>servicio</b> que Operaciones ya gestion\u00f3.';
+      else donde = 'est\u00e1 en la pesta\u00f1a <b>'+CLASIF[clasif(p)].t+'</b>.';
+      return '<div class="alm-busq-aviso"><b>'+esc(p.folio||'')+'</b> \u00b7 '+esc(p.cliente||'')+': '+donde+'</div>';
+    }).join('');
   }
 
   // Pestañas de área justo encima del kanban
@@ -1254,11 +1280,11 @@
     { k:'stock',     t:'Sobre stock',      d:'Lo manejamos \u00b7 sin existencia', c:'#be185d',
       i:'<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M8 14l8-4"/><path d="M16 14l-8-4"/>' }
   ];
-  function pintarAreas(cuentas){
+  function pintarAreas(cuentas, buscando){
     var el=document.getElementById('alm-areas'); if(!el) return;
     el.innerHTML = AREAS.map(function(a){
       var on = filtro.area===a.k, n = cuentas[a.k]||0;
-      return '<button type="button" class="alm-area'+(on?' on':'')+'" style="--ac:'+a.c+'" onclick="window.__almArea(\''+a.k+'\')">'
+      return '<button type="button" class="alm-area'+(on?' on':'')+(buscando&&n&&!on?' hit':'')+'" style="--ac:'+a.c+'" onclick="window.__almArea(\''+a.k+'\')">'
         + '<span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+a.i+'</svg></span>'
         + '<span class="tx"><span class="t">'+a.t+'</span><span class="d">'+a.d+'</span></span>'
         + '<span class="n">'+n+'</span></button>';
