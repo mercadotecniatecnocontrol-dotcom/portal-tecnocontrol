@@ -23,6 +23,14 @@
 //    window.tcSbNotifSuscribir(cb)       cb(datos) por cada notificación NUEVA
 //    window.tcMigrarPaso1()              copia única Firestore → Supabase
 //
+//  Matriz de notificaciones (Fase 1, oct-2026) — tablas notif_* en Supabase:
+//    window.tcNotifModulo(aviso)          → 'Operaciones' | 'Flotilla' | … | 'Sin clasificar'
+//    window.tcNotifPermitida(correo, {modulo, personal, tipo})  → true/false
+//    window.tcNotificarEvento(evento, datos)  avisa a los destinatarios de la matriz
+//    window.tcNotifRecargar()             vuelve a leer la configuración
+//    window.tcNotifConfig()               copia de la configuración cargada
+//  Si las tablas no existen o fallan, TODO se entrega como antes (nunca se pierde un aviso).
+//
 //  El `id` que ve el resto del código es `firestore_id` (los ids de Firestore
 //  de siempre; las tareas nuevas reciben un UUID) — así los vínculos que ya
 //  existen (parrilla → tareaId, compartidos, etc.) siguen funcionando.
@@ -292,6 +300,110 @@
       return q;
     }).then(function (r) { if (r.error) throw r.error; return (r.data || []).map(filaANotif); });
   };
+
+  // ═════════════ MATRIZ DE NOTIFICACIONES (Fase 1, oct-2026) ═════════════
+  // Quién recibe qué vive en Supabase (notif_preferencias, notif_tipos,
+  // notif_matriz) y se edita desde el panel de notif-matriz.js.
+  // El filtro "duro" de los avisos dirigidos a una persona lo hace la base
+  // (trigger trg_notif_filtrar); aquí se filtra lo que el portal muestra a
+  // los administradores que "ven todo".
+  var _nPref = {}, _nTipos = [], _nMatriz = {}, _nCarga = null;
+
+  function nPatronARegex(patron) {
+    var s = String(patron || ''), r = '';
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (ch === '%') r += '.*';
+      else if (ch === '_') r += '.';
+      else if (/[A-Za-z0-9]/.test(ch)) r += ch;
+      else r += '\\' + ch;
+    }
+    return new RegExp('^' + r + '$');
+  }
+  function nOrdenTipos(a, b) {
+    var ca = a.patron.indexOf('%') >= 0, cb = b.patron.indexOf('%') >= 0;
+    if (ca !== cb) return ca ? 1 : -1;            // exactos primero
+    return b.patron.length - a.patron.length;     // luego el patrón más largo
+  }
+  function nTipo(tipo) {
+    var t = String(tipo || '');
+    for (var i = 0; i < _nTipos.length; i++) { if (_nTipos[i]._re.test(t)) return _nTipos[i]; }
+    return null;
+  }
+  function nCargar() {
+    _nCarga = sb().then(function (c) {
+      return Promise.all([
+        c.from('notif_preferencias').select('*').eq('activo', true),
+        c.from('notif_tipos').select('*'),
+        c.from('notif_matriz').select('*'),
+      ]);
+    }).then(function (rs) {
+      var err = rs[0].error || rs[1].error || rs[2].error;
+      if (err) throw err;
+      var p = {};
+      (rs[0].data || []).forEach(function (r) { p[String(r.correo || '').toLowerCase().trim()] = r; });
+      var t = (rs[1].data || []).map(function (r) { r._re = nPatronARegex(r.patron); return r; }).sort(nOrdenTipos);
+      var m = {};
+      (rs[2].data || []).forEach(function (r) { m[r.evento] = r; });
+      _nPref = p; _nTipos = t; _nMatriz = m;
+      return true;
+    }).catch(function (e) {
+      console.warn('[notif matriz] no se pudo leer la configuración — se entregan todos los avisos como antes:', e.message || e);
+      _nCarga = null;
+      return false;
+    });
+    return _nCarga;
+  }
+  window.tcNotifRecargar = nCargar;
+  window.tcNotifConfig = function () {
+    return { preferencias: Object.assign({}, _nPref), tipos: _nTipos.slice(), matriz: Object.assign({}, _nMatriz) };
+  };
+
+  // Módulo de un aviso: el que trae el propio aviso, si no por su tipo.
+  window.tcNotifModulo = function (aviso) {
+    var a = aviso || {};
+    if (a.modulo) return a.modulo;
+    var t = nTipo(a.tipo);
+    return t ? t.modulo : 'Sin clasificar';
+  };
+
+  // ¿Esta persona debe ver este aviso? Sin preferencia guardada = sí (como hoy).
+  window.tcNotifPermitida = function (correo, info) {
+    var pref = _nPref[String(correo || '').toLowerCase().trim()];
+    if (!pref || pref.modo !== 'solo') return true;
+    var i = info || {};
+    if (i.personal && pref.incluir_personales) return true;
+    if (i.tipo && pref.incluir_acciones) { var t = nTipo(i.tipo); if (t && t.requiere_accion) return true; }
+    return (pref.modulos || []).indexOf(i.modulo || 'Sin clasificar') >= 0;
+  };
+
+  // Avisa a todos los destinatarios de un evento de la matriz.
+  // Uso: tcNotificarEvento('listo_para_facturar', { mensaje: '…', folio: 'CHH123' })
+  // Devuelve cuántos avisos se enviaron.
+  window.tcNotificarEvento = function (evento, datos) {
+    return (_nCarga || nCargar()).then(function () {
+      var ev = _nMatriz[evento];
+      if (!ev || !ev.activo) { console.warn('[notif matriz] evento sin destinatarios o apagado:', evento); return 0; }
+      var vistos = {}, dest = [];
+      (ev.destinatarios || []).forEach(function (x) {
+        var e = String(x || '').toLowerCase().trim();
+        if (e && !vistos[e]) { vistos[e] = 1; dest.push(e); }
+      });
+      var d = datos || {};
+      return Promise.all(dest.map(function (para) {
+        return window.tcNotificar(Object.assign({}, d, {
+          tipo: d.tipo || evento, para: para, modulo: d.modulo || ev.modulo, evento: evento,
+        })).then(function () { return 1; }, function (e) {
+          console.warn('[notif matriz] aviso a ' + para + ' falló:', e.message || e); return 0;
+        });
+      })).then(function (r) { return r.reduce(function (a, b) { return a + b; }, 0); });
+    });
+  };
+
+  nCargar();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') nCargar();
+  });
 
   // ═════════════════ MIGRACIÓN ÚNICA Firestore → Supabase ═════════════════
   // Correr UNA vez desde la consola (F12), con sesión de administrador y con

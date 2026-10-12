@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
-    <script src="portal-supabase.js?v=1"></script>
+    <script src="portal-supabase.js?v=2"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -2194,6 +2194,7 @@ const NOMBRE_MAP = {
     'miguel@tecnocontrol.com.mx':          'operaciones',
     'aux.contable@tecnocontrol.com.mx':    'Aux. Contable',
     'contabilidad@tecnocontrol.com.mx':    'Contabilidad',
+    'ingresos2@tecnocontrol.com.mx':       'Ale (Ingresos)',
     // ── Vendedores ──
     'guillermo.d@tecnocontrol.com.mx':     'Guillermo Durstewitz',
     'antonio@tecnocontrol.com.mx':         'Antonio Luna',
@@ -2217,7 +2218,7 @@ if(!window.esAdmin) window.esAdmin = esAdminTotal; // alias de compatibilidad
 // ── Usuarios disponibles para asignar tareas (por área) ──────
 const EMPLEADOS_TECNOCONTROL = ['ACEVES MOLINA IVAN ARGENIS', 'ACOSTA CHAVIRA CARLOS', 'ACOSTA CONTRERAS CRISTINA JUDITH', 'BARRAZA LUYA SAUL ISMAEL', 'CALIXTO SANCHEZ RAFAEL', 'CAMPOS GOMEZ ADA JAQUELINE', 'CARMONA LAGUNAS SERGIO', 'CASTRO MUÑOZ SAUL', 'CHACON TERRAZAS LUCERO', 'CHAVEZ ALVAREZ RUTH YADIRA', 'CHAVEZ BARRAZA OSCAR IVAN', 'CHAVEZ CHAVEZ IVAN', 'CONTRERAS MORALES ELVA NIDIA', 'CORONADO VALENZUELA SOCORRO ANNET', 'DE LA CRUZ EMILIO JULIO CESAR', 'DE LA O MAESE MARTIN', 'DURSTEWITZ MAESE GUILLERMO', 'ENRIQUEZ GALLARDO JORGE ALBERTO', 'ESCALANTE JARAMILLO ANA KAREN', 'ESTRADA GOMEZ ALAN ALBERTO', 'GARCIA LEDEZMA JESUS ALVARO', 'GARCIA MONTEMAYOR VERONICA JANETH', 'GONZALEZ BABONOYABA RICARDO ANTONIO', 'GONZALEZ DELGADO ERICKA IDALY', 'GUERRERO GOMEZ JORGE', 'GUTIERREZ ALVARADO NAYRA DIDI', 'GUTIERREZ VILLARREAL DENISSE', 'GUZMAN MORALES FLOR IDALIA', 'GUZMAN NEAVE KENIA YADIRA', 'HERNANDEZ PEREZ RUBEN ALBERTO', 'HERNANDEZ PRIETO JOSUE', 'HERNANDEZ RIOS JESUS RAMON', 'LEAL MARTINEZ ROQUE MANUEL', 'LOPEZ AVILA SANDRA LUCERO', 'LOPEZ DELGADO LUIS HUMBERTO', 'LUNA ESPINOZA JAIME ROEL', 'MEDINA CONTRERAS GIOVANNI ISRAEL', 'MENDOZA BECERRA SERGIO', 'MINJAREZ OCHOA ALBERTO ALAN', 'MONTELLANO PASILLAS MIGUEL ANGEL', 'MORALES CRUZ GABRIEL GAEL', 'MORALES MENDOZA TOMAS', 'MORENO MOLINA REYES', 'MORIEL SAENZ RICARDO SALVADOR', 'MUÑOZ AVILA ROBERTO', 'MUÑOZ BLANCO LIZETH CRISTINA', 'NUÑEZ ALATORRE ULISES', 'OROZCO MIRANDA ANA CRISTINA', 'PARRA BLANCO ZAIRA SIBEL', 'PEREZ GARCIA MARTHA ARACELY', 'PINEDO PALOMA', 'PORTILLO PORTILLO JOSE LUIS', 'PRECIADO GRIJALVA GLEN IVAN', 'REYES GONZALEZ PEDRO', 'RIOS SALCIDO JOON OMAIRA', 'RUIZ OLMEDO NORMA IDALY', 'SALCEDO GARDEA FILIBERTO ISAI', 'SALMON RIVAS FABRICIO ABUNDIO', 'SAUCEDO MARTINEZ IRVING ABRAHAM', 'SAUZAMEDA OCHOA FATIMA ANAHI', 'SEPULVEDA MENDOZA IVAN ROBERTO', 'SOTO GONZALEZ BENITO', 'TERRAZAS SERRANO FERNANDO', 'URIBE MAESE JORGE ALBERTO', 'VALENCIA BARRAZA JESUS BERSAIN', 'VALENCIA MEZA LUIS MIGUEL', 'VALENZUELA LOPEZ JOSE LUIS'];
 const USUARIOS_AREA = {
-    'Ingresos':        ['facturacion@tecnocontrol.com.mx'],
+    'Ingresos':        ['facturacion@tecnocontrol.com.mx', 'ingresos2@tecnocontrol.com.mx'],
     'Egresos':         ['aux.contable@tecnocontrol.com.mx'],
     'Contabilidad':    ['contabilidad@tecnocontrol.com.mx'],
     'Recursos Humanos':['rh@tecnocontrol.com.mx'],
@@ -2234,6 +2235,7 @@ const USUARIOS_AREA = {
     ],
 };
 const DEPTOS = ["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas","Pagos","Gestoría","Almacén","Compras","Operaciones","Flotilla","Contraloría","Desarrollos","Cobranza"];
+window.DEPTOS_PORTAL = DEPTOS; // para notif-matriz.js (Fase 1, oct-2026)
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const COLORES = ['#00c9a7','#1a7fe8','#ffd166','#ff2d8b','#7c5cfc','#ff8c42','#00d4e8','#0891b2','#d946ef','#78716c','#ea580c','#4f46e5','#059669','#7c3aed','#f59e0b','#22c55e'];
 const ICONS = ['<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="21" x2="6" y2="3"/><line x1="6" y1="3" x2="21" y2="3"/><line x1="6" y1="7" x2="2" y2="5"/><line x1="17" y1="3" x2="17" y2="11"/><path d="M15 11h4l-2 3z"/><line x1="2" y1="21" x2="10" y2="21"/></svg>','<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>'];
@@ -2717,7 +2719,9 @@ function escuchar(){
                 const esMiTarea2 = data.responsable === yo;
                 const esMiArea2 = miDepto2 !== '' &&
                     miDepto2.toLowerCase() === (data.area||'').toLowerCase();
-                if(esAdmin2 || esMiTarea2 || esMiArea2) {
+                // Matriz de notificaciones (Fase 1, oct-2026): respeta "solo estos módulos"
+                const okMatriz2 = !window.tcNotifPermitida || window.tcNotifPermitida(yo, { modulo: data.area||'', personal: esMiTarea2 });
+                if(okMatriz2 && (esAdmin2 || esMiTarea2 || esMiArea2)) {
                     const asignador = (data.creadoPor || data.responsable || '').split('@')[0];
                     window.mostrarPush(
                         '📋 Nueva tarea asignada',
@@ -2743,7 +2747,9 @@ function escuchar(){
                         m.toLowerCase() === yo.toLowerCase()
                     );
 
-                    if(esAdmin || esMiTarea || esMiArea || meMencionan) {
+                    // Matriz de notificaciones (Fase 1, oct-2026)
+                    const okMatriz = !window.tcNotifPermitida || window.tcNotifPermitida(yo, { modulo: data.area||'', personal: esMiTarea || meMencionan });
+                    if(okMatriz && (esAdmin || esMiTarea || esMiArea || meMencionan)) {
                         const quien = ultimo.u.split('@')[0];
                         const tarea = data.actividad || 'una tarea';
                         const areaName = data.area || '';
@@ -2902,6 +2908,11 @@ function escucharFlotillaNotifs() {
 
             if(!meCorresponde) return;
 
+            // Matriz de notificaciones (Fase 1, oct-2026): quien tenga "solo estos módulos"
+            // deja de ver lo de otros módulos (aunque sea admin). Las menciones siguen llegando.
+            const moduloNotif = window.tcNotifModulo ? window.tcNotifModulo(d) : 'Flotilla';
+            if(window.tcNotifPermitida && !window.tcNotifPermitida(yo, { modulo: moduloNotif, personal: razon === 'mencion', tipo })) return;
+
             // ── Construir la notificación visual ──
             const icono = FL_NOTIF_ICONOS[razon === 'mencion' ? 'mencion' : tipo] || '🔔';
             const claseExtra = FL_NOTIF_CLASE[razon === 'mencion' ? 'mencion' : tipo] || '';
@@ -2920,7 +2931,7 @@ function escucharFlotillaNotifs() {
                 regreso_etapa: 'Flotilla — Regresa a etapa anterior',
                 mencion:       'Te mencionaron en Flotilla',
             };
-            const titulo = esMencion ? titulos.mencion : (titulos[tipo] || 'Flotilla — Notificación');
+            const titulo = esMencion ? titulos.mencion : (titulos[tipo] || ((moduloNotif && moduloNotif !== 'Sin clasificar' ? moduloNotif : 'Flotilla') + ' — Notificación'));
             const mensajeCorto = (msg || '').slice(0, 120);
 
             window.mostrarPush(
@@ -2994,6 +3005,7 @@ window.abrirPanelSuscripciones = function() {
         <div style="margin-top:16px;padding:10px 12px;background:#FFFBEB;border-radius:8px;border:1px solid #FDE68A">
             <div style="font-size:10.5px;color:#92400E">Siempre recibirás notificaciones de tu departamento y cuando te mencionen directamente.</div>
         </div>
+        ${soy_admin ? `<button onclick="document.getElementById('fl-subs-ov').remove();if(window.abrirMatrizNotificaciones)abrirMatrizNotificaciones();" style="margin-top:12px;width:100%;padding:10px;background:#fff;color:#1D2E73;border:1.5px solid #1D2E73;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Quién recibe qué (todo el portal)</button>` : ''}
         <button onclick="document.getElementById('fl-subs-ov').remove()" style="margin-top:16px;width:100%;padding:10px;background:#0A1628;color:#fff;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">Listo</button>
     </div>`;
     document.body.appendChild(ov);
@@ -3020,6 +3032,7 @@ const EMAIL_AREA_MAP = {
     'c.acosta@tecnocontrol.com.mx':         'Administración',
     'rh@tecnocontrol.com.mx':               'Recursos Humanos',
     'facturacion@tecnocontrol.com.mx':      'Ingresos',
+    'ingresos2@tecnocontrol.com.mx':        'Ingresos', // Ale — facturación (oct-2026)
     'aux.contable@tecnocontrol.com.mx':     'Egresos',
     'mercadotecniatecnocontrol@gmail.com':  'Marketing',
     'contabilidad@tecnocontrol.com.mx':     'Contabilidad',
@@ -3054,6 +3067,7 @@ const EMAIL_AREA_MAP = {
     'calidad@tecnocontrol.com.mx':          'Gestoría',
     'd.gutierrez@tecnocontrol.com.mx':      'Gestoría', // gerencia de Gestoría
 };
+window.EMAIL_AREA_MAP_PORTAL = EMAIL_AREA_MAP; // para notif-matriz.js (Fase 1, oct-2026)
 
 // ── Accesos extra de SOLO LECTURA a áreas fuera del departamento propio ──
 // La clave es el email en minúsculas; el valor es la lista de áreas que puede
@@ -5435,7 +5449,8 @@ cargarModuloMarketing();
             const inv   = (p.involucrados||[]).includes(yo) ||
                           p.responsable===yo ||
                           (typeof esAdminTotal==='function' && esAdminTotal(yo));
-            if(inv && (diff===0||diff===1)){
+            const okMatrizF = !window.tcNotifPermitida || window.tcNotifPermitida(yo, { modulo: p.area||'', personal: (p.involucrados||[]).includes(yo) || p.responsable===yo });
+            if(inv && okMatrizF && (diff===0||diff===1)){
                 const txt = diff===0 ? 'vence HOY' : 'vence mañana';
                 if(window.mostrarPush) window.mostrarPush(
                     `📅 Fecha compromiso ${txt}`,
@@ -5856,6 +5871,7 @@ window.irAlmacen = function(btn){
 <script src="almacen-pdf.js?v=5"></script>
 <script src="compras.js?v=pro2"></script>
 <script src="cobranza.js"></script>
+<script src="notif-matriz.js?v=1"></script>
 <script src="logistica.js"></script>
 <script src="mis-pedidos.js?v=3"></script>
 <script src="gestoria.js"></script>
