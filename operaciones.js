@@ -12810,6 +12810,7 @@
                     ${opsViaTabsHTML()}
                 </div>
                 <div style="display:flex;gap:8px;">
+                    ${opsPuedeGestionar() || autoriza ? `<button onclick="opsViaAbrirHoteles()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Hoteles</button>` : ""}
                     ${opsRolActual() === "administrador" || autoriza ? `<button onclick="opsViaAbrirTarifas()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Tarifas</button>` : ""}
                     ${opsPuedeGestionar() || autoriza ? `<button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>` : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
                 </div>
@@ -13114,7 +13115,7 @@
     window.opsViaAbrirFormulario = async function () {
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:26px;font-size:13px;color:#475569;">Cargando estaciones, folios, vehículos y técnicos…</div></div>`;
-        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos(), opsViaCargarFlota(), opsViaCargarCasetas(), opsViaCargarGps()]); }
+        try { await Promise.all([opsViaCargarCfg(), opsViaCargarEstaciones(), opsViaCargarFolios(), opsViaTecnicos(), opsViaCargarFlota(), opsViaCargarCasetas(), opsViaCargarGps(), opsViaCargarHoteles()]); }
         catch (e) { wrap.innerHTML = ""; alert("No se pudo abrir el formulario: " + (e.message || e)); return; }
         const ahora = new Date(); ahora.setDate(ahora.getDate() + 1); ahora.setHours(7, 0, 0, 0);
         opsViaForm = {
@@ -13129,6 +13130,11 @@
             requiere: null, requiereManual: false,
             desayunos: 0, comidas: 0, cenas: 0, comidasManual: false,
             noches: 0, nochesManual: false, hospedajePorNoche: opsViaCfg.hospedajePorNoche || 900,
+            // Etapa B (oct-2026): hotel por habitación, catálogo de hoteles y quién paga el hotel.
+            hotelId: null, hotelNombre: "", hotelModo: "deposito", hotelDesayuno: false,
+            habSencillas: 0, habDobles: 0, habManual: false,
+            precioSencilla: opsViaCfg.hospedajePorNoche || 1200, precioDoble: opsViaCfg.hospedajePorNoche || 1200,
+            empresaEntrega: "Tecnocontrol", empresaCobra: "", cobroCliente: null, cobroManual: false,
             casetas: [], aplicaCasetas: false, casetasEstado: "", casetasTotal: 0,
             otros: 0, notas: "",
             rendimiento: null, precioLitro: opsViaCfg.precioLitro, factor: opsViaCfg.factor,
@@ -13151,6 +13157,148 @@
         const num = fo.folioNumero ? "N.º " + fo.folioNumero : "";
         return [num, fo.folioOS ? "O.S. " + fo.folioOS : "", fo.estacion || ""].filter(Boolean).join(" · ") || "Servicio";
     }
+    // ═══ Catálogo de hoteles (Etapa B, oct-2026) ═══
+    let opsViaHoteles = [];
+    async function opsViaCargarHoteles() {
+        try { const sb = await opsSb(); const { data } = await sb.from("ops_hoteles").select("*").order("ciudad").order("nombre"); opsViaHoteles = data || []; }
+        catch (e) { console.warn("[viáticos] hoteles:", e.message); opsViaHoteles = []; }
+    }
+    function opsViaNormTxt(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    // Hoteles de la zona del destino primero (por ciudad o zona escrita en el destino); luego el resto.
+    function opsViaHotelesOrdenados() {
+        const f = opsViaForm || {};
+        const destino = opsViaNormTxt([f.destinoTexto, f.estacion && f.estacion.municipio, f.estacion && f.estacion.estado].join(" "));
+        const act = opsViaHoteles.filter(h => h.activo !== false);
+        const enZona = h => [h.ciudad, h.zona].some(x => x && destino.includes(opsViaNormTxt(x)));
+        return act.filter(enZona).concat(act.filter(h => !enZona(h)));
+    }
+    window.opsViaElegirHotel = function (id) {
+        const f = opsViaForm; if (!f) return;
+        const h = opsViaHoteles.find(x => String(x.id) === String(id));
+        f.hotelId = h ? h.id : null; f.hotelNombre = h ? h.nombre : "";
+        if (h) {
+            if (h.precio_sencilla != null) f.precioSencilla = Number(h.precio_sencilla);
+            if (h.precio_doble != null) f.precioDoble = Number(h.precio_doble);
+            f.hotelDesayuno = !!h.incluye_desayuno;
+        }
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
+    function opsViaHTMLHospedaje() {
+        const f = opsViaForm, lista = opsViaHotelesOrdenados();
+        const num = (id, campo, val, extra) => `<input id="${id}" type="number" min="0" value="${opsEsc(val)}" onchange="${extra || ""}opsViaCampo('${campo}', this.value, true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;box-sizing:border-box;">`;
+        return `<div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:12px 0 8px;">Hospedaje (por habitación)</div>
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:0 8px;">
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Hotel
+                    <select onchange="opsViaElegirHotel(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;">
+                        <option value="">— Sin hotel del catálogo (tarifa por zona) —</option>
+                        ${lista.map(h => `<option value="${h.id}" ${String(f.hotelId) === String(h.id) ? "selected" : ""}>${opsEsc(h.nombre)}${h.ciudad ? " · " + opsEsc(h.ciudad) : ""}${h.convenio ? " · convenio" : ""}${h.incluye_desayuno ? " · con desayuno" : ""}</option>`).join("")}
+                    </select></label>
+                ${opsViaInput("Noches", "via-noches", f.noches, `onchange="opsViaForm.nochesManual=true; opsViaCampo('noches', Number(this.value), true)" min="0"`, "number")}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 8px;align-items:end;">
+                <label style="font-size:11.5px;font-weight:600;color:#475569;">Hab. sencillas (1 persona)${num("via-hab-s", "habSencillas", f.habSencillas, "opsViaForm.habManual=true;")}</label>
+                <label style="font-size:11.5px;font-weight:600;color:#475569;">$ por noche${num("via-hab-sp", "precioSencilla", f.precioSencilla)}</label>
+                <label style="font-size:11.5px;font-weight:600;color:#475569;">Hab. dobles (2 personas)${num("via-hab-d", "habDobles", f.habDobles, "opsViaForm.habManual=true;")}</label>
+                <label style="font-size:11.5px;font-weight:600;color:#475569;">$ por noche${num("via-hab-dp", "precioDoble", f.precioDoble)}</label>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:12px;color:#334155;">
+                <label style="display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="radio" name="via-hotel-modo" ${f.hotelModo !== "compras" ? "checked" : ""} onchange="opsViaCampo('hotelModo','deposito',true)"> Se le deposita al técnico (él lo busca)</label>
+                <label style="display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="radio" name="via-hotel-modo" ${f.hotelModo === "compras" ? "checked" : ""} onchange="opsViaCampo('hotelModo','compras',true)"> Lo compra Compras (no se deposita)</label>
+                <label style="display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="checkbox" ${f.hotelDesayuno ? "checked" : ""} onchange="opsViaCampo('hotelDesayuno', this.checked, true)"> El hotel incluye desayuno</label>
+            </div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:4px;">Tarifa autorizada $1,200 – $1,500 por noche según la zona.${f.desayunosHotel ? ` Se quitaron ${f.desayunosHotel} desayuno(s) porque el hotel lo incluye.` : ""}${f.habManual ? ` <a href="#" onclick="event.preventDefault();opsViaForm.habManual=false;opsViaCampo('habDobles',0,true)" style="color:#1D2E73;font-weight:700;">Recalcular habitaciones</a>` : ""}</div>
+            <div style="text-align:right;font-weight:700;color:#334155;">Hospedaje: ${f.noches} noche(s) × ${opsViaDinero(f.hospedajePorNocheTotal || 0)} = ${opsViaDinero(f.hospedaje)}</div>`;
+    }
+    const OPS_VIA_EMPRESAS = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "TecnoLab"];
+    function opsViaHTMLBloques() {
+        const f = opsViaForm;
+        const fila = (t, v, nota) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;"><span>${t}${nota ? ` <span style="font-size:10.5px;color:#94a3b8;">${nota}</span>` : ""}</span><b>${opsViaDinero(v)}</b></div>`;
+        const sel = (campo, val, vacio) => `<select onchange="opsViaCampo('${campo}', this.value, true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;margin-top:3px;box-sizing:border-box;">${vacio ? `<option value="">${vacio}</option>` : ""}${OPS_VIA_EMPRESAS.map(e => `<option ${e === val ? "selected" : ""}>${e}</option>`).join("")}</select>`;
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+            <div style="border:1.5px solid #15803d;border-radius:12px;padding:12px;background:#f0fdf4;">
+                <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se deposita al técnico · Pagos</div>
+                ${fila("Alimentos", f.alimentos)}
+                ${f.hotelDepositado ? fila("Hospedaje", f.hospedaje) : fila("Hospedaje", 0, "lo compra Compras")}
+                ${opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros)) : ""}
+                <div style="border-top:2px solid #15803d;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-weight:800;color:#15803d;">DEPOSITAR</span>
+                    <span style="font-family:'Space Grotesk',sans-serif;font-size:21px;font-weight:700;color:#15803d;">${opsViaDinero(f.deposito)}</span>
+                </div>
+                <div style="font-size:10.5px;color:#64748b;margin-top:6px;">Gasolina (${opsViaDinero(f.gasolina)}) y casetas (${opsViaDinero(f.casetasTotal)}) <b>no se depositan</b>: van con el tanque de la unidad y el tag con crédito Fibra Estatal.</div>
+                <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-top:8px;">Empresa que entrega el viático${sel("empresaEntrega", f.empresaEntrega)}</label>
+            </div>
+            <div style="border:1.5px solid #1D2E73;border-radius:12px;padding:12px;background:#f8fafd;">
+                <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se cobra al cliente · Ingresos</div>
+                ${fila("Gasolina", f.gasolina)}${fila("Casetas", f.casetasTotal)}${fila("Alimentos", f.alimentos)}${fila("Hospedaje", f.hospedaje)}${opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros)) : ""}
+                <div style="border-top:1px solid #cbd5e1;margin-top:6px;padding-top:6px;">${fila("Costo total del viaje", f.total)}</div>
+                <label style="display:block;font-size:11px;font-weight:700;color:#1D2E73;margin-top:6px;">Monto a cobrar al cliente
+                    <input type="number" min="0" step="1" value="${opsEsc(f.cobroCliente)}" onchange="opsViaForm.cobroManual=true; opsViaCampo('cobroCliente', this.value, true)" style="width:100%;border:1.5px solid #1D2E73;border-radius:8px;padding:7px 9px;font-size:15px;font-weight:700;margin-top:3px;box-sizing:border-box;"></label>
+                <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${f.cobroManual ? `Ajustado a mano. <a href="#" onclick="event.preventDefault();opsViaForm.cobroManual=false;opsViaCampo('cobroCliente',null,true)" style="color:#1D2E73;font-weight:700;">Volver al sugerido (${opsViaDinero(f.cobroSugerido)})</a>` : "Sugerido: el costo redondeado hacia arriba. Puedes ajustarlo."}</div>
+                <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-top:8px;">Empresa a la que se cobra${sel("empresaCobra", f.empresaCobra, "La misma que entrega")}</label>
+            </div>
+        </div>`;
+    }
+    // ── Administración del catálogo de hoteles ──
+    window.opsViaAbrirHoteles = async function () {
+        await opsViaCargarHoteles();
+        opsViaPintarHoteles(null);
+    };
+    function opsViaPintarHoteles(editId) {
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        const ed = editId === "nuevo" ? {} : (editId != null ? opsViaHoteles.find(h => String(h.id) === String(editId)) : null);
+        const inp = (id, label, val, tipo) => `<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">${label}<input id="hot-${id}" type="${tipo || "text"}" value="${opsEsc(val ?? "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0 8px;box-sizing:border-box;"></label>`;
+        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:760px;max-width:96vw;max-height:90vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <div><div style="font-weight:800;font-size:16px;color:#1D2E73;">Catálogo de hoteles</div><div style="font-size:12px;color:#64748b;">Al pedir viáticos se sugieren los de la zona del destino, con su precio y si incluyen desayuno.</div></div>
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;">×</button>
+                </div>
+                ${ed ? `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:12px;background:#f8fafc;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;">
+                        ${inp("nombre", "Hotel", ed.nombre)}${inp("ciudad", "Ciudad", ed.ciudad)}${inp("zona", "Zona (ej. Sierra, Juárez)", ed.zona)}
+                        ${inp("ps", "$ hab. sencilla / noche", ed.precio_sencilla, "number")}${inp("pd", "$ hab. doble / noche", ed.precio_doble, "number")}${inp("vig", "Vigencia del precio", ed.vigencia, "date")}
+                        ${inp("tel", "Teléfono", ed.telefono)}${inp("contacto", "Contacto", ed.contacto)}${inp("notas", "Notas", ed.notas)}
+                    </div>
+                    <div style="display:flex;gap:16px;font-size:12.5px;color:#334155;margin-bottom:10px;">
+                        <label><input type="checkbox" id="hot-des" ${ed.incluye_desayuno ? "checked" : ""}> Incluye desayuno</label>
+                        <label><input type="checkbox" id="hot-conv" ${ed.convenio ? "checked" : ""}> Tenemos convenio</label>
+                        <label><input type="checkbox" id="hot-act" ${ed.activo !== false ? "checked" : ""}> Activo</label>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;">
+                        <button onclick="opsViaPintarHotelesLista()" style="background:#f1f5f9;border:none;color:#475569;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                        <button onclick="opsViaGuardarHotel(${ed.id ? ed.id : "null"})" style="background:#1D2E73;border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Guardar hotel</button>
+                    </div>
+                </div>` : `<button onclick="opsViaPintarHoteles('nuevo')" style="background:#1D2E73;border:none;color:#fff;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;margin-bottom:10px;">+ Agregar hotel</button>`}
+                ${opsViaHoteles.length ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                    <thead><tr style="text-align:left;color:#64748b;"><th style="padding:6px;">Hotel</th><th style="padding:6px;">Ciudad / zona</th><th style="padding:6px;text-align:right;">Sencilla</th><th style="padding:6px;text-align:right;">Doble</th><th style="padding:6px;">Desayuno</th><th></th></tr></thead>
+                    <tbody>${opsViaHoteles.map(h => `<tr style="border-top:1px solid #eef1f6;${h.activo === false ? "opacity:.5;" : ""}">
+                        <td style="padding:6px;font-weight:700;color:#1e293b;">${opsEsc(h.nombre)}${h.convenio ? ` <span style="font-size:10px;color:#15803d;font-weight:800;">CONVENIO</span>` : ""}</td>
+                        <td style="padding:6px;">${opsEsc([h.ciudad, h.zona].filter(Boolean).join(" · "))}</td>
+                        <td style="padding:6px;text-align:right;">${h.precio_sencilla != null ? opsViaDinero(h.precio_sencilla) : "—"}</td>
+                        <td style="padding:6px;text-align:right;">${h.precio_doble != null ? opsViaDinero(h.precio_doble) : "—"}</td>
+                        <td style="padding:6px;">${h.incluye_desayuno ? "Sí" : "No"}</td>
+                        <td style="padding:6px;text-align:right;"><button onclick="opsViaPintarHoteles(${h.id})" style="background:#eef2f7;border:none;color:#1D2E73;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11.5px;font-weight:700;">Editar</button></td>
+                    </tr>`).join("")}</tbody></table>` : `<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Todavía no hay hoteles en el catálogo.</div>`}
+            </div></div>`;
+    }
+    window.opsViaPintarHoteles = opsViaPintarHoteles;
+    window.opsViaPintarHotelesLista = function () { opsViaPintarHoteles(null); };
+    window.opsViaGuardarHotel = async function (id) {
+        const v = k => (document.getElementById("hot-" + k) || {}).value || "";
+        const n = k => v(k) === "" ? null : Number(v(k));
+        const fila = { nombre: v("nombre").trim(), ciudad: v("ciudad").trim() || null, zona: v("zona").trim() || null,
+            precio_sencilla: n("ps"), precio_doble: n("pd"), vigencia: v("vig") || null, telefono: v("tel").trim() || null,
+            contacto: v("contacto").trim() || null, notas: v("notas").trim() || null,
+            incluye_desayuno: !!document.getElementById("hot-des")?.checked, convenio: !!document.getElementById("hot-conv")?.checked,
+            activo: !!document.getElementById("hot-act")?.checked, actualizado_en: new Date().toISOString(), actualizado_por: opsNombreActual() };
+        if (!fila.nombre) { alert("Escribe el nombre del hotel."); return; }
+        try {
+            const sb = await opsSb();
+            const r = id ? await sb.from("ops_hoteles").update(fila).eq("id", id) : await sb.from("ops_hoteles").insert(fila);
+            if (r.error) throw r.error;
+            await opsViaCargarHoteles(); opsViaPintarHoteles(null);
+        } catch (e) { alert("No se pudo guardar el hotel: " + (e.message || e)); }
+    };
     function opsViaVehiculoCfg(tipo) { return (opsViaCfg.vehiculos || []).find(v => v.tipo === tipo) || (opsViaCfg.vehiculos || [])[0] || { rendimiento: 9 }; }
 
     // Todo el cálculo en un solo lugar: lo que el usuario sobrescribió a mano se respeta.
@@ -13218,7 +13366,13 @@
         }
         ["desayunos", "comidas", "cenas"].forEach(k => { f[k] = Math.max(0, Math.min(Math.round(opsViaNum(f[k])), f.dias)); });
         f.noches = Math.max(0, Math.round(opsViaNum(f.noches)));
+        // Si el hotel incluye desayuno, no se paga el desayuno de las mañanas después de cada noche.
+        f.desayunosHotel = 0;
+        if (f.hotelDesayuno && f.noches > 0 && !f.comidasManual) { f.desayunosHotel = Math.min(f.desayunos, f.noches); f.desayunos -= f.desayunosHotel; }
         const personas = Math.max(1, f.tecnicos.length);
+        // Habitaciones: por defecto dobles (2 personas) y una sencilla si sobra alguien; se puede ajustar.
+        if (!f.habManual) { f.habDobles = Math.floor(personas / 2); f.habSencillas = personas % 2; }
+        f.habSencillas = Math.max(0, Math.round(opsViaNum(f.habSencillas))); f.habDobles = Math.max(0, Math.round(opsViaNum(f.habDobles)));
         const rend = opsViaNum(f.rendimiento) || 1;
         // Regresan al inicio: km sencillo × multiplicador (como siempre). Terminan en otro lugar:
         // km de ida + km de regreso reales.
@@ -13229,9 +13383,16 @@
         f.alimentosTopados = sumaAlim > topeViaje;
         f.alimentosPorPersona = Math.min(sumaAlim, topeViaje);
         f.alimentos = f.requiere ? f.alimentosPorPersona * personas : 0;
-        f.hospedaje = f.requiere ? opsViaNum(f.noches) * opsViaNum(f.hospedajePorNoche) * personas : 0;
+        f.hospedajePorNocheTotal = f.habSencillas * opsViaNum(f.precioSencilla) + f.habDobles * opsViaNum(f.precioDoble);
+        f.hospedaje = f.requiere ? Math.round(opsViaNum(f.noches) * f.hospedajePorNocheTotal * 100) / 100 : 0;
         f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros)) * 100) / 100;
         f.personas = personas;
+        // Dos bloques (Etapa B): lo que se DEPOSITA al técnico (Pagos) y lo que se COBRA al cliente (Ingresos).
+        // Gasolina y casetas no se depositan (tanque de la unidad y tag con crédito Fibra Estatal).
+        f.hotelDepositado = f.hotelModo !== "compras";
+        f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)) * 100) / 100;
+        f.cobroSugerido = Math.ceil(f.total / 100) * 100;
+        if (!f.cobroManual) f.cobroCliente = f.cobroSugerido;
     }
 
     function opsViaInput(label, id, valor, extra = "", tipo = "text") {
@@ -13400,19 +13561,14 @@
                             <div style="font-size:10.5px;color:#94a3b8;">Máximo por comida: ${f.dias} (días del viaje).${f.alimentosTopados ? ` <b style="color:#b45309;">Se aplicó el tope diario de ${opsViaDinero(cfg.topeDiario)} × ${f.dias} día(s).</b>` : ""}</div>
                             <div style="text-align:right;font-weight:700;color:#334155;">Alimentos: ${opsViaDinero(f.alimentosPorPersona)} × ${f.personas} persona(s) = ${opsViaDinero(f.alimentos)}</div>
 
-                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;margin-top:12px;">
-                                ${opsViaInput("Noches hotel", "via-noches", f.noches, `onchange="opsViaForm.nochesManual=true; opsViaCampo('noches', Number(this.value), true)" min="0"`, "number")}
-                                ${opsViaInput("$/noche", "via-hotel", f.hospedajePorNoche, `onchange="opsViaCampo('hospedajePorNoche', this.value, true)"`, "number")}
-                                ${opsViaInput("Otros $", "via-otros", f.otros, `onchange="opsViaCampo('otros', this.value, true)"`, "number")}
+                            ${opsViaHTMLHospedaje()}
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;margin-top:6px;">
+                                ${opsViaInput("Otros $ (se deposita)", "via-otros", f.otros, `onchange="opsViaCampo('otros', this.value, true)"`, "number")}
                             </div>
-                            <div style="text-align:right;font-weight:700;color:#334155;">Hospedaje: ${opsViaDinero(f.hospedaje)}</div>
 
                             ${opsViaHTMLCasetas()}
 
-                            <div style="border-top:2px solid #1D2E73;margin-top:10px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
-                                <span style="font-weight:700;color:#1D2E73;">TOTAL SOLICITADO</span>
-                                <span style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#E7402B;">${opsViaDinero(f.total)}</span>
-                            </div>
+                            ${opsViaHTMLBloques()}
                         </div>
                         <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:10px;">Motivo / notas
                             <textarea id="via-notas" oninput="opsViaForm.notas=this.value" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;box-sizing:border-box;">${opsEsc(f.notas)}</textarea></label>
@@ -13731,10 +13887,15 @@
             rendimiento: opsViaNum(f.rendimiento), precio_litro: opsViaNum(f.precioLitro), factor: opsViaNum(f.factor), gasolina: f.gasolina,
             desayunos: f.desayunos, comidas: f.comidas, cenas: f.cenas, alimentos: f.alimentos,
             hospedaje: f.hospedaje, casetas: f.casetasTotal, otros: opsViaNum(f.otros), total: f.total,
+            deposito: f.deposito, cobro_cliente: opsViaNum(f.cobroCliente) || f.cobroSugerido,
+            empresa_entrega: f.empresaEntrega || null, empresa_cobra: f.empresaCobra || f.empresaEntrega || null,
+            hotel_modo: f.noches > 0 ? (f.hotelModo || "deposito") : null, hotel_nombre: f.hotelNombre || null,
             notas: f.notas || null,
             tarifas: {
                 requiereViaticos: !!f.requiere, salida: f.salida, regreso: f.regreso, horasServicio: opsViaNum(f.horasServicio), horasIda: opsViaNum(f.horasIda),
-                noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNoche), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
+                noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNocheTotal), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
+                habitaciones: { sencillas: f.habSencillas, precioSencilla: opsViaNum(f.precioSencilla), dobles: f.habDobles, precioDoble: opsViaNum(f.precioDoble) },
+                hotelId: f.hotelId || null, hotelDesayuno: !!f.hotelDesayuno, desayunosHotel: f.desayunosHotel || 0, cobroManual: !!f.cobroManual,
                 estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
                 vehiculoEco: f.vehiculoEco || null, rendimientoReal: f.rendimientoReal || null,
                 aplicaCasetas: !!f.aplicaCasetas, casetasDetalle,
@@ -13753,7 +13914,7 @@
             const resumen = opsViaResumenTexto(data);
             // Aviso real a quien autoriza y a Pagos (antes no salía: opsCopiaFirestore ya no hace nada).
             (opsViaCfg.correosNotificar || []).forEach(correo => opsViaAvisoPortal(correo, "viaticos_solicitud",
-                `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · ${opsViaDinero(data.total)}.`, { viaticoId: data.id }));
+                `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · depositar ${opsViaDinero(data.deposito ?? data.total)} · cobrar al cliente ${opsViaDinero(data.cobro_cliente ?? data.total)}.`, { viaticoId: data.id }));
             opsViaCerrar();
             opsViaMostrarEnviada(data, resumen);
             if (tabActual === "viaticos") opsRenderViaticos();
@@ -13782,6 +13943,7 @@
             + `Casetas: ${opsViaDinero(s.casetas)}${t.aplicaCasetas === false ? " (no aplica)" : ""}${det ? "\n" + det : ""}\n`
             + `Otros: ${opsViaDinero(s.otros)}\n`
             + `TOTAL: ${opsViaDinero(s.total)}\n`
+            + (s.deposito != null ? `DEPOSITAR AL TÉCNICO: ${opsViaDinero(s.deposito)} (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; hotel lo paga Compras" : ""})\nCOBRAR AL CLIENTE: ${opsViaDinero(s.cobro_cliente ?? s.total)}\n` : "")
             + (s.notas ? `\nNotas: ${s.notas}\n` : "");
     }
     // ── PDF profesional de la solicitud (jsPDF, mismo diseño que la responsiva) ──
@@ -13850,11 +14012,12 @@
         const personal = doc.splitTextToSize(s.integrantes || "—", W - 2 * M);
         doc.text(personal, M, y); y += personal.length * 12 + 2;
 
-        seccion("3  ·  DESGLOSE DEL MONTO SOLICITADO");
+        const dosBloques = s.deposito != null;
+        seccion(dosBloques ? "3  ·  COSTO DEL VIAJE (SE COBRA AL CLIENTE · INGRESOS)" : "3  ·  DESGLOSE DEL MONTO SOLICITADO");
         const filas = [
             ["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
             ["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)`, s.alimentos],
-            ["Hospedaje", `${t.noches || 0} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje],
+            ["Hospedaje", t.habitaciones ? `${t.noches || 0} noche(s) × (${t.habitaciones.sencillas || 0} hab. sencilla × ${din(t.habitaciones.precioSencilla)} + ${t.habitaciones.dobles || 0} hab. doble × ${din(t.habitaciones.precioDoble)})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}${t.hotelDesayuno ? " · incluye desayuno" : ""}` : `${t.noches || 0} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje],
         ];
         const casetas = t.casetasDetalle || [];
         if (t.aplicaCasetas === false || !casetas.length) filas.push(["Casetas", t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", s.casetas]);
@@ -13878,12 +14041,41 @@
         nuevaPaginaSiHaceFalta(30);
         doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 8, W - 2 * M, 24, "F");
         doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-        doc.text("TOTAL SOLICITADO", c1 + 8, y + 8);
+        doc.text(dosBloques ? "COSTO TOTAL DEL VIAJE" : "TOTAL SOLICITADO", c1 + 8, y + 8);
         doc.setFontSize(13); doc.text(din(s.total), c3 - 8, y + 8, { align: "right" });
         y += 30;
+        if (dosBloques) {
+            // Cobro al cliente (lo que necesita Ingresos)
+            nuevaPaginaSiHaceFalta(20);
+            doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+            doc.text("COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1 + 6, y);
+            doc.text(din(s.cobro_cliente ?? s.total), c3 - 6, y, { align: "right" });
+            y += 22;
+            // Depósito al técnico (lo que necesita Pagos)
+            seccion("4  ·  SE DEPOSITA AL TÉCNICO (PAGOS)");
+            const dep = [["Alimentos", s.alimentos], ["Hospedaje", s.hotel_modo === "compras" ? 0 : s.hospedaje]];
+            if (Number(s.otros)) dep.push(["Otros", s.otros]);
+            dep.forEach(r => {
+                nuevaPaginaSiHaceFalta(16);
+                doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1 + 6, y);
+                if (r[0] === "Hospedaje" && s.hotel_modo === "compras") { doc.setFont("helvetica", "normal"); doc.setTextColor(110, 110, 110); doc.text("Lo paga Compras directo al hotel — no se deposita", c2, y); }
+                doc.setFont("helvetica", "bold"); doc.setTextColor(25, 25, 25); doc.text(din(r[1]), c3 - 6, y, { align: "right" });
+                y += 16;
+            });
+            nuevaPaginaSiHaceFalta(30);
+            doc.setFillColor(21, 128, 61); doc.rect(M, y - 8, W - 2 * M, 24, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+            doc.text("DEPOSITAR AL TÉCNICO" + (s.empresa_entrega ? " (entrega " + s.empresa_entrega + ")" : ""), c1 + 8, y + 8);
+            doc.setFontSize(13); doc.text(din(s.deposito), c3 - 8, y + 8, { align: "right" });
+            y += 30;
+            doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+            const nota = doc.splitTextToSize(`Gasolina (${din(s.gasolina)}) y casetas (${din(s.casetas)}) NO se depositan: son informativas para Pagos (tanque de la unidad y tag con crédito Fibra Estatal) y sí se cobran al cliente.`, W - 2 * M);
+            nuevaPaginaSiHaceFalta(nota.length * 11);
+            doc.text(nota, M, y); y += nota.length * 11 + 6;
+        }
 
         if (s.notas || s.comentario_pagos) {
-            seccion("4  ·  NOTAS");
+            seccion((dosBloques ? "5" : "4") + "  ·  NOTAS");
             doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
             const n = doc.splitTextToSize([s.notas, s.comentario_pagos ? "Pagos: " + s.comentario_pagos : ""].filter(Boolean).join("\n"), W - 2 * M);
             nuevaPaginaSiHaceFalta(n.length * 12);
@@ -14179,7 +14371,7 @@
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio : "")}</div></td>
                 <td style="padding:9px 8px;">${opsEsc(s.responsable_nombre || s.integrantes || "—")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.destino || "")}</div></td>
                 <td style="padding:9px 8px;font-size:11.5px;">${s.forma_entrega ? opsEsc((opsViaForma(s.forma_entrega) || {}).etiqueta || s.forma_entrega) : "—"}</td>
-                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.ent) : `<span style="color:#94a3b8;">${opsViaDinero(s.total)}</span>`}</td>
+                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.ent) : `<span style="color:#94a3b8;">${opsViaDinero(s.deposito ?? s.total)}</span>`}</td>
                 <td style="padding:9px 8px;min-width:150px;">
                     <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:#15803d;font-weight:700;">${opsViaDinero(E.acept)}</span><span style="color:#b91c1c;font-weight:700;">${E.falta > 0.5 ? "Falta " + opsViaDinero(E.falta) : ""}</span></div>
                     <div style="height:6px;background:#f1f5f9;border-radius:9px;overflow:hidden;margin-top:4px;display:flex;"><div style="width:${pct}%;background:#15803d;"></div><div style="width:${pctR}%;background:#a78bfa;"></div></div>
@@ -14261,7 +14453,7 @@
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
             <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
                 <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;">Registrar entrega · ${opsEsc(s.folio)}</div>
-                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.destino || "")} · solicitado ${opsViaDinero(s.total)}. Desde aquí empieza el seguimiento de la comprobación.</div>
+                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.destino || "")} · a depositar ${opsViaDinero(s.deposito ?? s.total)}${s.deposito != null ? ` (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; el hotel lo paga Compras" : ""})` : ""}. Desde aquí empieza el seguimiento de la comprobación.</div>
                 <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px;">¿Cómo se entregó?</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
                     ${opsViaFormas.map((f, i) => `<label style="border:1.5px solid #cbd5e1;border-radius:10px;padding:10px;cursor:pointer;display:block;">
@@ -14269,7 +14461,7 @@
                         <span style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(f.etiqueta)}</span>
                         <div style="font-size:11px;color:#64748b;margin-top:3px;">Solo acepta facturas con forma de pago ${(f.formas_pago || []).map(c => c + " (" + (OPS_SAT_FORMAS[c] || "") + ")").join(" o ")}</div></label>`).join("")}
                 </div>
-                ${opsViaInput("Monto entregado $", "via-ent-monto", s.monto_entregado ?? s.total, 'min="0" step="0.01"', "number")}
+                ${opsViaInput("Monto entregado $", "via-ent-monto", s.monto_entregado ?? s.deposito ?? s.total, 'min="0" step="0.01"', "number")}
                 <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Responsable de comprobar
                     <select id="via-ent-resp" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${tecs.map(t => `<option value="${opsEsc(String(t.correo || "").toLowerCase())}" data-nombre="${opsEsc(t.nombre || "")}" ${String(t.correo || "").toLowerCase() === resp ? "selected" : ""}>${opsEsc(t.nombre || t.correo)}${t.correo ? "" : " (sin correo: no recibirá aviso)"}</option>`).join("") || `<option value="">Sin personal en la solicitud</option>`}
