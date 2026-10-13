@@ -5886,6 +5886,14 @@
         if (f.duracionUnidad === "dias" && Number(f.duracionValor) > 1) return opsDiaISOmas(ini, Math.ceil(Number(f.duracionValor)) - 1);
         return ini;
     }
+    // Número de servicio solo con números (oct-2026). Los existentes ya se numeraron en la base por
+    // orden de creación; los nuevos toman el siguiente al más alto que esté cargado.
+    let opsUltimoNumServ = 0;
+    function opsSiguienteNumeroServicio() {
+        const max = (cacheFolios || []).reduce((m, f) => Math.max(m, Number(f.folioNumero) || 0), 0);
+        opsUltimoNumServ = Math.max(max, opsUltimoNumServ) + 1;
+        return opsUltimoNumServ;
+    }
     function opsFolioCubreDia(f, fechaISO) {
         const ini = ((f && f.fechaProgramada) || "").slice(0, 10);
         return !!ini && fechaISO >= ini && fechaISO <= opsFolioFechaFin(f);
@@ -6154,6 +6162,7 @@
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
                     ${gestiona ? `<button onclick="opsCalProgramarPedido('${p.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Programar</button>` : ""}
                     ${p.tienePdfOriginal ? `<button onclick="opsCalVerPdfPedido('${p.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ""}
+                    ${gestiona ? `<button onclick="opsCalLigarPedidoAbrir('${p.id}')" title="Ya existe el servicio en el calendario: ligarlo a este pedido" style="background:#f3e8ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ligar a programado</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalPedidoGestionado('${p.id}')" title="Quitar de la lista sin crear servicio (ya se programó por otro lado)" style="background:#fff;color:#64748b;border:1px dashed #cbd5e1;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ya gestionado</button>` : ""}
                 </div>
             </div>`;
@@ -6260,14 +6269,95 @@
             if (w) { w.document.open(); w.document.write('<iframe src="' + res.archivo + '" style="border:none;position:fixed;inset:0;width:100%;height:100%;"></iframe>'); w.document.close(); }
         }).catch(err => { if (w) w.close(); alert("No se pudo abrir el PDF: " + (err.message || err)); });
     };
-    async function opsMarcarPedidoGestionado(id, folioOps) {
+    async function opsMarcarPedidoGestionado(id, folioOps, nota) {
         const datos = { opsGestionado: true, opsGestionadoPor: opsNombreActual(), opsGestionadoEn: new Date().toISOString() };
         if (folioOps) datos.opsFolioId = folioOps;
         await window.tcSbActualizarSurtido(id, datos);
-        if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por: opsNombreActual(), nota: folioOps ? "Programado en Operaciones" : "Gestionado por Operaciones" }).catch(() => {});
+        if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por: opsNombreActual(), nota: nota || (folioOps ? "Programado en Operaciones" : "Gestionado por Operaciones") }).catch(() => {});
+        // El servicio también guarda de qué pedido viene (para abrir el PDF de la venta desde el servicio).
+        if (folioOps) {
+            const ped = (cacheSurtidos || []).find(x => x.id === id);
+            const f = cacheFolios.find(x => x.id === folioOps);
+            const cambios = { pedidoVentasId: id, pedidoVentasFolio: (ped && ped.folio) || null, pedidoVentasEmpresa: (ped && ped.empresa) || null };
+            try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioOps), cambios); if (f) Object.assign(f, cambios); }
+            catch (e) { console.warn("[Ligar pedido] no se pudo guardar el pedido en el servicio:", e.message); }
+        }
         const p = (cacheSurtidos || []).find(x => x.id === id); if (p) Object.assign(p, datos);
         opsCalPintarPedidosVentas();
     }
+    // ── Ligar un pedido de Ventas con un servicio que ya estaba programado (oct-2026) ──
+    // Para lo que Operaciones capturó antes de que Ventas subiera el pedido: no se crea nada nuevo,
+    // el servicio existente queda ligado al pedido y el pedido sale de "por programar".
+    let opsLigarPed = null;
+    function opsNormLig(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); }
+    function opsLigarCandidatos(p, q) {
+        const vacias = new Set(["sa", "de", "cv", "s", "a", "c", "v", "rl", "estacion", "servicio", "gasolinera", "grupo", "la", "el", "los", "las", "del", "y"]);
+        const palabras = opsNormLig(p.cliente).split(" ").filter(w => w.length > 2 && !vacias.has(w));
+        const desde = opsDiaISOmas(new Date(p.createdAt || Date.now()).toISOString().slice(0, 10), -45);
+        const qq = opsNormLig(q);
+        return cacheFolios.filter(f => !f.cancelado && !f.pedidoVentasId && (!f.fechaProgramada || f.fechaProgramada.slice(0, 10) >= desde))
+            .map(f => {
+                const texto = opsNormLig([f.estacion, f.clienteNombre, f.estacionRazonSocial, f.folioOS, f.comentarios].join(" "));
+                let pts = palabras.reduce((a, w) => a + (texto.includes(w) ? 1 : 0), 0);
+                if (f.folioOS && p.folio && f.folioOS === p.folio) pts += 10;
+                return { f, pts, texto };
+            })
+            .filter(x => qq ? x.texto.includes(qq) : x.pts > 0)
+            .sort((a, b) => b.pts - a.pts || String(a.f.fechaProgramada || "").localeCompare(String(b.f.fechaProgramada || "")))
+            .slice(0, 40);
+    }
+    function opsLigarPintar() {
+        const st = opsLigarPed; if (!st) return;
+        const p = (cacheSurtidos || []).find(x => x.id === st.pid); if (!p) return;
+        let ov = document.getElementById("ops-ligar-ped");
+        if (!ov) { ov = document.createElement("div"); ov.id = "ops-ligar-ped"; ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:20px;"; document.body.appendChild(ov); }
+        const cand = opsLigarCandidatos(p, st.q);
+        const serv = (p.productos || []).filter(x => x.tipo === "servicio" || x.tipo === "viaticos").map(x => `${x.cant || 1} × ${x.desc || x.clave}`).join(" · ");
+        ov.innerHTML = `<div style="background:#fff;border-radius:16px;width:640px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+            <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+                <div style="font-size:16px;font-weight:800;color:#1e293b;">Ligar pedido ${opsEsc(p.folio || "")} a un servicio ya programado</div>
+                <div style="font-size:12px;color:#64748b;margin-top:3px;">${opsEsc(p.cliente || "")}${serv ? " · " + opsEsc(serv) : ""}</div>
+            </div>
+            <div style="padding:12px 20px;border-bottom:1px solid #f1f5f9;">
+                <input id="ops-ligar-busca" value="${opsEsc(st.q)}" placeholder="Buscar por estación, cliente u O.S.…" oninput="opsLigarBuscar(this.value)" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <div style="font-size:11px;color:#94a3b8;margin-top:5px;">${st.q ? "Resultados de tu búsqueda." : "Sugeridos: servicios cuyo nombre se parece al cliente del pedido. Si no aparece, búscalo."}</div>
+            </div>
+            <div style="overflow-y:auto;padding:10px 20px;flex:1;">
+                ${cand.length ? cand.map(({ f }) => `<div style="display:flex;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:10px;padding:9px 12px;margin-bottom:7px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;font-size:13px;color:#1D2E73;">${opsEsc(f.estacion || "Sin estación")}${f.folioNumero ? ` <span style="font-size:10.5px;color:#64748b;font-weight:700;">N.º ${opsEsc(f.folioNumero)}</span>` : ""}</div>
+                        <div style="font-size:11.5px;color:#64748b;">${f.fechaProgramada ? opsEsc(opsFmtFechaCorta(f.fechaProgramada)) : "Sin fecha"}${(f.tecnicosAsignadosNombres || []).length ? " · " + opsEsc(f.tecnicosAsignadosNombres.join(", ")) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}${f.clienteNombre ? " · " + opsEsc(f.clienteNombre) : ""}</div>
+                    </div>
+                    <button onclick="opsLigarConfirmar('${f.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Ligar</button>
+                </div>`).join("") : `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">${st.q ? "Ningún servicio coincide con la búsqueda." : "No encontré servicios parecidos. Escribe la estación en el buscador."}</div>`}
+            </div>
+            <div style="display:flex;justify-content:flex-end;padding:12px 20px;border-top:1px solid #e2e8f0;">
+                <button onclick="opsLigarCerrar()" style="background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">Cancelar</button>
+            </div>
+        </div>`;
+        const inp = document.getElementById("ops-ligar-busca");
+        if (inp && st.q) { inp.focus(); inp.setSelectionRange(st.q.length, st.q.length); }
+    }
+    window.opsCalLigarPedidoAbrir = function (pid) { opsLigarPed = { pid, q: "" }; opsLigarPintar(); };
+    window.opsLigarBuscar = function (v) { if (!opsLigarPed) return; opsLigarPed.q = v; opsLigarPintar(); };
+    window.opsLigarCerrar = function () { opsLigarPed = null; document.getElementById("ops-ligar-ped")?.remove(); };
+    window.opsLigarConfirmar = async function (fid) {
+        const st = opsLigarPed; if (!st) return;
+        const p = (cacheSurtidos || []).find(x => x.id === st.pid), f = cacheFolios.find(x => x.id === fid);
+        if (!p || !f) return;
+        if (!confirm(`¿Ligar el pedido ${p.folio || ""} (${p.cliente || ""}) con el servicio de ${f.estacion || ""}${f.fechaProgramada ? " del " + opsFmtFechaCorta(f.fechaProgramada) : ""}?\n\nNo se crea un servicio nuevo; el pedido sale de "por programar".`)) return;
+        try {
+            if (!f.folioOS && p.folio) {
+                const { db, fs } = await opsGetFB();
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { folioOS: p.folio });
+                f.folioOS = p.folio;
+            }
+            await opsMarcarPedidoGestionado(p.id, f.id, "Ligado a un servicio ya programado en Operaciones");
+            window.opsLigarCerrar();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `Pedido ${p.folio || ""} ligado a ${f.estacion || "el servicio"}.`, "✅");
+            if (typeof opsRenderCalendario === "function" && tabActual === "calendario") opsRenderCalendario();
+        } catch (e) { alert("No se pudo ligar: " + (e.message || e)); }
+    };
     window.opsCalPedidoGestionado = function (id) {
         const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
         if (!confirm(`¿Marcar el pedido ${p.folio || ""} como ya gestionado? Saldrá de esta lista sin crear un servicio nuevo.`)) return;
@@ -7237,8 +7327,9 @@
         panel.innerHTML = `
             <div style="position:sticky;top:0;background:#1D2E73;color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;z-index:1;">
                 <div>
-                    <div style="font-size:10px;opacity:.75;text-transform:uppercase;letter-spacing:.4px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
+                    <div style="font-size:10px;opacity:.75;text-transform:uppercase;letter-spacing:.4px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioNumero ? " N.º " + opsEsc(f.folioNumero) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
                     <div style="font-size:15px;font-weight:700;margin-top:2px;">${opsEsc(f.estacion)}</div>
+                    ${f.pedidoVentasId ? `<button onclick="opsCalVerPdfPedido('${f.pedidoVentasId}')" style="margin-top:6px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF de la venta${f.pedidoVentasFolio ? " · " + opsEsc(f.pedidoVentasFolio) : ""}</button>` : ""}
                 </div>
                 <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
             </div>
@@ -8021,7 +8112,7 @@
                     proyecto: null, gastoEstimado: null, viaticosPendientes: false, viaticosMonto: null,
                     origen: "programa_inspectores", creadoPor: opsNombreActual(), creadoEn: opsFechaHora(),
                 };
-                const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, folioNumero: opsSiguienteNumeroServicio() });
                 await fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
                     texto: `Folio de inspección (${norma}) capturado por ${opsNombreActual()} para ${tec.nombre}, programado el ${opsFmtFechaCorta(fechaProgramada)}.`,
                     autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
@@ -8166,7 +8257,7 @@
             if (opsCalFiltroPlaza !== "todas" && datos.plaza && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
             if (tipoFolioNuevo === "laboratorio" && !eraLaboratorioAntes) await opsNotificarFolioLaboratorio({ id, ...datos });
         } else {
-            const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
+            const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, folioNumero: opsSiguienteNumeroServicio(), origen: "manual", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora() });
             folioIdFinal = nuevo.id;
             // Primer comentario automático: deja registrado quién capturó el folio y con qué datos,
             // como punto de partida del seguimiento (Glen: "creo que hace falta el primer comentario
@@ -10370,7 +10461,7 @@
         try {
             const { db, fs } = await opsGetFB();
             const { datos, e, tecs, pl, durH, herrLista } = opsAsArmarDatos(receta);
-            const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+            const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, folioNumero: opsSiguienteNumeroServicio() });
             const tipoTxt = (OPS_AS_TIPOS.find(t => t.k === s.tipo) || {}).n || "Servicio";
             const nota = [
                 `${tipoTxt} capturado por ${opsNombreActual()}.`,
@@ -10481,7 +10572,7 @@
                         grupoProgramacionId: grupoId, grupoTotal: total, grupoOrden: orden,
                         ventanaInicio: ventanaIni, ventanaFin, ordenLibre: multi,
                         visitaConjunta: normas.length > 1, normasVisita: normas.length > 1 ? normas : null };
-                    const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                    const nuevo = await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...datos, folioNumero: opsSiguienteNumeroServicio() });
                     guardados.push({ id: nuevo.id, ...datos });
                     if (!cacheFolios.some(y => y.id === nuevo.id)) cacheFolios.push({ id: nuevo.id, ...datos });
                     fs.addDoc(fs.collection(db, COL_FOLIOS, nuevo.id, "comentarios"), {
@@ -13057,8 +13148,8 @@
         const lista = (typeof cacheFolios !== "undefined" && cacheFolios.length ? cacheFolios : (typeof opsViaFoliosSb !== "undefined" ? opsViaFoliosSb || [] : []));
         const fo = lista.find(x => x.id === ref || (x.folioOS && x.folioOS === ref));
         if (!fo) return /^[A-Za-z0-9]{18,}$/.test(ref) && !/^\d+$/.test(ref) ? "Servicio sin O.S." : ref;
-        if (fo.folioOS) return "O.S. " + fo.folioOS + (fo.estacion ? " · " + fo.estacion : "");
-        return "Sin O.S. · " + (fo.estacion || "servicio") + ((fo.fechaProgramada || "") ? " · " + fo.fechaProgramada.slice(0, 10) : "");
+        const num = fo.folioNumero ? "N.º " + fo.folioNumero : "";
+        return [num, fo.folioOS ? "O.S. " + fo.folioOS : "", fo.estacion || ""].filter(Boolean).join(" · ") || "Servicio";
     }
     function opsViaVehiculoCfg(tipo) { return (opsViaCfg.vehiculos || []).find(v => v.tipo === tipo) || (opsViaCfg.vehiculos || [])[0] || { rendimiento: 9 }; }
 
