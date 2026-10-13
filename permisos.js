@@ -70,12 +70,27 @@ async function cargarCfg() {
   try { const c = await sb(); const r = await c.from('rh_config_permisos').select('datos').eq('id', 'general').maybeSingle(); if (r.data && r.data.datos) cfg = Object.assign({}, CFG_DEF, r.data.datos); } catch (e) {}
   return cfg;
 }
+// ── Técnicos y ausencias: se leen de donde los lee el calendario de Operaciones (oct-2026) ──
+// Antes este módulo leía otra copia de la lista (más vieja y con menos gente) y solo mostraba a quien
+// tenía correo; por eso faltaban técnicos y lo aprobado no aparecía en el calendario de Operaciones.
+const SEL_TEC = 'id:doc_id,nombre:datos->>nombre,correo:datos->>correo,departamento:datos->>departamento,plaza:datos->>plaza,puesto:datos->>puesto,supervisor:datos->>supervisor,estatus:datos->>estatus,oculto:datos->>ocultarEnListas';
+async function tecnicosVivos(filtro) {
+  const c = await sb();
+  let q = c.from('ops_docs').select(SEL_TEC).eq('coleccion', 'ops_tecnicos');
+  if (filtro) q = filtro(q);
+  const r = await q.limit(1000);
+  if (r.error) throw r.error;
+  return (r.data || []).map(t => Object.assign(t, { estatus: t.estatus || 'activo' }));
+}
+// Para quien no tiene correo se guarda una marca interna (la columna de correo es obligatoria);
+// a esa marca no se le mandan avisos.
+function correoDe(t) { return t && t.correo ? String(t.correo).toLowerCase().trim() : 'sin-correo:' + (t && t.id || ''); }
+function esCorreo(x) { return /@/.test(String(x || '')) && !/^sin-correo:/.test(String(x || '')); }
 async function perfilPorCorreo(correo) {
   try {
-    const c = await sb();
-    const r = await c.from('ops_tecnicos').select('id,nombre,correo,departamento,plaza,puesto,supervisor,estatus').ilike('correo', correo).limit(5);
-    const l = (r.data || []).filter(t => t.estatus !== 'baja');
-    return l[0] || (r.data || [])[0] || null;
+    const r = await tecnicosVivos(q => q.ilike('datos->>correo', correo));
+    const l = r.filter(t => t.estatus !== 'baja');
+    return l[0] || r[0] || null;
   } catch (e) { return null; }
 }
 function mismoGrupo(a, b) {
@@ -98,11 +113,11 @@ async function revisar(s) {
   // Ausencias capturadas a mano en Operaciones para compañeros del mismo departamento.
   try {
     if (s.departamento) {
-      const t = await c.from('ops_tecnicos').select('id,nombre,departamento,plaza,estatus').ilike('departamento', s.departamento).limit(300);
-      const comp = (t.data || []).filter(x => x.estatus !== 'baja' && x.id !== s.tecnico_id && mismoGrupo(x, s));
+      const t = await tecnicosVivos(q => q.ilike('datos->>departamento', s.departamento));
+      const comp = t.filter(x => x.estatus !== 'baja' && x.id !== s.tecnico_id && mismoGrupo(x, s));
       if (comp.length) {
-        const a = await c.from('ops_tecnico_ausencias').select('id,tecnico_id,tipo,fecha_inicio,fecha_fin,motivo')
-          .in('tecnico_id', comp.map(x => x.id)).lte('fecha_inicio', s.fecha_fin).gte('fecha_fin', s.fecha_inicio);
+        const a = await c.from('ops_docs').select('id:doc_id,tecnico_id:datos->>tecnicoId,tipo:datos->>tipo,fecha_inicio:datos->>fechaInicio,fecha_fin:datos->>fechaFin,motivo:datos->>motivo')
+          .eq('coleccion', 'ops_tecnico_ausencias').in('datos->>tecnicoId', comp.map(x => x.id)).lte('datos->>fechaInicio', s.fecha_fin).gte('datos->>fechaFin', s.fecha_inicio);
         const yaEnSolicitud = new Set(r.grupo.map(g => norm(g.colaborador_nombre)));
         (a.data || []).forEach(x => {
           const p = comp.find(y => y.id === x.tecnico_id);
@@ -137,11 +152,11 @@ function revisionHTML(r, compacto) {
 
 function idNotif() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 async function avisarPortal(para, tipo, mensaje, datos) {
-  if (!para) return;
+  if (!esCorreo(para)) return;
   try { const c = await sb(); await c.from('portal_notificaciones').insert({ tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, datos: Object.assign({ modulo: 'RH' }, datos || {}) }); } catch (e) { console.warn('[permisos] aviso portal', e); }
 }
 async function avisarApp(para, tipo, mensaje, s) {
-  if (!para) return;
+  if (!esCorreo(para)) return;
   try { const c = await sb(); await c.from('ops_notificaciones').insert({ id: idNotif(), tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, folio: s.folio || null, solicitud_id: String(s.id), leida: false, fecha: new Date().toISOString() }); } catch (e) { console.warn('[permisos] aviso app', e); }
 }
 function correosAvisoNueva() {
@@ -176,12 +191,14 @@ async function resolver(s, estatus, usuario, comentario) {
   };
   // Al aprobar: se aparta en el calendario de Operaciones.
   if (estatus === 'Aprobada' && s.tecnico_id && !s.ausencia_ops_id) {
-    const tipoOps = s.tipo === 'vacaciones' ? 'vacaciones' : s.tipo === 'incapacidad' ? 'incapacidad' : 'permiso';
-    const a = await c.from('ops_tecnico_ausencias').insert({ tecnico_id: s.tecnico_id, tipo: tipoOps, fecha_inicio: s.fecha_inicio, fecha_fin: s.fecha_fin, motivo: (s.folio || 'PER') + ' · ' + (s.motivo || ''), creado_por: usuario.nombre || usuario.correo, fecha_alta: hoy() }).select('id').single();
-    if (!a.error && a.data) cambios.ausencia_ops_id = a.data.id;
+    const tipoOps = s.tipo === 'vacaciones' ? 'Vacaciones' : s.tipo === 'incapacidad' ? 'Incapacidad' : 'Permiso';
+    const idAus = 'per' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const a = await c.from('ops_docs').insert({ ruta: 'ops_tecnico_ausencias/' + idAus, coleccion: 'ops_tecnico_ausencias', doc_id: idAus,
+      datos: { tecnicoId: s.tecnico_id, tipo: tipoOps, fechaInicio: s.fecha_inicio, fechaFin: s.fecha_fin, motivo: (s.folio || 'PER') + ' · ' + (s.motivo || ''), creadoPor: usuario.nombre || usuario.correo, fechaAlta: hoy(), solicitudId: String(s.id) } });
+    if (!a.error) cambios.ausencia_ops_id = idAus; else console.warn('[permisos] no se pudo apartar en el calendario de Operaciones', a.error);
   }
   if ((estatus === 'Cancelada' || estatus === 'Rechazada') && s.ausencia_ops_id) {
-    await c.from('ops_tecnico_ausencias').delete().eq('id', s.ausencia_ops_id);
+    await c.from('ops_docs').delete().eq('coleccion', 'ops_tecnico_ausencias').eq('doc_id', s.ausencia_ops_id);
     cambios.ausencia_ops_id = null;
   }
   const u = await c.from('rh_solicitudes_ausencia').update(cambios).eq('id', s.id);
@@ -462,12 +479,12 @@ async function pResolver(id, estatus, desdeModal) {
 // Registrar en nombre de alguien (por ejemplo, quien no tiene la app).
 async function pNuevaPortal() {
   let tecs = [];
-  try { const c = await sb(); const r = await c.from('ops_tecnicos').select('id,nombre,correo,departamento,plaza,puesto,supervisor,estatus').neq('estatus', 'baja').order('nombre').limit(500); tecs = (r.data || []).filter(t => t.correo); } catch (e) {}
+  try { tecs = (await tecnicosVivos()).filter(t => t.estatus !== 'baja').sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })); } catch (e) {}
   window.__tcpTecs = tecs;
   const inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px';
   pModal('<div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:4px">Registrar solicitud por alguien</div>' +
-    '<div style="font-size:12px;color:#64748b;margin-bottom:12px">Pasa por las mismas reglas que la app. Solo aparecen colaboradores con correo en su ficha de Técnicos.</div>' +
-    '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || '') + '</option>').join('') + '</select></label>' +
+    '<div style="font-size:12px;color:#64748b;margin-bottom:12px">Pasa por las mismas reglas que la app. Aparecen todos los colaboradores activos; quien no tiene correo no recibe el aviso en su celular.</div>' +
+    '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || t.puesto || '') + (t.correo ? '' : ' (sin correo)') + '</option>').join('') + '</select></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Tipo<select id="tcp-n-tipo" style="' + inp + '">' + Object.keys(TIPOS).map(k => '<option value="' + k + '">' + TIPOS[k].t + '</option>').join('') + '</select></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Modalidad<select id="tcp-n-goce" style="' + inp + '"><option value="">—</option>' + Object.keys(GOCE_TXT).map(k => '<option value="' + k + '">' + GOCE_TXT[k] + '</option>').join('') + '</select></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Desde<input type="date" id="tcp-n-ini" value="' + hoy() + '" style="' + inp + '"></label><label style="font-size:11.5px;font-weight:600;color:#475569">Hasta<input type="date" id="tcp-n-fin" value="' + hoy() + '" style="' + inp + '"></label></div>' +
@@ -483,7 +500,7 @@ async function pGuardarNueva() {
   const g = id => (document.getElementById(id).value || '').trim();
   const err = document.getElementById('tcp-n-err');
   if (!t) { err.textContent = 'Elige al colaborador.'; return; }
-  const s = { colaborador_email: String(t.correo).toLowerCase(), colaborador_nombre: t.nombre, tecnico_id: t.id, departamento: t.departamento, plaza: t.plaza, puesto: t.puesto, jefe: t.supervisor,
+  const s = { colaborador_email: correoDe(t), colaborador_nombre: t.nombre, tecnico_id: t.id, departamento: t.departamento, plaza: t.plaza, puesto: t.puesto, jefe: t.supervisor,
     tipo: g('tcp-n-tipo'), goce: g('tcp-n-goce') || null, fecha_inicio: g('tcp-n-ini'), fecha_fin: g('tcp-n-fin'), motivo: g('tcp-n-mot'), como_repone: g('tcp-n-rep') || null,
     urgente: document.getElementById('tcp-n-urg').checked, urgente_motivo: g('tcp-n-urgm') || null, origen: 'portal', creado_por: (P.opts.usuario || {}).correo || null };
   s.dias = diasHabiles(s.fecha_inicio, s.fecha_fin);
