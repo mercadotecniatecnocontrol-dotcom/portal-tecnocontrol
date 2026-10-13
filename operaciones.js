@@ -306,6 +306,8 @@
                 const durHrs = (d.traslado || 0) + (d.ejecucion || 0);
                 // Sin duración capturada: se le da todo su día programado antes de marcarlo retrasado.
                 finProg = durHrs > 0 ? new Date(ini.getTime() + durHrs * 3600000) : new Date(ini.getFullYear(), ini.getMonth(), ini.getDate(), 23, 59);
+                const finDia = opsFolioFechaFin(f);
+                if (finDia && finDia > d.fecha) finProg = new Date(finDia + "T19:00:00"); // varios días: retrasado hasta después de su último día
             }
             if (info.horas !== null && info.horas < 0) k = "vencido";
             else if (f.iniciadoEn) k = "enproceso";
@@ -1290,7 +1292,16 @@
         return (window.auth && window.auth.currentUser && window.auth.currentUser.email) || "desconocido";
     }
     function opsNombreActual() {
-        return (window.nombreUsuario && window.nombreUsuario(opsUsuarioActual())) || opsUsuarioActual();
+        return opsNombreDeCorreo(opsUsuarioActual());
+    }
+    // Nombre legible de un correo: primero la ficha de Técnicos/Operaciones, luego el directorio del portal.
+    function opsNombreDeCorreo(correo) {
+        const c = String(correo || "").toLowerCase().trim();
+        if (!c) return "";
+        const t = (typeof cacheTec !== "undefined" ? cacheTec : []).find(x => String(x.correo || "").toLowerCase().trim() === c && x.estatus !== "baja");
+        if (t && t.nombre) return t.nombre;
+        const n = window.nombreUsuario ? window.nombreUsuario(c) : "";
+        return n || c;
     }
 
     // ── Roles / permisos (catálogo configurable de puestos, no fijo en código) ──
@@ -5859,6 +5870,51 @@
         return { fecha, horaDecimal: hh + (mm || 0) / 60, traslado: f.tiempoTrasladoHrs || 0, ejecucion: f.tiempoEjecucionHrs || 0 };
     }
 
+    // ═══ Servicios de varios días (Etapa A, oct-2026) ═══
+    // Antes el servicio solo existía en su día de inicio: uno de 2 días se dibujaba en un solo día y
+    // el técnico se veía libre el segundo. Ahora el folio guarda fechaFinProgramada (YYYY-MM-DD);
+    // si no la tiene pero su duración se capturó en "días", el fin se calcula solo.
+    function opsDiaISOmas(fechaISO, n) {
+        const d = new Date(fechaISO + "T12:00:00"); d.setDate(d.getDate() + n);
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function opsDiasEntre(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000); }
+    function opsFolioFechaFin(f) {
+        const ini = ((f && f.fechaProgramada) || "").slice(0, 10);
+        if (!ini) return "";
+        if (f.fechaFinProgramada && f.fechaFinProgramada >= ini) return f.fechaFinProgramada;
+        if (f.duracionUnidad === "dias" && Number(f.duracionValor) > 1) return opsDiaISOmas(ini, Math.ceil(Number(f.duracionValor)) - 1);
+        return ini;
+    }
+    function opsFolioCubreDia(f, fechaISO) {
+        const ini = ((f && f.fechaProgramada) || "").slice(0, 10);
+        return !!ini && fechaISO >= ini && fechaISO <= opsFolioFechaFin(f);
+    }
+    // Datos del folio PARA UN DÍA dado: el primer día empieza a su hora, los siguientes a las 8:00
+    // (jornada hasta las 18:00); el último día termina con lo que reste del trabajo + el regreso.
+    function opsCalDatosFolioDia(f, fechaISO) {
+        const base = opsCalDatosFolio(f); if (!base) return null;
+        const fin = opsFolioFechaFin(f);
+        if (fechaISO < base.fecha || fechaISO > fin) return null;
+        if (fin === base.fecha) return base;
+        const dias = opsDiasEntre(base.fecha, fin) + 1, idx = opsDiasEntre(base.fecha, fechaISO);
+        const INI = 8, FIN = 18;
+        const capPrimero = Math.max(1, FIN - base.horaDecimal - base.traslado);
+        if (idx === 0) return { ...base, ejecucion: capPrimero, dia: 1, dias, multiDia: true };
+        const resto = (Number(base.ejecucion) || 0) - capPrimero - (FIN - INI) * (dias - 2);
+        if (idx === dias - 1 && resto > 0 && resto < (FIN - INI)) return { fecha: fechaISO, horaDecimal: INI, traslado: base.traslado, ejecucion: resto, dia: idx + 1, dias, multiDia: true };
+        return { fecha: fechaISO, horaDecimal: INI, traslado: 0, ejecucion: FIN - INI, dia: idx + 1, dias, multiDia: true };
+    }
+    // Buscador de técnicos (asistente y formulario de edición): oculta los que no coinciden,
+    // sin volver a pintar la lista (así no se pierden las palomitas ya marcadas).
+    window.opsFiltrarListaTec = function (input, idContenedor) {
+        const cont = idContenedor ? document.getElementById(idContenedor) : input.nextElementSibling;
+        if (!cont) return;
+        const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const q = norm(input.value).trim();
+        cont.querySelectorAll("label").forEach(l => { l.style.display = !q || norm(l.textContent).includes(q) ? "" : "none"; });
+    };
+
     // Filtros adicionales del Calendario (rediseño sep-2026) — todos trabajan sobre campos que ya existen en el folio.
     let opsCalFiltroTecnico = "";        // id de ops_tecnicos ("" = todos)
     let opsCalFiltroCliente = "";        // clienteNombre exacto ("" = todos)
@@ -5889,16 +5945,20 @@
         const porTecnicoDia = new Map();
         let choques = 0;
         opsCalFoliosFiltrados().forEach(f => {
-            const d = opsCalDatosFolio(f);
-            if (!d) return;
-            const inicio = d.horaDecimal, fin = inicio + d.traslado + d.ejecucion;
-            (f.tecnicosAsignadosIds || []).forEach(tecId => {
-                const key = tecId + "|" + d.fecha;
-                if (!porTecnicoDia.has(key)) porTecnicoDia.set(key, []);
-                const lista = porTecnicoDia.get(key);
-                if (lista.some(o => inicio < o.fin && fin > o.inicio)) choques++;
-                lista.push({ inicio, fin });
-            });
+            const d0 = opsCalDatosFolio(f);
+            if (!d0) return;
+            const fin0 = opsFolioFechaFin(f);
+            for (let k = 0, dia = d0.fecha; dia <= fin0 && k < 31; k++, dia = opsDiaISOmas(d0.fecha, k)) {
+                const d = opsCalDatosFolioDia(f, dia); if (!d) continue;
+                const inicio = d.horaDecimal, fin = inicio + d.traslado + d.ejecucion;
+                (f.tecnicosAsignadosIds || []).forEach(tecId => {
+                    const key = tecId + "|" + dia;
+                    if (!porTecnicoDia.has(key)) porTecnicoDia.set(key, []);
+                    const lista = porTecnicoDia.get(key);
+                    if (lista.some(o => inicio < o.fin && fin > o.inicio)) choques++;
+                    lista.push({ inicio, fin });
+                });
+            }
         });
         return choques;
     }
@@ -5948,7 +6008,7 @@
         const inicioSemana = opsCalInicioSemana(new Date());
         const finSemana = opsCalSumarDias(inicioSemana, 6);
         const foliosVista = opsCalFoliosFiltrados();
-        const enEjecucionHoy = foliosVista.filter(f => opsCalDatosFolio(f)?.fecha === hoyISO).length;
+        const enEjecucionHoy = foliosVista.filter(f => opsFolioCubreDia(f, hoyISO)).length;
         const programadosSemana = foliosVista.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
         const sinFecha = foliosVista.filter(f => !f.fechaProgramada && !f.fechaSolucion);
         const atrasados = foliosVista.filter(f => ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
@@ -6410,7 +6470,7 @@
         function filaDe(t) {
             const ausente = cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             const guardia = cacheGuardias.find(g => g.tecnicoId === t.id && g.estado === "activa" && g.fechaInicio <= fechaISO && (!g.fechaFin || g.fechaFin >= fechaISO));
-            const ocupados = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolio(f) })).filter(o => o.d && o.d.fecha === fechaISO)
+            const ocupados = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolioDia(f, fechaISO) })).filter(o => o.d)
                 .sort((a, b) => a.d.horaDecimal - b.d.horaDecimal);
 
             const choqueSet = new Set();
@@ -6445,7 +6505,7 @@
                     const izqPct = Math.min(((ini - OPS_CAL_HORA_INICIO) / totalHrs) * 100, 100 - anchoPct);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
                     const finDec = d.horaDecimal + d.traslado + d.ejecucion;
-                    const horaTxt = sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal));
+                    const horaTxt = (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
@@ -6508,23 +6568,23 @@
 
         function celda(t, dia) {
             const fechaISO = opsCalFechaISO(dia);
-            const folios = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolio(f)?.fecha === fechaISO)
-                .sort((a, b) => opsCalDatosFolio(a).horaDecimal - opsCalDatosFolio(b).horaDecimal);
+            const folios = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolioDia(f, fechaISO))
+                .sort((a, b) => opsCalDatosFolioDia(a, fechaISO).horaDecimal - opsCalDatosFolioDia(b, fechaISO).horaDecimal);
             const ausente = cacheAusencias.some(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             if (ausente) return `<div style="height:100%;min-height:44px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 5px,#f1f5f9 5px,#f1f5f9 10px);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;font-weight:700;">Ausente</div>`;
             if (!folios.length) return "";
-            const datos = folios.map(f => opsCalDatosFolio(f));
+            const datos = folios.map(f => opsCalDatosFolioDia(f, fechaISO));
             const conChoque = datos.some((d1, i) => datos.some((d2, j) => i !== j && d1.horaDecimal < (d2.horaDecimal + d2.traslado + d2.ejecucion) && (d1.horaDecimal + d1.traslado + d1.ejecucion) > d2.horaDecimal));
             const vis = folios.slice(0, 2), resto = folios.length - vis.length;
             return `<div style="${conChoque ? "outline:2px solid #E7402B;outline-offset:1px;border-radius:8px;" : ""}">
                 ${vis.map(f => {
-                    const cat = opsCalColorFolio(f), d = opsCalDatosFolio(f);
+                    const cat = opsCalColorFolio(f), d = opsCalDatosFolioDia(f, fechaISO);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
                     return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${cat.fondo};border:none;box-shadow:inset 0 0 0 1px ${cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${(d.traslado + d.ejecucion) > 0 ? " · " + opsEsc(opsAsTxtHoras(d.traslado + d.ejecucion)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -6565,7 +6625,7 @@
 
         function contarDia(d) {
             const fechaISO = opsCalFechaISO(d);
-            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolio(f)?.fecha === fechaISO);
+            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolioDia(f, fechaISO));
         }
 
         return `
@@ -7600,6 +7660,9 @@
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha y hora programada del trabajo</label>
                     <input type="datetime-local" id="ops-fol-programada" value="${opsEsc(programadaDefault)}" onchange="window.opsFolioSugerirTecnicos('${id || ""}')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                     <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de fin <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label>
+                    <input type="date" id="ops-fol-fecha-fin" value="${opsEsc(f && opsFolioFechaFin(f) && opsFolioFechaFin(f) !== (f.fechaProgramada || "").slice(0, 10) ? opsFolioFechaFin(f) : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                    <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Vacía = termina el mismo día. Para extender el servicio a más días, cambia esta fecha.</div>
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Plaza</label>
                     <select id="ops-fol-plaza" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${(() => { const pl = f ? opsPlazaFolio(f) : (opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? opsCalFiltroPlaza : "Chihuahua"); return OPS_PLAZAS.map(p => `<option ${p === pl ? "selected" : ""}>${p}</option>`).join(""); })()}
@@ -7650,7 +7713,7 @@
                     </div>
                     <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Atención: solo si cerró en tiempo pero quedó un pendiente (no usa la tabla de SLA). Solución: folio 100% cerrado.</div>
 
-                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable (ligado a Técnicos)</label>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable del servicio <span style="font-weight:500;color:#94a3b8;">(se agrega solo al equipo)</span></label>
                     <select id="ops-fol-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         <option value="">— Sin ligar / texto libre —</option>
                         ${cacheTec.filter(t => (t.estatus === "activo" && !opsEsAdministrativo(t)) || f?.tecnicoResponsableId === t.id).map(t => `<option value="${t.id}" ${f?.tecnicoResponsableId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}${t.correo ? " (" + opsEsc(t.correo) + ")" : ""}</option>`).join("")}
@@ -7662,6 +7725,7 @@
                         <button type="button" onclick="window.opsFolioSugerirTecnicos('${id || ""}', true)" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.sparkle} Sugerir</button>
                     </div>
                     <div id="ops-fol-sugerencia-nota" style="font-size:10px;color:#94a3b8;margin-bottom:6px;"></div>
+                    <input type="search" placeholder="Buscar técnico…" oninput="window.opsFiltrarListaTec(this,'ops-fol-tecnicos-check')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;margin:0 0 6px;box-sizing:border-box;">
                     <div id="ops-fol-tecnicos-check" style="max-height:180px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:6px;">
                         ${cacheTec.filter(t => (t.estatus === "activo" && !opsEsAdministrativo(t)) || (f?.tecnicosAsignadosIds || []).includes(t.id)).map(t => {
                             const fechaFolio = (programadaDefault || "").slice(0, 10);
@@ -8015,6 +8079,9 @@
         const cliente = clienteId ? cacheClientes.find(c => c.id === clienteId) : null;
         const tecnicosAsignadosIds = Array.from(document.querySelectorAll(".ops-fol-tec-check:checked")).map(c => c.value);
         const tecnicosAsignadosNombres = Array.from(document.querySelectorAll(".ops-fol-tec-check:checked")).map(c => c.dataset.nombre);
+        const fechaProgForm = document.getElementById("ops-fol-programada").value || "";
+        const fechaFinForm = document.getElementById("ops-fol-fecha-fin")?.value || "";
+        if (fechaFinForm && fechaProgForm && fechaFinForm < fechaProgForm.slice(0, 10)) { alert("La fecha de fin no puede ser antes que la fecha programada."); return; }
         const tipoFolioNuevo = document.getElementById("ops-fol-tipo").value || "servicio";
         const folioAnterior = id ? cacheFolios.find(x => x.id === id) : null;
         const eraLaboratorioAntes = folioAnterior?.tipoFolio === "laboratorio";
@@ -8026,6 +8093,15 @@
             tecnicoResponsableId = tecnicosAsignadosIds[0];
         }
         if (!tecnicoResponsableId && tecnicosAsignadosIds.length && !document.getElementById("ops-fol-responsable-texto").value.trim()) tecnicoResponsableId = tecnicosAsignadosIds[0];
+        // Etapa A (oct-2026): el responsable SIEMPRE forma parte del equipo. Antes se podía elegir un
+        // responsable y dejar "Técnicos asignados" vacío: el servicio quedaba guardado sin nadie y
+        // desaparecía del calendario (caso Cordilleras / Trasviña, 13-oct).
+        if (tecnicoResponsableId && !tecnicosAsignadosIds.includes(tecnicoResponsableId)) {
+            const tr = cacheTec.find(t => t.id === tecnicoResponsableId);
+            if (tr) { tecnicosAsignadosIds.unshift(tr.id); tecnicosAsignadosNombres.unshift(tr.nombre || ""); }
+        }
+        if (fechaProgForm && !tecnicosAsignadosIds.length
+            && !confirm("Este servicio tiene fecha programada pero ningún técnico asignado.\n\nNo va a aparecer en el calendario de nadie. ¿Guardarlo así?")) return;
         const tec = tecnicoResponsableId ? cacheTec.find(t => t.id === tecnicoResponsableId) : null;
 
         const datos = {
@@ -8064,6 +8140,7 @@
             servicioCatalogoId: document.getElementById("ops-fol-servicio").value || null,
             categoriaServicio: (() => { const sel = document.getElementById("ops-fol-servicio"); return sel.selectedOptions[0]?.dataset.categoria || null; })(),
             fechaProgramada: document.getElementById("ops-fol-programada").value || null,
+            fechaFinProgramada: fechaFinForm && fechaProgForm && fechaFinForm > fechaProgForm.slice(0, 10) ? fechaFinForm : null,
             plaza: document.getElementById("ops-fol-plaza")?.value || "Chihuahua",
             tiempoEjecucionHrs: document.getElementById("ops-fol-tiempo-ejec").value ? Number(document.getElementById("ops-fol-tiempo-ejec").value) : null,
             tiempoTrasladoHrs: document.getElementById("ops-fol-tiempo-trasl").value ? Number(document.getElementById("ops-fol-tiempo-trasl").value) : null,
@@ -8738,7 +8815,8 @@
         const precioExtras = extras.reduce((a, x) => a + x.precio, 0);
         const precioVisita = precio + precioExtras;
         // Comisión en % se calcula sobre el total de la visita (todas las normas).
-        const baseComision = s.__soloEsta && s.__precioVisitaBase != null ? s.__precioVisitaBase : precioVisita;
+        // Etapa A: en "Solo programación" no hay precio y el % daba $0 → se usa la base capturada a mano.
+        const baseComision = (s.__soloEsta && s.__precioVisitaBase != null ? s.__precioVisitaBase : precioVisita) || (Number(s.baseComisionManual) || 0);
         const auto = opsAsCostosAuto();
         const viaticos = Number(s.costoViaticos) || 0, herramienta = Number(s.costoHerr) || 0, otros = Number(s.costoOtros) || 0;
         const comisiones = (s.comisiones || []).reduce((a, c) => a + opsAsComisionMonto(c, baseComision), 0);
@@ -8970,6 +9048,10 @@
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Comisiones al personal</div><div class="opsas-hint">Avisa a Pagos y RH al guardar y al finalizar</div></div>
             ${filas || `<div class="opsas-note" style="margin:0 0 8px;">Sin comisiones capturadas.</div>`}
+            ${(s.comisiones || []).some(c => c.tipo === "pct") && !R.precioVisita ? `<div class="opsas-box" style="margin:0 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:220px;font-size:12px;color:#92400e;">Este servicio todavía no tiene precio capturado, por eso el <b>%</b> salía en $0. Escribe el precio del servicio sobre el que se calcula la comisión:</div>
+                <input type="number" min="0" step="0.01" class="opsas-in" style="width:150px;" value="${opsEsc(s.baseComisionManual)}" placeholder="Precio $" onchange="opsAS.baseComisionManual=this.value;opsAsPintar()">
+            </div>` : ""}
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="opsas-ghost" onclick="opsAS.comisiones.push({tecId:'',concepto:'',tipo:'monto',valor:''});opsAsPintar()">+ Agregar persona</button>
                 ${equipo.length ? `<button type="button" class="opsas-ghost" onclick="opsAsComisionesEquipo()">Agregar al equipo asignado (${equipo.length})</button>` : ""}
@@ -9122,7 +9204,7 @@
             vehiculo: "", herrOk: {},
             norma: OPS_NORMAS_INSPECCION[0], hologramas: "", precintos: "", distintivos: "", mangueras: "",
             clienteId: "", prioridad: "", fechaSolicitud: `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`,
-            plaza: "Chihuahua", plazaManual: false, dispensarios: "", durManual: false,
+            plaza: "Chihuahua", plazaManual: false, dispensarios: "", durManual: false, fechaFin: "", baseComisionManual: "",
             precioSel: "", precioPers: "", precioSugerido: null, precioDeSugerido: false, precioEditor: false, precioEdit: { l1: "", l2: "", l3: "", unidad: "servicio", extras: [] },
             costoViaticos: "", costoHerr: "", costoOtros: "", cobrarGastos: true, comisiones: [], contacto: "", telefono: "", whatsapp: "", correo: "", puesto: "Encargado de estación", contactoId: null, os: "", comentarios: "",
             viaticos: false, masFac: false, facturarA: "", proyecto: "", encargado: "",
@@ -9159,6 +9241,14 @@
         opsAsAutoDuracionDispensarios(); opsAsPintar();
     };
     function opsAsFechaDia() { return (opsAS.fecha || "").slice(0, 10); }
+    // Último día del servicio (Etapa A): lo que se capture a mano manda; si no, sale de la duración en días.
+    function opsAsFechaFin() {
+        const s = opsAS; if (!s || s.multiEst) return null;
+        const ini = (s.fecha || "").slice(0, 10); if (!ini) return null;
+        let fin = s.fechaFin || "";
+        if (!fin && s.durU === "dias" && Number(s.dur) > 1) fin = opsDiaISOmas(ini, Math.ceil(Number(s.dur)) - 1);
+        return fin && fin > ini ? fin : null;
+    }
     function opsAsAusente(tid) { const d = opsAsFechaDia(); return d ? cacheAusencias.find(a => a.tecnicoId === tid && a.fechaInicio <= d && a.fechaFin >= d) : null; }
     function opsAsOcupado(tid) { return opsAsAgendaTec(tid).length > 0; }
     // Varios servicios el mismo día SÍ se permiten, por horario (oct-2026). Esto arma la agenda
@@ -9174,9 +9264,9 @@
     function opsAsAgendaTec(tid) {
         const d = opsAsFechaDia(); if (!d) return [];
         const nuevo = opsAsRangoNuevo();
-        return cacheFolios.filter(f => (f.fechaProgramada || "").slice(0, 10) === d && (f.tecnicosAsignadosIds || []).includes(tid) && f.cancelado !== true)
+        return cacheFolios.filter(f => opsFolioCubreDia(f, d) && (f.tecnicosAsignadosIds || []).includes(tid) && f.cancelado !== true)
             .map(f => {
-                const x = opsCalDatosFolio(f); if (!x) return null;
+                const x = opsCalDatosFolioDia(f, d); if (!x) return null;
                 const dur = (x.traslado || 0) + (x.ejecucion || 0);
                 const ini = x.horaDecimal, fin = ini + (dur > 0 ? dur : 1);
                 return { ini, fin, estacion: f.estacion || "", choca: !!nuevo && nuevo.ini < fin && nuevo.fin > ini };
@@ -9289,6 +9379,7 @@
                 <div><label class="opsas-lb">Fecha y hora programada</label><input type="datetime-local" class="opsas-in" value="${opsEsc(s.fecha)}" onchange="opsAsSet('fecha',this.value)"></div>
                 <div><label class="opsas-lb">Duración del trabajo</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.dur)}" oninput="opsAS.dur=this.value;opsAS.durManual=true;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())" onchange="opsAsPintar()">${selU("durU", s.durU)}</div></div>
                 <div><label class="opsas-lb">Traslado (cada trayecto)</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.tras)}" oninput="opsAS.tras=this.value;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())">${selU("trasU", s.trasU)}</div></div>
+                ${s.multiEst ? "" : `<div><label class="opsas-lb">Fecha de fin <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label><input type="date" class="opsas-in" value="${opsEsc(opsAsFechaFin() || "")}" min="${opsEsc((s.fecha || "").slice(0, 10))}" onchange="opsAsSet('fechaFin',this.value)"><div class="opsas-note" style="margin-top:3px;">Si pones la duración en <b>días</b> se llena sola.</div></div>`}
             </div>
             ${opsAsEsCalDispensarios() ? `
             <div class="opsas-box" style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -10104,7 +10195,7 @@
         const elegidos = slot === "libre" ? s.tecnicos : (s.porRol[slot] || []);
         const tecs = opsTecOperativos().filter(t => !habilidad || habilidad === "tecnico" || (t.habilidades || []).includes(habilidad)).sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
         if (!tecs.length) return `<div class="opsas-note opsas-warn">No hay técnicos con la habilidad "${opsEsc((OPS_TIPO_TECNICO[habilidad] || {}).nombre || habilidad)}" capturada. Agrégala en su ficha (pestaña Técnicos).</div>`;
-        return `<div class="opsas-list">${tecs.map(t => {
+        return `<input type="search" class="opsas-in" placeholder="Buscar técnico…" oninput="opsFiltrarListaTec(this)" style="margin-bottom:6px;"><div class="opsas-list">${tecs.map(t => {
             const aus = opsAsAusente(t.id), ag = opsAsAgendaTec(t.id), choca = ag.filter(a => a.choca), on = elegidos.includes(t.id);
             const est = aus ? { c: "#E7402B", t: opsEsc(aus.tipo || "Ausencia") + " ese día" }
                 : choca.length ? { c: "#DC2626", t: "Choca con tu horario: " + opsEsc(opsAsAgendaTxt(choca)) }
@@ -10216,7 +10307,7 @@
             servicioCatalogoId: receta?.id || null, categoriaServicio: receta?.categoria || null,
             cantidadUnidades: receta ? Math.max(1, Number(s.cantidad) || 1) : null,
             numeroDispensarios: opsAsEsCalDispensarios() && Number(s.dispensarios) > 0 ? Number(s.dispensarios) : null,
-            fechaProgramada: s.fecha, plaza: s.plaza || "Chihuahua",
+            fechaProgramada: s.fecha, fechaFinProgramada: opsAsFechaFin(), plaza: s.plaza || "Chihuahua",
             estacionMunicipio: e?.municipio || null,
             duracionValor: num(s.dur), duracionUnidad: s.durU,
             tiempoEjecucionHrs: durH || null, tiempoTrasladoHrs: trasH || null,
@@ -12959,6 +13050,16 @@
         const p = n => String(n).padStart(2, "0");
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
     }
+    // El folio de servicio se guarda como liga (O.S. o identificador interno). En pantalla y PDF se
+    // muestra legible: la O.S. si existe; si no, estación y fecha del servicio (Etapa A, oct-2026).
+    function opsViaFolioLegible(ref) {
+        if (!ref) return "";
+        const lista = (typeof cacheFolios !== "undefined" && cacheFolios.length ? cacheFolios : (typeof opsViaFoliosSb !== "undefined" ? opsViaFoliosSb || [] : []));
+        const fo = lista.find(x => x.id === ref || (x.folioOS && x.folioOS === ref));
+        if (!fo) return /^[A-Za-z0-9]{18,}$/.test(ref) && !/^\d+$/.test(ref) ? "Servicio sin O.S." : ref;
+        if (fo.folioOS) return "O.S. " + fo.folioOS + (fo.estacion ? " · " + fo.estacion : "");
+        return "Sin O.S. · " + (fo.estacion || "servicio") + ((fo.fechaProgramada || "") ? " · " + fo.fechaProgramada.slice(0, 10) : "");
+    }
     function opsViaVehiculoCfg(tipo) { return (opsViaCfg.vehiculos || []).find(v => v.tipo === tipo) || (opsViaCfg.vehiculos || [])[0] || { rendimiento: 9 }; }
 
     // Todo el cálculo en un solo lugar: lo que el usuario sobrescribió a mano se respeta.
@@ -13640,10 +13741,10 @@
         doc.text("Departamento de Operaciones  |  Para autorización de Gerencia Administrativa y Pagos", W / 2, y, { align: "center" });
 
         seccion("1  ·  DATOS DEL VIAJE");
-        campo("Solicita:", s.solicitante_nombre || s.solicitante_email);
+        campo("Solicita:", (s.solicitante_nombre && /\s/.test(s.solicitante_nombre)) ? s.solicitante_nombre : (opsNombreDeCorreo(s.solicitante_email) || s.solicitante_nombre || s.solicitante_email));
         campo("Destino:", s.destino);
         if (s.cliente) campo("Cliente:", s.cliente);
-        if (s.folio_servicio) campo("Folio de servicio:", s.folio_servicio);
+        if (s.folio_servicio) campo("Folio de servicio:", opsViaFolioLegible(s.folio_servicio));
         campo("Salida:", fecha(t.salida || s.fecha_salida));
         campo("Regreso estimado:", fecha(t.regreso || s.fecha_regreso));
         if (t.inicio && t.inicio.nombre) campo("Inicio:", t.inicio.nombre);

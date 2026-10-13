@@ -6898,7 +6898,11 @@ function fmOpsServHTML(){
     misOpsServ.map(function(f){
       const enProc=!!f.iniciadoEn;
       const dia=String(f.fechaProgramada||'').slice(0,10);
-      const esHoy=dia===hoyISO, atrasado=dia&&dia<hoyISO&&!enProc;
+      // Servicios de varios días (oct-2026): cuenta como "Hoy" mientras dure y solo se atrasa después del último día.
+      let diaFin=dia;
+      if(f.fechaFinProgramada&&f.fechaFinProgramada>dia)diaFin=f.fechaFinProgramada;
+      else if(dia&&f.duracionUnidad==='dias'&&Number(f.duracionValor)>1){const dd=new Date(dia+'T12:00:00');dd.setDate(dd.getDate()+Math.ceil(Number(f.duracionValor))-1);diaFin=dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0');}
+      const esHoy=!!dia&&dia<=hoyISO&&hoyISO<=diaFin, atrasado=dia&&diaFin<hoyISO&&!enProc;
       const borde=enProc?'#BFDBFE':atrasado?'#FCA5A5':esHoy?'#FDE68A':'#E2E8F0';
       const mapa=(f.estacionLat!=null&&f.estacionLng!=null)?'https://www.google.com/maps/search/?api=1&query='+f.estacionLat+','+f.estacionLng:(f.estacionDireccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(f.estacionDireccion):'');
       const tel=f.contactoWhatsapp||f.contactoTelefono||'';
@@ -6908,7 +6912,7 @@ function fmOpsServHTML(){
           '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;'+(enProc?'background:#DBEAFE;color:#1E40AF':atrasado?'background:#FEE2E2;color:#B91C1C':esHoy?'background:#FEF3C7;color:#92400E':'background:#F1F5F9;color:#475569')+'">'+(enProc?'En proceso':atrasado?'Atrasado':esHoy?'Hoy':'Programado')+'</span>'+
         '</div>'+
         '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:4px">'+opsSvEsc(f.estacion||'Estación sin nombre')+'</div>'+
-        '<div style="font-size:12px;color:#475569;margin-bottom:6px">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+'</div>'+
+        '<div style="font-size:12px;color:#475569;margin-bottom:6px">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+(diaFin!==dia?' al '+opsSvEsc(diaFin.split('-').reverse().join('/')):'')+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+'</div>'+
         (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
         ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
