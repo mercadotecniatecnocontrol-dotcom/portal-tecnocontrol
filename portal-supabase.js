@@ -31,6 +31,13 @@
 //    window.tcNotifConfig()               copia de la configuración cargada
 //  Si las tablas no existen o fallan, TODO se entrega como antes (nunca se pierde un aviso).
 //
+//  Aspel (Fase 2, oct-2026) — datos confidenciales, solo con sesión real del portal:
+//    window.tcSbSesion()                  cliente de Supabase que manda la sesión de Firebase
+//    window.tcAspel.diagnostico()         ¿Supabase me reconoce? ¿puedo leer Aspel?
+//    window.tcAspel.estadoCuenta(clave?)  saldo, vencido, semáforo (todos o un cliente)
+//    window.tcAspel.facturas({cliente, plaza, estatus, desde, limite})
+//    window.tcAspel.documento(tipDoc, cveDoc) · calidadClientes() · estadoSincronizacion()
+//
 //  El `id` que ve el resto del código es `firestore_id` (los ids de Firestore
 //  de siempre; las tareas nuevas reciben un UUID) — así los vínculos que ya
 //  existen (parrilla → tareaId, compartidos, etc.) siguen funcionando.
@@ -299,6 +306,80 @@
       if (email) q = q.eq('para', String(email).toLowerCase());
       return q;
     }).then(function (r) { if (r.error) throw r.error; return (r.data || []).map(filaANotif); });
+  };
+
+  // ═════════════ SESIÓN DEL PORTAL EN SUPABASE (Fase 2, oct-2026) ═════════════
+  // Segundo cliente que manda la sesión real de Firebase a Supabase, para leer
+  // datos confidenciales (Aspel: saldos, RFC) que la llave pública NO puede ver.
+  // El cliente de siempre (tcSb) no cambia: todo lo demás sigue igual.
+  // Requiere en Supabase: Authentication → Third-party Auth → Firebase (tecnocontrol-1c42f).
+  var _promesaSesion = null;
+  function sbSesion() {
+    if (window.tcSupabaseSesion) return Promise.resolve(window.tcSupabaseSesion);
+    if (_promesaSesion) return _promesaSesion;
+    _promesaSesion = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
+      if (window.tcSupabaseSesion) return window.tcSupabaseSesion;
+      var c = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        accessToken: function () {
+          var u = window.auth && window.auth.currentUser;
+          return u ? u.getIdToken() : Promise.resolve(null);
+        },
+      });
+      window.tcSupabaseSesion = c;
+      return c;
+    }).catch(function (e) { _promesaSesion = null; throw e; });
+    return _promesaSesion;
+  }
+  window.tcSbSesion = sbSesion;
+
+  // Lecturas de Aspel (solo para quien está en aspel_lectores).
+  function aspelSel(tabla, armar) {
+    return sbSesion().then(function (c) {
+      var q = c.from(tabla).select('*');
+      if (armar) q = armar(q);
+      return q;
+    }).then(function (r) { if (r.error) throw r.error; return r.data || []; });
+  }
+  window.tcAspel = {
+    // Prueba rápida desde la consola (F12):  tcAspel.diagnostico()
+    diagnostico: function () {
+      return sbSesion().then(function (c) { return c.rpc('aspel_quien_soy'); })
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var d = r.data || {};
+          console.log('[Aspel] Supabase te reconoce como:', d.correo || '(sin sesión)', '· puede leer Aspel:', !!d.puede_leer_aspel, d);
+          return d;
+        });
+    },
+    estadoCuenta: function (clave, empresa) {
+      return aspelSel('v_aspel_estado_cuenta', function (q) {
+        q = q.eq('empresa', empresa || '01');
+        return clave ? q.eq('clave', String(clave).trim()) : q.order('vencido', { ascending: false });
+      });
+    },
+    facturas: function (filtros) {
+      var f = filtros || {};
+      return aspelSel('v_aspel_facturas', function (q) {
+        q = q.eq('empresa', f.empresa || '01');
+        if (f.cliente) q = q.eq('cve_clpv', String(f.cliente).trim());
+        if (f.plaza) q = q.eq('plaza', f.plaza);
+        if (f.estatus) q = q.eq('estatus_cobro', f.estatus);
+        if (f.desde) q = q.gte('fecha_doc', f.desde);
+        return q.order('fecha_doc', { ascending: false }).limit(f.limite || 200);
+      });
+    },
+    documento: function (tipDoc, cveDoc, empresa) {
+      return aspelSel('aspel_documentos', function (q) {
+        return q.eq('empresa', empresa || '01').eq('tip_doc', tipDoc).eq('cve_doc', String(cveDoc).trim());
+      }).then(function (l) { return l[0] || null; });
+    },
+    calidadClientes: function (empresa) {
+      return aspelSel('v_aspel_calidad_clientes', function (q) { return q.eq('empresa', empresa || '01').order('nombre'); })
+        .then(function (l) { return l.filter(function (x) { return (x.problemas || []).length; }); });
+    },
+    estadoSincronizacion: function () {
+      return aspelSel('aspel_sync_estado', function (q) { return q.order('tabla'); });
+    },
   };
 
   // ═════════════ MATRIZ DE NOTIFICACIONES (Fase 1, oct-2026) ═════════════
