@@ -12896,7 +12896,7 @@
     // las noches de hotel, comidas, regreso, salida y notas editadas a mano no se aplicaban.
     Object.defineProperty(window, "opsViaForm", { get: () => opsViaForm, configurable: true });
     let opsViaMapa = null, opsViaCapas = [];
-    const OPS_VIA_ESTATUS = { "Pendiente": "#b45309", "Aprobada": "#1D2E73", "Pagada": "#15803d", "Rechazada": "#E7402B" };
+    const OPS_VIA_ESTATUS = { "Pendiente": "#b45309", "Aprobada": "#1D2E73", "Pagada": "#15803d", "Rechazada": "#E7402B", "Cancelada": "#64748b" };
 
     const opsViaDinero = n => "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const opsViaNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -12964,13 +12964,13 @@
         const autoriza = opsViaPuedeAutorizar();
         if (opsViaVista === "comprobacion") return opsRenderViaComprobacion(el, autoriza);
         if (opsViaVista === "pagos") return opsRenderViaPagos(el, autoriza);
-        const filas = opsViaLista.map(s => `
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}</td>
-                <td style="padding:9px 8px;">${opsEsc(s.destino || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio : "")}</div></td>
+        const filas = opsViaLista.map(s => { const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada"; const tach = canc ? "text-decoration:line-through;" : ""; return `
+            <tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : ""}">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${tach}">${opsEsc(s.folio || s.id)}</td>
+                <td style="padding:9px 8px;"><span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
                 <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsEsc(s.fecha_salida || "")}${s.fecha_regreso && s.fecha_regreso !== s.fecha_salida ? " → " + opsEsc(s.fecha_regreso) : ""}</td>
-                <td style="padding:9px 8px;text-align:right;font-weight:700;">${opsViaDinero(s.total)}</td>
+                <td style="padding:9px 8px;text-align:right;font-weight:700;${tach}">${opsViaDinero(s.total)}<div style="font-size:10.5px;color:#15803d;font-weight:600;">depositar ${opsViaDinero(opsViaDeposito(s))}</div></td>
                 <td style="padding:9px 8px;">
                     ${autoriza ? `<select onchange="opsViaCambiarEstatus(${s.id}, this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11.5px;color:${OPS_VIA_ESTATUS[s.estatus] || "#334155"};font-weight:700;">
                         ${Object.keys(OPS_VIA_ESTATUS).map(k => `<option ${k === s.estatus ? "selected" : ""}>${k}</option>`).join("")}</select>`
@@ -12980,7 +12980,7 @@
                     <button onclick="opsViaVerDetalle(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>
                     <button onclick="opsViaVerDetalle(${s.id}); opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">PDF</button>
                 </td>
-            </tr>`).join("");
+            </tr>`; }).join("");
         el.innerHTML = `
         <div style="padding:22px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
@@ -13012,13 +13012,23 @@
         // es lo que arranca el seguimiento de la comprobación.
         const previa = opsViaLista.find(x => x.id === id);
         if (estatus === "Pagada" && previa && !previa.entregado_en) { opsRenderViaticos(); opsViaAbrirEntrega(id); return; }
+        // Cancelada (14-oct-2026): para solicitudes que no aplican (servicio mal programado, duplicadas…).
+        // Queda tachada en la lista y fuera del seguimiento de Pagos, con el motivo a la vista.
+        let extra = {};
+        if (estatus === "Cancelada") {
+            if (previa && previa.entregado_en && !confirm(`Esta solicitud YA SE PAGÓ (${opsViaDinero(previa.monto_entregado)}). Si la cancelas, Pagos debe recuperar el dinero. ¿Cancelar de todos modos?`)) { opsRenderViaticos(); return; }
+            const motivo = prompt("¿Por qué no aplica esta solicitud? (ej. servicio mal programado, duplicada)", "");
+            if (motivo === null || !motivo.trim()) { if (motivo !== null) alert("Escribe el motivo para cancelarla."); opsRenderViaticos(); return; }
+            extra = { motivo: "CANCELADA: " + motivo.trim() + " · " + opsNombreActual() + " · " + new Date().toLocaleString("es-MX") };
+        }
         try {
             const sb = await opsSb();
-            const { error } = await sb.from("ops_solicitudes_viaticos").update({ estatus, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ estatus, ...extra, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
             if (error) throw error;
             const s = opsViaLista.find(x => x.id === id);
             if (s) {
-                s.estatus = estatus;
+                s.estatus = estatus; Object.assign(s, extra);
+                if (estatus === "Cancelada") (opsViaCfg.correosNotificar || []).forEach(c => opsViaAvisoPortal(c, "viaticos_cancelada", `La solicitud de viáticos ${s.folio} (${s.destino || ""}) se CANCELÓ: no aplica. ${extra.motivo || ""}`, { viaticoId: s.id }));
                 // Aviso al solicitante. Antes pasaba por opsCopiaFirestore, que ya no hace nada
                 // desde la migración a Supabase, así que este aviso nunca llegaba (corregido oct-2026).
                 if (s.solicitante_email) opsViaAvisoPortal(s.solicitante_email, "viaticos_" + estatus.toLowerCase(),
@@ -13312,6 +13322,7 @@
             noches: 0, nochesManual: false, hospedajePorNoche: opsViaCfg.hospedajePorNoche || 900,
             // Etapa B (oct-2026): hotel por habitación, catálogo de hoteles y quién paga el hotel.
             hotelId: null, hotelNombre: "", hotelModo: "deposito", hotelDesayuno: false,
+            gasolinaDeposito: false, casetasDeposito: false, // por defecto NO se depositan (tags)
             habSencillas: 0, habDobles: 0, habManual: false,
             precioSencilla: opsViaCfg.hospedajePorNoche || 1200, precioDoble: opsViaCfg.hospedajePorNoche || 1200,
             empresaEntrega: "Tecnocontrol", empresaCobra: "", cobroCliente: null, cobroManual: false,
@@ -13393,36 +13404,83 @@
     // (alimentos + hotel + otros se depositan; gasolina y casetas no; al cliente se le cobra el costo total).
     function opsViaDeposito(s) {
         if (s && s.deposito != null) return Number(s.deposito);
-        return Math.round(((Number(s.alimentos) || 0) + (s.hotel_modo === "compras" ? 0 : (Number(s.hospedaje) || 0)) + (Number(s.otros) || 0)) * 100) / 100;
+        return opsViaDesgloseDeposito(s).totalSi;
+    }
+    // Qué se deposita y qué no, concepto por concepto (14-oct-2026). Una sola fuente para el
+    // formulario, el PDF y la vista de Pagos, para que nunca haya duda de qué se transfiere.
+    //  · Alimentos y "otros": siempre se depositan.
+    //  · Hospedaje: se deposita si el técnico lo busca; NO si lo compra Compras.
+    //  · Gasolina: NO (se carga con el tag de gasolina en OXXO), salvo que en la ruta no haya OXXO.
+    //  · Casetas: NO (tag con crédito Fibra Estatal), salvo casetas que no aceptan el tag.
+    function opsViaDesgloseDeposito(s) {
+        const t = (s && s.tarifas) || {}, din = n => opsViaDinero(n);
+        const num = v => Number(v) || 0;
+        const noches = num(t.noches), personas = num(s.personas) || 1;
+        const filas = [];
+        filas.push({ concepto: "Alimentos", importe: num(s.alimentos), si: true,
+            calculo: t.requiereViaticos === false && !num(s.alimentos) ? "No aplica: servicio dentro de la ciudad"
+                : `${s.desayunos || 0} desayuno(s) × ${din(t.desayuno)} + ${s.comidas || 0} comida(s) × ${din(t.comida)} + ${s.cenas || 0} cena(s) × ${din(t.cena)}, × ${personas} persona(s)${t.desayunosHotel ? " · desayuno incluido en el hotel" : ""}` });
+        if (noches) {
+            const hab = t.habitaciones;
+            const calc = hab ? `${noches} noche(s) × (${hab.sencillas ? hab.sencillas + " sencilla × " + din(hab.precioSencilla) : ""}${hab.sencillas && hab.dobles ? " + " : ""}${hab.dobles ? hab.dobles + " doble × " + din(hab.precioDoble) : ""})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}`
+                : `${noches} noche(s) × ${din(t.hospedajePorNoche)} × ${personas} persona(s)`;
+            filas.push({ concepto: "Hospedaje", importe: num(s.hospedaje), si: s.hotel_modo !== "compras", calculo: calc, medio: "Lo paga Compras directo al hotel" });
+        }
+        if (num(s.otros)) filas.push({ concepto: "Otros", importe: num(s.otros), si: true, calculo: "Gastos adicionales" });
+        filas.push({ concepto: "Gasolina", importe: num(s.gasolina), si: !!t.gasolinaDeposito,
+            calculo: t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`,
+            medio: "Se carga con el tag de gasolina (OXXO)" });
+        const cas = t.casetasDetalle || [];
+        if (!cas.length) filas.push({ concepto: "Casetas", importe: num(s.casetas), si: !!t.casetasDeposito, calculo: t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", medio: "Tag con crédito Fibra Estatal" });
+        else cas.forEach((c, i) => filas.push({ concepto: i === 0 ? "Casetas" : "", importe: num(c.subtotal), si: !!t.casetasDeposito, calculo: `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s)`, medio: "Tag con crédito Fibra Estatal" }));
+        const si = filas.filter(x => x.si), no = filas.filter(x => !x.si);
+        const sum = l => Math.round(l.reduce((a, x) => a + x.importe, 0) * 100) / 100;
+        return { si, no, totalSi: sum(si), totalNo: sum(no) };
     }
     function opsViaCobroCliente(s) { return s && s.cobro_cliente != null ? Number(s.cobro_cliente) : (Number(s && s.total) || 0); }
     const OPS_VIA_EMPRESAS = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "TecnoLab"];
     function opsViaHTMLBloques() {
         const f = opsViaForm;
-        const fila = (t, v, nota) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;"><span>${t}${nota ? ` <span style="font-size:10.5px;color:#94a3b8;">${nota}</span>` : ""}</span><b>${opsViaDinero(v)}</b></div>`;
         const sel = (campo, val, vacio) => `<select onchange="opsViaCampo('${campo}', this.value, true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;margin-top:3px;box-sizing:border-box;">${vacio ? `<option value="">${vacio}</option>` : ""}${OPS_VIA_EMPRESAS.map(e => `<option ${e === val ? "selected" : ""}>${e}</option>`).join("")}</select>`;
-        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-            <div style="border:1.5px solid #15803d;border-radius:12px;padding:12px;background:#f0fdf4;">
-                <div style="font-size:11px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se deposita al técnico · Pagos</div>
-                ${fila("Alimentos", f.alimentos)}
-                ${f.hotelDepositado ? fila("Hospedaje", f.hospedaje) : fila("Hospedaje", 0, "lo compra Compras")}
-                ${opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros)) : ""}
-                <div style="border-top:2px solid #15803d;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-weight:800;color:#15803d;">DEPOSITAR</span>
-                    <span style="font-family:'Space Grotesk',sans-serif;font-size:21px;font-weight:700;color:#15803d;">${opsViaDinero(f.deposito)}</span>
-                </div>
-                <div style="font-size:10.5px;color:#64748b;margin-top:6px;">Gasolina (${opsViaDinero(f.gasolina)}) y casetas (${opsViaDinero(f.casetasTotal)}) <b>no se depositan</b>: van con el tanque de la unidad y el tag con crédito Fibra Estatal.</div>
-                <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-top:8px;">Empresa que entrega el viático${sel("empresaEntrega", f.empresaEntrega)}</label>
+        const pill = si => si ? `<span style="font-size:10.5px;font-weight:800;color:#15803d;background:#dcfce7;border-radius:6px;padding:2px 8px;">SE DEPOSITA</span>` : `<span style="font-size:10.5px;font-weight:800;color:#9a3412;background:#ffedd5;border-radius:6px;padding:2px 8px;">NO SE DEPOSITA</span>`;
+        const elegir = (campo, si, textoNo, textoSi) => `<select onchange="opsViaCampo('${campo}', this.value==='1', true)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11.5px;max-width:100%;">
+            <option value="0" ${!si ? "selected" : ""}>${textoNo}</option><option value="1" ${si ? "selected" : ""}>${textoSi}</option></select>`;
+        const fila = (concepto, monto, si, como) => `<tr style="border-top:1px solid #eef2f7;background:${si ? "#f0fdf4" : "#fff"};">
+            <td style="padding:8px;font-weight:700;color:#1e293b;">${concepto}</td>
+            <td style="padding:8px;text-align:right;font-weight:700;">${opsViaDinero(monto)}</td>
+            <td style="padding:8px;">${pill(si)}</td>
+            <td style="padding:8px;font-size:11.5px;color:#475569;">${como}</td></tr>`;
+        const filas = [
+            fila("Alimentos", f.alimentos, true, "Siempre se deposita"),
+            f.noches > 0 ? fila("Hospedaje", f.hospedaje, f.hotelDepositado, f.hotelDepositado ? "El técnico busca el hotel (se cambia arriba, en Hospedaje)" : "Lo paga Compras directo al hotel") : "",
+            opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros), true, "Siempre se deposita") : "",
+            fila("Gasolina", f.gasolina, !!f.gasolinaDeposito, elegir("gasolinaDeposito", !!f.gasolinaDeposito, "Tag de gasolina (OXXO): no se deposita", "En la ruta no hay OXXO: depositar")),
+            fila("Casetas", f.casetasTotal, !!f.casetasDeposito, elegir("casetasDeposito", !!f.casetasDeposito, "Tag Fibra Estatal: no se deposita", "Casetas sin tag: depositar")),
+        ].join("");
+        const noDep = Math.round((f.total - f.deposito) * 100) / 100;
+        return `<div style="border:1.5px solid #cbd5e1;border-radius:12px;overflow:hidden;margin-top:12px;">
+            <div style="background:#0a2e5c;color:#fff;padding:9px 12px;font-size:12px;font-weight:800;letter-spacing:.3px;">¿QUÉ SE DEPOSITA AL TÉCNICO?</div>
+            <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <thead><tr style="background:#f8fafc;color:#64748b;font-size:10.5px;text-transform:uppercase;text-align:left;"><th style="padding:6px 8px;">Concepto</th><th style="padding:6px 8px;text-align:right;">Importe</th><th style="padding:6px 8px;">Depósito</th><th style="padding:6px 8px;">Cómo se paga</th></tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+            <div style="display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #e2e8f0;">
+                <div style="padding:10px 12px;background:#dcfce7;"><div style="font-size:10.5px;font-weight:800;color:#15803d;">TOTAL A DEPOSITAR · PAGOS</div><div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#15803d;">${opsViaDinero(f.deposito)}</div></div>
+                <div style="padding:10px 12px;background:#fff7ed;"><div style="font-size:10.5px;font-weight:800;color:#9a3412;">NO SE DEPOSITA (informativo)</div><div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#9a3412;">${opsViaDinero(noDep)}</div></div>
             </div>
-            <div style="border:1.5px solid #1D2E73;border-radius:12px;padding:12px;background:#f8fafd;">
-                <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se cobra al cliente · Ingresos</div>
-                ${fila("Gasolina", f.gasolina)}${fila("Casetas", f.casetasTotal)}${fila("Alimentos", f.alimentos)}${fila("Hospedaje", f.hospedaje)}${opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros)) : ""}
-                <div style="border-top:1px solid #cbd5e1;margin-top:6px;padding-top:6px;">${fila("Costo total del viaje", f.total)}</div>
-                <label style="display:block;font-size:11px;font-weight:700;color:#1D2E73;margin-top:6px;">Monto a cobrar al cliente
+            <div style="padding:10px 12px;border-top:1px solid #e2e8f0;">
+                <label style="display:block;font-size:11px;font-weight:600;color:#475569;">Empresa que entrega el viático${sel("empresaEntrega", f.empresaEntrega)}</label>
+            </div>
+        </div>
+        <div style="border:1.5px solid #1D2E73;border-radius:12px;padding:12px;background:#f8fafd;margin-top:10px;">
+            <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se cobra al cliente · Ingresos</div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>Costo total del viaje (todo lo de arriba)</span><b>${opsViaDinero(f.total)}</b></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">
+                <label style="display:block;font-size:11px;font-weight:700;color:#1D2E73;">Monto a cobrar al cliente
                     <input type="number" min="0" step="1" value="${opsEsc(f.cobroCliente)}" onchange="opsViaForm.cobroManual=true; opsViaCampo('cobroCliente', this.value, true)" style="width:100%;border:1.5px solid #1D2E73;border-radius:8px;padding:7px 9px;font-size:15px;font-weight:700;margin-top:3px;box-sizing:border-box;"></label>
-                <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${f.cobroManual ? `Ajustado a mano. <a href="#" onclick="event.preventDefault();opsViaForm.cobroManual=false;opsViaCampo('cobroCliente',null,true)" style="color:#1D2E73;font-weight:700;">Volver al sugerido (${opsViaDinero(f.cobroSugerido)})</a>` : "Sugerido: el costo redondeado hacia arriba. Puedes ajustarlo."}</div>
-                <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-top:8px;">Empresa a la que se cobra${sel("empresaCobra", f.empresaCobra, "La misma que entrega")}</label>
+                <label style="display:block;font-size:11px;font-weight:600;color:#475569;">Empresa a la que se cobra${sel("empresaCobra", f.empresaCobra, "La misma que entrega")}</label>
             </div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${f.cobroManual ? `Ajustado a mano. <a href="#" onclick="event.preventDefault();opsViaForm.cobroManual=false;opsViaCampo('cobroCliente',null,true)" style="color:#1D2E73;font-weight:700;">Volver al sugerido (${opsViaDinero(f.cobroSugerido)})</a>` : "Sugerido: el costo redondeado hacia arriba. Puedes ajustarlo."}</div>
         </div>`;
     }
     // ── Administración del catálogo de hoteles ──
@@ -13504,7 +13562,19 @@
             const horas = opsViaNum(f.horasIda) + (opsViaRegresaAlInicio() ? opsViaNum(f.horasIda) : opsViaNum(f.horasRegreso)) + opsViaNum(f.horasServicio);
             f.regreso = opsViaLocalISO(new Date(s.getTime() + horas * 3600000));
         }
-        if (!f.requiereManual) f.requiere = Math.max(opsViaNum(f.kmSencillo), opsViaRegresaAlInicio() ? 0 : opsViaNum(f.kmRegreso)) >= opsViaNum(cfg.kmMinimoViaticos);
+        // ¿Requiere viáticos? (corregido 14-oct-2026): los viáticos existen solo FUERA DE LA CIUDAD.
+        // Si la estación es de otro municipio (ej. Santa Isabel, a 32 km) sí aplica aunque esté
+        // a menos de los km mínimos; los km mínimos solo deciden cuando no se sabe el municipio.
+        // Si alguien capturó comidas a mano, también se entiende que sí requiere.
+        if (!f.requiereManual) {
+            const mun = opsViaNormTxt((f.estacion && f.estacion.municipio) || "").split(",")[0].trim(); // "santa isabel, chihuahua" → "santa isabel"
+            const origenMun = opsViaNormTxt(String((cfg.origen && cfg.origen.nombre) || "Chihuahua").match(/\(([^)]+)\)/)?.[1] || "chihuahua").trim();
+            const fueraPorMunicipio = !!mun && mun !== origenMun;
+            const porKm = Math.max(opsViaNum(f.kmSencillo), opsViaRegresaAlInicio() ? 0 : opsViaNum(f.kmRegreso)) >= opsViaNum(cfg.kmMinimoViaticos);
+            const comidasCapturadas = f.comidasManual && (opsViaNum(f.desayunos) + opsViaNum(f.comidas) + opsViaNum(f.cenas)) > 0;
+            f.requiere = fueraPorMunicipio || porKm || comidasCapturadas;
+            f.requiereMotivo = fueraPorMunicipio ? "la estación está en otro municipio (" + ((f.estacion && f.estacion.municipio) || "") + ")" : porKm ? "está a " + cfg.kmMinimoViaticos + " km o más" : comidasCapturadas ? "se capturaron comidas a mano" : "";
+        }
         if (f.rendimiento === null || f.rendimiento === undefined || f.rendimiento === "") f.rendimiento = opsViaVehiculoCfg(f.tipoVehiculo).rendimiento;
         // Comidas por persona según horarios (desayuno si sale antes de la hora límite,
         // comida si está fuera a la hora de comida, cena si regresa después de la hora de cena).
@@ -13577,7 +13647,8 @@
         // Dos bloques (Etapa B): lo que se DEPOSITA al técnico (Pagos) y lo que se COBRA al cliente (Ingresos).
         // Gasolina y casetas no se depositan (tanque de la unidad y tag con crédito Fibra Estatal).
         f.hotelDepositado = f.hotelModo !== "compras";
-        f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)) * 100) / 100;
+        f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)
+            + (f.gasolinaDeposito ? f.gasolina : 0) + (f.casetasDeposito ? f.casetasTotal : 0)) * 100) / 100;
         f.cobroSugerido = Math.ceil(f.total / 100) * 100;
         if (!f.cobroManual) f.cobroCliente = f.cobroSugerido;
     }
@@ -13725,7 +13796,8 @@
                                     <option value="0" ${!f.requiere ? "selected" : ""}>No — solo gasolina${f.requiereManual ? "" : " (automático)"}</option>
                                 </select></label>
                         </div>
-                        <div style="font-size:10.5px;color:#94a3b8;margin:-4px 0 10px;">Regla: requiere viáticos si la estación está a ${cfg.kmMinimoViaticos} km o más (sencillo). Puedes cambiarlo.</div>
+                        <div style="font-size:10.5px;color:#94a3b8;margin:-4px 0 10px;">Regla: requiere viáticos si la estación está fuera de la ciudad (otro municipio) o a ${cfg.kmMinimoViaticos} km o más.${f.requiere && f.requiereMotivo ? " Aquí: " + opsEsc(f.requiereMotivo) + "." : ""} Puedes cambiarlo.</div>
+                        ${!f.requiere && (opsViaNum(f.desayunos) + opsViaNum(f.comidas) + opsViaNum(f.cenas)) > 0 ? `<div style="font-size:11px;color:#b45309;background:#fffbeb;border-radius:8px;padding:6px 9px;margin:-4px 0 10px;">Marcaste "No requiere viáticos": las comidas capturadas NO se suman. Si salen de la ciudad, cámbialo a "Sí".</div>` : ""}
 
                         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
                             <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">${opsViaRegresaAlInicio() ? `Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor` : "Gasolina — (km ida + km regreso) ÷ rendimiento × precio × factor"}</div>
@@ -14083,6 +14155,7 @@
                 noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNocheTotal), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
                 habitaciones: { sencillas: f.habSencillas, precioSencilla: opsViaNum(f.precioSencilla), dobles: f.habDobles, precioDoble: opsViaNum(f.precioDoble) },
                 hotelId: f.hotelId || null, hotelDesayuno: !!f.hotelDesayuno, desayunosHotel: f.desayunosHotel || 0, cobroManual: !!f.cobroManual,
+                gasolinaDeposito: !!f.gasolinaDeposito, casetasDeposito: !!f.casetasDeposito,
                 estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
                 vehiculoEco: f.vehiculoEco || null, rendimientoReal: f.rendimientoReal || null,
                 aplicaCasetas: !!f.aplicaCasetas, casetasDetalle,
@@ -14168,7 +14241,7 @@
         const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 60) { doc.addPage(); encabezado(); y = 100; } };
         const titulo = txt => {
             nuevaPaginaSiHaceFalta(36);
-            y += 10;
+            y += 6;
             doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(txt.toUpperCase(), M, y);
             doc.setDrawColor(...PDF_ROJO); doc.setLineWidth(1.5); doc.line(M, y + 5, M + 34, y + 5);
             doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M + 36, y + 5, W - M, y + 5);
@@ -14179,17 +14252,17 @@
         y = 98;
 
         // ── Tarjetas de resumen: lo que Pagos deposita y lo que Ingresos cobra ──
-        const anchoT = (AN - 12) / 2, altoT = 70;
+        const anchoT = (AN - 12) / 2, altoT = 64;
         const tarjeta = (x, color, fondo, etiqueta, monto, lineas) => {
             doc.setFillColor(...fondo); doc.setDrawColor(...color); doc.setLineWidth(1.2); doc.roundedRect(x, y, anchoT, altoT, 8, 8, "FD");
             doc.setFillColor(...color); doc.roundedRect(x, y, 6, altoT, 3, 3, "F");
             doc.setTextColor(...color); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(etiqueta, x + 16, y + 17);
-            doc.setFontSize(21); doc.text(din(monto), x + 16, y + 41);
+            doc.setFontSize(20); doc.text(din(monto), x + 16, y + 38);
             doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
-            lineas.filter(Boolean).forEach((l, i) => doc.text(l, x + 16, y + 54 + i * 10));
+            lineas.filter(Boolean).forEach((l, i) => doc.text(l, x + 16, y + 50 + i * 9));
         };
         tarjeta(M, VERDE, VERDE_CL, "DEPOSITAR AL TÉCNICO · PAGOS", deposito,
-            [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", hotelCompras ? "Hotel: lo paga Compras" : "Alimentos" + (noches ? " + hospedaje" : "") + (Number(s.otros) ? " + otros" : "")]);
+            [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", "Incluye: " + (opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "nada")]);
         tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
             ["Costo real del viaje: " + din(s.total), s.empresa_cobra ? "Se cobra a: " + s.empresa_cobra : ""]);
         y += altoT + 8;
@@ -14222,60 +14295,51 @@
         fila1([`Personal que viaja (${s.personas || nombres.length || 1})`, nombres.map((n, i) => i === 0 && nombres.length > 1 ? n + " (líder de cuadrilla)" : n).join("   ·   ") || "—"]);
 
         // ── Desglose ──
-        titulo("Desglose del costo");
-        const c1 = M + 8, c2 = M + 92, c3 = W - M - 150, c4 = W - M - 8;
-        const filas = [];
-        filas.push(["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina, "no"]);
-        const casetas = t.casetasDetalle || [];
-        if (t.aplicaCasetas === false || !casetas.length) filas.push(["Casetas", t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", s.casetas, "no"]);
-        else casetas.forEach((c, i) => filas.push([i === 0 ? "Casetas" : "", `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s)`, c.subtotal, "no"]));
-        filas.push(["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)${t.desayunosHotel ? " · desayuno incluido en el hotel" : ""}`, s.alimentos, "si"]);
-        if (!noches) filas.push(["Hospedaje", "No aplica (regresan el mismo día)", 0, "na"]);
-        else filas.push(["Hospedaje", t.habitaciones
-            ? `${noches} noche(s) × (${t.habitaciones.sencillas ? t.habitaciones.sencillas + " sencilla × " + din(t.habitaciones.precioSencilla) : ""}${t.habitaciones.sencillas && t.habitaciones.dobles ? " + " : ""}${t.habitaciones.dobles ? t.habitaciones.dobles + " doble × " + din(t.habitaciones.precioDoble) : ""})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}`
-            : `${noches} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje, hotelCompras ? "compras" : "si"]);
-        if (Number(s.otros)) filas.push(["Otros", "Gastos adicionales", s.otros, "si"]);
-
-        nuevaPaginaSiHaceFalta(40);
-        doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 11, AN, 18, "F");
-        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-        doc.text("CONCEPTO", c1, y + 1); doc.text("CÁLCULO", c2, y + 1); doc.text("¿SE DEPOSITA?", c3, y + 1); doc.text("IMPORTE", c4, y + 1, { align: "right" });
-        y += 18;
-        const etiqueta = tipo => ({ si: ["Sí", VERDE, VERDE_CL], no: ["No · informativo", [146, 64, 14], [255, 247, 237]], compras: ["No · lo paga Compras", [146, 64, 14], [255, 247, 237]], na: ["—", PDF_GRIS, [248, 250, 252]] })[tipo];
-        filas.forEach((r, i) => {
-            const det = doc.splitTextToSize(r[1], c3 - c2 - 10);
-            const alto = Math.max(20, det.length * 10.5 + 9);
-            nuevaPaginaSiHaceFalta(alto);
-            if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 12, AN, alto, "F"); }
-            doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1, y);
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(det, c2, y);
-            const [txt, col, fondo] = etiqueta(r[3]);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-            const w = doc.getTextWidth(txt) + 10;
-            doc.setFillColor(...fondo); doc.roundedRect(c3, y - 8.5, w, 12, 3, 3, "F");
-            doc.setTextColor(...col); doc.text(txt, c3 + 5, y);
-            doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(din(r[2]), c4, y, { align: "right" });
-            doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M, y - 12 + alto, W - M, y - 12 + alto);
-            y += alto;
-        });
-        const totalFila = (txt, monto, color, fondo) => {
+        // ── Desglose en dos tablas: lo que SE DEPOSITA y lo que NO (y con qué se paga) ──
+        const dep = opsViaDesgloseDeposito(s);
+        const c1 = M + 8, c2 = M + 96, c3 = W - M - 8;
+        const tabla = (tit, sub, color, fondo, filas, total, etiquetaTotal) => {
+            titulo(tit);
+            doc.setTextColor(100, 116, 139); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+            doc.text(sub, W - M, y - 18, { align: "right" }); y += 2;
+            nuevaPaginaSiHaceFalta(30);
+            doc.setFillColor(...color); doc.rect(M, y - 11, AN, 17, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(7.8);
+            doc.text("CONCEPTO", c1, y); doc.text(filas.cabecera, c2, y); doc.text("IMPORTE", c3, y, { align: "right" });
+            y += 17;
+            if (!filas.lista.length) {
+                doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "italic"); doc.setFontSize(8.5); doc.text("Nada en este apartado.", c1, y); y += 16;
+            }
+            filas.lista.forEach((r, i) => {
+                const det = doc.splitTextToSize(r[1], c3 - c2 - 80);
+                const alto = Math.max(17, det.length * 10 + 7);
+                nuevaPaginaSiHaceFalta(alto);
+                if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 12, AN, alto, "F"); }
+                doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1, y);
+                doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(det, c2, y);
+                doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(din(r[2]), c3, y, { align: "right" });
+                doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M, y - 12 + alto, W - M, y - 12 + alto);
+                y += alto;
+            });
             nuevaPaginaSiHaceFalta(24);
             doc.setFillColor(...fondo); doc.rect(M, y - 11, AN, 20, "F");
-            doc.setTextColor(...color); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(txt, c1, y + 2);
-            doc.setFontSize(11); doc.text(din(monto), c4, y + 2, { align: "right" });
-            y += 22;
+            doc.setTextColor(...color); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(etiquetaTotal, c1, y + 2);
+            doc.setFontSize(11.5); doc.text(din(total), c3, y + 2, { align: "right" });
+            y += 24;
         };
-        y += 4;
-        totalFila("COSTO TOTAL DEL VIAJE", s.total, PDF_AZUL, AZUL_CL);
-        totalFila("TOTAL A DEPOSITAR (filas marcadas \"Sí\")", deposito, VERDE, VERDE_CL);
-
-        // ── Aviso para Pagos ──
-        const aviso = doc.splitTextToSize(`Gasolina (${din(s.gasolina)}) y casetas (${din(s.casetas)}) NO se depositan: van con el tanque de la unidad y el tag con crédito Fibra Estatal. Son informativas para Pagos y sí se cobran al cliente.${hotelCompras ? " El hotel lo paga Compras directo al hotel." : ""}`, AN - 24);
-        nuevaPaginaSiHaceFalta(aviso.length * 10 + 16);
-        y += 4;
-        doc.setFillColor(255, 251, 235); doc.setDrawColor(253, 230, 138); doc.roundedRect(M, y - 10, AN, aviso.length * 10 + 12, 5, 5, "FD");
-        doc.setTextColor(146, 64, 14); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(aviso, M + 12, y + 1);
-        y += aviso.length * 10 + 12;
+        tabla("A · Se deposita al técnico", "Lo único que Pagos transfiere (con comprobante).", VERDE, VERDE_CL,
+            { cabecera: "CÁLCULO", lista: dep.si.map(x => [x.concepto, x.calculo, x.importe]) }, dep.totalSi, "TOTAL A DEPOSITAR");
+        tabla("B · No se deposita (informativo)", "Se paga por otro medio; sí se cobra al cliente.", [146, 64, 14], [255, 247, 237],
+            { cabecera: "CÁLCULO  ·  CÓMO SE PAGA", lista: dep.no.map(x => [x.concepto, x.calculo + "  ·  " + x.medio, x.importe]) }, dep.totalNo, "TOTAL QUE NO SE DEPOSITA");
+        nuevaPaginaSiHaceFalta(46);
+        doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
+        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+        doc.text("COSTO TOTAL DEL VIAJE (A + B)", c1, y + 2); doc.setFontSize(11); doc.text(din(s.total), c3, y + 2, { align: "right" });
+        y += 22;
+        doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
+        doc.setFontSize(9.5); doc.text("COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1, y + 2);
+        doc.setFontSize(11); doc.text(din(cobro), c3, y + 2, { align: "right" });
+        y += 26;
 
         // ── Notas ──
         const notas = [s.notas, s.comentario_pagos ? "Pagos: " + s.comentario_pagos : ""].filter(Boolean).join("\n");
@@ -14483,10 +14547,11 @@
     async function opsRenderViaPagos(el, autoriza) {
         try { await opsViaCargarComprobantes(); } catch (e) {}
         const hoy = new Date().toISOString().slice(0, 10);
-        const filas = opsViaLista.filter(s => s.estatus !== "Rechazada").map(s => {
+        const filas = opsViaLista.map(s => {
             const E = opsViaEstadoComp(s);
             let etapa;
-            if (!s.entregado_en) etapa = s.estatus === "Aprobada" ? "porpagar" : "porautorizar";
+            if (s.estatus === "Cancelada" || s.estatus === "Rechazada") etapa = "canceladas";
+            else if (!s.entregado_en) etapa = s.estatus === "Aprobada" ? "porpagar" : "porautorizar";
             else if (E.estado === "Cerrada") etapa = "cerradas";
             else if (E.estado === "Comprobada") etapa = "porcerrar";
             else if (s.fecha_limite_comprobacion && s.fecha_limite_comprobacion < hoy) etapa = "vencidas";
@@ -14497,6 +14562,7 @@
             ["porautorizar", "Por autorizar", "#b45309"], ["porpagar", "Autorizadas por pagar", "#1D2E73"],
             ["comprobacion", "Pagadas en comprobación", "#0e7490"], ["vencidas", "Comprobación vencida", "#b91c1c"],
             ["porcerrar", "Comprobadas por cerrar", "#15803d"], ["cerradas", "Cerradas", "#475569"],
+            ["canceladas", "Canceladas / no aplican", "#94a3b8"],
         ];
         const cuenta = k => filas.filter(x => x.etapa === k);
         const suma = (l, fn) => l.reduce((a, x) => a + (Number(fn(x)) || 0), 0);
@@ -14505,21 +14571,23 @@
             return `<button onclick="opsViaPagosSetFiltro('${k}')" style="text-align:left;border:1.5px solid ${on ? c : "#e2e8f0"};background:${on ? c + "12" : "#fff"};border-radius:12px;padding:10px 12px;cursor:pointer;min-width:150px;flex:1;">
                 <div style="font-size:22px;font-weight:800;color:${c};font-family:'Space Grotesk',sans-serif;">${l.length}</div>
                 <div style="font-size:11.5px;font-weight:700;color:#334155;">${t}</div>
-                <div style="font-size:11px;color:#64748b;">${opsViaDinero(k === "porautorizar" || k === "porpagar" ? suma(l, x => opsViaDeposito(x.s)) : suma(l, x => x.s.monto_entregado))}</div>
+                <div style="font-size:11px;color:#64748b;">${k === "canceladas" ? "no se pagan" : opsViaDinero(k === "porautorizar" || k === "porpagar" ? suma(l, x => opsViaDeposito(x.s)) : suma(l, x => x.s.monto_entregado))}</div>
             </button>`; }).join("");
         const dias = d => d ? Math.round((new Date(d + "T12:00") - new Date(hoy + "T12:00")) / 86400000) : null;
         const cuerpo = lista.map(({ s, E }) => {
             const dl = dias(s.fecha_limite_comprobacion);
-            return `<tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(opsViaFechaCorta(s.creado_en))}</div></td>
-                <td style="padding:9px 8px;font-size:12px;">${opsEsc(s.destino || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.integrantes || "")}${s.empresa_entrega ? " · entrega " + opsEsc(s.empresa_entrega) : ""}${s.empresa_cobra ? " · cobra " + opsEsc(s.empresa_cobra) : ""}</div></td>
-                <td style="padding:9px 8px;text-align:right;font-weight:700;">${opsViaDinero(opsViaDeposito(s))}</td>
+            const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada";
+            return `<tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.6;" : ""}">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${canc ? "text-decoration:line-through;" : ""}">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(opsViaFechaCorta(s.creado_en))}</div></td>
+                <td style="padding:9px 8px;font-size:12px;">${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}${opsEsc(s.destino || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.integrantes || "")}${s.empresa_entrega ? " · entrega " + opsEsc(s.empresa_entrega) : ""}${s.empresa_cobra ? " · cobra " + opsEsc(s.empresa_cobra) : ""}</div></td>
+                <td style="padding:9px 8px;text-align:right;font-weight:700;color:#15803d;">${opsViaDinero(opsViaDeposito(s))}<div style="font-size:10px;color:#64748b;font-weight:500;">${opsEsc(opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto).filter(Boolean).join(" + ") || "—")}</div><div style="font-size:10px;color:#9a3412;font-weight:500;">No se deposita: ${opsViaDinero(opsViaDesgloseDeposito(s).totalNo)}</div></td>
                 <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(s.monto_entregado) + `<div style="font-size:10.5px;color:#64748b;">${opsEsc(opsViaFechaCorta(s.entregado_en))}${s.referencia_pago ? " · " + opsEsc(s.referencia_pago) : ""}</div>` : "—"}</td>
                 <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.acept) + `<div style="font-size:10.5px;color:#64748b;">${E.comps.filter(c => c.estatus === "Por revisar").length} por revisar</div>` : "—"}</td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${s.fecha_limite_comprobacion ? opsEsc(opsViaFechaCorta(s.fecha_limite_comprobacion)) + (dl != null && s.entregado_en && !["Comprobada", "Cerrada"].includes(E.estado) ? `<div style="font-weight:700;color:${dl < 0 ? "#b91c1c" : dl <= 2 ? "#b45309" : "#15803d"};">${dl < 0 ? "vencida hace " + (-dl) + " d" : "faltan " + dl + " d"}</div>` : "") : "—"}</td>
                 <td style="padding:9px 8px;white-space:nowrap;">
                     ${s.comprobante_pago ? `<button onclick="opsViaVerComprobantePago(${s.id})" style="background:#ecfdf5;border:1px solid #bbf7d0;color:#15803d;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Comprobante</button>` : ""}
                     ${autoriza && !s.entregado_en && s.estatus === "Aprobada" ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#15803d;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Registrar pago</button>` : ""}
+                    ${autoriza && !canc && !s.entregado_en ? `<button onclick="opsViaCambiarEstatus(${s.id}, 'Cancelada')" title="No aplica (mal programada, duplicada…)" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">No aplica</button>` : ""}
                     ${autoriza && s.estatus === "Pendiente" ? `<button onclick="opsViaCambiarEstatus(${s.id}, 'Aprobada')" style="background:#1D2E73;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Autorizar</button>` : ""}
                     ${s.entregado_en ? `<button onclick="opsViaVerComprobacion(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Comprobación</button>` : ""}
                     <button onclick="opsViaVerDetalle(${s.id}); opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">PDF</button>
@@ -14630,7 +14698,7 @@
         try { await opsViaCargarComprobantes(); }
         catch (e) { el.innerHTML = `<div style="padding:30px;color:#E7402B;">No se pudieron cargar los comprobantes: ${opsEsc(e.message || e)}</div>`; return; }
         if (tabActual !== "viaticos" || opsViaVista !== "comprobacion") return;
-        const base = opsViaLista.filter(s => s.estatus !== "Rechazada").map(s => ({ s, E: opsViaEstadoComp(s) }));
+        const base = opsViaLista.filter(s => s.estatus !== "Rechazada" && s.estatus !== "Cancelada").map(s => ({ s, E: opsViaEstadoComp(s) }));
         const entregadas = base.filter(x => x.s.entregado_en);
         const activas = entregadas.filter(x => !["Comprobada", "Cerrada"].includes(x.E.estado));
         const kpi = (t, v, sub, c) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">${t}</div><div style="font-size:20px;font-weight:800;color:${c || "#1D2E73"};margin-top:2px;">${v}</div><div style="font-size:11px;color:#94a3b8;">${sub}</div></div>`;
