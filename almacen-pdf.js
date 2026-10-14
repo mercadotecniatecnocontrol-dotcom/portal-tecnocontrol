@@ -1721,9 +1721,33 @@
       });
     });
     return Promise.all(tareas).then(function (resultados) {
-      return resultados.filter(Boolean).length;
+      var ok = resultados.filter(Boolean).length;
+      estado.docsFallidos = estado.documentosPendientes.length - ok;   // para avisar si alguno no se guardó
+      return ok;
     });
   }
+  // Adjuntar documentos a un pedido YA creado (oct-2026): para volver a subir los que no se
+  // guardaron o agregar una orden de servicio después. Uso: window.almAgregarDocumentos(idDelPedido)
+  window.almAgregarDocumentos = function (surtidoId, alTerminar) {
+    if (!surtidoId) return;
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true; inp.accept = 'application/pdf,image/*';
+    inp.onchange = function () {
+      var files = Array.prototype.slice.call(inp.files || []);
+      if (!files.length) return;
+      var yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+      Promise.all(files.map(function (file) {
+        return procesarDocumento(file).then(function (doc) { return window.tcSbAgregarDocumento(surtidoId, Object.assign({}, doc, { subidoPor: yo })); })
+          .then(function () { return true; }, function (err) { console.warn('[almacen-pdf] documento no guardado:', file.name, err); return false; });
+      })).then(function (r) {
+        var ok = r.filter(Boolean).length;
+        if (ok && window.tcSbActualizarSurtido) window.tcSbActualizarSurtido(surtidoId, { numOrdenesCompra: ok }).catch(function () {});
+        alert(ok === files.length ? 'Listo: se adjuntaron ' + ok + ' documento(s) al pedido.' : 'Se adjuntaron ' + ok + ' de ' + files.length + ' documento(s). Los demás no se pudieron guardar; revisa que no sean muy pesados (máx. ~5 MB) e intenta de nuevo.');
+        if (typeof alTerminar === 'function') alTerminar(ok);
+      });
+    };
+    inp.click();
+  };
  
   // =====================================================================
   //  Handlers globales (invocados desde el HTML del modal)
@@ -1880,7 +1904,8 @@
         });
       })
     .then(function () {
-      msg('✔ Surtido ' + folio + ' creado.', '#059669');
+      if (estado.docsFallidos > 0) msg('✔ Surtido ' + folio + ' creado, pero ' + estado.docsFallidos + ' documento(s) adjunto(s) NO se guardaron. Vuelve a adjuntarlos desde el pedido.', '#b45309');
+      else msg('✔ Surtido ' + folio + ' creado' + (estado.documentosPendientes.length ? ' con ' + estado.documentosPendientes.length + ' documento(s) adjunto(s).' : '.'), '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
       guardarEnLibreta(cliente, destinoTipo, datosDestino);
       estado.ultimoGuardado = { folio: folio, cliente: cliente, vendedor: vendedor, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo,
@@ -1914,6 +1939,7 @@
     estado.caratulaImg = null;
     estado.ficha = null;
     estado.documentosPendientes = [];
+    estado.docsFallidos = 0;
     estado.ultimoGuardado = null;
     estado.estacionSeleccionada = null;
     estado.puntoSeleccionado = null;
