@@ -6375,6 +6375,20 @@
             ...serv.map(x => `${x.cant || 1} × ${x.desc || x.clave}${x.espec ? " — " + x.espec : ""}`),
             p.clasificacion === "servicio_piezas" ? "Lleva piezas surtidas por Almacén." : ""].filter(Boolean).join("\n");
         opsAS.__surtidoId = p.id;
+        // Ficha de servicio del vendedor (Etapa C): lo que ya capturó Ventas no se vuelve a escribir.
+        const fc = p.fichaServicio || null;
+        if (fc) {
+            if (fc.estacion) opsAS.estTexto = fc.estacion;
+            if (fc.fechaSugerida) opsAS.fecha = fc.fechaSugerida.length > 10 ? fc.fechaSugerida : fc.fechaSugerida + "T08:00";
+            if (Number(fc.cantidad) > 0) {
+                opsAS.dispensarios = String(fc.cantidad);
+                if (/tanque/i.test(fc.unidad || "") && !opsAS.durManual) { opsAS.dur = String(Number(fc.cantidad)); opsAS.durU = "h"; } // ~1 hora por tanque
+            }
+            opsAS.comentarios = [opsAS.comentarios,
+                fc.cantidad ? `Cantidad: ${fc.cantidad} ${fc.unidad || ""}`.trim() : "",
+                fc.requiereViaticos ? "Requiere viáticos (según Ventas)." : "",
+                fc.notas ? "Notas de Ventas: " + fc.notas : ""].filter(Boolean).join("\n");
+        }
         opsAsPintar();
     };
 
@@ -9332,6 +9346,16 @@
         opsAsAutoDuracionDispensarios(); opsAsPintar();
     };
     function opsAsFechaDia() { return (opsAS.fecha || "").slice(0, 10); }
+    // Etapa C (oct-2026): un vehículo no se puede planear en dos servicios que se empalman de día.
+    function opsAsVehiculoOcupado(val) {
+        const s = opsAS; if (!s || !val) return [];
+        const ini = opsAsFechaDia(); if (!ini) return [];
+        const fin = opsAsFechaFin() || ini;
+        const ecoDe = v => { const m = String(v || "").match(/ECO\s*([\w-]+)/i); return m ? m[1].toUpperCase() : String(v || "").trim().toUpperCase(); };
+        const eco = ecoDe(val);
+        return cacheFolios.filter(f => f.cancelado !== true && f.vehiculoPlaneado && ecoDe(f.vehiculoPlaneado) === eco && f.fechaProgramada)
+            .filter(f => { const a = f.fechaProgramada.slice(0, 10), b = opsFolioFechaFin(f) || a; return a <= fin && b >= ini; });
+    }
     // Último día del servicio (Etapa A): lo que se capture a mano manda; si no, sale de la duración en días.
     function opsAsFechaFin() {
         const s = opsAS; if (!s || s.multiEst) return null;
@@ -10323,14 +10347,15 @@
         const vehHTML = `
             <div class="opsas-grid">
                 <div><label class="opsas-lb">Vehículo</label>
-                <select class="opsas-in" onchange="opsAS.vehiculo=this.value">
+                <select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()">
                     <option value="">— Por definir —</option>
                     ${recomendados.length ? `<optgroup label="Lo que pide la receta">${recomendados.map(n => `<option value="${opsEsc(n)}" ${s.vehiculo === n ? "selected" : ""}>${opsEsc(n)}${n === sug ? " (sugerido)" : " (alterno)"}</option>`).join("")}</optgroup>` : ""}
-                    ${flota.length ? `<optgroup label="Unidades de Flotilla">${flota.map(v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${coincide(v) ? "★ " : ""}${opsEsc(val)}${v.Status && v.Status !== "activo" ? " — " + opsEsc(v.Status) : ""}</option>`; }).join("")}</optgroup>` : ""}
+                    ${flota.length ? `<optgroup label="Unidades de Flotilla">${flota.map(v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; const oc = opsAsVehiculoOcupado(val); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${coincide(v) ? "★ " : ""}${opsEsc(val)}${v.Status && v.Status !== "activo" ? " — " + opsEsc(v.Status) : ""}${oc.length ? " — OCUPADO: " + opsEsc(oc[0].estacion || "otro servicio") : ""}</option>`; }).join("")}</optgroup>` : ""}
                 </select></div>
             </div>
             ${r.vehiculos?.alternos?.length ? `<div class="opsas-note">${r.vehiculos.alternos.map(a => opsEsc(a.nombre + (a.condicion ? " — " + a.condicion : ""))).join(" · ")}</div>` : ""}
-            ${r.requiereRemolque ? `<div class="opsas-note opsas-warn">Esta receta requiere remolque.</div>` : ""}`;
+            ${r.requiereRemolque ? `<div class="opsas-note opsas-warn">Esta receta requiere remolque.</div>` : ""}
+            ${(() => { const oc = opsAsVehiculoOcupado(s.vehiculo); return oc.length ? `<div class="opsas-note opsas-warn">Ese vehículo ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")")).join(", ")}. Elige otro o confírmalo con Flotilla.</div>` : (s.vehiculo && /ECO/i.test(s.vehiculo) ? `<div class="opsas-note">Al guardar se le avisa a Flotilla que ese vehículo se necesita en esas fechas.</div>` : ""); })()}`;
 
         const herr = (r.herramientaRequerida || []).slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion));
         const nOk = herr.filter((h, i) => s.herrOk[h.descripcion]).length;
@@ -10499,6 +10524,7 @@
             const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, s.tipo === "programacion" && s.servicios.length ? tipoTxt + " (" + opsProgServiciosTxt(s.servicios) + ")" : tipoTxt);
             const conViaticos = s.viaticos;
             if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
+            opsAvisarVehiculoRequerido(s, nuevo.id);
             opsAS = null;
             const fProg = datos.fechaProgramada.slice(0, 10);
             if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
@@ -10517,6 +10543,19 @@
 
     // Guarda varias estaciones (cualquier tipo de servicio): un folio por estación, ligados por
     // grupoProgramacionId, cada uno armado igual que un alta normal (opsAsArmarDatos).
+    // Aviso a Flotilla cuando un servicio necesita una unidad específica (Etapa C, oct-2026).
+    // Los destinatarios salen de la matriz de notificaciones (evento vehiculo_requerido).
+    function opsAvisarVehiculoRequerido(s, folioId) {
+        try {
+            if (!s || !s.vehiculo || !/ECO/i.test(s.vehiculo)) return;
+            const ini = opsAsFechaDia(), fin = opsAsFechaFin();
+            const quien = opsAsTecsElegidos().map(id => (cacheTec.find(t => t.id === id) || {}).nombre).filter(Boolean).join(", ");
+            const oc = opsAsVehiculoOcupado(s.vehiculo).filter(f => f.id !== folioId);
+            const msg = `Operaciones necesita ${s.vehiculo} ${fin ? "del " + ini + " al " + fin : "el " + ini} para ${s.estTexto || "un servicio"}${quien ? " (" + quien + ")" : ""}.${oc.length ? " OJO: ya estaba planeado en " + oc.map(f => f.estacion || "otro servicio").join(", ") + "." : ""}`;
+            if (window.tcNotificarEvento) window.tcNotificarEvento("vehiculo_requerido", { mensaje: msg, modulo: "Flotilla", folioId, vehiculo: s.vehiculo, urgente: !!oc.length })
+                .then(n => { if (!n && window.tcNotificar) window.tcNotificar({ tipo: "vehiculo_requerido", para: "c.acosta@tecnocontrol.com.mx", mensaje: msg, modulo: "Flotilla", folioId }); });
+        } catch (e) { console.warn("[vehículo requerido]", e.message); }
+    }
     async function opsAsGuardarGrupo() {
         const s = opsAS; if (!s) return;
         const multi = !!s.multiEst;
@@ -10642,6 +10681,7 @@
             if (corto.length) avisos.push({ c: "#B45309", t: "Falta personal contra la receta: " + corto.map(p => (OPS_TIPO_TECNICO[p.rol] || {}).nombre || p.rol).join(", ") + "." });
         }
         if (opsAsEsSCFI() && !(Number(s.mangueras) > 0)) avisos.push({ c: "#B45309", t: "SCFI se cobra por manguera y no capturaste mangueras." });
+        { const oc = opsAsVehiculoOcupado(s.vehiculo); if (oc.length) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} ya está planeado en ${oc.map(f => (f.estacion || "otro servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")").join(", ")}.` }); }
         let precioTxt = "";
         try {
             const R = opsAsResumenPrecio();
@@ -13209,6 +13249,13 @@
             <div style="font-size:10.5px;color:#94a3b8;margin-top:4px;">Tarifa autorizada $1,200 – $1,500 por noche según la zona.${f.desayunosHotel ? ` Se quitaron ${f.desayunosHotel} desayuno(s) porque el hotel lo incluye.` : ""}${f.habManual ? ` <a href="#" onclick="event.preventDefault();opsViaForm.habManual=false;opsViaCampo('habDobles',0,true)" style="color:#1D2E73;font-weight:700;">Recalcular habitaciones</a>` : ""}</div>
             <div style="text-align:right;font-weight:700;color:#334155;">Hospedaje: ${f.noches} noche(s) × ${opsViaDinero(f.hospedajePorNocheTotal || 0)} = ${opsViaDinero(f.hospedaje)}</div>`;
     }
+    // Solicitudes creadas antes de la Etapa B no traen depósito/cobro guardados: se calculan igual
+    // (alimentos + hotel + otros se depositan; gasolina y casetas no; al cliente se le cobra el costo total).
+    function opsViaDeposito(s) {
+        if (s && s.deposito != null) return Number(s.deposito);
+        return Math.round(((Number(s.alimentos) || 0) + (s.hotel_modo === "compras" ? 0 : (Number(s.hospedaje) || 0)) + (Number(s.otros) || 0)) * 100) / 100;
+    }
+    function opsViaCobroCliente(s) { return s && s.cobro_cliente != null ? Number(s.cobro_cliente) : (Number(s && s.total) || 0); }
     const OPS_VIA_EMPRESAS = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "TecnoLab"];
     function opsViaHTMLBloques() {
         const f = opsViaForm;
@@ -13943,7 +13990,7 @@
             + `Casetas: ${opsViaDinero(s.casetas)}${t.aplicaCasetas === false ? " (no aplica)" : ""}${det ? "\n" + det : ""}\n`
             + `Otros: ${opsViaDinero(s.otros)}\n`
             + `TOTAL: ${opsViaDinero(s.total)}\n`
-            + (s.deposito != null ? `DEPOSITAR AL TÉCNICO: ${opsViaDinero(s.deposito)} (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; hotel lo paga Compras" : ""})\nCOBRAR AL CLIENTE: ${opsViaDinero(s.cobro_cliente ?? s.total)}\n` : "")
+            + `DEPOSITAR AL TÉCNICO: ${opsViaDinero(opsViaDeposito(s))} (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; hotel lo paga Compras" : ""})\nCOBRAR AL CLIENTE: ${opsViaDinero(opsViaCobroCliente(s))}\n`
             + (s.notas ? `\nNotas: ${s.notas}\n` : "");
     }
     // ── PDF profesional de la solicitud (jsPDF, mismo diseño que la responsiva) ──
@@ -14012,7 +14059,7 @@
         const personal = doc.splitTextToSize(s.integrantes || "—", W - 2 * M);
         doc.text(personal, M, y); y += personal.length * 12 + 2;
 
-        const dosBloques = s.deposito != null;
+        const dosBloques = true; // también para solicitudes anteriores a la Etapa B
         seccion(dosBloques ? "3  ·  COSTO DEL VIAJE (SE COBRA AL CLIENTE · INGRESOS)" : "3  ·  DESGLOSE DEL MONTO SOLICITADO");
         const filas = [
             ["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
@@ -14049,7 +14096,7 @@
             nuevaPaginaSiHaceFalta(20);
             doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
             doc.text("COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1 + 6, y);
-            doc.text(din(s.cobro_cliente ?? s.total), c3 - 6, y, { align: "right" });
+            doc.text(din(opsViaCobroCliente(s)), c3 - 6, y, { align: "right" });
             y += 22;
             // Depósito al técnico (lo que necesita Pagos)
             seccion("4  ·  SE DEPOSITA AL TÉCNICO (PAGOS)");
@@ -14066,7 +14113,7 @@
             doc.setFillColor(21, 128, 61); doc.rect(M, y - 8, W - 2 * M, 24, "F");
             doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
             doc.text("DEPOSITAR AL TÉCNICO" + (s.empresa_entrega ? " (entrega " + s.empresa_entrega + ")" : ""), c1 + 8, y + 8);
-            doc.setFontSize(13); doc.text(din(s.deposito), c3 - 8, y + 8, { align: "right" });
+            doc.setFontSize(13); doc.text(din(opsViaDeposito(s)), c3 - 8, y + 8, { align: "right" });
             y += 30;
             doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
             const nota = doc.splitTextToSize(`Gasolina (${din(s.gasolina)}) y casetas (${din(s.casetas)}) NO se depositan: son informativas para Pagos (tanque de la unidad y tag con crédito Fibra Estatal) y sí se cobran al cliente.`, W - 2 * M);
@@ -14086,7 +14133,8 @@
         nuevaPaginaSiHaceFalta(110);
         y = Math.max(y + 50, H - 150);
         const anchoF = (W - 2 * M - 40) / 3;
-        [["Solicita", s.solicitante_nombre || ""], ["Autoriza", "Gerencia Administrativa"], ["Recibe / Paga", "Departamento de Pagos"]].forEach((f, i) => {
+        const nombreSolicita = (s.solicitante_nombre && /\s/.test(s.solicitante_nombre)) ? s.solicitante_nombre : (opsNombreDeCorreo(s.solicitante_email) || s.solicitante_nombre || "");
+        [["Solicita", nombreSolicita], ["Autoriza", "Gerencia Administrativa"], ["Recibe / Paga", "Departamento de Pagos"]].forEach((f, i) => {
             const x = M + i * (anchoF + 20);
             doc.setDrawColor(150, 150, 150); doc.line(x, y, x + anchoF, y);
             doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(f[0], x + anchoF / 2, y + 13, { align: "center" });
@@ -14371,7 +14419,7 @@
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(s.folio_servicio ? "Servicio " + s.folio_servicio : "")}</div></td>
                 <td style="padding:9px 8px;">${opsEsc(s.responsable_nombre || s.integrantes || "—")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.destino || "")}</div></td>
                 <td style="padding:9px 8px;font-size:11.5px;">${s.forma_entrega ? opsEsc((opsViaForma(s.forma_entrega) || {}).etiqueta || s.forma_entrega) : "—"}</td>
-                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.ent) : `<span style="color:#94a3b8;">${opsViaDinero(s.deposito ?? s.total)}</span>`}</td>
+                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.ent) : `<span style="color:#94a3b8;">${opsViaDinero(opsViaDeposito(s))}</span>`}</td>
                 <td style="padding:9px 8px;min-width:150px;">
                     <div style="display:flex;justify-content:space-between;font-size:11px;"><span style="color:#15803d;font-weight:700;">${opsViaDinero(E.acept)}</span><span style="color:#b91c1c;font-weight:700;">${E.falta > 0.5 ? "Falta " + opsViaDinero(E.falta) : ""}</span></div>
                     <div style="height:6px;background:#f1f5f9;border-radius:9px;overflow:hidden;margin-top:4px;display:flex;"><div style="width:${pct}%;background:#15803d;"></div><div style="width:${pctR}%;background:#a78bfa;"></div></div>
@@ -14453,7 +14501,7 @@
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
             <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
                 <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;">Registrar entrega · ${opsEsc(s.folio)}</div>
-                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.destino || "")} · a depositar ${opsViaDinero(s.deposito ?? s.total)}${s.deposito != null ? ` (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; el hotel lo paga Compras" : ""})` : ""}. Desde aquí empieza el seguimiento de la comprobación.</div>
+                <div style="font-size:12px;color:#64748b;margin:2px 0 14px;">${opsEsc(s.destino || "")} · a depositar ${opsViaDinero(opsViaDeposito(s))} (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; el hotel lo paga Compras" : ""}). Desde aquí empieza el seguimiento de la comprobación.</div>
                 <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px;">¿Cómo se entregó?</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
                     ${opsViaFormas.map((f, i) => `<label style="border:1.5px solid #cbd5e1;border-radius:10px;padding:10px;cursor:pointer;display:block;">
@@ -14461,7 +14509,7 @@
                         <span style="font-size:13px;font-weight:700;color:#1e293b;">${opsEsc(f.etiqueta)}</span>
                         <div style="font-size:11px;color:#64748b;margin-top:3px;">Solo acepta facturas con forma de pago ${(f.formas_pago || []).map(c => c + " (" + (OPS_SAT_FORMAS[c] || "") + ")").join(" o ")}</div></label>`).join("")}
                 </div>
-                ${opsViaInput("Monto entregado $", "via-ent-monto", s.monto_entregado ?? s.deposito ?? s.total, 'min="0" step="0.01"', "number")}
+                ${opsViaInput("Monto entregado $", "via-ent-monto", s.monto_entregado ?? opsViaDeposito(s), 'min="0" step="0.01"', "number")}
                 <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Responsable de comprobar
                     <select id="via-ent-resp" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${tecs.map(t => `<option value="${opsEsc(String(t.correo || "").toLowerCase())}" data-nombre="${opsEsc(t.nombre || "")}" ${String(t.correo || "").toLowerCase() === resp ? "selected" : ""}>${opsEsc(t.nombre || t.correo)}${t.correo ? "" : " (sin correo: no recibirá aviso)"}</option>`).join("") || `<option value="">Sin personal en la solicitud</option>`}
