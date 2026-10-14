@@ -2053,7 +2053,7 @@
                     <span style="width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">${ICON.wrench}</span>
                     <div>
                         <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;">Operaciones</div>
-                        <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${opsEsc(opsAccNombreRol() || rolLabel)}</div>
+                        <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${opsEsc(opsAccNombreRol() || rolLabel)} · ${opsEsc(opsUsuarioActual() || "sin sesión")}${!opsPuedeGestionar() ? ' <span style="background:#fde68a;color:#78350f;border-radius:6px;padding:1px 7px;font-weight:700;margin-left:4px;">Solo consulta: no puedes programar ni dar de alta</span>' : ""}</div>
                     </div>
                 </div>
                 <div style="display:flex;align-items:center;">${opsNotifBotonHTML()}<button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
