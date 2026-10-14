@@ -269,6 +269,9 @@
         return lista.find(fm => fm.t(x)) || (jomar ? OPS_FAM_JOMAR_GENERAL : OPS_FAM_TECNO_GENERAL);
     }
     function opsCalServicioFolio(f) {
+        // Traslados y conceptos generales con color propio, para que se distingan del trabajo (14-oct-2026).
+        if (f.conceptoGeneral === "Traslado") return opsCalMkColor("srv:tecno:traslado", "Traslado", "#64748b", "tecno");
+        if (f.conceptoGeneral) return opsCalMkColor("srv:tecno:concepto:" + f.conceptoGeneral, f.conceptoGeneral, "#0e7490", "tecno");
         const receta = opsCalRecetaFolio(f);
         const jomar = opsEsFolioJomar(f);
         if (receta && receta.colorCalendario) return opsCalMkColor("srv:rec:" + receta.id, receta.nombre || "Servicio", receta.colorCalendario, jomar ? "jomar" : "tecno");
@@ -2035,16 +2038,17 @@
         clientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21V12h6v9"/><path d="M9 8h.01M15 8h.01M12 8h.01"/></svg>',
         catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+        gestionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6l1 14h12l1-14"/><path d="M10 11l2 2 3-4"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "clientes:Clientes",
+            "folios:Folios", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => opsAccPuedeVer(t.split(":")[0]))
+            .filter(t => { const id = t.split(":")[0]; return opsAccPuedeVer(id === "gestionados" ? "calendario" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2102,6 +2106,7 @@
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
         else if (tab === "movimientos") opsRenderMovimientos();
+        else if (tab === "gestionados") opsRenderGestionados();
         else if (tab === "viaticos") opsRenderViaticos();
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
@@ -5180,6 +5185,14 @@
     // Módulo INDEPENDIENTE de las herramientas permanentes (ops_herramientas / ops_asignaciones).
     // Una guardia es una asignación temporal con fecha/hora de inicio y fin, distinta del
     // ciclo de vida normal de la herramienta de trabajo diaria.
+    // Guardias: técnicos + personal administrativo de Operaciones (Magaly, Sandra, Rita…), que sí
+    // cubren guardias telefónicas aunque no aparezcan en el calendario de servicios (14-oct-2026).
+    function opsPersonalGuardias() {
+        const vistos = new Set();
+        return cacheTec.filter(t => t.estatus === "activo" && (t.departamento || "Operaciones") === "Operaciones")
+            .filter(t => { const k = opsNormNombre(t.nombre).join(" "); if (vistos.has(k)) return false; vistos.add(k); return true; })
+            .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es", { sensitivity: "base" }));
+    }
     function opsRenderGuardias() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -5218,7 +5231,7 @@
         const hoyLunes = opsLunesDe(new Date());
         const proximas = cacheGuardiasProgramadas.filter(g => g.semanaInicio >= hoyLunes).slice(0, 16);
         if (!proximas.length) return `<div style="color:#94a3b8;font-size:12px;padding:8px 0;">Todavía no hay semanas programadas. Usa "Sugerir próximas semanas" para generarlas.</div>`;
-        const tecnicosActivos = opsTecOperativos();
+        const tecnicosActivos = opsPersonalGuardias();
         return `<div style="display:flex;flex-direction:column;gap:0;">
             ${proximas.map(g => {
                 const esEstaSemanaActual = g.semanaInicio === hoyLunes;
@@ -5248,7 +5261,7 @@
     }
 
     window.opsAbrirModalGuardia = function () {
-        const tecnicosActivos = opsTecOperativos();
+        const tecnicosActivos = opsPersonalGuardias();
         const disponibles = cacheHerr.filter(h => h.estado === "disponible");
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
@@ -5340,7 +5353,7 @@
     }
 
     window.opsAbrirModalSugerirGuardias = function () {
-        const tecnicosActivos = opsTecOperativos();
+        const tecnicosActivos = opsPersonalGuardias();
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
@@ -5886,6 +5899,30 @@
         if (f.duracionUnidad === "dias" && Number(f.duracionValor) > 1) return opsDiaISOmas(ini, Math.ceil(Number(f.duracionValor)) - 1);
         return ini;
     }
+    // Si alguien eliminó el servicio mientras otra persona lo tenía abierto, la base responde
+    // "No document to update". En lugar de ese mensaje técnico: avisar, quitarlo de la pantalla y
+    // decir dónde recuperarlo (14-oct-2026).
+    function opsServicioYaNoExiste(err, id) {
+        const m = String((err && (err.message || err)) || "");
+        if (!/No document to update|not[- ]found|no existe/i.test(m)) return false;
+        cacheFolios = cacheFolios.filter(x => x.id !== id);
+        try { window.opsCerrarPanelFolio && window.opsCerrarPanelFolio(); } catch (e) {}
+        try { document.getElementById("ops-modal-wrap").innerHTML = ""; } catch (e) {}
+        alert("Este servicio ya no existe: alguien lo eliminó mientras lo tenías abierto.\n\nYa se actualizó tu pantalla. Si se eliminó por error, se puede restaurar desde \"Gestionados y cancelados\" (menú de la izquierda).");
+        try { opsRenderCalendario(); } catch (e) {}
+        return true;
+    }
+    // Domingos y días festivos oficiales (LFT art. 74): quien trabaja o viaja ese día se paga doble o
+    // se le repone, por eso el calendario lo marca para que Dirección lo vea (14-oct-2026).
+    function opsEsDiaEspecial(fechaISO) {
+        if (!fechaISO) return "";
+        const d = new Date(fechaISO + "T12:00:00");
+        if (d.getDay() === 0) return "DOMINGO";
+        const y = d.getFullYear(), m = d.getMonth() + 1, dia = d.getDate();
+        const lunesN = (mes, n) => { const x = new Date(y, mes - 1, 1); const off = (8 - x.getDay()) % 7; return 1 + off + 7 * (n - 1); };
+        const fest = [[1, 1], [2, lunesN(2, 1)], [3, lunesN(3, 3)], [5, 1], [9, 16], [11, lunesN(11, 3)], [12, 25]];
+        return fest.some(([fm, fd]) => fm === m && fd === dia) ? "FESTIVO" : "";
+    }
     // Número de servicio solo con números (oct-2026). Los existentes ya se numeraron en la base por
     // orden de creación; los nuevos toman el siguiente al más alto que esté cargado.
     let opsUltimoNumServ = 0;
@@ -6172,10 +6209,36 @@
         const p = (cacheSurtidos || []).find(x => x.id === pid);
         if (p) { p.opsGestionado = false; p.opsFolioId = null; }
     }
+    async function opsRenderGestionados() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        el.innerHTML = `<div style="padding:22px;color:#64748b;font-size:13px;">Cargando…</div>`;
+        await opsCargarEliminados();
+        const lista = opsPedidosVentasGestionados();
+        const elim = opsFoliosEliminados.filter(x => !(cacheFolios || []).some(f => f.id === x.folioIdOriginal));
+        const canc = cacheFolios.filter(f => f.cancelado === true).sort((a, b) => String(b.fechaProgramada || "").localeCompare(String(a.fechaProgramada || ""))).slice(0, 80);
+        const gestiona = opsPuedeGestionar();
+        const tarjetaServ = (f, extra, botones) => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid #e2e8f0;border-left:4px solid ${extra.c};border-radius:10px;padding:9px 12px;margin-bottom:7px;background:#fff;">
+            <div style="flex:1;min-width:240px;"><div style="font-size:12.5px;font-weight:800;color:#1e293b;">${f.folioNumero ? "N.º " + opsEsc(f.folioNumero) + " · " : ""}${opsEsc(f.estacion || "Servicio")}</div>
+            <div style="font-size:11.5px;color:${extra.c};font-weight:700;">${opsEsc(extra.t)}</div>
+            <div style="font-size:10.5px;color:#94a3b8;">${f.fechaProgramada ? opsEsc(opsFmtFechaCorta(f.fechaProgramada)) : "Sin fecha"}${(f.tecnicosAsignadosNombres || []).length ? " · " + opsEsc(f.tecnicosAsignadosNombres.join(", ")) : ""}</div></div>${botones}</div>`;
+        el.innerHTML = `<div style="padding:22px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Gestionados y cancelados</div>
+            <div style="font-size:12px;color:#64748b;margin:2px 0 16px;">Aquí se encuentra todo lo que salió de la lista o del calendario: pedidos ya gestionados, servicios cancelados y servicios eliminados (con opción de restaurar).</div>
+            <div style="font-weight:800;color:#1e293b;font-size:13.5px;margin:6px 0 8px;">Servicios eliminados (${elim.length})</div>
+            ${elim.length ? elim.map(x => tarjetaServ(x, { c: "#b91c1c", t: `Eliminado por ${x.eliminadoPor || "—"} · ${opsFmtFechaCorta(x.eliminadoEn)}` },
+                gestiona ? `<button onclick="opsRestaurarFolioEliminado('${x.papeleraId}').then(()=>opsRenderGestionados())" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Restaurar servicio</button>` : "")).join("") : `<div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">Ninguno.</div>`}
+            <div style="font-weight:800;color:#1e293b;font-size:13.5px;margin:16px 0 8px;">Servicios cancelados (${canc.length})</div>
+            ${canc.length ? canc.map(f => tarjetaServ(f, { c: "#9a3412", t: `Cancelado${f.canceladoPor ? " por " + f.canceladoPor : ""}${f.motivoCancelacion ? " · " + f.motivoCancelacion : ""}` },
+                `<button onclick="opsAbrirPanelFolio('${f.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver / reactivar</button>`)).join("") : `<div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">Ninguno.</div>`}
+            <div style="font-weight:800;color:#1e293b;font-size:13.5px;margin:16px 0 8px;">Pedidos de Ventas ya gestionados (${lista.length})</div>
+            ${opsPedGestionadosHTML(lista, gestiona).replace('<div style="padding:0 14px 14px;">', '<div>')}
+        </div>`;
+    }
+    window.opsRenderGestionados = opsRenderGestionados;
     window.opsPedRegresarAPorProgramar = async function (pid) {
         const p = (cacheSurtidos || []).find(x => x.id === pid); if (!p) return;
         if (!confirm(`¿Regresar el pedido ${p.folio || ""} (${p.cliente || ""}) a "Servicios vendidos por programar"?\n\nEl servicio que se haya creado no se borra; si sigue activo, cancélalo para que no quede doble.`)) return;
-        try { await opsPedDesgestionar(pid); opsPedVerGestionados = false; opsCalPintarPedidosVentas(); if (window.mostrarPush) window.mostrarPush("Operaciones", `Pedido ${p.folio || ""} regresó a por programar.`, "✅"); }
+        try { await opsPedDesgestionar(pid); opsCalPintarPedidosVentas(); if (tabActual === "gestionados") opsRenderGestionados(); if (window.mostrarPush) window.mostrarPush("Operaciones", `Pedido ${p.folio || ""} regresó a por programar.`, "✅"); }
         catch (e) { alert("No se pudo regresar: " + (e.message || e)); }
     };
     window.opsRestaurarFolioEliminado = async function (papeleraId) {
@@ -6287,11 +6350,10 @@
                     <div style="font-size:12.5px;font-weight:800;color:#5b21b6;">Servicios vendidos por programar <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;margin-left:4px;font-size:11px;">${lista.length}</span></div>
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
-                ${gestionados.length ? `<button onclick="event.stopPropagation();opsPedVerGestionados=!opsPedVerGestionados;opsPedVentasAbierto=true;opsCalPintarPedidosVentas()" title="Pedidos ya programados, ligados o quitados de la lista; servicios cancelados o eliminados" style="background:${opsPedVerGestionados ? '#1D2E73' : '#f1f5f9'};color:${opsPedVerGestionados ? '#fff' : '#334155'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">Gestionados y cancelados (${gestionados.length})</button>` : ""}
                 <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
                 <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
             </div>
-            ${opsPedVentasAbierto ? (opsPedVerGestionados ? opsPedGestionadosHTML(gestionados, gestiona) : (lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
+            ${opsPedVentasAbierto ? ((lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
     }
     // ── Aviso discreto de servicio nuevo (oct-2026) ──
@@ -6442,17 +6504,37 @@
                         <div style="font-weight:700;font-size:13px;color:#1D2E73;">${opsEsc(f.estacion || "Sin estación")}${f.folioNumero ? ` <span style="font-size:10.5px;color:#64748b;font-weight:700;">N.º ${opsEsc(f.folioNumero)}</span>` : ""}</div>
                         <div style="font-size:11.5px;color:#64748b;">${f.fechaProgramada ? opsEsc(opsFmtFechaCorta(f.fechaProgramada)) : "Sin fecha"}${(f.tecnicosAsignadosNombres || []).length ? " · " + opsEsc(f.tecnicosAsignadosNombres.join(", ")) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}${f.clienteNombre ? " · " + opsEsc(f.clienteNombre) : ""}</div>
                     </div>
-                    <button onclick="opsLigarConfirmar('${f.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Ligar</button>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;"><input type="checkbox" ${st.sel.includes(f.id) ? "checked" : ""} onchange="opsLigarToggle('${f.id}', this.checked)"> Elegir</label>
+                    <button onclick="opsLigarConfirmar('${f.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">Ligar solo este</button>
                 </div>`).join("") : `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">${st.q ? "Ningún servicio coincide con la búsqueda." : "No encontré servicios parecidos. Escribe la estación en el buscador."}</div>`}
             </div>
             <div style="display:flex;justify-content:flex-end;padding:12px 20px;border-top:1px solid #e2e8f0;">
                 <button onclick="opsLigarCerrar()" style="background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">Cancelar</button>
+                <button id="ops-ligar-varios" onclick="opsLigarVarios()" ${st.sel.length ? "" : "disabled"} style="margin-left:8px;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">${st.sel.length ? "Ligar los " + st.sel.length + " seleccionados" : "Marca uno o varios"}</button>
             </div>
         </div>`;
         const inp = document.getElementById("ops-ligar-busca");
         if (inp && st.q) { inp.focus(); inp.setSelectionRange(st.q.length, st.q.length); }
     }
-    window.opsCalLigarPedidoAbrir = function (pid) { opsLigarPed = { pid, q: "" }; opsLigarPintar(); };
+    window.opsCalLigarPedidoAbrir = function (pid) { opsLigarPed = { pid, q: "", sel: [] }; opsLigarPintar(); };
+    window.opsLigarToggle = function (fid, on) { if (!opsLigarPed) return; const l = opsLigarPed.sel.filter(x => x !== fid); if (on) l.push(fid); opsLigarPed.sel = l; const b = document.getElementById("ops-ligar-varios"); if (b) { b.disabled = !l.length; b.textContent = l.length ? "Ligar los " + l.length + " seleccionados" : "Marca uno o varios"; } };
+    window.opsLigarVarios = async function () {
+        const st = opsLigarPed; if (!st || !st.sel.length) return;
+        const p = (cacheSurtidos || []).find(x => x.id === st.pid); if (!p) return;
+        const fs_ = st.sel.map(id => cacheFolios.find(x => x.id === id)).filter(Boolean);
+        if (!confirm(`¿Ligar el pedido ${p.folio || ""} con ${fs_.length} servicio(s)?\n\n` + fs_.map(f => "· " + (f.estacion || "") + (f.fechaProgramada ? " (" + opsFmtFechaCorta(f.fechaProgramada) + ")" : "")).join("\n"))) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            for (const f of fs_) {
+                const cambios = { pedidoVentasId: p.id, pedidoVentasFolio: p.folio || null, pedidoVentasEmpresa: p.empresa || null, ...(!f.folioOS && p.folio ? { folioOS: p.folio } : {}) };
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios); Object.assign(f, cambios);
+            }
+            await window.tcSbActualizarSurtido(p.id, { opsFolioIds: fs_.map(f => f.id) }).catch(() => {});
+            await opsMarcarPedidoGestionado(p.id, fs_[0].id, "Ligado a " + fs_.length + " servicio(s) ya programados en Operaciones");
+            window.opsLigarCerrar(); opsCalPintarPedidosVentas();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `Pedido ${p.folio || ""} ligado a ${fs_.length} servicio(s).`, "✅");
+        } catch (e) { alert("No se pudo ligar: " + (e.message || e)); }
+    };
     window.opsLigarBuscar = function (v) { if (!opsLigarPed) return; opsLigarPed.q = v; opsLigarPintar(); };
     window.opsLigarCerrar = function () { opsLigarPed = null; document.getElementById("ops-ligar-ped")?.remove(); };
     window.opsLigarConfirmar = async function (fid) {
@@ -6725,7 +6807,7 @@
                     const izqPct = Math.min(((ini - OPS_CAL_HORA_INICIO) / totalHrs) * 100, 100 - anchoPct);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
                     const finDec = d.horaDecimal + d.traslado + d.ejecucion;
-                    const horaTxt = (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
+                    const horaTxt = (opsEsDiaEspecial(fechaISO) ? opsEsDiaEspecial(fechaISO) + " · " : "") + (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
@@ -6804,7 +6886,7 @@
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${(d.traslado + d.ejecucion) > 0 ? " · " + opsEsc(opsAsTxtHoras(d.traslado + d.ejecucion)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}</b> ` : ""}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -7165,6 +7247,7 @@
             window.opsAbrirPanelFolio(id);
         } catch (e) {
             console.error("[folio] cambio de estatus:", e);
+            if (opsServicioYaNoExiste(e, id)) return;
             alert("No se pudo cambiar el estatus: " + (e.message || e));
         }
     };
@@ -7176,6 +7259,7 @@
         return `<div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
                 <div style="font-size:11px;font-weight:700;color:#1D2E73;">Servicios de esta programación (${lista.length})</div>
+                ${puede ? `<button onclick="opsAsOtroConMismoEquipo('${f.id}')" title="Nuevo servicio en otra estación con los mismos técnicos y vehículo" style="display:inline-flex;align-items:center;gap:5px;background:#fff;color:#1D2E73;border:1px solid #1D2E73;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;margin-right:6px;">Otra estación, mismo equipo</button>` : ""}
                 ${puede ? `<button onclick="opsProgAbrirAgregar('${f.id}')" style="display:inline-flex;align-items:center;gap:5px;background:#1D2E73;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${OPS_SVG('<path d="M12 5v14M5 12h14"/>', 12)}Agregar servicio</button>` : ""}
             </div>
             ${lista.length ? `<div style="display:flex;flex-direction:column;gap:6px;">${lista.map((x, i) => `
@@ -8283,6 +8367,7 @@
             const causa = cod === "permission-denied"
                 ? "Tu usuario no tiene permiso de escritura en la base de datos (" + opsUsuarioActual() + "). Avisa a sistemas para darte de alta."
                 : (e && e.message ? e.message : String(e));
+            if (id && opsServicioYaNoExiste(err, id)) return;
             alert("No se pudo guardar el servicio.\n\nMotivo: " + causa + "\n\nNo se perdió lo capturado: el formulario sigue abierto.");
         } finally {
             const b = document.getElementById("ops-fol-btn-guardar");
@@ -9863,10 +9948,17 @@
     // Conceptos generales (14-oct-2026): para programar a alguien sin estación fija, por ejemplo
     // "Atención a folios" (los folios de Petro 7 salen durante el día y no se sabe dónde). El técnico
     // queda ocupado en el calendario esos días; los folios que atienda se le ligan después.
-    const OPS_CONCEPTOS_GENERALES = ["Atención a folios", "Guardia", "Capacitación", "Proyecto interno"];
+    const OPS_CONCEPTOS_GENERALES = ["Traslado", "Atención a folios", "Guardia", "Capacitación", "Proyecto interno"];
     window.opsAsConceptoGeneral = function (c) {
         const s = opsAS; if (!s) return;
         if (s.conceptoGeneral === c) { s.conceptoGeneral = null; s.estTexto = ""; }
+        else if (c === "Traslado") {
+            // Día(s) de viaje: queda visible en el calendario (horas de manejo, domingo o festivo = pago doble o reposición)
+            const destino = prompt("¿A qué ciudad viaja? (ej. Aguascalientes)", "");
+            if (destino === null) return;
+            s.conceptoGeneral = c; s.est = null; s.estTexto = "Traslado a " + (destino.trim() || "destino por definir"); s.plNuevo = "";
+            if (!s.dur) { s.dur = "8"; s.durU = "h"; }
+        }
         else { s.conceptoGeneral = c; s.est = null; s.estTexto = c; s.plNuevo = ""; }
         opsAsPintar();
     };
@@ -10828,6 +10920,7 @@
             if (corto.length) avisos.push({ c: "#B45309", t: "Falta personal contra la receta: " + corto.map(p => (OPS_TIPO_TECNICO[p.rol] || {}).nombre || p.rol).join(", ") + "." });
         }
         if (opsAsEsSCFI() && !(Number(s.mangueras) > 0)) avisos.push({ c: "#B45309", t: "SCFI se cobra por manguera y no capturaste mangueras." });
+        { const de = opsEsDiaEspecial(opsAsFechaDia()); if (de) avisos.push({ c: "#B45309", t: `Es ${de === "DOMINGO" ? "domingo" : "día festivo"}: quien trabaje o viaje ese día se paga doble o se le repone el día. Quedará marcado en el calendario.` }); }
         { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); if (vv && vv.EnTaller) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} está EN TALLER según Flotilla.` }); }
         { const oc = opsAsVehiculoOcupado(s.vehiculo); if (oc.length) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} ya está planeado en ${oc.map(f => (f.estacion || "otro servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")").join(", ")}.` }); }
         let precioTxt = "";
@@ -10937,6 +11030,18 @@
             </div>
         </div>`;
     }
+    window.opsAsOtroConMismoEquipo = function (folioId) {
+        const f = cacheFolios.find(x => x.id === folioId); if (!f) return;
+        try { window.opsCerrarPanelFolio && window.opsCerrarPanelFolio(); } catch (e) {}
+        window.opsAbrirAltaServicio((f.fechaProgramada || "").slice(0, 10) || undefined);
+        if (!opsAS) return;
+        opsAS.tecnicos = (f.tecnicosAsignadosIds || []).slice();
+        if (f.vehiculoPlaneado) opsAS.vehiculo = f.vehiculoPlaneado;
+        if (f.plaza) { opsAS.plaza = f.plaza; opsAS.plazaManual = true; }
+        if (f.fechaProgramada) opsAS.fecha = f.fechaProgramada.length > 10 ? f.fechaProgramada.slice(0, 16) : f.fechaProgramada + "T08:00";
+        opsAS.comentarios = "Mismo equipo que " + (f.folioNumero ? "el servicio N.º " + f.folioNumero + " · " : "") + (f.estacion || "");
+        opsAsPintar();
+    };
     window.opsAsOtroServicio = function (fecha) { document.getElementById("ops-modal-wrap").innerHTML = ""; window.opsAbrirAltaServicio(fecha || undefined); };
     window.opsAsIrViaticos = async function (folioId) {
         document.getElementById("ops-modal-wrap").innerHTML = "";
@@ -13974,7 +14079,7 @@
         // Horario del folio: se llega a la hora programada; la salida se calcula al tener la ruta
         f.avisoFolio = "";
         if (fo.fechaProgramada && /T\d{2}:\d{2}/.test(fo.fechaProgramada)) {
-            if (new Date(fo.fechaProgramada) >= new Date(new Date().setHours(0, 0, 0, 0))) { f.llegadaObjetivo = fo.fechaProgramada.slice(0, 16); f.salidaManual = false; f.regresoManual = false; }
+            if (new Date(fo.fechaProgramada) >= new Date(new Date().setHours(0, 0, 0, 0))) { f.llegadaObjetivo = fo.fechaProgramada.slice(0, 16); /* lo que ya se capturó a mano (salida/regreso) se respeta (14-oct-2026) */ }
             else { f.llegadaObjetivo = null; f.avisoFolio = `Este folio estaba programado para el ${fo.fechaProgramada.slice(0, 10)} (ya pasó): la salida no se tomó del folio, revísala.`; }
         }
         if (opsViaNum(fo.tiempoEjecucionHrs) > 0) f.horasServicio = opsViaNum(fo.tiempoEjecucionHrs);
