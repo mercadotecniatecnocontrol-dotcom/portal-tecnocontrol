@@ -291,6 +291,7 @@
  
   // ── Estado del modal actual ──
   var estado = {
+    ficha: null,                     // ficha de servicio para Operaciones (Etapa C, oct-2026)
     rawText: '',
     productos: [], // [{clave,cant,desc}]
     pdfBuffer: null, pdfSize: 0,     // para adjuntar el PDF original al surtido
@@ -728,8 +729,48 @@
       + '</select></span>'
       + (puedeCfg ? '<button type="button" class="lnk" onclick="window.__almPdfConfigClaves()">Claves y empresas</button>' : '')
       + '<span class="d">' + inf.d + ' Puedes corregir a d\u00f3nde va cada partida en la columna \u201cVa a\u201d.</span>'
+      + '</div>'
+      + '<div id="alm-ficha"></div>';
+    renderFicha();
+  }
+
+  // ── Ficha de servicio para Operaciones (Etapa C, oct-2026) ──
+  // Lo que el vendedor captura aquí llega completo a Operaciones al programar: no se vuelve a escribir.
+  var UNIDADES_FICHA = ['tanques', 'dispensarios', 'mangueras', 'sondas', 'equipos', 'estaciones', 'servicio'];
+  function hayServicio() { return (estado.productos || []).some(function (p) { return p.tipo === 'servicio' || p.tipo === 'viaticos'; }); }
+  function fichaDefault() {
+    var viat = (estado.productos || []).some(function (p) { return p.tipo === 'viaticos'; });
+    var cli = ((document.getElementById('alm-cliente') || {}).value || '').trim();
+    return { estacion: cli, cantidad: '', unidad: 'tanques', fecha: '', viaticos: viat ? 'si' : '', notas: '' };
+  }
+  function renderFicha() {
+    var box = document.getElementById('alm-ficha');
+    if (!box) return;
+    if (!hayServicio()) { box.innerHTML = ''; return; }
+    if (!estado.ficha) estado.ficha = fichaDefault();
+    var f = estado.ficha;
+    var inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin-top:3px;';
+    var lb = 'display:block;font-size:11.5px;font-weight:600;color:#475569;';
+    box.innerHTML = '<div style="border:1.5px solid #7c3aed;border-radius:12px;padding:12px 14px;margin:10px 0;background:#faf5ff;">'
+      + '<div style="font-size:13px;font-weight:800;color:#5b21b6;">Ficha de servicio para Operaciones <span style="font-weight:600;color:#7c3aed;font-size:11.5px;">(obligatoria cuando el pedido trae servicio)</span></div>'
+      + '<div style="font-size:11.5px;color:#64748b;margin:2px 0 10px;">Con esto Operaciones programa sin volver a preguntarte. Calibraciones: aproximadamente 1 hora por tanque.</div>'
+      + '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;">'
+      +   '<label style="' + lb + '">Estación donde se hace el servicio<input style="' + inp + '" value="' + esc(f.estacion) + '" oninput="window.__almFicha(\'estacion\',this.value)"></label>'
+      +   '<label style="' + lb + '">Cantidad *<input type="number" min="1" step="1" style="' + inp + '" value="' + esc(f.cantidad) + '" oninput="window.__almFicha(\'cantidad\',this.value)"></label>'
+      +   '<label style="' + lb + '">De qué<select style="' + inp + '" onchange="window.__almFicha(\'unidad\',this.value)">'
+      +     UNIDADES_FICHA.map(function (u) { return '<option' + (f.unidad === u ? ' selected' : '') + '>' + u + '</option>'; }).join('')
+      +   '</select></label>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">'
+      +   '<label style="' + lb + '">Fecha sugerida para el servicio<input type="date" style="' + inp + '" value="' + esc(f.fecha) + '" onchange="window.__almFicha(\'fecha\',this.value)"></label>'
+      +   '<label style="' + lb + '">¿Requiere viáticos? *<select style="' + inp + '" onchange="window.__almFicha(\'viaticos\',this.value)">'
+      +     '<option value=""' + (!f.viaticos ? ' selected' : '') + '>— Elige —</option><option value="si"' + (f.viaticos === 'si' ? ' selected' : '') + '>Sí (es fuera de la ciudad)</option><option value="no"' + (f.viaticos === 'no' ? ' selected' : '') + '>No</option>'
+      +   '</select></label>'
+      + '</div>'
+      + '<label style="' + lb + 'margin-top:8px;">Notas para Operaciones (acceso, horario de la estación, contacto, lo que deban saber)<textarea rows="2" style="' + inp + '" oninput="window.__almFicha(\'notas\',this.value)">' + esc(f.notas) + '</textarea></label>'
       + '</div>';
   }
+  window.__almFicha = function (k, v) { if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha[k] = v; };
   window.__almPdfTipo = function (i, v) { if (estado.productos[i]) { estado.productos[i].tipo = v; estado.productos[i].tipoManual = true; renderClasif(); } };
   window.__almPdfReclasificar = function (i) { var p = estado.productos[i]; if (p && !p.tipoManual) { p.tipo = tipoLinea(p); renderRows(); } };
   window.__almPdfEmpresa = function (v) { estado.empresa = v; };
@@ -1771,6 +1812,20 @@
     if (!cliente) { msg('Falta el cliente.', '#dc2626'); return; }
     if (!fechaEntrega) { msg('Falta la fecha de entrega.', '#dc2626'); return; }
     if (!productos.length) { msg('Agrega al menos un producto con cantidad y descripción.', '#dc2626'); return; }
+    var conServicio = productos.some(function (p) { return p.tipo === 'servicio' || p.tipo === 'viaticos'; });
+    var ficha = null;
+    if (conServicio) {
+      var fc = estado.ficha || fichaDefault();
+      if (!(Number(fc.cantidad) > 0) || !fc.viaticos) {
+        msg('Falta la ficha de servicio para Operaciones: ' + [!(Number(fc.cantidad) > 0) ? 'la cantidad' : '', !fc.viaticos ? 'si requiere viáticos' : ''].filter(Boolean).join(' y ') + '.', '#dc2626');
+        var bf = document.getElementById('alm-ficha'); if (bf) bf.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      var yoF = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+      ficha = { estacion: String(fc.estacion || '').trim() || cliente, cantidad: Number(fc.cantidad), unidad: fc.unidad || 'tanques',
+        fechaSugerida: fc.fecha || null, requiereViaticos: fc.viaticos === 'si', notas: String(fc.notas || '').trim() || null,
+        completadaPor: yoF, completadaEn: new Date().toISOString() };
+    }
     if (destinoTipo === 'entrega_chihuahua' && !estado.locUbic) { msg('Falta la ubicaci\u00f3n exacta de la entrega: usa la del cliente o m\u00e1rcala en el mapa.', '#dc2626'); var lu = document.getElementById('alm-loc-ubic'); if (lu) lu.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
  
     if (!window.db) { msg('Firestore no está disponible (window.db).', '#dc2626'); return; }
@@ -1805,6 +1860,7 @@
           origen: 'pdf',
           empresa: estado.empresa || '',
           clasificacion: clasificarPedido(productos),
+          fichaServicio: ficha,
           creadoPor: yo,
           tienePdfOriginal: adjuntarPdf,
           createdAt: new Date().toISOString()
@@ -1856,6 +1912,7 @@
     estado.productos = [];
     estado.pdfBuffer = null; estado.pdfSize = 0;
     estado.caratulaImg = null;
+    estado.ficha = null;
     estado.documentosPendientes = [];
     estado.ultimoGuardado = null;
     estado.estacionSeleccionada = null;
