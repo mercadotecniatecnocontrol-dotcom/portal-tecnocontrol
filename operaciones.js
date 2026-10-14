@@ -6689,7 +6689,7 @@
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${(d.traslado + d.ejecucion) > 0 ? " · " + opsEsc(opsAsTxtHoras(d.traslado + d.ejecucion)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${(d.traslado + d.ejecucion) > 0 ? " · " + opsEsc(opsAsTxtHoras(d.traslado + d.ejecucion)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -7344,6 +7344,8 @@
                 <div>
                     <div style="font-size:10px;opacity:.75;text-transform:uppercase;letter-spacing:.4px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioNumero ? " N.º " + opsEsc(f.folioNumero) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
                     <div style="font-size:15px;font-weight:700;margin-top:2px;">${opsEsc(f.estacion)}</div>
+                    ${f.pausaActiva ? `<div style="margin-top:6px;background:#fff7ed;color:#9a3412;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;">En pausa desde ${new Date(f.pausaActiva.desde).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ${opsEsc(f.pausaActiva.motivo || "")}${f.pausaActiva.minutosEstimados ? " · ~" + f.pausaActiva.minutosEstimados + " min" : ""} (${opsEsc(f.pausaActiva.por || "")})</div>` : ""}
+                    ${f.tiempoMuertoMin ? `<div style="margin-top:4px;font-size:11px;opacity:.85;">Tiempo muerto acumulado: ${f.tiempoMuertoMin} min en ${(f.tiemposMuertos || []).length} pausa(s)</div>` : ""}
                     ${f.pedidoVentasId ? `<button onclick="opsCalVerPdfPedido('${f.pedidoVentasId}')" style="margin-top:6px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF de la venta${f.pedidoVentasFolio ? " · " + opsEsc(f.pedidoVentasFolio) : ""}</button>` : ""}
                 </div>
                 <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
@@ -14001,149 +14003,168 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: "pt", format: "letter" });
         const t = s.tarifas || {};
-        const W = 612, H = 792, M = 42;
+        const W = 612, H = 792, M = 40, AN = W - 2 * M;
+        const VERDE = [21, 128, 61], VERDE_CL = [236, 253, 243], AZUL_CL = [238, 242, 250], LINEA = [226, 232, 240], TINTA = [30, 41, 59];
         const din = n => "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const fecha = x => { if (!x) return "—"; const d = new Date(String(x).length <= 10 ? x + "T12:00" : x); return isNaN(d) ? String(x) : d.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", ...(String(x).length > 10 ? { hour: "2-digit", minute: "2-digit" } : {}) }); };
+        const deposito = opsViaDeposito(s), cobro = opsViaCobroCliente(s);
+        const noches = Number(t.noches) || 0, hotelCompras = s.hotel_modo === "compras";
+        const nombreSolicita = (s.solicitante_nombre && /\s/.test(s.solicitante_nombre)) ? s.solicitante_nombre : (opsNombreDeCorreo(s.solicitante_email) || s.solicitante_nombre || "");
         let y;
+
+        // ── Encabezado ──
         const encabezado = () => {
-            doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 66, "F");
-            doc.setFillColor(...PDF_ROJO); doc.rect(0, 66, W, 3, "F");
+            doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 72, "F");
+            doc.setFillColor(...PDF_ROJO); doc.rect(0, 72, W, 3, "F");
             doc.setTextColor(255, 255, 255);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("HEDMA TECNOCONTROL", M, 30);
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("S.A. DE C.V.  ·  Chihuahua, Chihuahua, México", M, 45);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("Folio: " + (s.folio || s.id), W - M, 27, { align: "right" });
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-            doc.text("Fecha de solicitud: " + fecha(s.creado_en || new Date().toISOString()), W - M, 41, { align: "right" });
-            doc.text("Estatus: " + (s.estatus || "Pendiente"), W - M, 54, { align: "right" });
+            doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("HEDMA TECNOCONTROL", M, 32);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("S.A. DE C.V.  ·  Departamento de Operaciones", M, 47);
+            doc.setFontSize(8); doc.text("Chihuahua, Chihuahua, México", M, 59);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text("SOLICITUD DE VIÁTICOS", W - M, 30, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Folio " + (s.folio || s.id) + "  ·  " + fecha(s.creado_en || new Date().toISOString()), W - M, 45, { align: "right" });
+            const est = s.estatus || "Pendiente";
+            doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+            const wEst = doc.getTextWidth(est.toUpperCase()) + 14;
+            doc.setFillColor(255, 255, 255); doc.roundedRect(W - M - wEst, 51, wEst, 14, 7, 7, "F");
+            doc.setTextColor(...PDF_AZUL); doc.text(est.toUpperCase(), W - M - wEst / 2, 60.5, { align: "center" });
         };
-        const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 70) { doc.addPage(); encabezado(); y = 96; } };
-        const seccion = titulo => {
-            nuevaPaginaSiHaceFalta(40);
-            y += 16;
-            doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 12, W - 2 * M, 19, "F");
-            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-            doc.text(titulo, M + 8, y + 1.5);
-            y += 20;
+        const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 60) { doc.addPage(); encabezado(); y = 100; } };
+        const titulo = txt => {
+            nuevaPaginaSiHaceFalta(36);
+            y += 10;
+            doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(txt.toUpperCase(), M, y);
+            doc.setDrawColor(...PDF_ROJO); doc.setLineWidth(1.5); doc.line(M, y + 5, M + 34, y + 5);
+            doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M + 36, y + 5, W - M, y + 5);
+            y += 18;
         };
-        const campo = (label, valor, x = M, ancho = W - 2 * M) => {
-            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-            doc.text(label, x, y);
-            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
-            const lineas = doc.splitTextToSize(String(valor || "—"), ancho - 118);
-            doc.text(lineas, x + 118, y);
-            y += Math.max(14, lineas.length * 12);
-        };
+
         encabezado();
         y = 98;
-        doc.setTextColor(...PDF_ROJO); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-        doc.text("SOLICITUD DE VIÁTICOS", W / 2, y, { align: "center" });
-        y += 15;
-        doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-        doc.text("Departamento de Operaciones  |  Para autorización de Gerencia Administrativa y Pagos", W / 2, y, { align: "center" });
 
-        seccion("1  ·  DATOS DEL VIAJE");
-        campo("Solicita:", (s.solicitante_nombre && /\s/.test(s.solicitante_nombre)) ? s.solicitante_nombre : (opsNombreDeCorreo(s.solicitante_email) || s.solicitante_nombre || s.solicitante_email));
-        campo("Destino:", s.destino);
-        if (s.cliente) campo("Cliente:", s.cliente);
-        if (s.folio_servicio) campo("Folio de servicio:", opsViaFolioLegible(s.folio_servicio));
-        campo("Salida:", fecha(t.salida || s.fecha_salida));
-        campo("Regreso estimado:", fecha(t.regreso || s.fecha_regreso));
-        if (t.inicio && t.inicio.nombre) campo("Inicio:", t.inicio.nombre);
-        if (t.regresaAlInicio === false && t.final) campo("Final:", t.final.nombre || "Punto en el mapa");
-        if (t.regresaAlInicio === false) campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km de ida + ${(Number(t.kmRegreso) || 0).toFixed(1)} km de regreso (${((Number(s.km_sencillo) || 0) + (Number(t.kmRegreso) || 0)).toFixed(1)} km en total)`);
-        else campo("Distancia:", `${(Number(s.km_sencillo) || 0).toFixed(1)} km sencillo (${((Number(s.km_sencillo) || 0) * 2).toFixed(1)} km ida y vuelta)${t.horasIda ? " · " + Math.floor(t.horasIda) + " h " + Math.round((t.horasIda % 1) * 60) + " min de manejo por trayecto" : ""}`);
-        campo("Vehículo:", [s.vehiculo, s.tipo_vehiculo].filter(Boolean).join(" · "));
-        campo("¿Requiere viáticos?:", t.requiereViaticos === false ? "No (solo gasolina)" : "Sí");
+        // ── Tarjetas de resumen: lo que Pagos deposita y lo que Ingresos cobra ──
+        const anchoT = (AN - 12) / 2, altoT = 70;
+        const tarjeta = (x, color, fondo, etiqueta, monto, lineas) => {
+            doc.setFillColor(...fondo); doc.setDrawColor(...color); doc.setLineWidth(1.2); doc.roundedRect(x, y, anchoT, altoT, 8, 8, "FD");
+            doc.setFillColor(...color); doc.roundedRect(x, y, 6, altoT, 3, 3, "F");
+            doc.setTextColor(...color); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(etiqueta, x + 16, y + 17);
+            doc.setFontSize(21); doc.text(din(monto), x + 16, y + 41);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+            lineas.filter(Boolean).forEach((l, i) => doc.text(l, x + 16, y + 54 + i * 10));
+        };
+        tarjeta(M, VERDE, VERDE_CL, "DEPOSITAR AL TÉCNICO · PAGOS", deposito,
+            [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", hotelCompras ? "Hotel: lo paga Compras" : "Alimentos" + (noches ? " + hospedaje" : "") + (Number(s.otros) ? " + otros" : "")]);
+        tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
+            ["Costo real del viaje: " + din(s.total), s.empresa_cobra ? "Se cobra a: " + s.empresa_cobra : ""]);
+        y += altoT + 8;
 
-        seccion(`2  ·  PERSONAL QUE VIAJA (${s.personas || 1})`);
-        doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
-        const personal = doc.splitTextToSize(s.integrantes || "—", W - 2 * M);
-        doc.text(personal, M, y); y += personal.length * 12 + 2;
+        // ── Datos del viaje en dos columnas ──
+        titulo("Datos del viaje");
+        const par = (label, valor, x, ancho) => {
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.text(label.toUpperCase(), x, y);
+            doc.setTextColor(...TINTA); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
+            const l = doc.splitTextToSize(String(valor || "—"), ancho);
+            doc.text(l, x, y + 11);
+            return 11 + l.length * 11.5;
+        };
+        const fila2 = (a, b) => {
+            const col = (AN - 20) / 2;
+            nuevaPaginaSiHaceFalta(36);
+            const h1 = par(a[0], a[1], M, col), h2 = b ? par(b[0], b[1], M + col + 20, col) : 0;
+            y += Math.max(h1, h2) + 3;
+        };
+        const fila1 = (a) => { nuevaPaginaSiHaceFalta(36); y += par(a[0], a[1], M, AN) + 3; };
+        fila1(["Destino", s.destino]);
+        fila2(["Cliente", s.cliente], ["Folio de servicio", s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "—"]);
+        fila2(["Salida", fecha(t.salida || s.fecha_salida)], ["Regreso estimado", fecha(t.regreso || s.fecha_regreso)]);
+        const dist = t.regresaAlInicio === false
+            ? `${(Number(s.km_sencillo) || 0).toFixed(1)} km ida + ${(Number(t.kmRegreso) || 0).toFixed(1)} km regreso`
+            : `${(Number(s.km_sencillo) || 0).toFixed(1)} km sencillo (${((Number(s.km_sencillo) || 0) * 2).toFixed(1)} km ida y vuelta)${t.horasIda ? " · " + Math.floor(t.horasIda) + " h " + Math.round((t.horasIda % 1) * 60) + " min por trayecto" : ""}`;
+        fila2(["Distancia", dist], ["Vehículo", [s.vehiculo, s.tipo_vehiculo].filter(Boolean).join(" · ")]);
+        fila2(["Inicio", (t.inicio && t.inicio.nombre) || "Oficinas Tecnocontrol"], ["Solicita", nombreSolicita]);
+        const nombres = String(s.integrantes || "").split(",").map(x => x.trim()).filter(Boolean);
+        fila1([`Personal que viaja (${s.personas || nombres.length || 1})`, nombres.map((n, i) => i === 0 && nombres.length > 1 ? n + " (líder de cuadrilla)" : n).join("   ·   ") || "—"]);
 
-        const dosBloques = true; // también para solicitudes anteriores a la Etapa B
-        seccion(dosBloques ? "3  ·  COSTO DEL VIAJE (SE COBRA AL CLIENTE · INGRESOS)" : "3  ·  DESGLOSE DEL MONTO SOLICITADO");
-        const filas = [
-            ["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina],
-            ["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)`, s.alimentos],
-            ["Hospedaje", t.habitaciones ? `${t.noches || 0} noche(s) × (${t.habitaciones.sencillas || 0} hab. sencilla × ${din(t.habitaciones.precioSencilla)} + ${t.habitaciones.dobles || 0} hab. doble × ${din(t.habitaciones.precioDoble)})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}${t.hotelDesayuno ? " · incluye desayuno" : ""}` : `${t.noches || 0} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje],
-        ];
+        // ── Desglose ──
+        titulo("Desglose del costo");
+        const c1 = M + 8, c2 = M + 92, c3 = W - M - 150, c4 = W - M - 8;
+        const filas = [];
+        filas.push(["Gasolina", t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`, s.gasolina, "no"]);
         const casetas = t.casetasDetalle || [];
-        if (t.aplicaCasetas === false || !casetas.length) filas.push(["Casetas", t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", s.casetas]);
-        else casetas.forEach((c, i) => filas.push([i === 0 ? "Casetas" : "", `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s)`, c.subtotal]));
-        if (Number(s.otros)) filas.push(["Otros", "Gastos adicionales", s.otros]);
-        const c1 = M, c2 = M + 88, c3 = W - M;
-        doc.setFillColor(233, 236, 245); doc.rect(M, y - 10, W - 2 * M, 16, "F");
-        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-        doc.text("CONCEPTO", c1 + 6, y); doc.text("CÁLCULO", c2, y); doc.text("IMPORTE", c3 - 6, y, { align: "right" });
-        y += 16;
+        if (t.aplicaCasetas === false || !casetas.length) filas.push(["Casetas", t.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", s.casetas, "no"]);
+        else casetas.forEach((c, i) => filas.push([i === 0 ? "Casetas" : "", `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s)`, c.subtotal, "no"]));
+        filas.push(["Alimentos", `${s.desayunos} desayuno(s) × ${din(t.desayuno)} + ${s.comidas} comida(s) × ${din(t.comida)} + ${s.cenas} cena(s) × ${din(t.cena)}, × ${s.personas} persona(s)${t.desayunosHotel ? " · desayuno incluido en el hotel" : ""}`, s.alimentos, "si"]);
+        if (!noches) filas.push(["Hospedaje", "No aplica (regresan el mismo día)", 0, "na"]);
+        else filas.push(["Hospedaje", t.habitaciones
+            ? `${noches} noche(s) × (${t.habitaciones.sencillas ? t.habitaciones.sencillas + " sencilla × " + din(t.habitaciones.precioSencilla) : ""}${t.habitaciones.sencillas && t.habitaciones.dobles ? " + " : ""}${t.habitaciones.dobles ? t.habitaciones.dobles + " doble × " + din(t.habitaciones.precioDoble) : ""})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}`
+            : `${noches} noche(s) × ${din(t.hospedajePorNoche)} × ${s.personas} persona(s)`, s.hospedaje, hotelCompras ? "compras" : "si"]);
+        if (Number(s.otros)) filas.push(["Otros", "Gastos adicionales", s.otros, "si"]);
+
+        nuevaPaginaSiHaceFalta(40);
+        doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 11, AN, 18, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+        doc.text("CONCEPTO", c1, y + 1); doc.text("CÁLCULO", c2, y + 1); doc.text("¿SE DEPOSITA?", c3, y + 1); doc.text("IMPORTE", c4, y + 1, { align: "right" });
+        y += 18;
+        const etiqueta = tipo => ({ si: ["Sí", VERDE, VERDE_CL], no: ["No · informativo", [146, 64, 14], [255, 247, 237]], compras: ["No · lo paga Compras", [146, 64, 14], [255, 247, 237]], na: ["—", PDF_GRIS, [248, 250, 252]] })[tipo];
         filas.forEach((r, i) => {
-            const det = doc.splitTextToSize(r[1], c3 - c2 - 90);
-            const alto = Math.max(16, det.length * 11 + 5);
+            const det = doc.splitTextToSize(r[1], c3 - c2 - 10);
+            const alto = Math.max(20, det.length * 10.5 + 9);
             nuevaPaginaSiHaceFalta(alto);
-            if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 10, W - 2 * M, alto, "F"); }
-            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1 + 6, y);
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(70, 70, 70); doc.text(det, c2, y);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(25, 25, 25); doc.text(din(r[2]), c3 - 6, y, { align: "right" });
+            if (i % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 12, AN, alto, "F"); }
+            doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1, y);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(det, c2, y);
+            const [txt, col, fondo] = etiqueta(r[3]);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+            const w = doc.getTextWidth(txt) + 10;
+            doc.setFillColor(...fondo); doc.roundedRect(c3, y - 8.5, w, 12, 3, 3, "F");
+            doc.setTextColor(...col); doc.text(txt, c3 + 5, y);
+            doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(din(r[2]), c4, y, { align: "right" });
+            doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M, y - 12 + alto, W - M, y - 12 + alto);
             y += alto;
         });
-        nuevaPaginaSiHaceFalta(30);
-        doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 8, W - 2 * M, 24, "F");
-        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-        doc.text(dosBloques ? "COSTO TOTAL DEL VIAJE" : "TOTAL SOLICITADO", c1 + 8, y + 8);
-        doc.setFontSize(13); doc.text(din(s.total), c3 - 8, y + 8, { align: "right" });
-        y += 30;
-        if (dosBloques) {
-            // Cobro al cliente (lo que necesita Ingresos)
-            nuevaPaginaSiHaceFalta(20);
-            doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-            doc.text("COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1 + 6, y);
-            doc.text(din(opsViaCobroCliente(s)), c3 - 6, y, { align: "right" });
+        const totalFila = (txt, monto, color, fondo) => {
+            nuevaPaginaSiHaceFalta(24);
+            doc.setFillColor(...fondo); doc.rect(M, y - 11, AN, 20, "F");
+            doc.setTextColor(...color); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.text(txt, c1, y + 2);
+            doc.setFontSize(11); doc.text(din(monto), c4, y + 2, { align: "right" });
             y += 22;
-            // Depósito al técnico (lo que necesita Pagos)
-            seccion("4  ·  SE DEPOSITA AL TÉCNICO (PAGOS)");
-            const dep = [["Alimentos", s.alimentos], ["Hospedaje", s.hotel_modo === "compras" ? 0 : s.hospedaje]];
-            if (Number(s.otros)) dep.push(["Otros", s.otros]);
-            dep.forEach(r => {
-                nuevaPaginaSiHaceFalta(16);
-                doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(r[0], c1 + 6, y);
-                if (r[0] === "Hospedaje" && s.hotel_modo === "compras") { doc.setFont("helvetica", "normal"); doc.setTextColor(110, 110, 110); doc.text("Lo paga Compras directo al hotel — no se deposita", c2, y); }
-                doc.setFont("helvetica", "bold"); doc.setTextColor(25, 25, 25); doc.text(din(r[1]), c3 - 6, y, { align: "right" });
-                y += 16;
-            });
-            nuevaPaginaSiHaceFalta(30);
-            doc.setFillColor(21, 128, 61); doc.rect(M, y - 8, W - 2 * M, 24, "F");
-            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-            doc.text("DEPOSITAR AL TÉCNICO" + (s.empresa_entrega ? " (entrega " + s.empresa_entrega + ")" : ""), c1 + 8, y + 8);
-            doc.setFontSize(13); doc.text(din(opsViaDeposito(s)), c3 - 8, y + 8, { align: "right" });
-            y += 30;
-            doc.setTextColor(90, 90, 90); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-            const nota = doc.splitTextToSize(`Gasolina (${din(s.gasolina)}) y casetas (${din(s.casetas)}) NO se depositan: son informativas para Pagos (tanque de la unidad y tag con crédito Fibra Estatal) y sí se cobran al cliente.`, W - 2 * M);
-            nuevaPaginaSiHaceFalta(nota.length * 11);
-            doc.text(nota, M, y); y += nota.length * 11 + 6;
+        };
+        y += 4;
+        totalFila("COSTO TOTAL DEL VIAJE", s.total, PDF_AZUL, AZUL_CL);
+        totalFila("TOTAL A DEPOSITAR (filas marcadas \"Sí\")", deposito, VERDE, VERDE_CL);
+
+        // ── Aviso para Pagos ──
+        const aviso = doc.splitTextToSize(`Gasolina (${din(s.gasolina)}) y casetas (${din(s.casetas)}) NO se depositan: van con el tanque de la unidad y el tag con crédito Fibra Estatal. Son informativas para Pagos y sí se cobran al cliente.${hotelCompras ? " El hotel lo paga Compras directo al hotel." : ""}`, AN - 24);
+        nuevaPaginaSiHaceFalta(aviso.length * 10 + 16);
+        y += 4;
+        doc.setFillColor(255, 251, 235); doc.setDrawColor(253, 230, 138); doc.roundedRect(M, y - 10, AN, aviso.length * 10 + 12, 5, 5, "FD");
+        doc.setTextColor(146, 64, 14); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(aviso, M + 12, y + 1);
+        y += aviso.length * 10 + 12;
+
+        // ── Notas ──
+        const notas = [s.notas, s.comentario_pagos ? "Pagos: " + s.comentario_pagos : ""].filter(Boolean).join("\n");
+        if (notas) {
+            titulo("Notas");
+            doc.setTextColor(...TINTA); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+            const n = doc.splitTextToSize(notas, AN);
+            nuevaPaginaSiHaceFalta(n.length * 11.5);
+            doc.text(n, M, y); y += n.length * 11.5 + 4;
         }
 
-        if (s.notas || s.comentario_pagos) {
-            seccion((dosBloques ? "5" : "4") + "  ·  NOTAS");
-            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5);
-            const n = doc.splitTextToSize([s.notas, s.comentario_pagos ? "Pagos: " + s.comentario_pagos : ""].filter(Boolean).join("\n"), W - 2 * M);
-            nuevaPaginaSiHaceFalta(n.length * 12);
-            doc.text(n, M, y); y += n.length * 12;
-        }
-
-        // Firmas
-        nuevaPaginaSiHaceFalta(110);
-        y = Math.max(y + 50, H - 150);
-        const anchoF = (W - 2 * M - 40) / 3;
-        const nombreSolicita = (s.solicitante_nombre && /\s/.test(s.solicitante_nombre)) ? s.solicitante_nombre : (opsNombreDeCorreo(s.solicitante_email) || s.solicitante_nombre || "");
+        // ── Firmas: al pie de la misma hoja si caben ──
+        let yF;
+        if (y + 38 > H - 66) { doc.addPage(); encabezado(); yF = H - 92; }
+        else yF = Math.min(H - 66, Math.max(y + 38, H - 130));
+        const anchoF = (AN - 40) / 3;
         [["Solicita", nombreSolicita], ["Autoriza", "Gerencia Administrativa"], ["Recibe / Paga", "Departamento de Pagos"]].forEach((f, i) => {
             const x = M + i * (anchoF + 20);
-            doc.setDrawColor(150, 150, 150); doc.line(x, y, x + anchoF, y);
-            doc.setTextColor(25, 25, 25); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(f[0], x + anchoF / 2, y + 13, { align: "center" });
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...PDF_GRIS); doc.text(doc.splitTextToSize(f[1], anchoF), x + anchoF / 2, y + 25, { align: "center" });
+            doc.setDrawColor(148, 163, 184); doc.setLineWidth(0.7); doc.line(x, yF, x + anchoF, yF);
+            doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(f[0], x + anchoF / 2, yF + 13, { align: "center" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...PDF_GRIS); doc.text(doc.splitTextToSize(f[1], anchoF), x + anchoF / 2, yF + 24, { align: "center" });
         });
         const paginas = doc.getNumberOfPages();
         for (let p = 1; p <= paginas; p++) {
             doc.setPage(p);
+            doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M, H - 36, W - M, H - 36);
             doc.setFontSize(7.5); doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal");
             doc.text(`Generado desde el Portal Operativo Tecnocontrol · ${new Date().toLocaleString("es-MX")}`, M, H - 24);
             doc.text(`Página ${p} de ${paginas}`, W - M, H - 24, { align: "right" });

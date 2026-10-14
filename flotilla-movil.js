@@ -6894,7 +6894,7 @@ function fmOpsServHTML(){
   if(!misOpsServ.length)return '';
   const hoy=new Date(); hoy.setMinutes(hoy.getMinutes()-hoy.getTimezoneOffset());
   const hoyISO=hoy.toISOString().slice(0,10);
-  return '<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
+  return fmOpsMiDiaHTML(hoyISO)+'<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
     misOpsServ.map(function(f){
       const enProc=!!f.iniciadoEn;
       const dia=String(f.fechaProgramada||'').slice(0,10);
@@ -6918,6 +6918,9 @@ function fmOpsServHTML(){
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
         (f.comentarios?'<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#334155;margin-bottom:8px">'+opsSvEsc(f.comentarios)+'</div>':'')+
         (enProc?'<div style="font-size:11px;color:#1E40AF;font-weight:700;margin-bottom:8px">Iniciado: '+opsSvEsc(opsSvFecha(f.iniciadoEn))+'</div>':'')+
+        (f.pausaActiva?'<div style="background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#9A3412"><b>En pausa</b> desde '+opsSvEsc(opsSvHora(f.pausaActiva.desde))+' · '+opsSvEsc(f.pausaActiva.motivo||'')+(f.pausaActiva.minutosEstimados?' · ~'+f.pausaActiva.minutosEstimados+' min':'')+
+          '<button onclick="fmOpsServReanudar(\''+f.id+'\',this)" style="display:block;width:100%;margin-top:7px;padding:9px;background:#EA580C;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Reanudar servicio</button></div>'
+          :'<button onclick="fmOpsServPausa(\''+f.id+'\')" style="width:100%;padding:9px;margin-bottom:7px;background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#9A3412;cursor:pointer">Tiempo muerto / pausa (avisa a Operaciones)</button>')+
         '<button onclick="fmOpsServDetalle(\''+f.id+'\')" style="width:100%;padding:10px;margin-bottom:7px;background:#1D2E73;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Ver todo: herramienta, material y datos</button>'+
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
           (enProc
@@ -6930,6 +6933,106 @@ function fmOpsServHTML(){
     }).join('')+'<div style="height:10px"></div>';
 }
 
+// ═══ Mi día y tiempos muertos (Etapa D, oct-2026) ═══
+function opsSvHora(iso){ if(!iso)return ''; const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}); }
+function opsSvDiaFin(f){
+  const dia=String(f.fechaProgramada||'').slice(0,10);
+  if(f.fechaFinProgramada&&f.fechaFinProgramada>dia)return f.fechaFinProgramada;
+  if(dia&&f.duracionUnidad==='dias'&&Number(f.duracionValor)>1){const dd=new Date(dia+'T12:00:00');dd.setDate(dd.getDate()+Math.ceil(Number(f.duracionValor))-1);return dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0');}
+  return dia;
+}
+// Lo primero que ve el técnico: qué tiene hoy y mañana, a qué hora, dónde y con quién.
+function fmOpsMiDiaHTML(hoyISO){
+  const m=new Date(hoyISO+'T12:00:00'); m.setDate(m.getDate()+1);
+  const mananaISO=m.getFullYear()+'-'+String(m.getMonth()+1).padStart(2,'0')+'-'+String(m.getDate()).padStart(2,'0');
+  const del=function(d){return misOpsServ.filter(function(f){const a=String(f.fechaProgramada||'').slice(0,10);return a&&a<=d&&d<=opsSvDiaFin(f);});};
+  const fila=function(f,d){
+    const ini=String(f.fechaProgramada||'').slice(0,10), hora=ini===d&&String(f.fechaProgramada||'').length>10?String(f.fechaProgramada).slice(11,16):'08:00';
+    const otros=(f.tecnicosAsignadosNombres||[]).filter(function(n){return n&&n!==opsSvMiNombre();});
+    return '<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid #EEF2F7">'+
+      '<div style="font-size:13px;font-weight:800;color:#1D2E73;min-width:44px">'+opsSvEsc(hora)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#0A1628">'+opsSvEsc(f.estacion||'Servicio')+'</div>'+
+      '<div style="font-size:11.5px;color:#64748B">'+opsSvEsc(opsSvTipo(f))+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+(otros.length?' · con '+opsSvEsc(otros.join(', ')):'')+(f.vehiculoPlaneado?' · '+opsSvEsc(f.vehiculoPlaneado):'')+'</div></div>'+
+      (f.pausaActiva?'<span style="font-size:10px;font-weight:800;color:#9A3412;background:#FFEDD5;border-radius:6px;padding:2px 6px;align-self:center">PAUSA</span>':f.iniciadoEn?'<span style="font-size:10px;font-weight:800;color:#1E40AF;background:#DBEAFE;border-radius:6px;padding:2px 6px;align-self:center">EN PROCESO</span>':'')+
+    '</div>';
+  };
+  const bloque=function(titulo,d){
+    const l=del(d).sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
+    return '<div style="margin-top:8px"><div style="font-size:11px;font-weight:800;color:#64748B;text-transform:uppercase;letter-spacing:.4px">'+titulo+' · '+l.length+' servicio(s)</div>'+
+      (l.length?l.map(function(f){return fila(f,d);}).join(''):'<div style="font-size:12px;color:#94A3B8;padding:6px 0">Sin servicios.</div>')+'</div>';
+  };
+  return '<div style="background:#fff;border:1.5px solid #C7D2FE;border-radius:12px;padding:12px 14px;margin-bottom:12px">'+
+    '<div style="font-size:15px;font-weight:800;color:#0A1628">Mi día</div>'+
+    '<div style="font-size:11.5px;color:#64748B">Revisa tu programación, pasa por tu material a Almacén y sal a tiempo. Abre cada servicio en "Ver todo" para ver herramienta y material.</div>'+
+    bloque('Hoy',hoyISO)+bloque('Mañana',mananaISO)+
+  '</div>';
+}
+const OPS_PAUSA_MOTIVOS=['Descarga de pipa','Esperando al encargado / cliente','Falta material o herramienta','Estación ocupada / surtiendo','Clima','Tráfico / traslado','Otro'];
+window.fmOpsServPausa=function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  const ov=document.createElement('div'); ov.id='fm-ops-pausa';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=
+    '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px">'+
+      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Tiempo muerto / pausa</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(f.estacion||'')+' · se avisa a Operaciones con la hora exacta.</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Qué pasó?</div>'+
+      '<div id="fm-pausa-motivos" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+OPS_PAUSA_MOTIVOS.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivo(this)" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cuánto calculas que tarda?</div>'+
+      '<div id="fm-pausa-min" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">'+[15,30,60,120].map(function(n){return '<button type="button" onclick="fmOpsPausaMin(this)" data-n="'+n+'" style="padding:9px 0;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#334155">'+(n<60?n+' min':(n/60)+' h')+'</button>';}).join('')+'</div>'+
+      '<textarea id="fm-pausa-txt" rows="2" placeholder="Detalle (opcional). Ej. El encargado pidió esperar a que termine la descarga." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
+      '<div id="fm-pausa-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<button onclick="document.getElementById(\'fm-ops-pausa\').remove()" style="padding:12px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Cancelar</button>'+
+        '<button id="fm-pausa-btn" onclick="fmOpsServGuardarPausa(\''+id+'\')" style="padding:12px;border-radius:10px;border:none;background:#EA580C;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Registrar pausa</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+};
+window.fmOpsPausaMotivo=function(b){document.querySelectorAll('#fm-pausa-motivos button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
+window.fmOpsPausaMin=function(b){document.querySelectorAll('#fm-pausa-min button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
+window.fmOpsServGuardarPausa=async function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;})||{};
+  const mb=document.querySelector('#fm-pausa-motivos button[data-on]'), nb=document.querySelector('#fm-pausa-min button[data-on]');
+  const msg=document.getElementById('fm-pausa-msg'), btn=document.getElementById('fm-pausa-btn');
+  if(!mb){if(msg)msg.textContent='Elige qué pasó.';return;}
+  const motivo=mb.getAttribute('data-m'), min=nb?Number(nb.getAttribute('data-n')):null;
+  const det=(document.getElementById('fm-pausa-txt')?.value||'').trim();
+  if(btn){btn.disabled=true;btn.textContent='Registrando…';}
+  try{
+    const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+    const pausa={motivo:motivo,detalle:det||null,minutosEstimados:min,desde:ahora,por:quien,porEmail:opsSvMiCorreo()};
+    await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({pausaActiva:pausa});
+    await opsSvComentario(id,'[Pausa '+opsSvHora(ahora)+'] '+motivo+(min?' · ~'+min+' min':'')+(det?' · '+det:''),'pausa');
+    await opsSvAvisarAdmins('ops_tiempo_muerto',quien+' pausó '+(f.estacion||'un servicio')+': '+motivo+(min?' (~'+min+' min)':'')+(det?' · '+det:''),id);
+    document.getElementById('fm-ops-pausa')?.remove();
+    toast('Pausa registrada. Se avisó a Operaciones.','ok');
+  }catch(e){
+    console.error('[OPS pausa]',e);
+    if(msg)msg.textContent='No se pudo registrar. Revisa tu conexión e intenta de nuevo.';
+    if(btn){btn.disabled=false;btn.textContent='Registrar pausa';}
+  }
+};
+// Al reanudar se guarda cuánto duró de verdad: con eso Operaciones aprende tiempos reales por servicio.
+window.fmOpsServReanudar=async function(id,btn){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f||!f.pausaActiva)return;
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    const ahora=new Date(), p=f.pausaActiva;
+    const minutos=Math.max(1,Math.round((ahora-new Date(p.desde))/60000));
+    const registro=Object.assign({},p,{hasta:ahora.toISOString(),minutosReales:minutos});
+    const lista=(f.tiemposMuertos||[]).concat([registro]);
+    const total=lista.reduce(function(a,x){return a+(Number(x.minutosReales)||0);},0);
+    await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({pausaActiva:null,tiemposMuertos:lista,tiempoMuertoMin:total});
+    await opsSvComentario(id,'[Reanudado '+opsSvHora(ahora.toISOString())+'] Pausa por '+p.motivo+': '+minutos+' min.','reanudo');
+    await opsSvAvisarAdmins('ops_tiempo_muerto_fin',opsSvMiNombre()+' reanudó '+(f.estacion||'el servicio')+' tras '+minutos+' min ('+p.motivo+').',id);
+    toast('Servicio reanudado ('+minutos+' min de pausa).','ok');
+  }catch(e){
+    console.error('[OPS reanudar]',e);
+    toast('No se pudo reanudar. Intenta de nuevo.','err');
+    if(btn){btn.disabled=false;btn.textContent='Reanudar servicio';}
+  }
+};
 async function opsSvComentario(folioId,texto,tipo){
   await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('comentarios').add({
     texto:texto, autor:opsSvMiNombre(), autorEmail:opsSvMiCorreo(), tipo:tipo||'tecnico', origen:'app_flotilla',
