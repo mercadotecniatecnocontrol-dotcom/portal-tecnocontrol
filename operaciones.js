@@ -12869,11 +12869,12 @@
     // Tarifas editables en la tabla ops_config_viaticos_solicitud (botón "Tarifas").
     // ══════════════════════════════════════════════════════════════════
     const OPS_VIA_CFG_DEFAULT = {
-        desayuno: 150, desayunoRegla: "Salida antes de las 7:15", horaDesayuno: "07:15",
-        comida: 200, comidaRegla: "Medio día (2:00 p.m.)", horaComida: "14:00",
-        cena: 130, cenaRegla: "Pasadas las 7:00 p.m.", horaCena: "19:00",
-        topeDiario: 500, precioLitro: 25, factor: 1.20, multiplicadorKm: 2,
-        kmMinimoViaticos: 40, hospedajePorNoche: 900, horasServicioDefault: 4,
+        // Tarifas autorizadas por Dirección (14-oct-2026): desayuno $120, comida $150, cena $110.
+        desayuno: 120, desayunoRegla: "Salida antes de las 7:00 a.m.", horaDesayuno: "07:00",
+        comida: 150, comidaRegla: "Medio día (2:00 p.m.)", horaComida: "14:00",
+        cena: 110, cenaRegla: "Regreso después de las 8:00 p.m.", horaCena: "20:00",
+        topeDiario: 380, precioLitro: 25, factor: 1.20, multiplicadorKm: 2,
+        kmMinimoViaticos: 40, hospedajePorNoche: 1200, horasServicioDefault: 4,
         origen: { nombre: "Oficina Tecnocontrol (Chihuahua)", lat: 28.6353, lng: -106.0889 },
         vehiculos: [
             { tipo: "chico", nombre: "Chico (March / Attitude / Ram)", rendimiento: 10 },
@@ -12883,7 +12884,7 @@
         correosNotificar: ["c.acosta@tecnocontrol.com.mx", "pagos@tecnocontrol.com.mx"],
         // Comprobación (oct-2026): días naturales después del regreso para comprobar, y
         // RFC(s) a cuyo nombre deben venir las facturas (vacío = no se revisa el receptor).
-        diasComprobacion: 3, rfcsReceptor: [],
+        diasComprobacion: 14, rfcsReceptor: [],
     };
     let opsViaCfg = { ...OPS_VIA_CFG_DEFAULT };
     let opsViaLista = [];
@@ -12962,6 +12963,7 @@
         if (tabActual !== "viaticos") return;
         const autoriza = opsViaPuedeAutorizar();
         if (opsViaVista === "comprobacion") return opsRenderViaComprobacion(el, autoriza);
+        if (opsViaVista === "pagos") return opsRenderViaPagos(el, autoriza);
         const filas = opsViaLista.map(s => `
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}</td>
@@ -14472,9 +14474,103 @@
         } catch (e) { console.warn("[viáticos] aviso a técnico " + correo + ":", e.message || e); return false; }
     }
 
+    // ═══ Seguimiento de Pagos y Contabilidad (14-oct-2026) ═══
+    // Una sola vista por etapa: por autorizar → por pagar → pagados en comprobación → vencidos →
+    // comprobados por cerrar → cerrados. Pagos registra el pago CON comprobante; al pagarse se
+    // avisa a Contabilidad. Exporta a Excel (CSV) para el reporte de Pagos.
+    let opsViaPagosFiltro = "porpagar";
+    window.opsViaPagosSetFiltro = function (f) { opsViaPagosFiltro = f; opsRenderViaticos(); };
+    async function opsRenderViaPagos(el, autoriza) {
+        try { await opsViaCargarComprobantes(); } catch (e) {}
+        const hoy = new Date().toISOString().slice(0, 10);
+        const filas = opsViaLista.filter(s => s.estatus !== "Rechazada").map(s => {
+            const E = opsViaEstadoComp(s);
+            let etapa;
+            if (!s.entregado_en) etapa = s.estatus === "Aprobada" ? "porpagar" : "porautorizar";
+            else if (E.estado === "Cerrada") etapa = "cerradas";
+            else if (E.estado === "Comprobada") etapa = "porcerrar";
+            else if (s.fecha_limite_comprobacion && s.fecha_limite_comprobacion < hoy) etapa = "vencidas";
+            else etapa = "comprobacion";
+            return { s, E, etapa };
+        });
+        const ETAPAS = [
+            ["porautorizar", "Por autorizar", "#b45309"], ["porpagar", "Autorizadas por pagar", "#1D2E73"],
+            ["comprobacion", "Pagadas en comprobación", "#0e7490"], ["vencidas", "Comprobación vencida", "#b91c1c"],
+            ["porcerrar", "Comprobadas por cerrar", "#15803d"], ["cerradas", "Cerradas", "#475569"],
+        ];
+        const cuenta = k => filas.filter(x => x.etapa === k);
+        const suma = (l, fn) => l.reduce((a, x) => a + (Number(fn(x)) || 0), 0);
+        const lista = cuenta(opsViaPagosFiltro);
+        const tarjetas = ETAPAS.map(([k, t, c]) => { const l = cuenta(k); const on = opsViaPagosFiltro === k;
+            return `<button onclick="opsViaPagosSetFiltro('${k}')" style="text-align:left;border:1.5px solid ${on ? c : "#e2e8f0"};background:${on ? c + "12" : "#fff"};border-radius:12px;padding:10px 12px;cursor:pointer;min-width:150px;flex:1;">
+                <div style="font-size:22px;font-weight:800;color:${c};font-family:'Space Grotesk',sans-serif;">${l.length}</div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;">${t}</div>
+                <div style="font-size:11px;color:#64748b;">${opsViaDinero(k === "porautorizar" || k === "porpagar" ? suma(l, x => opsViaDeposito(x.s)) : suma(l, x => x.s.monto_entregado))}</div>
+            </button>`; }).join("");
+        const dias = d => d ? Math.round((new Date(d + "T12:00") - new Date(hoy + "T12:00")) / 86400000) : null;
+        const cuerpo = lista.map(({ s, E }) => {
+            const dl = dias(s.fecha_limite_comprobacion);
+            return `<tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(opsViaFechaCorta(s.creado_en))}</div></td>
+                <td style="padding:9px 8px;font-size:12px;">${opsEsc(s.destino || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.integrantes || "")}${s.empresa_entrega ? " · entrega " + opsEsc(s.empresa_entrega) : ""}${s.empresa_cobra ? " · cobra " + opsEsc(s.empresa_cobra) : ""}</div></td>
+                <td style="padding:9px 8px;text-align:right;font-weight:700;">${opsViaDinero(opsViaDeposito(s))}</td>
+                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(s.monto_entregado) + `<div style="font-size:10.5px;color:#64748b;">${opsEsc(opsViaFechaCorta(s.entregado_en))}${s.referencia_pago ? " · " + opsEsc(s.referencia_pago) : ""}</div>` : "—"}</td>
+                <td style="padding:9px 8px;text-align:right;">${s.entregado_en ? opsViaDinero(E.acept) + `<div style="font-size:10.5px;color:#64748b;">${E.comps.filter(c => c.estatus === "Por revisar").length} por revisar</div>` : "—"}</td>
+                <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${s.fecha_limite_comprobacion ? opsEsc(opsViaFechaCorta(s.fecha_limite_comprobacion)) + (dl != null && s.entregado_en && !["Comprobada", "Cerrada"].includes(E.estado) ? `<div style="font-weight:700;color:${dl < 0 ? "#b91c1c" : dl <= 2 ? "#b45309" : "#15803d"};">${dl < 0 ? "vencida hace " + (-dl) + " d" : "faltan " + dl + " d"}</div>` : "") : "—"}</td>
+                <td style="padding:9px 8px;white-space:nowrap;">
+                    ${s.comprobante_pago ? `<button onclick="opsViaVerComprobantePago(${s.id})" style="background:#ecfdf5;border:1px solid #bbf7d0;color:#15803d;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Comprobante</button>` : ""}
+                    ${autoriza && !s.entregado_en && s.estatus === "Aprobada" ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#15803d;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Registrar pago</button>` : ""}
+                    ${autoriza && s.estatus === "Pendiente" ? `<button onclick="opsViaCambiarEstatus(${s.id}, 'Aprobada')" style="background:#1D2E73;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Autorizar</button>` : ""}
+                    ${s.entregado_en ? `<button onclick="opsViaVerComprobacion(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Comprobación</button>` : ""}
+                    <button onclick="opsViaVerDetalle(${s.id}); opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">PDF</button>
+                </td>
+            </tr>`; }).join("");
+        el.innerHTML = `<div style="padding:22px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <div>
+                    <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;color:#1D2E73;">Seguimiento de viáticos · Pagos y Contabilidad</div>
+                    <div style="font-size:12px;color:#64748b;">Pagos registra cada pago con su comprobante; en cuanto se paga se avisa a Contabilidad. Gasolina y casetas no se depositan.</div>
+                    ${opsViaTabsHTML()}
+                </div>
+                <button onclick="opsViaExportarPagos()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Exportar a Excel</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">${tarjetas}</div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;min-width:880px;">
+                    <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Destino · personal</th><th style="padding:9px 8px;text-align:right;">A depositar</th>
+                        <th style="padding:9px 8px;text-align:right;">Pagado</th><th style="padding:9px 8px;text-align:right;">Comprobado</th><th style="padding:9px 8px;">Límite</th><th></th>
+                    </tr></thead>
+                    <tbody>${cuerpo || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Nada en esta etapa.</td></tr>`}</tbody>
+                </table>
+            </div>
+        </div>`;
+        window.__opsViaPagosFilas = filas;
+    }
+    window.opsViaVerComprobantePago = function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s || !s.comprobante_pago) return;
+        const w = window.open("", "_blank");
+        if (!w) { alert("Permite las ventanas emergentes para ver el comprobante."); return; }
+        const esPdf = /^data:application\/pdf/.test(s.comprobante_pago);
+        w.document.write(`<title>Comprobante ${s.folio}</title><body style="margin:0;background:#222;">${esPdf ? `<iframe src="${s.comprobante_pago}" style="border:0;width:100vw;height:100vh;"></iframe>` : `<img src="${s.comprobante_pago}" style="max-width:100%;display:block;margin:auto;">`}</body>`);
+    };
+    window.opsViaExportarPagos = function () {
+        const filas = window.__opsViaPagosFilas || [];
+        const nom = { porautorizar: "Por autorizar", porpagar: "Por pagar", comprobacion: "En comprobación", vencidas: "Comprobación vencida", porcerrar: "Comprobada por cerrar", cerradas: "Cerrada" };
+        const esc = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+        const enc = ["Folio", "Fecha solicitud", "Etapa", "Destino", "Personal", "Empresa entrega", "Empresa cobra", "A depositar", "Pagado", "Fecha pago", "Forma", "Referencia", "Comprobado aceptado", "Límite comprobación", "Costo del viaje", "Cobrar al cliente"];
+        const lineas = filas.map(({ s, E, etapa }) => [s.folio, opsViaFechaCorta(s.creado_en), nom[etapa], s.destino, s.integrantes, s.empresa_entrega, s.empresa_cobra,
+            opsViaDeposito(s), s.monto_entregado || "", s.entregado_en ? opsViaFechaCorta(s.entregado_en) : "", s.forma_entrega || "", s.referencia_pago || "",
+            E.acept || 0, s.fecha_limite_comprobacion || "", s.total, opsViaCobroCliente(s)].map(esc).join(","));
+        const csv = "\ufeff" + enc.map(esc).join(",") + "\n" + lineas.join("\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        a.download = "seguimiento_viaticos_" + new Date().toISOString().slice(0, 10) + ".csv";
+        a.click();
+    };
     function opsViaTabsHTML() {
         const b = (v, txt) => `<button onclick="opsViaSetVista('${v}')" style="border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;background:${opsViaVista === v ? "#1D2E73" : "transparent"};color:${opsViaVista === v ? "#fff" : "#475569"};">${txt}</button>`;
-        return `<div style="display:inline-flex;gap:2px;background:#e2e8f0;padding:3px;border-radius:10px;margin-top:10px;">${b("solicitudes", "Solicitudes")}${b("comprobacion", "Comprobación y seguimiento")}</div>`;
+        return `<div style="display:inline-flex;gap:2px;background:#e2e8f0;padding:3px;border-radius:10px;margin-top:10px;">${b("solicitudes", "Solicitudes")}${b("pagos", "Pagos y contabilidad")}${b("comprobacion", "Comprobación y seguimiento")}</div>`;
     }
     window.opsViaSetVista = function (v) { opsViaVista = v; opsRenderViaticos(); };
 
@@ -14671,6 +14767,11 @@
                     <select id="via-ent-resp" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${tecs.map(t => `<option value="${opsEsc(String(t.correo || "").toLowerCase())}" data-nombre="${opsEsc(t.nombre || "")}" ${String(t.correo || "").toLowerCase() === resp ? "selected" : ""}>${opsEsc(t.nombre || t.correo)}${t.correo ? "" : " (sin correo: no recibirá aviso)"}</option>`).join("") || `<option value="">Sin personal en la solicitud</option>`}
                     </select></label>
+                ${opsViaInput("Referencia / número de operación", "via-ent-ref", s.referencia_pago || "", 'placeholder="Ej. folio de la transferencia o del recibo"', "text")}
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-bottom:10px;">Comprobante de transferencia o recibo firmado <span style="color:#E7402B;">*</span>
+                    <input type="file" id="via-ent-comp" accept="application/pdf,image/*" style="display:block;width:100%;margin-top:4px;font-size:12px;">
+                    ${s.comprobante_pago ? `<span style="font-size:11px;color:#15803d;">Ya hay uno guardado (${opsEsc(s.comprobante_pago_nombre || "comprobante")}); sube otro solo si quieres reemplazarlo.</span>` : `<span style="font-size:11px;color:#94a3b8;">Sin comprobante no se puede liberar el pago.</span>`}
+                </label>
                 ${opsViaInput("Fecha límite para comprobar", "via-ent-limite", lim, "", "date")}
                 <div style="font-size:11px;color:#94a3b8;margin:-4px 0 12px;">Por defecto: regreso + ${opsViaCfg.diasComprobacion ?? 3} día(s) (se ajusta en Tarifas).</div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -14690,11 +14791,19 @@
         const limite = document.getElementById("via-ent-limite").value || null;
         if (!forma) { alert("Elige cómo se entregó."); return; }
         if (!(monto > 0)) { alert("Captura el monto entregado."); return; }
+        const archivoComp = (document.getElementById("via-ent-comp") || {}).files ? document.getElementById("via-ent-comp").files[0] : null;
+        if (!archivoComp && !s.comprobante_pago) { alert("Sube el comprobante de la transferencia (o la foto del recibo firmado). Sin comprobante no se libera el pago."); return; }
+        if (archivoComp && archivoComp.size > 6 * 1024 * 1024) { alert("El comprobante pesa más de 6 MB. Sube una foto o PDF más ligero."); return; }
+        let compData = null;
+        if (archivoComp) compData = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => mal(new Error("No se pudo leer el archivo")); r.readAsDataURL(archivoComp); });
+        const referencia = ((document.getElementById("via-ent-ref") || {}).value || "").trim() || null;
         const btn = document.getElementById("via-ent-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
         const cambios = {
             estatus: "Pagada", forma_entrega: forma, monto_entregado: monto, entregado_en: s.entregado_en || new Date().toISOString(),
             entregado_por: opsUsuarioActual(), responsable_email: respEmail, responsable_nombre: respNombre,
             fecha_limite_comprobacion: limite, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual(),
+            referencia_pago: referencia, pagado_por_nombre: opsNombreActual(),
+            ...(compData ? { comprobante_pago: compData, comprobante_pago_nombre: archivoComp.name } : {}),
         };
         try {
             const sb = await opsSb();
@@ -14706,6 +14815,11 @@
             const ok = await opsViaAvisoTecnico(respEmail, "viat_tec_entregado", msg, s);
             if (respEmail) opsViaAvisoPortal(respEmail, "viaticos_entregados", msg, { viaticoId: s.id });
             if (s.solicitante_email && s.solicitante_email !== respEmail) opsViaAvisoPortal(s.solicitante_email, "viaticos_pagada", `Viáticos ${s.folio} entregados a ${respNombre || "el técnico"}.`, { viaticoId: s.id });
+            // En cuanto se paga, pasa a Contabilidad (y a quien diga la matriz de notificaciones).
+            const msgConta = `Viáticos ${s.folio} PAGADOS: ${opsViaDinero(monto)} a ${respNombre || "el técnico"} (${f ? f.etiqueta : forma}${referencia ? ", ref. " + referencia : ""}). Destino: ${s.destino || ""}. Comprobación vence el ${opsViaFechaCorta(limite)}.`;
+            if (window.tcNotificarEvento) window.tcNotificarEvento("viaticos_pagados", { mensaje: msgConta, viaticoId: s.id, modulo: "Contabilidad" })
+                .then(n => { if (!n) opsViaAvisoPortal("contabilidad@tecnocontrol.com.mx", "viaticos_pagados", msgConta, { viaticoId: s.id }); });
+            else opsViaAvisoPortal("contabilidad@tecnocontrol.com.mx", "viaticos_pagados", msgConta, { viaticoId: s.id });
             document.getElementById("ops-modal-wrap").innerHTML = "";
             opsViaToast(ok ? "Entrega registrada. Se avisó al técnico en la app." : "Entrega registrada. El técnico no tiene correo: avísale por otro medio.", ok ? "#15803d" : "#b45309");
             opsRenderViaticos();
