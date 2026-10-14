@@ -6118,11 +6118,119 @@
     // gestionados. Si el servicio lleva piezas, se muestra cómo va Almacén surtiéndolas.
     const OPS_EMP_CORTA = { TECNOCONTROL: "Tecnocontrol", JOMAR: "JOMAR", TECNOLAB: "TecnoLab", AKURIS: "Akuris", VH: "VH" };
     let opsPedVentasAbierto = true;
+    let opsPedVerGestionados = false; // lista de pedidos ya gestionados / servicios cancelados o eliminados (oct-2026)
     function opsPedidosVentasPendientes() {
         return (cacheSurtidos || []).filter(p => (p.clasificacion === "servicio" || p.clasificacion === "servicio_piezas")
             && !p.opsGestionado && p.estado !== "cancelado" && !p.eliminada)
             .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     }
+    // ── Pedidos gestionados / servicios cancelados o eliminados (oct-2026) ──
+    // Para encontrar un pedido que "desapareció" de la lista: se programó, se ligó o se marcó como
+    // gestionado; y si el servicio que se creó se canceló o se borró, regresarlo a "por programar".
+    let opsFoliosEliminados = [], opsElimCargados = false;
+    async function opsCargarEliminados() {
+        try { const sb = await opsSb(); const r = await sb.from("ops_docs").select("doc_id,datos,creado_en").eq("coleccion", "ops_folios_eliminados").order("creado_en", { ascending: false }).limit(200); opsFoliosEliminados = (r.data || []).map(x => ({ papeleraId: x.doc_id, ...x.datos })); }
+        catch (e) { opsFoliosEliminados = []; }
+    }
+    function opsPedidosVentasGestionados() {
+        const desde = Date.now() - 45 * 86400000;
+        return (cacheSurtidos || []).filter(p => (p.clasificacion === "servicio" || p.clasificacion === "servicio_piezas") && p.opsGestionado && !p.eliminada
+            && (p.createdAt || 0) >= desde)
+            .sort((a, b) => String(b.opsGestionadoEn || "").localeCompare(String(a.opsGestionadoEn || "")));
+    }
+    function opsPedEstadoServicio(p) {
+        if (!p.opsFolioId) return { t: "Quitado de la lista sin crear servicio (\"Ya gestionado\")", c: "#64748b", f: null };
+        const f = cacheFolios.find(x => x.id === p.opsFolioId);
+        if (!f) {
+            const el = opsFoliosEliminados.find(x => x.folioIdOriginal === p.opsFolioId);
+            return el ? { t: `Servicio ELIMINADO por ${el.eliminadoPor || "—"} (${opsFmtFechaCorta(el.eliminadoEn)})`, c: "#b91c1c", f: null, eliminado: el } : { t: "El servicio ya no existe", c: "#b91c1c", f: null };
+        }
+        const base = `Servicio${f.folioNumero ? " N.º " + f.folioNumero : ""} · ${f.estacion || ""}`;
+        if (f.cancelado) return { t: `${base} · CANCELADO${f.canceladoPor ? " por " + f.canceladoPor : ""}${f.motivoCancelacion ? " (" + f.motivoCancelacion + ")" : ""}`, c: "#b91c1c", f };
+        if (f.fechaSolucion) return { t: `${base} · terminado`, c: "#15803d", f };
+        return { t: `${base} · programado ${f.fechaProgramada ? opsFmtFechaCorta(f.fechaProgramada) : "sin fecha"}${(f.tecnicosAsignadosNombres || []).length ? " · " + f.tecnicosAsignadosNombres.join(", ") : ""}`, c: "#1D2E73", f };
+    }
+    function opsPedGestionadosHTML(lista, gestiona) {
+        return `<div style="padding:0 14px 14px;">
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">Últimos 45 días. Si un servicio se programó mal y se canceló o eliminó, usa <b>"Regresar a por programar"</b> para volver a programarlo.</div>
+            ${lista.map(p => { const e = opsPedEstadoServicio(p); return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid #e2e8f0;border-left:4px solid ${e.c};border-radius:10px;padding:9px 12px;margin-bottom:7px;background:#fff;">
+                <div style="flex:1;min-width:240px;">
+                    <div style="font-size:12.5px;font-weight:800;color:#1e293b;">${opsEsc(p.folio || "—")} · ${opsEsc(p.cliente || "")}</div>
+                    <div style="font-size:11.5px;color:${e.c};font-weight:700;">${opsEsc(e.t)}</div>
+                    <div style="font-size:10.5px;color:#94a3b8;">Gestionó ${opsEsc(p.opsGestionadoPor || "—")}${p.opsGestionadoEn ? " · " + opsEsc(opsFmtFechaCorta(p.opsGestionadoEn)) : ""}</div>
+                </div>
+                ${e.f ? `<button onclick="opsAbrirPanelFolio('${e.f.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver servicio</button>` : ""}
+                ${p.tienePdfOriginal ? `<button onclick="opsCalVerPdfPedido('${p.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ""}
+                ${gestiona && e.eliminado ? `<button onclick="opsRestaurarFolioEliminado('${e.eliminado.papeleraId}')" style="background:#ecfdf5;color:#15803d;border:1px solid #bbf7d0;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Restaurar servicio</button>` : ""}
+                ${gestiona ? `<button onclick="opsPedRegresarAPorProgramar('${p.id}')" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;">Regresar a por programar</button>` : ""}
+            </div>`; }).join("")}
+        </div>`;
+    }
+    async function opsPedDesgestionar(pid, nota) {
+        await window.tcSbActualizarSurtido(pid, { opsGestionado: false, opsFolioId: null, opsRegresadoEn: new Date().toISOString(), opsRegresadoPor: opsNombreActual() });
+        if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(pid, { por: opsNombreActual(), nota: nota || "Regresado a 'por programar' en Operaciones" }).catch(() => {});
+        const p = (cacheSurtidos || []).find(x => x.id === pid);
+        if (p) { p.opsGestionado = false; p.opsFolioId = null; }
+    }
+    window.opsPedRegresarAPorProgramar = async function (pid) {
+        const p = (cacheSurtidos || []).find(x => x.id === pid); if (!p) return;
+        if (!confirm(`¿Regresar el pedido ${p.folio || ""} (${p.cliente || ""}) a "Servicios vendidos por programar"?\n\nEl servicio que se haya creado no se borra; si sigue activo, cancélalo para que no quede doble.`)) return;
+        try { await opsPedDesgestionar(pid); opsPedVerGestionados = false; opsCalPintarPedidosVentas(); if (window.mostrarPush) window.mostrarPush("Operaciones", `Pedido ${p.folio || ""} regresó a por programar.`, "✅"); }
+        catch (e) { alert("No se pudo regresar: " + (e.message || e)); }
+    };
+    window.opsRestaurarFolioEliminado = async function (papeleraId) {
+        const el = opsFoliosEliminados.find(x => x.papeleraId === papeleraId); if (!el) return;
+        if (!confirm(`¿Restaurar el servicio de ${el.estacion || ""}${el.fechaProgramada ? " (" + opsFmtFechaCorta(el.fechaProgramada) + ")" : ""}?`)) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            const datos = { ...el }; ["papeleraId", "folioIdOriginal", "eliminadoPor", "eliminadoEn", "id"].forEach(k => delete datos[k]);
+            await fs.setDoc(fs.doc(db, COL_FOLIOS, el.folioIdOriginal), datos);
+            const sb = await opsSb(); await sb.from("ops_docs").delete().eq("coleccion", "ops_folios_eliminados").eq("doc_id", papeleraId);
+            await opsCargarEliminados(); opsCalPintarPedidosVentas();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", "Servicio restaurado.", "✅");
+        } catch (e) { alert("No se pudo restaurar: " + (e.message || e)); }
+    };
+
+    // ── Asignar un pedido a otra plaza y avisar a su responsable (oct-2026) ──
+    const OPS_PLAZAS_FORANEAS = ["Juárez", "Parral", "Monterrey"];
+    function opsSlugPlaza(pl) { return String(pl || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    window.opsCalPlazaPedidoAbrir = function (pid) {
+        const p = (cacheSurtidos || []).find(x => x.id === pid); if (!p) return;
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:480px;max-width:96vw;padding:20px;">
+                <div style="font-size:16px;font-weight:800;color:#1D2E73;">Que lo atienda otra plaza</div>
+                <div style="font-size:12px;color:#64748b;margin:3px 0 12px;">${opsEsc(p.folio || "")} · ${opsEsc(p.cliente || "")}. Se avisa a la responsable de la plaza para que lo programe con su gente y gestione lo local.</div>
+                <label style="font-size:12px;font-weight:700;color:#334155;">Plaza</label>
+                <select id="ops-plz-sel" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                    ${OPS_PLAZAS_FORANEAS.map(pl => `<option ${p.opsPlaza === pl ? "selected" : ""}>${pl}</option>`).join("")}
+                    <option value="Chihuahua" ${!p.opsPlaza || p.opsPlaza === "Chihuahua" ? "" : ""}>Chihuahua (quitar asignación)</option>
+                </select>
+                <label style="font-size:12px;font-weight:700;color:#334155;">Gestión local que hace falta <span style="font-weight:500;color:#94a3b8;">(opcional)</span></label>
+                <input id="ops-plz-gest" value="${opsEsc(p.opsGestionLocal || "")}" placeholder="Ej. Renta de grúa para subir el preciador al tótem" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button onclick="opsCalPlazaPedidoGuardar('${p.id}')" style="background:#1D2E73;border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Asignar y avisar</button>
+                </div>
+            </div></div>`;
+    };
+    window.opsCalPlazaPedidoGuardar = async function (pid) {
+        const p = (cacheSurtidos || []).find(x => x.id === pid); if (!p) return;
+        const plaza = document.getElementById("ops-plz-sel").value, gest = document.getElementById("ops-plz-gest").value.trim();
+        const foranea = plaza !== "Chihuahua";
+        try {
+            await window.tcSbActualizarSurtido(pid, { opsPlaza: foranea ? plaza : null, opsGestionLocal: gest || null });
+            p.opsPlaza = foranea ? plaza : null; p.opsGestionLocal = gest || null;
+            if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(pid, { por: opsNombreActual(), nota: foranea ? `Asignado a la plaza ${plaza}${gest ? " · gestión local: " + gest : ""}` : "Se quitó la asignación de plaza" }).catch(() => {});
+            if (foranea && window.tcNotificarEvento) {
+                const msg = `${opsNombreActual()} asignó a la plaza ${plaza} el servicio ${p.folio || ""} de ${p.cliente || ""}: ${(p.productos || []).filter(x => x.tipo === "servicio").map(x => x.espec || x.desc).join(" / ")}.${gest ? " Gestión local que hace falta: " + gest + "." : ""}`;
+                window.tcNotificarEvento("servicio_plaza_" + opsSlugPlaza(plaza), { mensaje: msg, surtidoId: pid, plaza })
+                    .then(n => { if (!n && window.mostrarPush) window.mostrarPush("Operaciones", `La plaza ${plaza} no tiene responsable en "Quién recibe qué"; nadie recibió el aviso.`, "⚠️"); });
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            opsCalPintarPedidosVentas();
+        } catch (e) { alert("No se pudo asignar: " + (e.message || e)); }
+    };
     function opsPedVentasEstadoPiezas(p) {
         if (p.clasificacion === "servicio") return { t: "Sin piezas", c: "#64748b", bg: "#f1f5f9" };
         if (p.estado === "entregado" || p.estado === "finalizado") return { t: "Piezas surtidas por Almacén", c: "#15803d", bg: "#dcfce7" };
@@ -6137,8 +6245,10 @@
     function opsCalPintarPedidosVentas() {
         const box = document.getElementById("ops-cal-pedidos-ventas");
         if (!box) return;
+        if (!opsElimCargados) { opsElimCargados = true; opsCargarEliminados().then(() => opsCalPintarPedidosVentas()); }
         const lista = opsPedidosVentasPendientes();
-        if (!lista.length) { box.innerHTML = ""; return; }
+        const gestionados = opsPedidosVentasGestionados();
+        if (!lista.length && !gestionados.length) { box.innerHTML = ""; return; }
         const gestiona = opsPuedeGestionar();
         const tarjetas = lista.map(p => {
             const est = opsPedVentasEstadoPiezas(p);
@@ -6159,10 +6269,12 @@
                     ${piezas.length ? `<div style="font-size:10.5px;color:#64748b;">+ ${piezas.length} pieza(s): ${piezas.slice(0, 3).map(x => opsEsc((x.espec || x.desc || "").slice(0, 40))).join(", ")}${piezas.length > 3 ? "…" : ""}</div>` : ""}
                 </div>
                 <span style="align-self:flex-start;font-size:10.5px;font-weight:800;color:${est.c};background:${est.bg};border-radius:6px;padding:3px 8px;">${est.t}</span>
+                ${p.opsPlaza ? `<div style="font-size:11px;color:#1D2E73;background:#eef2ff;border-radius:8px;padding:5px 8px;"><b>Lo atiende plaza ${opsEsc(p.opsPlaza)}</b>${p.opsGestionLocal ? " · Gestión local: " + opsEsc(p.opsGestionLocal) : ""}</div>` : ""}
                 ${p.fichaServicio ? `<div style="font-size:11px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:5px 8px;"><b>Ficha de Ventas:</b> ${opsEsc(p.fichaServicio.cantidad || "")} ${opsEsc(p.fichaServicio.unidad || "")}${p.fichaServicio.fechaSugerida ? " · sugerido " + opsEsc(p.fichaServicio.fechaSugerida) : ""}${p.fichaServicio.requiereViaticos ? " · con viáticos" : ""}${p.fichaServicio.notas ? `<div style="color:#475569;margin-top:2px;">${opsEsc(p.fichaServicio.notas)}</div>` : ""}</div>` : `<div style="font-size:10.5px;color:#b45309;">Sin ficha de servicio de Ventas (pedido subido antes del cambio).</div>`}
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
                     ${gestiona ? `<button onclick="opsCalProgramarPedido('${p.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Programar</button>` : ""}
                     ${p.tienePdfOriginal ? `<button onclick="opsCalVerPdfPedido('${p.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ""}
+                    ${gestiona ? `<button onclick="opsCalPlazaPedidoAbrir('${p.id}')" title="Que lo atienda otra plaza (Juárez, Parral, Monterrey) y avisar a su responsable" style="background:#eef2ff;color:#1D2E73;border:1px solid #c7d2fe;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Asignar a plaza</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalLigarPedidoAbrir('${p.id}')" title="Ya existe el servicio en el calendario: ligarlo a este pedido" style="background:#f3e8ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ligar a programado</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalPedidoGestionado('${p.id}')" title="Quitar de la lista sin crear servicio (ya se programó por otro lado)" style="background:#fff;color:#64748b;border:1px dashed #cbd5e1;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ya gestionado</button>` : ""}
                 </div>
@@ -6175,10 +6287,11 @@
                     <div style="font-size:12.5px;font-weight:800;color:#5b21b6;">Servicios vendidos por programar <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;margin-left:4px;font-size:11px;">${lista.length}</span></div>
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
+                ${gestionados.length ? `<button onclick="event.stopPropagation();opsPedVerGestionados=!opsPedVerGestionados;opsPedVentasAbierto=true;opsCalPintarPedidosVentas()" title="Pedidos ya programados, ligados o quitados de la lista; servicios cancelados o eliminados" style="background:${opsPedVerGestionados ? '#1D2E73' : '#f1f5f9'};color:${opsPedVerGestionados ? '#fff' : '#334155'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">Gestionados y cancelados (${gestionados.length})</button>` : ""}
                 <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
                 <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
             </div>
-            ${opsPedVentasAbierto ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : ""}
+            ${opsPedVentasAbierto ? (opsPedVerGestionados ? opsPedGestionadosHTML(gestionados, gestiona) : (lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
     }
     // ── Aviso discreto de servicio nuevo (oct-2026) ──
@@ -6376,6 +6489,8 @@
             ...serv.map(x => `${x.cant || 1} × ${x.desc || x.clave}${x.espec ? " — " + x.espec : ""}`),
             p.clasificacion === "servicio_piezas" ? "Lleva piezas surtidas por Almacén." : ""].filter(Boolean).join("\n");
         opsAS.__surtidoId = p.id;
+        if (p.opsPlaza) { opsAS.plaza = p.opsPlaza; opsAS.plazaManual = true; }
+        if (p.opsGestionLocal) opsAS.comentarios = [opsAS.comentarios, "Gestión local (plaza " + (p.opsPlaza || "") + "): " + p.opsGestionLocal].filter(Boolean).join("\n");
         // Ficha de servicio del vendedor (Etapa C): lo que ya capturó Ventas no se vuelve a escribir.
         const fc = p.fichaServicio || null;
         if (fc) {
@@ -7034,6 +7149,11 @@
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), cambios);
             Object.assign(f, cambios);
             if (accion === "completar") opsComisionesAlFinalizar(f);
+            if (accion === "cancelar") {
+                const ped = (cacheSurtidos || []).find(x => x.opsFolioId === id || (f.pedidoVentasId && x.id === f.pedidoVentasId));
+                if (ped && ped.opsGestionado && confirm(`Este servicio venía del pedido ${ped.folio || ""} (${ped.cliente || ""}).\n\n¿Regresar el pedido a "Servicios vendidos por programar" para programarlo de nuevo?`))
+                    opsPedDesgestionar(ped.id, "Servicio cancelado; el pedido regresó a 'por programar'").then(() => opsCalPintarPedidosVentas()).catch(err => console.warn("[cancelar] no se pudo regresar el pedido:", err.message));
+            }
             try {
                 await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), {
                     texto: nota, autor: quien, autorEmail: opsUsuarioActual(), tipo: "estatus",
@@ -10528,6 +10648,11 @@
             const conViaticos = s.viaticos;
             if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
             opsAvisarVehiculoRequerido(s, nuevo.id);
+            // Servicio programado en una plaza foránea: aviso a su responsable (Etapa plazas, oct-2026)
+            if (s.plaza && s.plaza !== "Chihuahua" && window.tcNotificarEvento) {
+                const quien = opsAsTecsElegidos().map(id => (cacheTec.find(t => t.id === id) || {}).nombre).filter(Boolean).join(", ");
+                window.tcNotificarEvento("servicio_plaza_" + opsSlugPlaza(s.plaza), { mensaje: `Se programó en plaza ${s.plaza}: ${s.estTexto || "servicio"} el ${opsAsFechaDia()}${quien ? " con " + quien : ""}.`, folioId: nuevo.id, plaza: s.plaza }).catch(() => {});
+            }
             opsAS = null;
             const fProg = datos.fechaProgramada.slice(0, 10);
             if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
@@ -10820,9 +10945,19 @@
     }
 
     window.opsEliminarFolio = async function (id) {
-        if (!confirm("¿Eliminar este folio? Esta acción no se puede deshacer.")) return;
+        if (!confirm("¿Eliminar este folio? Se guarda una copia y se puede restaurar desde \"Gestionados y cancelados\".")) return;
         const { db, fs } = await opsGetFB();
+        const f = cacheFolios.find(x => x.id === id);
+        if (f) {
+            try {
+                const sb = await opsSb(); const pid = "del" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+                const r = await sb.from("ops_docs").insert({ ruta: "ops_folios_eliminados/" + pid, coleccion: "ops_folios_eliminados", doc_id: pid,
+                    datos: { ...f, folioIdOriginal: id, eliminadoPor: opsNombreActual(), eliminadoEn: new Date().toISOString() } });
+                if (r.error) throw r.error;
+            } catch (e) { if (!confirm("No se pudo guardar la copia de respaldo (" + (e.message || e) + "). ¿Eliminar de todos modos?")) return; }
+        }
         await fs.deleteDoc(fs.doc(db, COL_FOLIOS, id));
+        opsCargarEliminados().then(() => opsCalPintarPedidosVentas());
         document.getElementById("ops-modal-wrap").innerHTML = "";
         if (window.mostrarPush) mostrarPush("Operaciones", "Folio eliminado.", "🗑️"); else alert("Folio eliminado.");
     };
