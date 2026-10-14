@@ -426,53 +426,53 @@
 
     // Flotilla vive en LA MISMA base de Firestore que Operaciones (fl_usuarios, flotilla_vehiculos,
     // flotilla_transferencias) — no es un sistema externo. Se lee directamente, sin adaptador ficticio.
+    // Flotilla ya guarda todo en Supabase (fl_docs): quién trae cada unidad (fl_usuarios.ecoVinculado),
+    // los vehículos y su estatus (flotilla_vehiculos) y las ubicaciones (flotilla_ubicaciones).
+    // Antes se leía Firestore, que ya no se actualiza, y por eso salía "sin vehículo asignado" (14-oct-2026).
+    function opsNormNombre(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z ]+/g, " ").split(/\s+/).filter(w => w.length > 2); }
+    // Mismo técnico si coincide el correo o si todas las palabras del nombre más corto están en el otro
+    // (ej. "Saúl Núñez" = "Saúl Fernando Núñez …").
+    function opsMismoNombre(a, b) {
+        const A = opsNormNombre(a), B = opsNormNombre(b);
+        if (!A.length || !B.length) return false;
+        const [corto, largo] = A.length <= B.length ? [A, B] : [B, A];
+        return corto.length >= 2 ? corto.every(w => largo.includes(w)) : false;
+    }
+    let opsFlUsuariosCache = null, opsFlUsuariosEn = 0;
+    async function opsFlUsuarios() {
+        if (opsFlUsuariosCache && Date.now() - opsFlUsuariosEn < 120000) return opsFlUsuariosCache;
+        const sb = await opsSb();
+        const r = await sb.from("fl_docs").select("ref,nombre:datos->>nombre,email:datos->>email,eco:datos->>ecoVinculado,ecos:datos->ecosVinculados").eq("col", "fl_usuarios").limit(1000);
+        if (r.error) throw r.error;
+        opsFlUsuariosCache = r.data || []; opsFlUsuariosEn = Date.now();
+        return opsFlUsuariosCache;
+    }
     window.opsFlotillaProvider = {
         async obtenerVehiculoActual(tecnicoId) {
             const t = cacheTec.find(x => x.id === tecnicoId);
-            if (!t || !t.correo) return null; // sin correo capturado todavía no hay forma de hacer match confiable
+            if (!t) return null;
             try {
-                const { db, fs } = await opsGetFB();
-                const snapUser = await fs.getDocs(fs.query(fs.collection(db, "fl_usuarios"), fs.where("email", "==", t.correo)));
-                if (snapUser.empty) return null;
-                const flUser = snapUser.docs[0].data();
-                const eco = flUser.ecoVinculado || (Array.isArray(flUser.ecosVinculados) ? flUser.ecosVinculados[0] : null);
+                const us = await opsFlUsuarios();
+                const correo = String(t.correo || "").toLowerCase().trim();
+                const u = us.find(x => correo && String(x.email || "").toLowerCase().trim() === correo) || us.find(x => opsMismoNombre(x.nombre, t.nombre));
+                const eco = u && (u.eco || (Array.isArray(u.ecos) ? u.ecos[0] : null));
                 if (!eco) return null;
-                let vehData = null;
-                const directo = await fs.getDoc(fs.doc(db, "flotilla_vehiculos", String(eco)));
-                if (directo.exists()) vehData = directo.data();
-                else {
-                    const snapVeh = await fs.getDocs(fs.query(fs.collection(db, "flotilla_vehiculos"), fs.where("eco", "==", String(eco))));
-                    if (!snapVeh.empty) vehData = snapVeh.docs[0].data();
-                }
-                if (!vehData) return { unidad: "ECO " + eco, marca: "", modelo: "", estado: "Sin detalle en Flotilla" };
-                return {
-                    unidad: "ECO " + eco,
-                    marca: vehData.marca || "", modelo: vehData.modelo || "",
-                    estado: vehData.estatus || vehData.estado || "—",
-                };
+                const flota = await opsCargarFlotaViva().catch(() => opsViaFlota || []);
+                const v = (flota || []).find(x => String(x.Eco).replace(/^0+/, "") === String(eco).replace(/^0+/, ""));
+                return { unidad: "ECO " + eco + (v && v.Unidad ? " · " + v.Unidad : ""), marca: "", modelo: v && v.Placas ? v.Placas : "", estado: v ? (v.EnTaller ? "EN TALLER" : v.Status) : "—" };
             } catch (e) {
                 console.warn("[opsFlotillaProvider] No se pudo leer Flotilla:", e.message);
                 return null;
             }
         },
         async obtenerUbicacionesEnCampo() {
-            // Flotilla SÍ registra GPS en tiempo real desde hace unas semanas:
-            // colección flotilla_ubicaciones, un documento por ECO, campos
-            // {eco, lat, lng, precision, email, nombre, capturadoEn}. Se
-            // sobreescribe cada vez que un técnico abre la app o se vincula
-            // a un vehículo (no hay rastreo continuo en segundo plano —
-            // limitación real de la PWA, no de este código).
             try {
-                const { db, fs } = await opsGetFB();
-                const snap = await fs.getDocs(fs.collection(db, "flotilla_ubicaciones"));
-                return snap.docs
-                    .map(d => d.data())
+                const sb = await opsSb();
+                const r = await sb.from("fl_docs").select("datos").eq("col", "flotilla_ubicaciones").limit(1000);
+                if (r.error) throw r.error;
+                return (r.data || []).map(x => x.datos || {})
                     .filter(u => u.lat && u.lng)
-                    .map(u => ({
-                        lat: u.lat, lng: u.lng, eco: u.eco,
-                        tecnicoNombre: u.nombre || u.email || ("ECO " + u.eco),
-                        actualizadoEn: u.capturadoEn || null,
-                    }));
+                    .map(u => ({ lat: u.lat, lng: u.lng, eco: u.eco, tecnicoNombre: u.nombre || u.email || ("ECO " + u.eco), actualizadoEn: u.capturadoEn || null }));
             } catch (e) {
                 console.warn("[opsFlotillaProvider] No se pudo leer flotilla_ubicaciones:", e.message);
                 return [];
@@ -7564,7 +7564,7 @@
         tecnicos.forEach(async t => {
             const veh = await window.opsFlotillaProvider.obtenerVehiculoActual(t.id);
             const el = document.getElementById(`ops-panel-eq-${t.id}`);
-            if (el) el.innerHTML = `${opsEsc(t.nombre)} <span style="color:#94a3b8;">— ${veh ? opsEsc(veh.unidad) + (veh.modelo ? " (" + opsEsc(veh.modelo) + ")" : "") : "sin vehículo asignado"}</span>`;
+            if (el) el.innerHTML = `${opsEsc(t.nombre)} <span style="color:#94a3b8;">— ${veh ? opsEsc(veh.unidad) + (veh.modelo ? " (" + opsEsc(veh.modelo) + ")" : "") + (veh.estado === "EN TALLER" ? ' <b style="color:#b91c1c;">EN TALLER</b>' : "") : "sin vehículo asignado en Flotilla"}</span>`;
         });
 
         // ── Historial (subcolección comentarios) ──
@@ -9420,6 +9420,7 @@
     }
 
     window.opsAbrirAltaServicio = function (fechaISO) {
+        opsCargarFlotaViva(true).then(() => { if (opsAS && document.querySelector(".opsas-in")) opsAsPintar(); }).catch(() => {});
         if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
         opsAsCss();
         const n = new Date(); const p = x => String(x).padStart(2, "0");
@@ -9597,7 +9598,11 @@
                 </div>
                 ${e.permiso ? "" : `<div class="opsas-note opsas-warn">Esta estación no tiene PL en el catálogo. Si lo capturas, se guarda en el folio y en el catálogo.</div>`}
                 ${hermanas.length ? `<div class="opsas-note">Esta razón social tiene ${hermanas.length + 1} estaciones: ${[e, ...hermanas].map(x => opsEsc(x.nombreComercial || x.razonSocial)).join(", ")}.</div>` : ""}
-            </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} <button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button></div>`}
+            </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.conceptoGeneral ? "<b>Concepto general:</b> el técnico queda ocupado esos días sin una estación fija." : s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} ${s.conceptoGeneral ? "" : `<button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button>`}</div>`}
+            ${e ? "" : `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                <span style="font-size:11.5px;color:#64748b;font-weight:700;">Sin estación fija:</span>
+                ${OPS_CONCEPTOS_GENERALES.map(c => `<button type="button" onclick="opsAsConceptoGeneral('${c}')" style="border:1.5px solid ${s.conceptoGeneral === c ? "#1D2E73" : "#cbd5e1"};background:${s.conceptoGeneral === c ? "#1D2E73" : "#fff"};color:${s.conceptoGeneral === c ? "#fff" : "#334155"};border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">${c}</button>`).join("")}
+            </div>`}
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
                 <span class="opsas-lb" style="margin:0;">Plaza</span>
                 ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
@@ -9613,11 +9618,13 @@
         let paso3 = `
         <div class="opsas-sec ${lock(listo2)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Cuándo y cuánto dura</div>${receta?.horasEjecucion ? `<div class="opsas-hint">La receta sugiere ${receta.horasEjecucion} h</div>` : ""}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px;">
+                <div style="flex:0 1 240px;"><label class="opsas-lb">Inicio · fecha y hora</label><input type="datetime-local" class="opsas-in" value="${opsEsc(s.fecha)}" onchange="opsAsSet('fecha',this.value)"></div>
+                ${s.multiEst ? "" : `<div style="flex:0 1 200px;"><label class="opsas-lb">Fin · fecha <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label><input type="date" class="opsas-in" value="${opsEsc(opsAsFechaFin() || "")}" min="${opsEsc((s.fecha || "").slice(0, 10))}" onchange="opsAsSet('fechaFin',this.value)"></div>`}
+            </div>
             <div class="opsas-grid">
-                <div><label class="opsas-lb">Fecha y hora programada</label><input type="datetime-local" class="opsas-in" value="${opsEsc(s.fecha)}" onchange="opsAsSet('fecha',this.value)"></div>
                 <div><label class="opsas-lb">Duración del trabajo</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.dur)}" oninput="opsAS.dur=this.value;opsAS.durManual=true;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())" onchange="opsAsPintar()">${selU("durU", s.durU)}</div></div>
                 <div><label class="opsas-lb">Traslado (cada trayecto)</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.tras)}" oninput="opsAS.tras=this.value;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())">${selU("trasU", s.trasU)}</div></div>
-                ${s.multiEst ? "" : `<div><label class="opsas-lb">Fecha de fin <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label><input type="date" class="opsas-in" value="${opsEsc(opsAsFechaFin() || "")}" min="${opsEsc((s.fecha || "").slice(0, 10))}" onchange="opsAsSet('fechaFin',this.value)"><div class="opsas-note" style="margin-top:3px;">Si pones la duración en <b>días</b> se llena sola.</div></div>`}
             </div>
             ${opsAsEsCalDispensarios() ? `
             <div class="opsas-box" style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -9853,6 +9860,16 @@
         }
         return res;
     }
+    // Conceptos generales (14-oct-2026): para programar a alguien sin estación fija, por ejemplo
+    // "Atención a folios" (los folios de Petro 7 salen durante el día y no se sabe dónde). El técnico
+    // queda ocupado en el calendario esos días; los folios que atienda se le ligan después.
+    const OPS_CONCEPTOS_GENERALES = ["Atención a folios", "Guardia", "Capacitación", "Proyecto interno"];
+    window.opsAsConceptoGeneral = function (c) {
+        const s = opsAS; if (!s) return;
+        if (s.conceptoGeneral === c) { s.conceptoGeneral = null; s.estTexto = ""; }
+        else { s.conceptoGeneral = c; s.est = null; s.estTexto = c; s.plNuevo = ""; }
+        opsAsPintar();
+    };
     function opsAsMultiSwitchHTML() {
         return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones (o todo un grupo / razón social) y un rango de fechas; el técnico las atiende en el orden que quiera</div></div></div>`;
     }
@@ -10017,7 +10034,7 @@
     // ── Estación: mismo catálogo que ya usa Almacén/Ventas (tcCargarCatalogoEstaciones) ──
     window.opsAsBuscarEstacion = function (valor) {
         const s = opsAS; if (!s) return;
-        s.est = null; s.estTexto = valor; s.plNuevo = "";
+        s.est = null; s.estTexto = valor; s.plNuevo = ""; s.conceptoGeneral = null;
         const box = document.getElementById("opsas-est-drop");
         if (!box) return;
         if (!valor || valor.trim().length < 2 || false) { box.style.display = "none"; return; }
@@ -10057,7 +10074,7 @@
             setTimeout(() => { const i = document.getElementById("opsas-est"); if (i) i.focus(); }, 30);
             return;
         }
-        s.est = e; s.estTexto = e.nombreComercial || e.razonSocial || "";
+        s.est = e; s.estTexto = e.nombreComercial || e.razonSocial || ""; s.conceptoGeneral = null;
         s.dispensarios = e.numeroDispensarios ? String(e.numeroDispensarios) : s.dispensarios;
         opsAsAutoDuracionDispensarios();
         if (!s.plazaManual) s.plaza = opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.nombreComercial, e.direccionNormalizada, e.zona].join(" "), false) || "Chihuahua";
@@ -10473,11 +10490,12 @@
                 <select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()">
                     <option value="">— Por definir —</option>
                     ${recomendados.length ? `<optgroup label="Lo que pide la receta">${recomendados.map(n => `<option value="${opsEsc(n)}" ${s.vehiculo === n ? "selected" : ""}>${opsEsc(n)}${n === sug ? " (sugerido)" : " (alterno)"}</option>`).join("")}</optgroup>` : ""}
-                    ${flota.length ? `<optgroup label="Unidades de Flotilla">${flota.map(v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; const oc = opsAsVehiculoOcupado(val); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${coincide(v) ? "★ " : ""}${opsEsc(val)}${v.Status && v.Status !== "activo" ? " — " + opsEsc(v.Status) : ""}${oc.length ? " — OCUPADO: " + opsEsc(oc[0].estacion || "otro servicio") : ""}</option>`; }).join("")}</optgroup>` : ""}
+                    ${flota.length ? `<optgroup label="Unidades de Flotilla">${flota.map(v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; const oc = opsAsVehiculoOcupado(val); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${coincide(v) ? "★ " : ""}${opsEsc(val)} — ${opsEsc(opsVehEstadoTxt(v))}${oc.length ? " — OCUPADO: " + opsEsc(oc[0].estacion || "otro servicio") : ""}</option>`; }).join("")}</optgroup>` : ""}
                 </select></div>
             </div>
             ${r.vehiculos?.alternos?.length ? `<div class="opsas-note">${r.vehiculos.alternos.map(a => opsEsc(a.nombre + (a.condicion ? " — " + a.condicion : ""))).join(" · ")}</div>` : ""}
             ${r.requiereRemolque ? `<div class="opsas-note opsas-warn">Esta receta requiere remolque.</div>` : ""}
+            ${(() => { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); return vv && vv.EnTaller ? `<div class="opsas-note opsas-warn">Esa unidad está EN TALLER según Flotilla. Elige otra o confírmalo con Flotilla.</div>` : (vv && vv.QuienLaTrae ? `<div class="opsas-note">La trae hoy: <b>${opsEsc(vv.QuienLaTrae)}</b>.</div>` : ""); })()}
             ${(() => { const oc = opsAsVehiculoOcupado(s.vehiculo); return oc.length ? `<div class="opsas-note opsas-warn">Ese vehículo ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")")).join(", ")}. Elige otro o confírmalo con Flotilla.</div>` : (s.vehiculo && /ECO/i.test(s.vehiculo) ? `<div class="opsas-note">Al guardar se le avisa a Flotilla que ese vehículo se necesita en esas fechas.</div>` : ""); })()}`;
 
         const herr = (r.herramientaRequerida || []).slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion));
@@ -10532,6 +10550,7 @@
         const datos = {
             folioOS: s.os.trim(),
             estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
+            conceptoGeneral: !e && s.conceptoGeneral ? s.conceptoGeneral : null,
             estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
             estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
             estacionDireccion: e?.direccionNormalizada || (e ? null : s.estTexto.trim()), estacionRazonSocial: e?.razonSocial || null,
@@ -10809,6 +10828,7 @@
             if (corto.length) avisos.push({ c: "#B45309", t: "Falta personal contra la receta: " + corto.map(p => (OPS_TIPO_TECNICO[p.rol] || {}).nombre || p.rol).join(", ") + "." });
         }
         if (opsAsEsSCFI() && !(Number(s.mangueras) > 0)) avisos.push({ c: "#B45309", t: "SCFI se cobra por manguera y no capturaste mangueras." });
+        { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); if (vv && vv.EnTaller) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} está EN TALLER según Flotilla.` }); }
         { const oc = opsAsVehiculoOcupado(s.vehiculo); if (oc.length) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} ya está planeado en ${oc.map(f => (f.estacion || "otro servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")").join(", ")}.` }); }
         let precioTxt = "";
         try {
@@ -12967,7 +12987,7 @@
         const filas = opsViaLista.map(s => { const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada"; const tach = canc ? "text-decoration:line-through;" : ""; return `
             <tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : ""}">
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${tach}">${opsEsc(s.folio || s.id)}</td>
-                <td style="padding:9px 8px;"><span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
+                <td style="padding:9px 8px;">${s.rol_viaje ? `<span style="font-size:10px;font-weight:800;color:#1e3a8a;background:#e0e7ff;border-radius:6px;padding:1px 6px;margin-right:5px;">CUADRILLA · HOJA ${(s.tarifas || {}).hoja || 1}/${(s.tarifas || {}).hojas || 2}</span>` : ""}<span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
                 <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsEsc(s.fecha_salida || "")}${s.fecha_regreso && s.fecha_regreso !== s.fecha_salida ? " → " + opsEsc(s.fecha_regreso) : ""}</td>
                 <td style="padding:9px 8px;text-align:right;font-weight:700;${tach}">${opsViaDinero(s.total)}<div style="font-size:10.5px;color:#15803d;font-weight:600;">depositar ${opsViaDinero(opsViaDeposito(s))}</div></td>
@@ -13067,7 +13087,40 @@
         return [...vistos.values()].sort((a, b) => (Number(a.Eco) || 9999) - (Number(b.Eco) || 9999) || a.Eco.localeCompare(b.Eco));
     }
     function opsViaFiltrarFlota(lista) { return lista.filter(v => v.Eco && !OPS_VIA_NO_VEHICULO.test(v.Unidad || "") && v.Status !== "baja"); }
+    // ── Flotilla EN VIVO desde Supabase (14-oct-2026) ──
+    // Flotilla ya guarda sus vehículos y quién trae cada uno en Supabase (fl_docs); lo que se leía
+    // antes (Firestore / flota_veihcular) ya no se actualiza. Aquí se lee lo mismo que ve Flotilla:
+    // estatus (activo / taller) y quién trae la unidad (ecoVinculado en fl_usuarios). Se refresca
+    // cada 2 minutos y cada vez que se abre un formulario que pide vehículo.
+    let opsFlotaVivaEn = 0;
+    async function opsCargarFlotaViva(forzar) {
+        if (!forzar && opsViaFlota && opsViaFlota.length && Date.now() - opsFlotaVivaEn < 120000) return opsViaFlota;
+        const sb = await opsSb();
+        const [rv, ru] = await Promise.all([
+            sb.from("fl_docs").select("ref,actualizado_en,eco:datos->>eco,unidad:datos->>unidad,placas:datos->>placas,status:datos->>status,tipo:datos->>tipo,plaza:datos->>plaza,rend:datos->>rend,km:datos->>km,responsable:datos->>responsable,actualizadoEn:datos->>actualizadoEn").eq("col", "flotilla_vehiculos").limit(1000),
+            sb.from("fl_docs").select("ref,nombre:datos->>nombre,email:datos->>email,eco:datos->>ecoVinculado").eq("col", "fl_usuarios").limit(1000),
+        ]);
+        if (rv.error) throw rv.error;
+        const quien = {};
+        (ru.data || []).forEach(u => { const e = String(u.eco || "").replace(/^0+/, "").trim(); if (e && u.nombre) (quien[e] = quien[e] || []).push(u.nombre); });
+        const lista = (rv.data || []).map(v => {
+            const m = opsViaMapearVehFlotilla({ ...v, actualizadoEn: v.actualizadoEn || v.actualizado_en });
+            const e = m.Eco.replace(/^0+/, "");
+            m.QuienLaTrae = (quien[e] || []).join(", ");
+            m.EnTaller = m.Status === "taller";
+            return m;
+        });
+        const res = opsViaOrdenarFlota(opsViaFiltrarFlota(lista));
+        if (res.length) { opsViaFlota = res; opsViaFlotaFuente = "Flotilla en vivo · " + new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }); opsFlotaVivaEn = Date.now(); }
+        return opsViaFlota;
+    }
+    // Texto corto para mostrar una unidad en cualquier selector de Operaciones.
+    function opsVehEstadoTxt(v) {
+        if (!v) return "";
+        return [v.EnTaller ? "EN TALLER" : (v.Status && v.Status !== "activo" ? v.Status.toUpperCase() : ""), v.QuienLaTrae ? "trae: " + v.QuienLaTrae : "sin asignar"].filter(Boolean).join(" · ");
+    }
     async function opsViaCargarFlota() {
+        try { const r = await opsCargarFlotaViva(); if (r && r.length) return r; } catch (e) { console.warn("[flota en vivo] Supabase:", e.message || e); }
         if (opsViaFlotaUnsub && opsViaFlota && opsViaFlota.length) return opsViaFlota;
         try {
             const { db, fs } = await opsGetFB();
@@ -13291,7 +13344,7 @@
         };
         opsViaCombos["via-vehiculo"] = {
             vacio: "Sin coincidencias. Presiona Enter para dejarlo escrito así.",
-            items: () => (opsViaFlota || []).map(v => ({ etiqueta: `ECO ${v.Eco} · ${v.Unidad || ""}`, sub: [v.Placas, v.Responsable, v.Plaza, v.Rendimiento && v.Rendimiento !== "—" ? v.Rendimiento : "", v.Status !== "activo" ? v.Status : ""].filter(Boolean).join(" · "), buscar: [v.Eco, "eco " + v.Eco, v.Unidad, v.Placas, v.Responsable, v.Tipo, v.Plaza].join(" "), valor: v.Eco })),
+            items: () => (opsViaFlota || []).map(v => ({ etiqueta: `ECO ${v.Eco} · ${v.Unidad || ""}${v.EnTaller ? " — EN TALLER" : ""}`, sub: [opsVehEstadoTxt(v), v.Placas, v.Plaza, v.Rendimiento && v.Rendimiento !== "—" ? v.Rendimiento : ""].filter(Boolean).join(" · "), buscar: [v.Eco, "eco " + v.Eco, v.Unidad, v.Placas, v.Responsable, v.QuienLaTrae, v.Tipo, v.Plaza, v.EnTaller ? "taller" : ""].join(" "), valor: v.Eco })),
             elegir: eco => window.opsViaElegirVehiculo(eco),
             libre: texto => { opsViaForm.vehiculo = texto; opsViaForm.vehiculoEco = null; opsViaPintarFormulario(); },
         };
@@ -13424,9 +13477,19 @@
             const hab = t.habitaciones;
             const calc = hab ? `${noches} noche(s) × (${hab.sencillas ? hab.sencillas + " sencilla × " + din(hab.precioSencilla) : ""}${hab.sencillas && hab.dobles ? " + " : ""}${hab.dobles ? hab.dobles + " doble × " + din(hab.precioDoble) : ""})${s.hotel_nombre ? " · " + s.hotel_nombre : ""}`
                 : `${noches} noche(s) × ${din(t.hospedajePorNoche)} × ${personas} persona(s)`;
-            filas.push({ concepto: "Hospedaje", importe: num(s.hospedaje), si: s.hotel_modo !== "compras", calculo: calc, medio: "Lo paga Compras directo al hotel" });
+            filas.push({ concepto: "Hospedaje", importe: num(s.hospedaje), si: s.hotel_modo !== "compras", calculo: s.rol_viaje === "cuadrilla" && t.hospedajeViaje ? `Su parte: ${din(t.hospedajeViaje)} del hotel ÷ ${t.hojas || 2} técnicos · ${calc}` : calc, medio: "Lo paga Compras directo al hotel" });
         }
         if (num(s.otros)) filas.push({ concepto: "Otros", importe: num(s.otros), si: true, calculo: "Gastos adicionales" });
+        if (s.rol_viaje === "cuadrilla" && (t.hoja || 1) > 1 && t.trasladoViaje) {
+            const tv = t.trasladoViaje, ref = "del viaje · se contabiliza en la hoja 1";
+            filas.push({ concepto: "Gasolina", importe: num(tv.gasolina), si: false, soloInfo: true, calculo: `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor} (${ref})`, medio: "Tag de gasolina (OXXO)" });
+            const cv = tv.casetasDetalle || [];
+            if (!cv.length) filas.push({ concepto: "Casetas", importe: num(tv.casetas), si: false, soloInfo: true, calculo: tv.aplicaCasetas === false ? "No aplica" : "Sin casetas en la ruta", medio: "Tag con crédito Fibra Estatal" });
+            else cv.forEach((c, i) => filas.push({ concepto: i === 0 ? "Casetas" : "", importe: num(c.subtotal), si: false, soloInfo: true, calculo: `${c.nombre}: ${din(c.costo)} × ${c.cruces} cruce(s) (${ref})`, medio: "Tag con crédito Fibra Estatal" }));
+            const si1 = filas.filter(x => x.si), no1 = filas.filter(x => !x.si);
+            const sum1 = l => Math.round(l.filter(x => !x.soloInfo).reduce((a, x) => a + x.importe, 0) * 100) / 100;
+            return { si: si1, no: no1, totalSi: sum1(si1), totalNo: sum1(no1) };
+        }
         filas.push({ concepto: "Gasolina", importe: num(s.gasolina), si: !!t.gasolinaDeposito,
             calculo: t.regresaAlInicio === false ? `(${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}` : `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor}`,
             medio: "Se carga con el tag de gasolina (OXXO)" });
@@ -13828,6 +13891,10 @@
                             ${opsViaHTMLCasetas()}
 
                             ${opsViaHTMLBloques()}
+                            ${f.tecnicos.length >= 2 ? `<div style="margin-top:10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e3a8a;">
+                                <b>Se generarán ${f.tecnicos.length} requisiciones, una por técnico</b>, con la misma información del viaje. A cada quien se le deposita y comprueba lo suyo:
+                                ${f.tecnicos.map((t, k) => `<div>· <b>${opsEsc(t.nombre)}</b>: comidas ${opsViaDinero(f.requiere ? f.alimentosPorPersona : 0)}${f.noches > 0 ? " + hotel " + opsViaDinero(f.hospedaje / f.tecnicos.length) : ""}${k === 0 ? " · gasolina, casetas y cobro al cliente se cuentan en esta hoja" : ""}</div>`).join("")}
+                            </div>` : ""}
                         </div>
                         <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:10px;">Motivo / notas
                             <textarea id="via-notas" oninput="opsViaForm.notas=this.value" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;box-sizing:border-box;">${opsEsc(f.notas)}</textarea></label>
@@ -14164,17 +14231,61 @@
                 regresaAlInicio: opsViaRegresaAlInicio(), kmRegreso: opsViaNum(f.kmRegreso), horasRegreso: opsViaNum(f.horasRegreso), kmTotal: opsViaNum(f.kmTotal),
             },
         };
+        // ── Cuadrilla = una requisición POR TÉCNICO (14-oct-2026) ──
+        // Cada técnico tiene su propia hoja con la MISMA información del viaje (destino, fechas,
+        // vehículo, desglose) y SUS montos: sus comidas y su parte del hotel se le depositan a él y él
+        // los comprueba. Gasolina, casetas y el cobro al cliente son del viaje: aparecen en todas las
+        // hojas como información, pero se cuentan una sola vez (en la hoja 1) para no duplicarlos.
+        const personasViaje = f.tecnicos.length;
+        const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+        let filas = [fila];
+        if (personasViaje >= 2) {
+            const grupo = "GV-" + Date.now().toString(36).toUpperCase();
+            const porPersona = r2(f.requiere ? f.alimentosPorPersona : 0);
+            const hotelPorPersona = r2(f.hospedaje / personasViaje);
+            const otrosPorPersona = r2(opsViaNum(f.otros) / personasViaje);
+            const nombres = f.tecnicos.map(t => t.nombre);
+            const trasladoViaje = { gasolina: f.gasolina, casetas: f.casetasTotal, casetasDetalle, aplicaCasetas: !!f.aplicaCasetas, cobro: opsViaNum(f.cobroCliente) || f.cobroSugerido, totalViaje: f.total };
+            filas = f.tecnicos.map((t, k) => {
+                const primera = k === 0;
+                const gas = primera ? f.gasolina : 0, cas = primera ? f.casetasTotal : 0;
+                const dep = r2(porPersona + (f.hotelDepositado ? hotelPorPersona : 0) + otrosPorPersona
+                    + (primera && f.gasolinaDeposito ? f.gasolina : 0) + (primera && f.casetasDeposito ? f.casetasTotal : 0));
+                return { ...fila, personas: 1, grupo_viaje: grupo, rol_viaje: "cuadrilla", integrantes: t.nombre,
+                    responsable_nombre: t.nombre || null, responsable_email: t.correo ? String(t.correo).toLowerCase() : null,
+                    alimentos: porPersona, hospedaje: hotelPorPersona, otros: otrosPorPersona, gasolina: gas, casetas: cas,
+                    total: r2(porPersona + hotelPorPersona + otrosPorPersona + gas + cas), deposito: dep,
+                    cobro_cliente: primera ? trasladoViaje.cobro : 0,
+                    tarifas: { ...fila.tarifas, tecnicos: [t], rolViaje: "cuadrilla", hoja: k + 1, hojas: personasViaje,
+                        companeros: nombres.filter((n, x) => x !== k), personasViaje, trasladoViaje,
+                        habitacionesViaje: fila.tarifas.habitaciones, hospedajeViaje: f.hospedaje } };
+            });
+        }
         try {
             const sb = await opsSb();
-            const { data, error } = await sb.from("ops_solicitudes_viaticos").insert(fila).select().single();
-            if (error) throw error;
-            const folio = "VIA-" + String(data.id).padStart(5, "0");
-            await sb.from("ops_solicitudes_viaticos").update({ folio }).eq("id", data.id);
-            data.folio = folio;
+            const guardadas = [];
+            for (const fl of filas) {
+                const { data: d1, error: e1 } = await sb.from("ops_solicitudes_viaticos").insert(fl).select().single();
+                if (e1) throw e1;
+                const fo = "VIA-" + String(d1.id).padStart(5, "0");
+                await sb.from("ops_solicitudes_viaticos").update({ folio: fo }).eq("id", d1.id);
+                d1.folio = fo; guardadas.push(d1);
+            }
+            if (guardadas.length > 1) {
+                const folios = guardadas.map(g => g.folio + " (" + g.integrantes + ")").join(", ");
+                for (const g of guardadas) {
+                    const otros = guardadas.filter(x => x.id !== g.id).map(x => x.folio + " · " + x.integrantes);
+                    g.tarifas = { ...(g.tarifas || {}), foliosGrupo: otros };
+                    await sb.from("ops_solicitudes_viaticos").update({ tarifas: g.tarifas }).eq("id", g.id);
+                }
+                opsViaToast(`Se generaron ${guardadas.length} requisiciones, una por técnico: ${folios}.`, "#15803d");
+            }
+            const data = guardadas[0];
+            const folio = data.folio;
             const resumen = opsViaResumenTexto(data);
             // Aviso real a quien autoriza y a Pagos (antes no salía: opsCopiaFirestore ya no hace nada).
-            (opsViaCfg.correosNotificar || []).forEach(correo => opsViaAvisoPortal(correo, "viaticos_solicitud",
-                `${opsNombreActual()} solicita viáticos ${folio}: ${data.destino} · depositar ${opsViaDinero(data.deposito ?? data.total)} · cobrar al cliente ${opsViaDinero(data.cobro_cliente ?? data.total)}.`, { viaticoId: data.id }));
+            (opsViaCfg.correosNotificar || []).forEach(correo => guardadas.forEach(g => opsViaAvisoPortal(correo, "viaticos_solicitud",
+                `${opsNombreActual()} solicita viáticos ${g.folio} para ${g.integrantes}${g.rol_viaje ? " (hoja " + ((g.tarifas || {}).hoja || 1) + " de " + ((g.tarifas || {}).hojas || 1) + " del viaje)" : ""}: ${g.destino} · depositar ${opsViaDinero(g.deposito ?? g.total)}${g.rol_viaje && (g.tarifas || {}).hoja > 1 ? "" : " · cobrar al cliente " + opsViaDinero(g.cobro_cliente ?? g.total)}.`, { viaticoId: g.id })));
             opsViaCerrar();
             opsViaMostrarEnviada(data, resumen);
             if (tabActual === "viaticos") opsRenderViaticos();
@@ -14263,7 +14374,10 @@
         };
         tarjeta(M, VERDE, VERDE_CL, "DEPOSITAR AL TÉCNICO · PAGOS", deposito,
             [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", "Incluye: " + (opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "nada")]);
-        tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
+        const enCuadrilla = s.rol_viaje === "cuadrilla" && t.trasladoViaje, hojaN = t.hoja || 1;
+        if (enCuadrilla) tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", t.trasladoViaje.cobro,
+            [hojaN === 1 ? "Todo el viaje (se cobra en esta hoja)" : "Todo el viaje · ya se cobra en la hoja 1", "Costo del viaje: " + din(t.trasladoViaje.totalViaje) + (s.empresa_cobra ? " · " + s.empresa_cobra : "")]);
+        else tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
             ["Costo real del viaje: " + din(s.total), s.empresa_cobra ? "Se cobra a: " + s.empresa_cobra : ""]);
         y += altoT + 8;
 
@@ -14292,7 +14406,10 @@
         fila2(["Distancia", dist], ["Vehículo", [s.vehiculo, s.tipo_vehiculo].filter(Boolean).join(" · ")]);
         fila2(["Inicio", (t.inicio && t.inicio.nombre) || "Oficinas Tecnocontrol"], ["Solicita", nombreSolicita]);
         const nombres = String(s.integrantes || "").split(",").map(x => x.trim()).filter(Boolean);
-        fila1([`Personal que viaja (${s.personas || nombres.length || 1})`, nombres.map((n, i) => i === 0 && nombres.length > 1 ? n + " (líder de cuadrilla)" : n).join("   ·   ") || "—"]);
+        if (s.rol_viaje) {
+            fila2([`Técnico de esta requisición (hoja ${t.hoja || 1} de ${t.hojas || 2})`, s.integrantes || "—"], ["Viaja con", (t.companeros || []).join(", ") || "—"]);
+            fila1(["Requisiciones del mismo viaje", (t.foliosGrupo || []).join("   ·   ") || "—"]);
+        } else fila1([`Personal que viaja (${s.personas || nombres.length || 1})`, nombres.map((n, i) => i === 0 && nombres.length > 1 ? n + " (líder de cuadrilla)" : n).join("   ·   ") || "—"]);
 
         // ── Desglose ──
         // ── Desglose en dos tablas: lo que SE DEPOSITA y lo que NO (y con qué se paga) ──
@@ -14330,15 +14447,17 @@
         tabla("A · Se deposita al técnico", "Lo único que Pagos transfiere (con comprobante).", VERDE, VERDE_CL,
             { cabecera: "CÁLCULO", lista: dep.si.map(x => [x.concepto, x.calculo, x.importe]) }, dep.totalSi, "TOTAL A DEPOSITAR");
         tabla("B · No se deposita (informativo)", "Se paga por otro medio; sí se cobra al cliente.", [146, 64, 14], [255, 247, 237],
-            { cabecera: "CÁLCULO  ·  CÓMO SE PAGA", lista: dep.no.map(x => [x.concepto, x.calculo + "  ·  " + x.medio, x.importe]) }, dep.totalNo, "TOTAL QUE NO SE DEPOSITA");
+            { cabecera: "CÁLCULO  ·  CÓMO SE PAGA", lista: dep.no.map(x => [x.concepto, x.calculo + "  ·  " + x.medio, x.importe]) },
+            dep.no.some(x => x.soloInfo) ? Math.round(dep.no.reduce((a, x) => a + x.importe, 0) * 100) / 100 : dep.totalNo,
+            dep.no.some(x => x.soloInfo) ? "TRASLADO DEL VIAJE (se contabiliza en la hoja 1)" : "TOTAL QUE NO SE DEPOSITA");
         nuevaPaginaSiHaceFalta(46);
         doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
         doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
-        doc.text("COSTO TOTAL DEL VIAJE (A + B)", c1, y + 2); doc.setFontSize(11); doc.text(din(s.total), c3, y + 2, { align: "right" });
+        doc.text(enCuadrilla ? "COSTO DE ESTA HOJA (A + B contabilizados aquí)" : "COSTO TOTAL DEL VIAJE (A + B)", c1, y + 2); doc.setFontSize(11); doc.text(din(s.total), c3, y + 2, { align: "right" });
         y += 22;
         doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
-        doc.setFontSize(9.5); doc.text("COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1, y + 2);
-        doc.setFontSize(11); doc.text(din(cobro), c3, y + 2, { align: "right" });
+        doc.setFontSize(9.5); doc.text(enCuadrilla ? (hojaN === 1 ? "COBRAR AL CLIENTE · TODO EL VIAJE (se cobra en esta hoja)" : "COBRAR AL CLIENTE · TODO EL VIAJE (ya se cobra en la hoja 1)") : "COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1, y + 2);
+        doc.setFontSize(11); doc.text(din(enCuadrilla ? t.trasladoViaje.cobro : cobro), c3, y + 2, { align: "right" });
         y += 26;
 
         // ── Notas ──
