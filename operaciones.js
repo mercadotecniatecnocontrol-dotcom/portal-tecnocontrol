@@ -5874,9 +5874,16 @@
     function opsCalInicioSemana(d) { const r = new Date(d); const dia = r.getDay(); const offset = dia === 0 ? -6 : 1 - dia; return opsCalSumarDias(r, offset); }
 
     // {fecha, horaDecimal, traslado, ejecucion} a partir de fechaProgramada — o null si no tiene.
+    // Si el servicio se terminó ANTES del día programado (ej. programado el 16 y completado el 13),
+    // el calendario lo muestra el día en que realmente se hizo (15-oct-2026).
+    function opsFolioAdelantado(f) {
+        const sol = String((f && f.fechaSolucion) || "").slice(0, 10), prog = String((f && f.fechaProgramada) || "").slice(0, 10);
+        return sol && prog && /^\d{4}-\d{2}-\d{2}$/.test(sol) && sol < prog ? sol : "";
+    }
     function opsCalDatosFolio(f) {
         if (!f.fechaProgramada) return null;
-        const [fecha, hora] = f.fechaProgramada.split("T");
+        let [fecha, hora] = f.fechaProgramada.split("T");
+        const adel = opsFolioAdelantado(f); if (adel) fecha = adel;
         const [hh, mm] = (hora || "00:00").split(":").map(Number);
         // ejecución en 0 (no 1) cuando no se capturó: un folio sin duración real no debe
         // "inventarse" una hora completa y aparentar choque contra otro folio del mismo
@@ -5897,6 +5904,7 @@
     function opsFolioFechaFin(f) {
         const ini = ((f && f.fechaProgramada) || "").slice(0, 10);
         if (!ini) return "";
+        const adel = opsFolioAdelantado(f); if (adel) return adel; // se hizo antes: un solo día, el real
         if (f.fechaFinProgramada && f.fechaFinProgramada >= ini) return f.fechaFinProgramada;
         if (f.duracionUnidad === "dias" && Number(f.duracionValor) > 1) return opsDiaISOmas(ini, Math.ceil(Number(f.duracionValor)) - 1);
         return ini;
@@ -5934,7 +5942,7 @@
         return opsUltimoNumServ;
     }
     function opsFolioCubreDia(f, fechaISO) {
-        const ini = ((f && f.fechaProgramada) || "").slice(0, 10);
+        const ini = opsFolioAdelantado(f) || ((f && f.fechaProgramada) || "").slice(0, 10);
         return !!ini && fechaISO >= ini && fechaISO <= opsFolioFechaFin(f);
     }
     // Datos del folio PARA UN DÍA dado: el primer día empieza a su hora, los siguientes a las 8:00
@@ -6522,6 +6530,50 @@
         </div>`;
         const inp = document.getElementById("ops-ligar-busca");
         if (inp && st.q) { inp.focus(); inp.setSelectionRange(st.q.length, st.q.length); }
+    }
+    // ── Resumen por partes de los pedidos ligados a una programación (15-oct-2026) ──
+    // Orden: 1) los que traen horario (fecha/hora sugerida de la ficha de Ventas), de más temprano a
+    // más tarde; 2) luego por prioridad (urgente → alta → normal → baja); 3) si no hay ni horario
+    // ni prioridad, en el orden en que se ligaron: Servicio 1, 2, 3…
+    function opsPedidosLigadosOrdenados(f) {
+        const ligados = (f.pedidosVentas && f.pedidosVentas.length) ? f.pedidosVentas
+            : (f.pedidoVentasId ? [{ id: f.pedidoVentasId, folio: f.pedidoVentasFolio || null }] : []);
+        const PRI = { urgente: 0, alta: 1, normal: 2, media: 2, baja: 3 };
+        return ligados.map((x, k) => {
+            const p = (cacheSurtidos || []).find(c => c.id === x.id) || {};
+            const fc = p.fichaServicio || {};
+            const horario = fc.fechaSugerida ? (fc.fechaSugerida.length > 10 ? fc.fechaSugerida : fc.fechaSugerida + (fc.hora ? "T" + fc.hora : "")) : "";
+            const pri = String(p.prioridad || "").toLowerCase();
+            return { x, p, fc, horario, pri, priN: pri in PRI ? PRI[pri] : 9, k };
+        }).sort((a, b) => {
+            if (a.horario && b.horario) return a.horario.localeCompare(b.horario) || a.priN - b.priN || a.k - b.k;
+            if (a.horario || b.horario) return a.horario ? -1 : 1;
+            return a.priN - b.priN || a.k - b.k;
+        });
+    }
+    function opsPedidosLigadosHTML(f) {
+        const lista = opsPedidosLigadosOrdenados(f);
+        if (!lista.length) return "";
+        const criterio = lista.some(o => o.horario) ? "por horario" : lista.some(o => o.priN < 9) ? "por prioridad" : "en el orden en que se ligaron";
+        return `<details ${lista.length > 1 ? "open" : ""} style="border:1.5px solid #ddd6fe;border-radius:12px;margin-bottom:16px;background:#faf5ff;">
+            <summary style="cursor:pointer;padding:10px 12px;font-size:13px;font-weight:800;color:#5b21b6;list-style:none;">Pedidos de Ventas en esta programación (${lista.length}) <span style="font-weight:600;color:#7c3aed;font-size:11px;">· ordenados ${criterio} · toca para ver/ocultar</span></summary>
+            <div style="padding:0 12px 10px;">
+            ${lista.map((o, i) => {
+                const lineas = (o.p.productos || []).filter(y => y.tipo === "servicio" || y.tipo === "viaticos");
+                const etiquetaOrden = o.horario ? opsFmtFechaCorta(o.horario) : o.priN < 9 ? "Prioridad " + o.pri : "Sin horario ni prioridad";
+                return `<div style="background:#fff;border:1px solid #e9d5ff;border-left:4px solid #7c3aed;border-radius:9px;padding:9px 11px;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap;">
+                        <div style="font-size:12.5px;font-weight:800;color:#1e293b;">Servicio ${i + 1} · ${opsEsc(o.p.folio || o.x.folio || "Pedido")}${o.p.empresa ? ` <span style="font-size:10px;background:#1e293b;color:#fff;border-radius:4px;padding:0 5px;">${opsEsc(o.p.empresa)}</span>` : ""}</div>
+                        <div style="font-size:11px;font-weight:700;color:${o.pri === "urgente" ? "#b91c1c" : "#7c3aed"};">${opsEsc(etiquetaOrden)}</div>
+                    </div>
+                    <div style="font-size:12px;color:#334155;font-weight:700;margin-top:2px;">${opsEsc(o.p.cliente || o.x.cliente || "")}</div>
+                    ${lineas.length ? `<div style="font-size:11.5px;color:#475569;margin-top:3px;">${lineas.map(y => opsEsc((y.cant || 1) + " × " + (y.espec || y.desc || ""))).join("<br>")}</div>` : ""}
+                    ${o.fc.cantidad ? `<div style="font-size:11px;color:#15803d;margin-top:3px;">Ficha: ${opsEsc(o.fc.cantidad)} ${opsEsc(o.fc.unidad || "")}${o.fc.requiereViaticos ? " · con viáticos" : ""}${o.fc.estacion ? " · " + opsEsc(o.fc.estacion) : ""}</div>` : ""}
+                    ${o.fc.notas ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${opsEsc(o.fc.notas)}</div>` : ""}
+                    <button onclick="opsCalVerPdfPedido('${o.x.id}')" style="margin-top:6px;background:#f3e8ff;color:#6d28d9;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF del pedido</button>
+                </div>`; }).join("")}
+            </div>
+        </details>`;
     }
     let opsLigarAF = null;
     window.opsLigarPedidosAFolio = function (folioId) { opsLigarAF = { folioId, q: "", sel: [] }; opsLigarAFPintar(); };
@@ -7650,6 +7702,7 @@
                 <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
             </div>
             <div style="padding:18px;">
+                ${opsPedidosLigadosHTML(f)}
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">CLIENTE</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.clienteNombre || "—")}</div></div>
                     <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">PRIORIDAD</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.prioridad || "—")}</div></div>
@@ -10088,8 +10141,11 @@
         else { s.conceptoGeneral = c; s.est = null; s.estTexto = c; s.plNuevo = ""; }
         opsAsPintar();
     };
+    function opsAsMultiSwitchHTML_aviso() {
+        return `<div class="opsas-note" style="margin-top:6px;">Ojo: <b>"Varias estaciones"</b> crea <b>un servicio por cada estación</b> y los reparte en días distintos. Si el técnico va a estar disponible para lo que salga (por ejemplo, <b>atención a folios</b>), usa mejor "Sin estación fija" con fecha de fin.</div>`;
+    }
     function opsAsMultiSwitchHTML() {
-        return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones (o todo un grupo / razón social) y un rango de fechas; el técnico las atiende en el orden que quiera</div></div></div>`;
+        return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones (o todo un grupo / razón social) y un rango de fechas; el técnico las atiende en el orden que quiera</div></div></div>` + opsAsMultiSwitchHTML_aviso();
     }
     window.opsAsSetMulti = function (on) {
         const s = opsAS; if (!s) return;
