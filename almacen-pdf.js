@@ -51,7 +51,11 @@
   // PRO (mercancía sobre pedido) → Compras, el resto → Almacén. Las listas de claves,
   // las empresas y el WhatsApp de Compras se editan sin programar (botón "Claves").
   var CLASIF_DEFAULT = {
-    clavesServicio: ['SERV','SERVEX','CALMV','CALST','CALMEDAF','1001','OPEYMTO'],
+    clavesServicio: ['SERV','SERVEX','CALMV','CALST','CALMEDAF','1001','OPEYMTO','CUBICA','LIMPIEZATANQUE'],
+    // (15-oct-2026) Además de la clave: si la DESCRIPCIÓN empieza con una de estas palabras, es servicio.
+    // Así una clave nueva de servicio (ej. CUBICA, LIMPIEZATANQUE) ya no se queda en Almacén por error.
+    palabrasServicio: ['SERVICIO','CALIBRACION','CUBICACION','LIMPIEZA DE TANQUE','INSPECCION','MANTENIMIENTO','INSTALACION',
+      'PRUEBA DE HERMETICIDAD','PRUEBAS DE HERMETICIDAD','VERIFICACION','DESASOLVE','MANO DE OBRA','INTEGRIDAD MECANICA','CAMBIO DE CONTENEDOR','ANEXO 21','ANEXO 30'],
     clavesViaticos: ['VIA','VIAT','1002'],
     clavesPro: ['PRO'],
     whatsappCompras: '526141567795',
@@ -79,6 +83,7 @@
     }).catch(function (e) { console.warn('[almacen-pdf] config de claves no disponible:', e && e.message); return CLASIF_DEFAULT; });
   }
   function normClave(c) { return String(c || '').trim().toUpperCase(); }
+  function sinAcentos(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim(); }
   function tipoLinea(p, cfg) {
     cfg = cfg || _clasifCfg || CLASIF_DEFAULT;
     var c = normClave(p.clave), d = String(p.desc || '').toUpperCase();
@@ -86,6 +91,9 @@
     if (en(cfg.clavesPro)) return 'pro';
     if (en(cfg.clavesViaticos) || /VI[AÁ]TICO/.test(d)) return 'viaticos';
     if (en(cfg.clavesServicio) || /^SERVICIO\b/.test(d)) return 'servicio';
+    var dn = sinAcentos(d);
+    var palabras = (cfg.palabrasServicio || CLASIF_DEFAULT.palabrasServicio || []).map(sinAcentos).filter(Boolean);
+    if (palabras.some(function (w) { return dn.indexOf(w) === 0; }) || /INGRESO DE PERSONAL/.test(dn)) return 'servicio';
     return 'producto';
   }
   function clasificarPedido(productos) {
@@ -784,6 +792,7 @@
         + '<div style="font-size:15px;font-weight:800;color:#0f172a;">Claves y empresas de los pedidos</div>'
         + '<div style="font-size:12px;color:#64748b;margin-top:4px;">Separa las claves con comas. Lo que no est\u00e9 en ninguna lista se trata como producto de Almac\u00e9n.</div>'
         + '<label>Claves de servicio (van a Operaciones)</label><textarea id="cfg-serv" rows="2">' + esc(lista(cfg.clavesServicio)) + '</textarea>'
+        + '<label>Palabras con las que empieza la descripci\u00f3n de un servicio (van a Operaciones aunque la clave no est\u00e9 arriba)</label><textarea id="cfg-palserv" rows="2">' + esc(lista(cfg.palabrasServicio)) + '</textarea>'
         + '<label>Claves de vi\u00e1ticos (van a Operaciones)</label><textarea id="cfg-via" rows="2">' + esc(lista(cfg.clavesViaticos)) + '</textarea>'
         + '<label>Claves PRO \u00b7 sobre pedido (van a Compras)</label><textarea id="cfg-pro" rows="2">' + esc(lista(cfg.clavesPro)) + '</textarea>'
         + '<label>WhatsApp de Compras (con 52 al inicio)</label><input id="cfg-wa" value="' + esc(cfg.whatsappCompras || '') + '">'
@@ -805,7 +814,7 @@
           if (!p[0]) return null;
           return { clave: p[0].toUpperCase(), nombre: p[1] || p[0], buscar: (p[2] || p[0]).split(',').map(function (x) { return x.trim(); }).filter(Boolean) };
         }).filter(Boolean);
-        var datos = { clavesServicio: aLista('cfg-serv'), clavesViaticos: aLista('cfg-via'), clavesPro: aLista('cfg-pro'),
+        var datos = { clavesServicio: aLista('cfg-serv'), palabrasServicio: aLista('cfg-palserv'), clavesViaticos: aLista('cfg-via'), clavesPro: aLista('cfg-pro'),
           whatsappCompras: document.getElementById('cfg-wa').value.replace(/\D/g, ''), empresas: empresas,
           avisosCompras: correos('cfg-av-comp'), avisosOperaciones: correos('cfg-av-ops'), avisosAlmacen: correos('cfg-av-alm') };
         window.tcSbDocs.updateDoc('config_portal', 'clasificacion_pedidos', datos).then(function () {
