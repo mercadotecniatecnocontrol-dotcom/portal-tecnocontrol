@@ -272,6 +272,8 @@
         // Traslados y conceptos generales con color propio, para que se distingan del trabajo (14-oct-2026).
         if (f.conceptoGeneral === "Traslado") return opsCalMkColor("srv:tecno:traslado", "Traslado", "#64748b", "tecno");
         if (f.conceptoGeneral) return opsCalMkColor("srv:tecno:concepto:" + f.conceptoGeneral, f.conceptoGeneral, "#0e7490", "tecno");
+        { const sp = (f.serviciosProgramados || []).find(x => x.tipo === "receta" && x.id); const rc = sp && cacheServiciosCatalogo.find(r => r.id === sp.id);
+          if (rc && rc.colorCalendario && !f.servicioCatalogoId) return opsCalMkColor("srv:rec:" + rc.id, rc.nombre || "Servicio", rc.colorCalendario, opsEsFolioJomar(f) ? "jomar" : "tecno"); }
         const receta = opsCalRecetaFolio(f);
         const jomar = opsEsFolioJomar(f);
         if (receta && receta.colorCalendario) return opsCalMkColor("srv:rec:" + receta.id, receta.nombre || "Servicio", receta.colorCalendario, jomar ? "jomar" : "tecno");
@@ -5943,6 +5945,9 @@
         if (fechaISO < base.fecha || fechaISO > fin) return null;
         if (fin === base.fecha) return base;
         const dias = opsDiasEntre(base.fecha, fin) + 1, idx = opsDiasEntre(base.fecha, fechaISO);
+        // Día completo de traslado (ida el primer día / regreso el último): se ve como TRASLADO, no como trabajo.
+        if ((idx === 0 && f.trasladoDiaInicio) || (idx === dias - 1 && f.trasladoDiaFin))
+            return { fecha: fechaISO, horaDecimal: idx === 0 ? base.horaDecimal : 8, traslado: Number(f.horasTrasladoDia) || 8, ejecucion: 0, dia: idx + 1, dias, multiDia: true, diaTraslado: idx === 0 ? "ida" : "regreso" };
         const INI = 8, FIN = 18;
         const capPrimero = Math.max(1, FIN - base.horaDecimal - base.traslado);
         if (idx === 0) return { ...base, ejecucion: capPrimero, dia: 1, dias, multiDia: true };
@@ -6516,6 +6521,56 @@
         const inp = document.getElementById("ops-ligar-busca");
         if (inp && st.q) { inp.focus(); inp.setSelectionRange(st.q.length, st.q.length); }
     }
+    let opsLigarAF = null;
+    window.opsLigarPedidosAFolio = function (folioId) { opsLigarAF = { folioId, q: "", sel: [] }; opsLigarAFPintar(); };
+    function opsLigarAFPintar() {
+        const st = opsLigarAF; if (!st) return;
+        const f = cacheFolios.find(x => x.id === st.folioId); if (!f) return;
+        const q = opsAsNorm(st.q);
+        const lista = opsPedidosVentasPendientes().filter(p => !q || opsAsNorm([p.folio, p.cliente, (p.productos || []).map(x => x.desc + " " + (x.espec || "")).join(" ")].join(" ")).includes(q));
+        let ov = document.getElementById("ops-ligar-af");
+        if (!ov) { ov = document.createElement("div"); ov.id = "ops-ligar-af"; ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100002;display:flex;align-items:center;justify-content:center;padding:20px;"; document.body.appendChild(ov); }
+        ov.innerHTML = `<div style="background:#fff;border-radius:16px;width:660px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;"><div style="font-size:16px;font-weight:800;color:#1e293b;">Ligar pedidos de Ventas a este servicio</div>
+            <div style="font-size:12px;color:#64748b;">${f.folioNumero ? "N.º " + opsEsc(f.folioNumero) + " · " : ""}${opsEsc(f.estacion || "")} · ${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}. Marca uno o varios: sus servicios se agregan a esta programación y salen de "por programar".</div></div>
+            <div style="padding:10px 20px;border-bottom:1px solid #f1f5f9;"><input value="${opsEsc(st.q)}" placeholder="Buscar por cliente, folio o servicio…" oninput="opsLigarAF.q=this.value;opsLigarAFPintarG()" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;"></div>
+            <div style="overflow-y:auto;padding:10px 20px;flex:1;">${lista.length ? lista.map(p => `<label style="display:flex;gap:10px;align-items:flex-start;border:1px solid ${st.sel.includes(p.id) ? "#7c3aed" : "#e2e8f0"};border-radius:10px;padding:9px 12px;margin-bottom:7px;cursor:pointer;">
+                <input type="checkbox" ${st.sel.includes(p.id) ? "checked" : ""} onchange="opsLigarAFToggle('${p.id}', this.checked)" style="margin-top:3px;">
+                <div><div style="font-weight:800;font-size:12.5px;color:#1e293b;">${opsEsc(p.folio || "")} · ${opsEsc(p.cliente || "")}</div>
+                <div style="font-size:11.5px;color:#64748b;">${(p.productos || []).filter(x => x.tipo === "servicio" || x.tipo === "viaticos").map(x => opsEsc((x.cant || 1) + " × " + (x.espec || x.desc || ""))).join(" · ")}</div></div></label>`).join("")
+                : `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">No hay pedidos por programar${st.q ? " con esa búsqueda" : ""}.</div>`}</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #e2e8f0;">
+                <button onclick="document.getElementById('ops-ligar-af').remove();opsLigarAF=null" style="background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">Cancelar</button>
+                <button onclick="opsLigarAFGuardar()" ${st.sel.length ? "" : "disabled"} style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;opacity:${st.sel.length ? 1 : .5};">${st.sel.length ? "Ligar " + st.sel.length + " pedido(s)" : "Marca uno o varios"}</button>
+            </div></div>`;
+    }
+    Object.defineProperty(window, "opsLigarAF", { get: () => opsLigarAF, configurable: true });
+    window.opsLigarAFPintarG = function () { const i = document.activeElement && document.activeElement.value; opsLigarAFPintar(); const inp = document.querySelector("#ops-ligar-af input[placeholder^='Buscar']"); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } };
+    window.opsLigarAFToggle = function (pid, on) { if (!opsLigarAF) return; opsLigarAF.sel = opsLigarAF.sel.filter(x => x !== pid); if (on) opsLigarAF.sel.push(pid); opsLigarAFPintar(); };
+    window.opsLigarAFGuardar = async function () {
+        const st = opsLigarAF; if (!st || !st.sel.length) return;
+        const f = cacheFolios.find(x => x.id === st.folioId); if (!f) return;
+        const peds = st.sel.map(id => (cacheSurtidos || []).find(x => x.id === id)).filter(Boolean);
+        try {
+            const nuevosServ = [];
+            for (const p of peds) nuevosServ.push(...await opsServiciosDesdePedido(p));
+            const actuales = (f.serviciosProgramados || []).slice();
+            nuevosServ.forEach(n => { const ya = actuales.find(a => a.clave === n.clave); if (ya) ya.cantidad = (Number(ya.cantidad) || 1) + n.cantidad; else actuales.push(opsProgLimpio(n)); });
+            const pedidosVentas = (f.pedidosVentas || []).concat(peds.map(p => ({ id: p.id, folio: p.folio || null, cliente: p.cliente || null })));
+            const cambios = { serviciosProgramados: actuales, pedidosVentas, ...(f.tipoAlta ? {} : { tipoAlta: "programacion" }), ...(!f.pedidoVentasId ? { pedidoVentasId: peds[0].id, pedidoVentasFolio: peds[0].folio || null } : {}) };
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios); Object.assign(f, cambios);
+            for (const p of peds) {
+                await window.tcSbActualizarSurtido(p.id, { opsGestionado: true, opsFolioId: f.id, opsGestionadoPor: opsNombreActual(), opsGestionadoEn: new Date().toISOString() });
+                p.opsGestionado = true; p.opsFolioId = f.id;
+                if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(p.id, { por: opsNombreActual(), nota: "Ligado al servicio " + (f.folioNumero ? "N.º " + f.folioNumero + " · " : "") + (f.estacion || "") }).catch(() => {});
+            }
+            document.getElementById("ops-ligar-af")?.remove(); opsLigarAF = null;
+            opsCalPintarPedidosVentas(); try { opsRenderCalendario(); } catch (e) {}
+            window.opsAbrirPanelFolio(f.id);
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `${peds.length} pedido(s) ligados a ${f.estacion || "el servicio"}.`, "✅");
+        } catch (e) { if (!opsServicioYaNoExiste(e, st.folioId)) alert("No se pudo ligar: " + (e.message || e)); }
+    };
     window.opsCalLigarPedidoAbrir = function (pid) { opsLigarPed = { pid, q: "", sel: [] }; opsLigarPintar(); };
     window.opsLigarToggle = function (fid, on) { if (!opsLigarPed) return; const l = opsLigarPed.sel.filter(x => x !== fid); if (on) l.push(fid); opsLigarPed.sel = l; const b = document.getElementById("ops-ligar-varios"); if (b) { b.disabled = !l.length; b.textContent = l.length ? "Ligar los " + l.length + " seleccionados" : "Marca uno o varios"; } };
     window.opsLigarVarios = async function () {
@@ -6560,10 +6615,44 @@
         opsMarcarPedidoGestionado(id, null).catch(err => alert("No se pudo guardar: " + (err.message || err)));
     };
     // Abre el alta de servicio ya llena con los datos del pedido; al guardar, el pedido sale de la lista.
+    // Servicios de un pedido de Ventas → servicios del catálogo de Operaciones (15-oct-2026).
+    // Si el servicio ya existe (mismo nombre), se usa; si no, se da de alta solo con un color propio,
+    // para que aparezca identificado en el calendario. Así nadie vuelve a escribir lo que vendió Ventas.
+    const OPS_PALETA_NUEVOS = ["#0ea5e9", "#a855f7", "#f97316", "#14b8a6", "#e11d48", "#84cc16", "#6366f1", "#d97706", "#0891b2", "#be185d", "#16a34a", "#7c3aed"];
+    function opsColorPorNombre(t) { let h = 0; for (const ch of String(t || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return OPS_PALETA_NUEVOS[h % OPS_PALETA_NUEVOS.length]; }
+    function opsNomServ(t) { return opsAsNorm(String(t || "").replace(/\s+/g, " ").trim()); }
+    async function opsServiciosDesdePedido(p) {
+        const lineas = (p.productos || []).filter(x => x.tipo === "servicio");
+        const out = [];
+        for (const x of lineas) {
+            const nombre = String(x.espec || x.desc || x.clave || "").trim() || "Servicio";
+            const n = opsNomServ(nombre);
+            let r = cacheServiciosCatalogo.find(c => c.activo !== false && opsNomServ(c.nombre) === n)
+                || cacheServiciosCatalogo.find(c => c.activo !== false && n.length > 8 && (opsNomServ(c.nombre).includes(n) || n.includes(opsNomServ(c.nombre))));
+            if (!r) {
+                try {
+                    const { db, fs } = await opsGetFB();
+                    const nuevo = { nombre: nombre.slice(0, 140), categoria: "Desde Ventas", activo: true, colorCalendario: opsColorPorNombre(nombre), horasEjecucion: 0,
+                        creadoDesde: "Pedido " + (p.folio || "") + " (" + (p.cliente || "") + ")", creadoPor: opsNombreActual(), creadoEn: opsFechaHora() };
+                    const ref = await fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO), nuevo);
+                    r = { id: ref.id, ...nuevo }; cacheServiciosCatalogo.push(r);
+                } catch (e) { console.warn("[catálogo] no se pudo dar de alta", nombre, e.message); }
+            }
+            const cant = Math.max(1, Number(x.cant) || 1);
+            if (r) {
+                const ya = out.find(o => o.id === r.id);
+                if (ya) ya.cantidad += cant; else out.push({ clave: "rec:" + r.id, tipo: "receta", id: r.id, nombre: r.nombre, horas: Number(r.horasEjecucion) || 0, grupo: r.categoria || "Catálogo", cantidad: cant });
+            } else out.push({ clave: "otro:" + Date.now() + out.length, tipo: "otro", id: null, nombre, horas: 0, grupo: "Otro", cantidad: cant });
+        }
+        return out;
+    }
     window.opsCalProgramarPedido = function (id) {
         const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
         window.opsAbrirAltaServicio(opsCalFechaISO(new Date()));
         if (!opsAS) return;
+        // Viene de Ventas: "Solo programación" con sus servicios ya puestos (15-oct-2026).
+        opsAS.tipo = "programacion";
+        opsServiciosDesdePedido(p).then(lista => { if (opsAS && opsAS.__surtidoId === p.id) { opsAS.servicios = lista; opsAsPintar(); } }).catch(() => {});
         const serv = (p.productos || []).filter(x => x.tipo === "servicio" || x.tipo === "viaticos");
         opsAS.os = p.folio || "";
         opsAS.estTexto = p.cliente || "";
@@ -6807,7 +6896,7 @@
                     const izqPct = Math.min(((ini - OPS_CAL_HORA_INICIO) / totalHrs) * 100, 100 - anchoPct);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
                     const finDec = d.horaDecimal + d.traslado + d.ejecucion;
-                    const horaTxt = (opsEsDiaEspecial(fechaISO) ? opsEsDiaEspecial(fechaISO) + " · " : "") + (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
+                    const horaTxt = (opsEsDiaEspecial(fechaISO) ? opsEsDiaEspecial(fechaISO) + " · " : "") + (d.diaTraslado ? "DÍA DE TRASLADO (" + d.diaTraslado + ") · " : "") + (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
@@ -6886,7 +6975,7 @@
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}</b> ` : ""}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}${d.diaTraslado || d.ejecucion > 0 ? " · día de descanso trabajado" : ""}</b> ` : ""}${d.diaTraslado ? `<b style="background:#334155;color:#fff;border-radius:4px;padding:0 4px;">DÍA DE TRASLADO (${d.diaTraslado})</b> ` : ""}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -7550,6 +7639,7 @@
                     <div style="font-size:15px;font-weight:700;margin-top:2px;">${opsEsc(f.estacion)}</div>
                     ${f.pausaActiva ? `<div style="margin-top:6px;background:#fff7ed;color:#9a3412;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;">En pausa desde ${new Date(f.pausaActiva.desde).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ${opsEsc(f.pausaActiva.motivo || "")}${f.pausaActiva.minutosEstimados ? " · ~" + f.pausaActiva.minutosEstimados + " min" : ""} (${opsEsc(f.pausaActiva.por || "")})</div>` : ""}
                     ${f.tiempoMuertoMin ? `<div style="margin-top:4px;font-size:11px;opacity:.85;">Tiempo muerto acumulado: ${f.tiempoMuertoMin} min en ${(f.tiemposMuertos || []).length} pausa(s)</div>` : ""}
+                    ${opsPuedeGestionar() ? `<button onclick="opsLigarPedidosAFolio('${f.id}')" style="margin-top:6px;margin-right:6px;background:#fff;border:none;color:#1D2E73;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;">+ Ligar pedidos de Ventas${(f.pedidosVentas || []).length ? " (" + f.pedidosVentas.length + ")" : ""}</button>` : ""}
                     ${f.pedidoVentasId ? `<button onclick="opsCalVerPdfPedido('${f.pedidoVentasId}')" style="margin-top:6px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF de la venta${f.pedidoVentasFolio ? " · " + opsEsc(f.pedidoVentasFolio) : ""}</button>` : ""}
                 </div>
                 <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
@@ -7974,7 +8064,11 @@
                     <div style="font-size:10px;color:#94a3b8;margin:-6px 0 10px;">Esta es la fecha que se ve en el Calendario — distinta de la fecha de solicitud.</div>
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha de fin <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label>
                     <input type="date" id="ops-fol-fecha-fin" value="${opsEsc(f && opsFolioFechaFin(f) && opsFolioFechaFin(f) !== (f.fechaProgramada || "").slice(0, 10) ? opsFolioFechaFin(f) : "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
-                    <div style="font-size:10px;color:#94a3b8;margin:0 0 10px;">Vacía = termina el mismo día. Para extender el servicio a más días, cambia esta fecha.</div>
+                    <div style="font-size:10px;color:#94a3b8;margin:0 0 6px;">Vacía = termina el mismo día. Para extender el servicio a más días, cambia esta fecha.</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#334155;margin:0 0 10px;">
+                        <label><input type="checkbox" id="ops-fol-tras-ini" ${f && f.trasladoDiaInicio ? "checked" : ""}> Primer día solo traslado (ida)</label>
+                        <label><input type="checkbox" id="ops-fol-tras-fin" ${f && f.trasladoDiaFin ? "checked" : ""}> Último día solo traslado (regreso)</label>
+                    </div>
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Plaza</label>
                     <select id="ops-fol-plaza" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         ${(() => { const pl = f ? opsPlazaFolio(f) : (opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? opsCalFiltroPlaza : "Chihuahua"); return OPS_PLAZAS.map(p => `<option ${p === pl ? "selected" : ""}>${p}</option>`).join(""); })()}
@@ -8454,6 +8548,7 @@
             categoriaServicio: (() => { const sel = document.getElementById("ops-fol-servicio"); return sel.selectedOptions[0]?.dataset.categoria || null; })(),
             fechaProgramada: document.getElementById("ops-fol-programada").value || null,
             fechaFinProgramada: fechaFinForm && fechaProgForm && fechaFinForm > fechaProgForm.slice(0, 10) ? fechaFinForm : null,
+            trasladoDiaInicio: !!(document.getElementById("ops-fol-tras-ini") || {}).checked, trasladoDiaFin: !!(document.getElementById("ops-fol-tras-fin") || {}).checked,
             plaza: document.getElementById("ops-fol-plaza")?.value || "Chihuahua",
             tiempoEjecucionHrs: document.getElementById("ops-fol-tiempo-ejec").value ? Number(document.getElementById("ops-fol-tiempo-ejec").value) : null,
             tiempoTrasladoHrs: document.getElementById("ops-fol-tiempo-trasl").value ? Number(document.getElementById("ops-fol-tiempo-trasl").value) : null,
@@ -9707,6 +9802,11 @@
                 <div style="flex:0 1 240px;"><label class="opsas-lb">Inicio · fecha y hora</label><input type="datetime-local" class="opsas-in" value="${opsEsc(s.fecha)}" onchange="opsAsSet('fecha',this.value)"></div>
                 ${s.multiEst ? "" : `<div style="flex:0 1 200px;"><label class="opsas-lb">Fin · fecha <span style="font-weight:500;color:#94a3b8;">(si dura más de un día)</span></label><input type="date" class="opsas-in" value="${opsEsc(opsAsFechaFin() || "")}" min="${opsEsc((s.fecha || "").slice(0, 10))}" onchange="opsAsSet('fechaFin',this.value)"></div>`}
             </div>
+            ${!s.multiEst && opsAsFechaFin() ? `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px;font-size:12.5px;color:#334155;">
+                <label class="opsas-chk" style="margin:0;"><input type="checkbox" ${s.trasladoDiaInicio ? "checked" : ""} onchange="opsAS.trasladoDiaInicio=this.checked;opsAsPintar()"><span>El <b>primer día</b> es solo traslado (ida)</span></label>
+                <label class="opsas-chk" style="margin:0;"><input type="checkbox" ${s.trasladoDiaFin ? "checked" : ""} onchange="opsAS.trasladoDiaFin=this.checked;opsAsPintar()"><span>El <b>último día</b> es solo traslado (regreso)</span></label>
+                ${(s.trasladoDiaInicio && opsEsDiaEspecial(opsAsFechaDia())) || (s.trasladoDiaFin && opsEsDiaEspecial(opsAsFechaFin())) ? `<span style="color:#b45309;font-weight:700;">Hay traslado en domingo o festivo: se paga doble o se repone.</span>` : ""}
+            </div>` : ""}
             <div class="opsas-grid">
                 <div><label class="opsas-lb">Duración del trabajo</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.dur)}" oninput="opsAS.dur=this.value;opsAS.durManual=true;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())" onchange="opsAsPintar()">${selU("durU", s.durU)}</div></div>
                 <div><label class="opsas-lb">Traslado (cada trayecto)</label><div style="display:flex;gap:6px;"><input type="number" min="0" step="0.5" class="opsas-in" value="${opsEsc(s.tras)}" oninput="opsAS.tras=this.value;opsAsPintarParcial('opsas-dur-txt',opsAsDurHTML())">${selU("trasU", s.trasU)}</div></div>
@@ -10658,6 +10758,7 @@
             cantidadUnidades: receta ? Math.max(1, Number(s.cantidad) || 1) : null,
             numeroDispensarios: opsAsEsCalDispensarios() && Number(s.dispensarios) > 0 ? Number(s.dispensarios) : null,
             fechaProgramada: s.fecha, fechaFinProgramada: opsAsFechaFin(), plaza: s.plaza || "Chihuahua",
+            trasladoDiaInicio: !!(opsAsFechaFin() && s.trasladoDiaInicio), trasladoDiaFin: !!(opsAsFechaFin() && s.trasladoDiaFin),
             estacionMunicipio: e?.municipio || null,
             duracionValor: num(s.dur), duracionUnidad: s.durU,
             tiempoEjecucionHrs: durH || null, tiempoTrasladoHrs: trasH || null,
