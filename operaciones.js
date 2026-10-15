@@ -1349,10 +1349,22 @@
         return match ? match.id : null;
     }
 
+    // Matriz v2 (oct-2026): el rol "de verdad" sale de Control de acceso. Esta función
+    // solo traduce ese rol a las 3 etiquetas viejas que todavía usan algunas pantallas.
     function opsRolActual() {
-        // Puente de compatibilidad con el esquema anterior (admin/almacén/consulta),
-        // usado como respaldo cuando el usuario no tiene una Persona ligada todavía.
-        const email = opsUsuarioActual();
+        const email = String(opsUsuarioActual() || "").toLowerCase().trim();
+        if (window.esAdminTotal && window.esAdminTotal(email)) return "administrador";
+        const a = opsAccCfg ? opsAccAsignacion() : null;
+        if (!a) return opsRolLegado();
+        const ro = a.soloLectura || !!(opsAccCfg.roles[a.rol] || {}).soloLectura;
+        if (a.rol === "administrador" && !ro) return "administrador";
+        if (a.rol === "almacen" && !ro) return "almacen";
+        return "consulta";
+    }
+    function opsRolLegado(correoOpcional) {
+        // Puente de compatibilidad con el esquema anterior (admin/almacén/consulta).
+        // Desde la Matriz v2 solo se usa para SUGERIR un rol a quien no tiene uno fijo.
+        const email = correoOpcional || opsUsuarioActual();
         if (window.esAdminTotal && window.esAdminTotal(email)) return "administrador";
         if (OPS_SOLO_LECTURA.includes((email || "").toLowerCase().trim())) return "consulta";
         if (OPS_ADMINS.includes((email || "").toLowerCase().trim())) return "administrador";
@@ -1384,7 +1396,7 @@
 
     function opsPermisosActuales() {
         const email = opsUsuarioActual();
-        const rolLegado = opsRolActual();
+        const rolLegado = opsRolLegado();
         // "administrador" cubre tanto esAdminTotal (admin global del portal) como los
         // OPS_ADMINS (administradores solo de este departamento) — opsRolActual() ya
         // resuelve ambos casos, así que basta con leer su resultado una sola vez.
@@ -1417,7 +1429,10 @@
         ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías"], ["polizas", "Pólizas (próximamente)"],
         ["tecnicos", "Técnicos"], ["externos", "Externos"], ["permisos", "Permisos y vacaciones"], ["movimientos", "Movimientos"], ["resumen", "Resumen"],
     ];
-    const OPS_ACC_ACCIONES = [["ver", "Ver"], ["editar", "Crear y editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"]];
+    const OPS_ACC_ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"], ["dinero", "Ver dinero"]];
+    // Pestañas que no son sección propia de la matriz: se rigen por otra sección.
+    const OPS_ACC_ALIAS = { gestionados: "calendario" };
+    const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
         "mercadotecnia@tecnocontrol.com.mx", "mercadotecniatecnocontrol@gmail.com", "rh@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx",
@@ -1429,13 +1444,13 @@
     }
     function opsAccRolesSeed() {
         const almacen = opsAccMatrizTodas(["ver"]);
-        ["dashboard", "solicitudes", "movimientos", "garantias"].forEach(s => { almacen[s] = ["ver", "editar"]; });
+        ["dashboard", "solicitudes", "movimientos", "garantias"].forEach(s => { almacen[s] = ["ver", "crear", "editar"]; });
         almacen.solicitudes.push("aprobar");
         const pagos = opsAccMatrizTodas(["ver", "contacto"]);
         pagos.viaticos = ["ver", "contacto", "aprobar"];
         return {
-            administrador: { nombre: "Administrador de Operaciones", matriz: opsAccMatrizTodas(["ver", "editar", "eliminar", "aprobar", "contacto"]) },
-            coordinador: { nombre: "Coordinador", matriz: opsAccMatrizTodas(["ver", "editar", "aprobar", "contacto"]) },
+            administrador: { nombre: "Administrador de Operaciones", matriz: opsAccMatrizTodas(["ver", "crear", "editar", "eliminar", "aprobar", "contacto"]) },
+            coordinador: { nombre: "Coordinador", matriz: opsAccMatrizTodas(["ver", "crear", "editar", "aprobar", "contacto"]) },
             almacen: { nombre: "Almacén", matriz: almacen },
             tecnico: { nombre: "Técnico", matriz: { calendario: ["ver", "contacto"], servicios: ["ver", "contacto"], folios: ["ver", "contacto"] } },
             consulta_contacto: { nombre: "Consulta con contacto", matriz: opsAccMatrizTodas(["ver", "contacto"]) },
@@ -1453,6 +1468,52 @@
         u["pagos@tecnocontrol.com.mx"] = { rol: "pagos", soloLectura: false };
         return u;
     }
+    function opsAccCfgFabrica() {
+        return { roles: opsAccRolesSeed(), usuarios: opsAccUsuariosSeed(), dinero: OPS_ACC_DINERO_SEED.slice(), rolPorDefecto: "consulta_basica", version: OPS_ACC_VERSION };
+    }
+    // Matriz v2: (1) "Crear" se separa de "Editar" — quien podía editar conserva crear;
+    // (2) las listas fijas del código (OPS_ADMINS, OPS_SOLO_LECTURA) pasan a la matriz;
+    // (3) se fija el rol por defecto para quien no tenga rol. Regresa la lista de cambios.
+    function opsAccNormalizarV2(cfg) {
+        const cambios = [];
+        if (!cfg.roles || typeof cfg.roles !== "object") cfg.roles = {};
+        if (!cfg.usuarios || typeof cfg.usuarios !== "object") cfg.usuarios = {};
+        if (!Array.isArray(cfg.dinero)) cfg.dinero = OPS_ACC_DINERO_SEED.slice();
+        if ((cfg.version || 1) < 2) {
+            Object.values(cfg.roles).forEach(r => {
+                Object.keys(r.matriz || {}).forEach(sec => {
+                    const m = r.matriz[sec];
+                    if (Array.isArray(m) && m.includes("editar") && !m.includes("crear")) m.push("crear");
+                });
+            });
+            cambios.push("Crear separado de Editar (quien editaba conserva crear)");
+            OPS_ADMINS.forEach(c => {
+                if (cfg.usuarios[c] || !cfg.roles.administrador) return;
+                cfg.usuarios[c] = { rol: "administrador", soloLectura: false };
+                cambios.push(c + " → Administrador de Operaciones");
+            });
+            // Personas de la lista de fábrica que se agregaron después de guardar la matriz
+            // (ej. gestoria1@…gestoria5@): por esto gestoria3 no veía los contactos.
+            Object.entries(opsAccUsuariosSeed()).forEach(([c, u]) => {
+                if (cfg.usuarios[c] || !cfg.roles[u.rol]) return;
+                cfg.usuarios[c] = { rol: u.rol, soloLectura: !!u.soloLectura };
+                cambios.push(c + " → " + cfg.roles[u.rol].nombre + (u.soloLectura ? " · Solo lectura" : ""));
+            });
+            OPS_SOLO_LECTURA.forEach(c => {
+                if (cfg.usuarios[c]) return;
+                const rol = c === "pagos@tecnocontrol.com.mx" && cfg.roles.pagos ? "pagos" : "consulta_contacto";
+                if (!cfg.roles[rol]) return;
+                cfg.usuarios[c] = { rol, soloLectura: rol !== "pagos" };
+                cambios.push(c + " → " + cfg.roles[rol].nombre + (rol !== "pagos" ? " · Solo lectura" : ""));
+            });
+            cfg.version = OPS_ACC_VERSION;
+        }
+        if (!cfg.rolPorDefecto || !cfg.roles[cfg.rolPorDefecto]) {
+            cfg.rolPorDefecto = cfg.roles.consulta_basica ? "consulta_basica" : (Object.keys(cfg.roles)[0] || "");
+            cambios.push("Rol por defecto: " + ((cfg.roles[cfg.rolPorDefecto] || {}).nombre || "—"));
+        }
+        return cambios;
+    }
     let opsAccCfg = null;          // null = todavía no carga → todos usan las reglas anteriores
     let opsAccRespaldo = false;    // true = no se pudo leer la base; se usa la matriz de fábrica sin poder editarla
     let opsAccVista = "roles";     // pestaña interna de la pantalla: roles | usuarios | dinero | bitacora
@@ -1467,10 +1528,18 @@
             const snap = await Promise.race([fs.getDoc(ref), new Promise((_, ko) => setTimeout(() => ko(new Error("tiempo agotado")), 8000))]);
             if (snap.exists() && snap.data().roles) {
                 const d = snap.data();
-                opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice() };
+                opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice(), rolPorDefecto: d.rolPorDefecto || "", version: d.version || 1 };
+                const cambios = opsAccNormalizarV2(opsAccCfg);
+                // Solo un admin del portal guarda la actualización (queda en la bitácora).
+                if (cambios.length && window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
+                    try {
+                        await fs.setDoc(ref, { ...opsAccCfg, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
+                        await opsAuditar("permisos", "general", "actualizacion_matriz_v2", null, cambios.join(" | "));
+                    } catch (e2) { console.warn("[operaciones.js] no se pudo guardar la Matriz v2:", e2.message); }
+                }
             } else {
                 // Primera vez: se siembra con las reglas que ya existían (mismo resultado que hoy)
-                opsAccCfg = { roles: opsAccRolesSeed(), usuarios: opsAccUsuariosSeed(), dinero: OPS_ACC_DINERO_SEED.slice() };
+                opsAccCfg = opsAccCfgFabrica();
                 if (window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
                     await fs.setDoc(ref, { ...opsAccCfg, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
                     await opsAuditar("permisos", "general", "configuracion_inicial", null, "Matriz sembrada con las reglas anteriores");
@@ -1480,23 +1549,54 @@
             // Respaldo: mismas reglas sembradas, en memoria y SIN permitir editar (para no
             // sobrescribir la configuración real con la de fábrica si fue solo un fallo de red).
             console.warn("[operaciones.js] Control de acceso no cargó; se usa el respaldo de fábrica:", e.message);
-            opsAccCfg = { roles: opsAccRolesSeed(), usuarios: opsAccUsuariosSeed(), dinero: OPS_ACC_DINERO_SEED.slice() };
+            opsAccCfg = opsAccCfgFabrica();
             opsAccRespaldo = true;
         }
     }
     function opsAccCorreo() { return String(opsUsuarioActual() || "").toLowerCase().trim(); }
     function opsAccEsAdminPortal() { return !!(window.esAdminTotal && window.esAdminTotal(opsAccCorreo())); }
-    // Rol asignado al usuario actual, o null si sigue con las reglas anteriores.
+    // Rol que le toca a un correo cuando NO tiene uno fijo en la matriz: el equivalente
+    // exacto de las reglas anteriores (listas fijas, puesto, Almacén) o el rol por defecto.
+    // Así nadie gana ni pierde acceso, y todo se decide con UNA sola matriz.
+    function opsAccSugerido(correo) {
+        if (!opsAccCfg) return null;
+        const c = String(correo || "").toLowerCase().trim();
+        const roles = opsAccCfg.roles;
+        const ok = id => (roles[id] ? id : null);
+        let rol = null, soloLectura = false, motivo = "", revisar = false;
+        if (OPS_ADMINS.includes(c)) { rol = ok("administrador"); motivo = "Admin de Operaciones (lista anterior)"; }
+        else if (OPS_SOLO_LECTURA.includes(c)) {
+            rol = c === "pagos@tecnocontrol.com.mx" && roles.pagos ? "pagos" : ok("consulta_contacto");
+            soloLectura = rol !== "pagos"; motivo = "Solo lectura (lista anterior)";
+        } else {
+            let perm = [];
+            try { perm = opsPermisosPorPuestoDeCorreo(c); } catch (e) { perm = []; }
+            const almacen = ((window.USUARIOS_AREA && window.USUARIOS_AREA["Almacen"]) || []).map(e => String(e).toLowerCase()).includes(c);
+            if (perm.includes("admin_operaciones")) { rol = ok("administrador"); motivo = "Puesto: Gerente de Operaciones"; }
+            else if (perm.includes("gestionar_herramientas") || perm.includes("gestionar_tecnicos") || perm.includes("autorizar_material") || almacen) {
+                rol = ok("coordinador"); motivo = almacen ? "Almacén (lista anterior)" : "Puesto con permisos de edición";
+            } else if (perm.includes("solicitar_material")) { motivo = "Puesto con 'solicitar material': revisa su rol"; revisar = true; }
+        }
+        if (!rol) { rol = opsAccCfg.rolPorDefecto; if (!motivo) motivo = "Rol por defecto"; }
+        if (!roles[rol]) return null;
+        return { rol, soloLectura, sugerido: true, motivo, revisar };
+    }
+    // Rol del usuario actual: el fijo de la matriz o, si no tiene, el sugerido.
+    // null solo para admins del portal (acceso total) o si la matriz no ha cargado.
     function opsAccAsignacion() {
         if (!opsAccCfg || opsAccEsAdminPortal()) return null;
         const a = opsAccCfg.usuarios[opsAccCorreo()];
-        return a && opsAccCfg.roles[a.rol] ? a : null;
+        if (a && opsAccCfg.roles[a.rol]) return a;
+        return opsAccSugerido(opsAccCorreo());
     }
+    function opsAccSeccion(seccion) { return OPS_ACC_ALIAS[seccion] || seccion; }
     function opsAccTiene(seccion, accion) {
         const a = opsAccAsignacion();
-        if (!a) return null; // null = "decide la regla anterior"
-        if (a.soloLectura && !["ver", "contacto"].includes(accion)) return false;
-        const m = (opsAccCfg.roles[a.rol].matriz || {})[seccion] || [];
+        if (!a) return null; // null = admin del portal o matriz sin cargar → decide la regla anterior
+        const rol = opsAccCfg.roles[a.rol];
+        // Solo lectura (de la persona o del rol entero): ve todo lo que su rol permite ver, no cambia nada.
+        if ((a.soloLectura || rol.soloLectura) && !["ver", "contacto", "dinero"].includes(accion)) return false;
+        const m = (rol.matriz || {})[opsAccSeccion(seccion)] || [];
         return m.includes(accion);
     }
     function opsAccPuedeVer(seccion) {
@@ -1507,17 +1607,20 @@
         if (opsAccEsAdminPortal()) return true;
         const r = opsAccTiene(seccion || tabActual, "contacto");
         if (r !== null) return r;
-        // Sin rol asignado: lo ve quien ya podía editar (igual que hoy, que lo ve en el formulario)
+        // Matriz sin cargar todavía: lo ve quien ya podía editar (regla anterior)
         return opsPuedeHacerLegado("gestionar_herramientas") || opsPuedeHacerLegado("admin_operaciones");
     }
-    function opsAccVerDinero() {
+    // Dinero (precio, costo, utilidad, comisiones): lista "Ver dinero" O casilla del rol.
+    function opsAccVerDinero(seccion) {
         const lista = (opsAccCfg ? opsAccCfg.dinero : OPS_ACC_DINERO_SEED).map(x => String(x).toLowerCase().trim());
-        return lista.includes(opsAccCorreo());
+        if (lista.includes(opsAccCorreo())) return true;
+        return opsAccTiene(seccion || tabActual, "dinero") === true;
     }
     function opsAccNombreRol() {
         const a = opsAccAsignacion();
         if (!a) return null;
-        return opsAccCfg.roles[a.rol].nombre + (a.soloLectura ? " · Solo lectura" : "");
+        const r = opsAccCfg.roles[a.rol];
+        return r.nombre + (a.soloLectura || r.soloLectura ? " · Solo lectura" : "") + (a.sugerido ? " (sin rol fijo)" : "");
     }
 
     // Traduce los permisos que ya usa el código a la matriz, según la sección abierta.
@@ -1529,12 +1632,18 @@
         if (accion === "autorizar_material") return opsAccTiene("solicitudes", "aprobar") === true;
         if (accion === "eliminar_solicitudes") return opsAccTiene("solicitudes", "eliminar") === true;
         if (accion === "consulta_propia") return true;
-        // gestionar_herramientas / gestionar_tecnicos / solicitar_material → "Crear y editar" de la sección abierta
-        return opsAccTiene(tabActual, "editar") === true;
+        // gestionar_herramientas / gestionar_tecnicos / solicitar_material → "Crear" o "Editar" de la sección abierta
+        return opsAccTiene(tabActual, "editar") === true || opsAccTiene(tabActual, "crear") === true;
     }
     // Alias de compatibilidad con el código ya escrito en este archivo.
     function opsPuedeGestionar() {
         return opsPuedeHacer("gestionar_herramientas");
+    }
+    // Botones de ALTA (Nuevo servicio, Nuevo folio, Nuevo cliente…): casilla "Crear" de la sección.
+    function opsPuedeCrear(seccion) {
+        const a = opsAccAsignacion();
+        if (!a) return opsPuedeGestionar();
+        return opsAccTiene(seccion || tabActual, "crear") === true;
     }
 
     // ── Contadores atómicos para folios permanentes ──────────────────
@@ -3913,7 +4022,7 @@
                         ${gestion ? `<button onclick="opsAbrirModalPersonalAdmin()" title="Quién NO debe aparecer en calendario ni asignaciones" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;">${ICON.user} Personal administrativo</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel auditoría</button>` : ""}
-                        ${gestion ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
+                        ${gestion && opsPuedeCrear() ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
                         ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAccesos()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.key} Accesos a Operaciones</button>` : ""}
                     </div>
                 </div>
@@ -4618,7 +4727,7 @@
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Vacaciones, incapacidades y permisos</div>
-                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar</button>` : ""}
+                        ${opsPuedeCrear() ? `<button onclick="opsAbrirModalAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar</button>` : ""}
                     </div>
                     <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Calendario propio de Operaciones — todavía no se cruza automáticamente contra la planeación de servicios (no hay fecha de programación de trabajo todavía).</div>
                     ${ausenciasTec.length ? ausenciasTec.map(a => {
@@ -5207,7 +5316,7 @@
             <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramienta de guardia</div>
-                    ${gestion ? `<button onclick="opsAbrirModalGuardia()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Asignar guardia</button>` : ""}
+                    ${gestion && opsPuedeCrear() ? `<button onclick="opsAbrirModalGuardia()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Asignar guardia</button>` : ""}
                 </div>
                 <div style="font-size:11px;color:#94a3b8;margin-bottom:14px;">Distinto de la herramienta de trabajo permanente — se asigna solo mientras dura la guardia y se cierra al devolver.</div>
 
@@ -5773,7 +5882,7 @@
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>
+                        ${opsPuedeCrear() ? `<button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>` : ""}
                         <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;display:inline-flex;align-items:center;gap:6px;">${ICON.download} Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
                         <button onclick="opsExportarFoliosPDF()" title="Tabla de seguimiento en PDF, para imprimir o revisar rápido" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF seguimiento</button>
@@ -6133,8 +6242,8 @@
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
-                    ${opsPuedeGestionar() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
-                    ${opsPuedeGestionar() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
+                    ${opsPuedeCrear() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
+                    ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
                 </div>
@@ -11476,7 +11585,7 @@
             <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Clientes y su tabla de SLA (horas por prioridad)</div>
-                    ${gestion ? `<button onclick="opsAbrirModalCliente()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo cliente</button>` : ""}
+                    ${gestion && opsPuedeCrear() ? `<button onclick="opsAbrirModalCliente()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo cliente</button>` : ""}
                 </div>
                 <div style="overflow-x:auto;">
                     <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
@@ -12395,7 +12504,7 @@
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Catálogo de servicios (recetas)</div>
                     <div style="font-size:11px;color:#94a3b8;">Fase 1 — modelo de datos y recetas. El cálculo automático por cantidad, el calendario y la disponibilidad son las siguientes fases.</div>
                 </div>
-                ${gestion ? `<div style="display:flex;gap:8px;"><button onclick="opsAbrirModalNuevoServicio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo servicio</button><button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button><button onclick="opsImportarDatosTercerosServicios()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.file} Importar contactos/material (Excel)</button></div>` : ""}
+                ${gestion && opsPuedeCrear() ? `<div style="display:flex;gap:8px;"><button onclick="opsAbrirModalNuevoServicio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo servicio</button><button onclick="opsImportarRecetasReales()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar recetas reales (9 servicios)</button><button onclick="opsImportarDatosTercerosServicios()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.file} Importar contactos/material (Excel)</button></div>` : ""}
             </div>
             ${Object.keys(cacheTarifasPersonal).length ? `
             <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:13px 16px;margin-bottom:16px;">
@@ -13300,7 +13409,7 @@
                 <div style="display:flex;gap:8px;">
                     ${opsPuedeGestionar() || autoriza ? `<button onclick="opsViaAbrirHoteles()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Hoteles</button>` : ""}
                     ${opsRolActual() === "administrador" || autoriza ? `<button onclick="opsViaAbrirTarifas()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Tarifas</button>` : ""}
-                    ${opsPuedeGestionar() || autoriza ? `<button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>` : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
+                    ${opsPuedeCrear() || autoriza ? `<button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>` : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
                 </div>
             </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
@@ -16341,7 +16450,7 @@
     async function opsAccGuardarCfg(entidadId, campo, antes, despues) {
         const { db, fs } = await opsGetFB();
         await fs.setDoc(fs.doc(db, COL_CONFIG_PERMISOS, "general"),
-            { roles: opsAccCfg.roles, usuarios: opsAccCfg.usuarios, dinero: opsAccCfg.dinero, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
+            { roles: opsAccCfg.roles, usuarios: opsAccCfg.usuarios, dinero: opsAccCfg.dinero, rolPorDefecto: opsAccCfg.rolPorDefecto || "consulta_basica", version: opsAccCfg.version || OPS_ACC_VERSION, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
         await opsAuditar("permisos", entidadId, campo,
             antes == null ? null : (typeof antes === "string" ? antes : JSON.stringify(antes)),
             despues == null ? null : (typeof despues === "string" ? despues : JSON.stringify(despues)));
@@ -16383,7 +16492,7 @@
         const roles = opsAccCfg.roles;
         if (!roles[opsAccRolSel]) opsAccRolSel = Object.keys(roles)[0];
         const rol = roles[opsAccRolSel];
-        if (!opsAccBorrador || opsAccBorrador.id !== opsAccRolSel) opsAccBorrador = { id: opsAccRolSel, matriz: JSON.parse(JSON.stringify(rol.matriz || {})) };
+        if (!opsAccBorrador || opsAccBorrador.id !== opsAccRolSel) opsAccBorrador = { id: opsAccRolSel, matriz: JSON.parse(JSON.stringify(rol.matriz || {})), soloLectura: !!rol.soloLectura };
         const usan = Object.entries(opsAccCfg.usuarios).filter(([, u]) => u.rol === opsAccRolSel).map(([c]) => c).sort();
         const nombres = Object.entries(roles).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, "es"));
         return `
@@ -16396,7 +16505,11 @@
                 ${edit ? `<button onclick="opsAccNuevoRol()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo rol</button>` : ""}
                 ${edit && !usan.length && opsAccRolSel !== "administrador" ? `<button onclick="opsAccEliminarRol()" style="background:#fef2f2;border:none;color:#E7402B;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Eliminar rol</button>` : ""}
             </div>
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Personas con este rol (${usan.length}): ${usan.length ? usan.map(opsEsc).join(", ") : "nadie todavía"}</div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Personas con este rol (${usan.length}): ${usan.length ? usan.map(opsEsc).join(", ") : "nadie todavía"}${opsAccCfg.rolPorDefecto === opsAccRolSel ? ' · <b style="color:#1D2E73;">Es el rol por defecto</b> (lo usa quien no tiene rol fijo)' : ""}</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin-bottom:10px;cursor:${edit ? "pointer" : "default"};">
+                <input type="checkbox" ${opsAccBorrador.soloLectura ? "checked" : ""} ${edit ? `onchange="opsAccSoloLecturaRol(this.checked)"` : "disabled"} style="width:16px;height:16px;">
+                <span><b>Solo lectura para todo el rol</b> — quien tenga este rol ve lo que marcan las casillas (incluido contacto y dinero si están marcados), pero no puede crear, editar, eliminar ni aprobar nada.</span>
+            </label>
             <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;">
                 <thead><tr style="background:#f8fafc;color:#475569;">
@@ -16411,10 +16524,11 @@
                 </tbody>
             </table>
             </div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">"Crear y editar" activa los botones de alta y edición de esa sección. Si "Ver" está apagado, la sección desaparece del menú. Pólizas se guarda desde ahora para cuando exista esa pantalla.</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">"Crear" activa los botones de alta (Nuevo servicio, Nuevo folio, Nueva garantía…). "Editar" permite cambiar lo que ya existe. "Ver dinero" muestra precio, costo, utilidad y comisiones. Si "Ver" está apagado, la sección desaparece del menú. "Gestionados y cancelados" sigue los permisos de Calendario. Pólizas se guarda desde ahora para cuando exista esa pantalla.</div>
             ${edit ? `<div style="display:flex;justify-content:flex-end;margin-top:12px;"><button onclick="opsAccGuardarRol()" class="mkt-add-btn" style="background:#E7402B;">Guardar cambios del rol</button></div>` : ""}
         </div>`;
     }
+    window.opsAccSoloLecturaRol = function (on) { if (opsAccBorrador) opsAccBorrador.soloLectura = !!on; opsRenderAccesos(); };
     window.opsAccElegirRol = function (id) { opsAccRolSel = id; opsAccBorrador = null; opsRenderAccesos(); };
     window.opsAccMarcar = function (s, a, on) {
         const m = opsAccBorrador.matriz;
@@ -16430,10 +16544,15 @@
     };
     window.opsAccGuardarRol = async function () {
         if (!opsAccEditable()) return;
-        const id = opsAccBorrador.id, antes = opsAccCfg.roles[id].matriz;
+        const id = opsAccBorrador.id, antes = opsAccCfg.roles[id].matriz, slAntes = !!opsAccCfg.roles[id].soloLectura;
         opsAccCfg.roles[id].matriz = JSON.parse(JSON.stringify(opsAccBorrador.matriz));
-        try { await opsAccGuardarCfg("rol:" + id, "matriz", antes, opsAccCfg.roles[id].matriz); alert("Rol guardado. Los cambios aplican la próxima vez que cada persona abra Operaciones."); }
-        catch (e) { opsAccCfg.roles[id].matriz = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsAccCfg.roles[id].soloLectura = !!opsAccBorrador.soloLectura;
+        try {
+            await opsAccGuardarCfg("rol:" + id, "matriz", antes, opsAccCfg.roles[id].matriz);
+            if (slAntes !== opsAccCfg.roles[id].soloLectura) await opsAuditar("permisos", "rol:" + id, "solo_lectura_rol", slAntes ? "sí" : "no", opsAccCfg.roles[id].soloLectura ? "sí" : "no");
+            alert("Rol guardado. Los cambios aplican la próxima vez que cada persona abra Operaciones.");
+        }
+        catch (e) { opsAccCfg.roles[id].matriz = antes; opsAccCfg.roles[id].soloLectura = slAntes; alert("No se pudo guardar: " + (e.message || e)); }
         opsRenderAccesos();
     };
     window.opsAccNuevoRol = async function () {
@@ -16467,7 +16586,8 @@
         const sugeridos = Object.keys(window.EMAIL_AREA_MAP || {}).filter(c => !opsAccCfg.usuarios[c]).sort();
         return `
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Quien <b>no</b> aparece aquí sigue con las reglas anteriores. Los administradores del portal (Glen, Paloma, Martín, Cristina, Erika) siempre tienen acceso total y no se pueden bloquear.</div>
+            ${opsAccHTMLSinRol(edit)}
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Personas con <b>rol fijo</b>. Quien no aparece aquí usa el rol sugerido de la lista de arriba. Los administradores del portal (Glen, Paloma, Martín, Cristina, Erika) siempre tienen acceso total y no se pueden bloquear.</div>
             <input placeholder="Buscar correo…" value="${opsEsc(opsAccBusca)}" oninput="opsAccBuscar(this.value)" style="width:100%;max-width:340px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:10px;">
             <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
                 ${lista.length ? lista.map(([c, u]) => `
@@ -16475,7 +16595,7 @@
                     <div style="flex:1;min-width:200px;font-weight:600;color:#1e293b;">${opsEsc(c)}<div style="font-size:10.5px;color:#94a3b8;font-weight:400;">${opsEsc((window.nombreUsuario && window.nombreUsuario(c)) || "")}</div></div>
                     <select ${edit ? `onchange="opsAccCambiarRolUsuario('${opsEsc(c)}', this.value)"` : "disabled"} style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">${opcRoles(u.rol)}</select>
                     <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:${edit ? "pointer" : "default"};"><input type="checkbox" ${u.soloLectura ? "checked" : ""} ${edit ? `onchange="opsAccSoloLectura('${opsEsc(c)}', this.checked)"` : "disabled"}> Solo lectura total</label>
-                    ${edit ? `<button onclick="opsAccQuitarUsuario('${opsEsc(c)}')" title="Quitar (vuelve a las reglas anteriores)" style="background:#fef2f2;border:none;color:#E7402B;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>` : ""}
+                    ${edit ? `<button onclick="opsAccQuitarUsuario('${opsEsc(c)}')" title="Quitar rol fijo (usará el sugerido / por defecto)" style="background:#fef2f2;border:none;color:#E7402B;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>` : ""}
                 </div>`).join("") : `<div style="padding:12px;color:#94a3b8;font-size:12px;">Sin resultados.</div>`}
             </div>
             ${edit ? `
@@ -16487,6 +16607,65 @@
             </div>` : ""}
         </div>`;
     }
+    // ── Sin rol fijo (Matriz v2): ya no hay "reglas anteriores" escondidas — se ve aquí qué rol usa cada quien ──
+    function opsAccCandidatosSinRol() {
+        const set = new Set();
+        Object.keys(window.EMAIL_AREA_MAP || {}).forEach(c => set.add(String(c).toLowerCase().trim()));
+        cacheTec.filter(t => t.estatus === "activo" && t.correo).forEach(t => set.add(String(t.correo).toLowerCase().trim()));
+        return Array.from(set).filter(c => c && c.includes("@") && !opsAccCfg.usuarios[c] && !(window.esAdminTotal && window.esAdminTotal(c))).sort((a, b) => a.localeCompare(b, "es"));
+    }
+    function opsAccHTMLSinRol(edit) {
+        const roles = opsAccCfg.roles;
+        const opc = Object.entries(roles).sort((a, b) => a[1].nombre.localeCompare(b[1].nombre, "es"))
+            .map(([id, r]) => `<option value="${opsEsc(id)}" ${id === opsAccCfg.rolPorDefecto ? "selected" : ""}>${opsEsc(r.nombre)}</option>`).join("");
+        const lista = opsAccCandidatosSinRol().map(c => ({ c, s: opsAccSugerido(c) })).filter(x => x.s);
+        const nRevisar = lista.filter(x => x.s.revisar).length;
+        return `
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                    <div style="font-weight:700;font-size:13px;color:#78350f;flex:1;min-width:220px;">Personas sin rol fijo: ${lista.length}${nRevisar ? ` · <span style="color:#E7402B;">${nRevisar} por revisar</span>` : ""}</div>
+                    <label style="font-size:12px;color:#78350f;font-weight:600;">Rol por defecto
+                        <select ${edit ? `onchange="opsAccCambiarRolDefecto(this.value)"` : "disabled"} style="border:1px solid #fcd34d;border-radius:7px;padding:5px 8px;font-size:12px;margin-left:6px;">${opc}</select>
+                    </label>
+                    ${edit && lista.length ? `<button onclick="opsAccFijarTodos()" class="mkt-add-btn" style="background:#1D2E73;">Fijar todos</button>` : ""}
+                </div>
+                <div style="font-size:11.5px;color:#92400e;margin-bottom:8px;">Usan el rol sugerido (equivale a lo que tenían antes) o el rol por defecto. "Fijar" lo pasa a la lista de abajo para que lo puedas cambiar.</div>
+                ${lista.length ? `<div style="max-height:220px;overflow-y:auto;border:1px solid #fde68a;border-radius:8px;background:#fff;">
+                    ${lista.map(({ c, s }) => `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 10px;border-bottom:1px solid #fef3c7;font-size:12px;">
+                        <div style="flex:1;min-width:200px;"><b style="color:#1e293b;">${opsEsc(c)}</b><div style="font-size:10.5px;color:${s.revisar ? "#E7402B" : "#94a3b8"};">${opsEsc(s.motivo)}</div></div>
+                        <div style="color:#334155;">${opsEsc(roles[s.rol].nombre)}${s.soloLectura ? " · Solo lectura" : ""}</div>
+                        ${edit ? `<button onclick="opsAccFijarSugerido('${opsEsc(c)}')" style="background:#E9ECF5;border:none;color:#1D2E73;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Fijar</button>` : ""}
+                    </div>`).join("")}
+                </div>` : `<div style="font-size:12px;color:#92400e;">Todos tienen rol fijo.</div>`}
+            </div>`;
+    }
+    window.opsAccCambiarRolDefecto = async function (rol) {
+        if (!opsAccEditable() || !opsAccCfg.roles[rol]) return;
+        const antes = opsAccCfg.rolPorDefecto;
+        opsAccCfg.rolPorDefecto = rol;
+        try { await opsAccGuardarCfg("general", "rol_por_defecto", (opsAccCfg.roles[antes] || {}).nombre || antes, opsAccCfg.roles[rol].nombre); }
+        catch (e) { opsAccCfg.rolPorDefecto = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccFijarSugerido = async function (c) {
+        if (!opsAccEditable()) return;
+        const s = opsAccSugerido(c);
+        if (!s || opsAccCfg.usuarios[c]) return;
+        opsAccCfg.usuarios[c] = { rol: s.rol, soloLectura: !!s.soloLectura };
+        try { await opsAccGuardarCfg("usuario:" + c, "rol", null, opsAccCfg.roles[s.rol].nombre + (s.soloLectura ? " · Solo lectura" : "")); }
+        catch (e) { delete opsAccCfg.usuarios[c]; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+    window.opsAccFijarTodos = async function () {
+        if (!opsAccEditable()) return;
+        const lista = opsAccCandidatosSinRol().map(c => ({ c, s: opsAccSugerido(c) })).filter(x => x.s);
+        if (!lista.length || !confirm(`¿Fijar el rol sugerido a ${lista.length} persona(s)? Después podrás cambiar cada una.`)) return;
+        const respaldo = JSON.parse(JSON.stringify(opsAccCfg.usuarios));
+        lista.forEach(({ c, s }) => { opsAccCfg.usuarios[c] = { rol: s.rol, soloLectura: !!s.soloLectura }; });
+        try { await opsAccGuardarCfg("usuarios", "fijar_sugeridos", null, lista.map(({ c, s }) => c + " → " + opsAccCfg.roles[s.rol].nombre).join(" | ")); }
+        catch (e) { opsAccCfg.usuarios = respaldo; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
     window.opsAccBuscar = function (v) {
         opsAccBusca = v; opsRenderAccesos();
         const i = document.querySelector('#ops-tab-content input[placeholder="Buscar correo…"]');
@@ -16519,7 +16698,7 @@
     };
     window.opsAccQuitarUsuario = async function (c) {
         if (!opsAccEditable()) return;
-        if (!confirm(`¿Quitar a ${c} de la matriz? Volverá a las reglas anteriores.`)) return;
+        if (!confirm(`¿Quitar el rol fijo de ${c}? Pasará a "sin rol fijo" y usará el rol sugerido o el rol por defecto.`)) return;
         const antes = opsAccCfg.usuarios[c];
         delete opsAccCfg.usuarios[c];
         try { await opsAccGuardarCfg("usuario:" + c, "quitado", (opsAccCfg.roles[antes.rol] || {}).nombre || antes.rol, null); }
@@ -16532,7 +16711,7 @@
         const lista = opsAccCfg.dinero.slice().sort();
         return `
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Solo estas personas ven <b>precio, costo, utilidad y comisiones</b> en el panel del servicio y en el PDF. No depende del rol: es una lista aparte.</div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Solo estas personas ven <b>precio, costo, utilidad y comisiones</b> en el panel del servicio y en el PDF. Además de esta lista, también los ve quien tenga marcada la casilla <b>Ver dinero</b> en su rol.</div>
             <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
                 ${lista.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;">
                     <div style="flex:1;font-weight:600;color:#1e293b;">${opsEsc(c)}</div>
@@ -16573,12 +16752,32 @@
         } catch (e) { opsAccBitacora = []; console.warn("[operaciones.js] bitácora de permisos:", e.message); }
         if (tabActual === "accesos" && opsAccVista === "bitacora") opsRenderAccesos();
     }
+    let opsAccBitFiltro = { texto: "", desde: "", hasta: "" };
+    window.opsAccBitFiltrar = function (campo, v) {
+        opsAccBitFiltro[campo] = v; opsRenderAccesos();
+        if (campo === "texto") { const i = document.getElementById("ops-acc-bit-texto"); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } }
+    };
     function opsAccHTMLBitacora() {
         if (opsAccBitacora === null || opsAccBitacora === "cargando") return `<div style="padding:16px;color:#94a3b8;font-size:12px;">Cargando…</div>`;
         const corto = v => { const t = v == null ? "—" : String(v); return t.length > 120 ? t.slice(0, 120) + "…" : t; };
+        const q = opsAccBitFiltro.texto.toLowerCase().trim();
+        const lista = opsAccBitacora.filter(b => {
+            const dia = String(b.fecha || "").slice(0, 10);
+            if (opsAccBitFiltro.desde && dia < opsAccBitFiltro.desde) return false;
+            if (opsAccBitFiltro.hasta && dia > opsAccBitFiltro.hasta) return false;
+            if (!q) return true;
+            return [b.usuarioNombre, b.usuarioEmail, b.entidadId, b.campo, b.valorAnterior, b.valorNuevo].some(x => String(x || "").toLowerCase().includes(q));
+        });
+        const inp = "border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;";
         return `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <input id="ops-acc-bit-texto" placeholder="Buscar persona o cambio…" value="${opsEsc(opsAccBitFiltro.texto)}" oninput="opsAccBitFiltrar('texto', this.value)" style="${inp}flex:1;min-width:200px;">
+            <label style="font-size:12px;color:#475569;">Desde <input type="date" value="${opsEsc(opsAccBitFiltro.desde)}" onchange="opsAccBitFiltrar('desde', this.value)" style="${inp}"></label>
+            <label style="font-size:12px;color:#475569;">Hasta <input type="date" value="${opsEsc(opsAccBitFiltro.hasta)}" onchange="opsAccBitFiltrar('hasta', this.value)" style="${inp}"></label>
+            <span style="font-size:11.5px;color:#94a3b8;">${lista.length} de ${opsAccBitacora.length}</span>
+        </div>
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-            ${opsAccBitacora.length ? opsAccBitacora.map(b => `<div style="padding:9px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">
+            ${lista.length ? lista.map(b => `<div style="padding:9px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">
                 <div><b>${opsEsc(b.usuarioNombre || b.usuarioEmail || "")}</b> <span style="color:#94a3b8;">· ${opsEsc(b.fecha ? new Date(b.fecha).toLocaleString("es-MX") : "")}</span></div>
                 <div>${opsEsc(String(b.entidadId || "").replace(":", ": "))} — ${opsEsc(String(b.campo || "").replace(/_/g, " "))}: <span style="color:#94a3b8;">${opsEsc(corto(b.valorAnterior))}</span> → <b>${opsEsc(corto(b.valorNuevo))}</b></div>
             </div>`).join("") : `<div style="padding:16px;color:#94a3b8;font-size:12px;">Todavía no hay cambios registrados.</div>`}
@@ -16702,7 +16901,7 @@
                 </div>
                 <div style="display:flex;gap:8px;">
                     <button onclick="opsGarRecargar()" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;color:#334155;cursor:pointer;">Actualizar</button>
-                    ${opsGarPuede("editar") ? `<button onclick="opsGarAbrirForm(null,null)" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva garantía</button>` : ""}
+                    ${opsGarPuede("crear") ? `<button onclick="opsGarAbrirForm(null,null)" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nueva garantía</button>` : ""}
                 </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
@@ -16737,7 +16936,7 @@
 
     // ── Formulario (nueva / editar) ──
     window.opsGarAbrirForm = async function (garantiaId, folioId) {
-        if (!opsGarPuede("editar")) { alert("Tu usuario no puede crear ni editar garantías."); return; }
+        if (!opsGarPuede(garantiaId ? "editar" : "crear")) { alert(garantiaId ? "Tu usuario no puede editar garantías." : "Tu usuario no puede crear garantías."); return; }
         if (!opsGarCargadas) await opsGarCargar();
         opsCargarCatalogoProductos().catch(() => {});
         const g = garantiaId ? cacheGarantias.find(x => x.id === garantiaId) : null;
@@ -17056,12 +17255,12 @@
         if (!opsGarCargadas) await opsGarCargar();
         const ligadas = cacheGarantias.filter(g => g.folioOrigenId === f.id);
         const el = document.getElementById("ops-panel-garantias"); if (!el) return;
-        if (!ligadas.length && !opsGarPuede("editar")) { el.innerHTML = ""; return; }
+        if (!ligadas.length && !opsGarPuede("crear")) { el.innerHTML = ""; return; }
         el.innerHTML = `
             <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;">Garantías de este servicio (${ligadas.length})</div>
-                    ${opsGarPuede("editar") ? `<button onclick="opsGarAbrirForm(null,'${f.id}')" style="background:#E9ECF5;border:none;color:#1D2E73;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir garantía</button>` : ""}
+                    ${opsGarPuede("crear") ? `<button onclick="opsGarAbrirForm(null,'${f.id}')" style="background:#E9ECF5;border:none;color:#1D2E73;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir garantía</button>` : ""}
                 </div>
                 ${ligadas.map(g => `<div onclick="opsGarVer('${g.id}')" style="display:flex;justify-content:space-between;gap:8px;align-items:center;background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer;font-size:12px;">
                     <span><b>${opsEsc(g.folio || "")}</b> · ${opsEsc(g.piezaDesc || "")}</span>${opsGarBadge(g.estado)}</div>`).join("")}
@@ -17137,7 +17336,7 @@
                 <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;"><div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">Vales por pagar</div><div style="font-size:14px;font-weight:800;color:${porPagar.length ? "#b45309" : "#15803d"};">${porPagar.length} · ${opsViaDinero(porPagar.reduce((a, v) => a + Number(v.monto || 0), 0))}</div></div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                ${gestion ? `<button onclick="opsGtelNuevaAtencion()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar atención</button>
+                ${gestion && opsPuedeCrear() ? `<button onclick="opsGtelNuevaAtencion()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar atención</button>
                 <button onclick="opsGtelNuevoVale()" class="mkt-add-btn" style="background:#15803d;">${ICON.plus} Generar vale de guardia</button>
                 <button onclick="opsGtelConfig()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Monto y firmas</button>` : ""}
             </div>
