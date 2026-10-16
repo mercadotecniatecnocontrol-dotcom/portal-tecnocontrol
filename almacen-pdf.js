@@ -54,8 +54,11 @@
     clavesServicio: ['SERV','SERVEX','CALMV','CALST','CALMEDAF','1001','OPEYMTO','CUBICA','LIMPIEZATANQUE'],
     // (15-oct-2026) Además de la clave: si la DESCRIPCIÓN empieza con una de estas palabras, es servicio.
     // Así una clave nueva de servicio (ej. CUBICA, LIMPIEZATANQUE) ya no se queda en Almacén por error.
-    palabrasServicio: ['SERVICIO','CALIBRACION','CUBICACION','LIMPIEZA DE TANQUE','INSPECCION','MANTENIMIENTO','INSTALACION',
-      'PRUEBA DE HERMETICIDAD','PRUEBAS DE HERMETICIDAD','VERIFICACION','DESASOLVE','MANO DE OBRA','INTEGRIDAD MECANICA','CAMBIO DE CONTENEDOR','ANEXO 21','ANEXO 30'],
+    // (16-oct-2026) Sin "CALIBRACION", "INSTALACION", "VERIFICACION" ni "MANTENIMIENTO": también se venden como
+    // producto o los hace un proveedor externo (ej. calibración de TP-7 y cinta de Aprotec). Nuestras
+    // calibraciones ya se reconocen por su clave (CALMV, CALST, CALMEDAF).
+    palabrasServicio: ['SERVICIO','CUBICACION','LIMPIEZA DE TANQUE','INSPECCION','PRUEBA DE HERMETICIDAD','PRUEBAS DE HERMETICIDAD',
+      'DESASOLVE','MANO DE OBRA','INTEGRIDAD MECANICA','CAMBIO DE CONTENEDOR'],
     clavesViaticos: ['VIA','VIAT','1002'],
     clavesPro: ['PRO'],
     whatsappCompras: '526141567795',
@@ -761,7 +764,11 @@
     var lb = 'display:block;font-size:11.5px;font-weight:600;color:#475569;';
     box.innerHTML = '<div style="border:1.5px solid #7c3aed;border-radius:12px;padding:12px 14px;margin:10px 0;background:#faf5ff;">'
       + '<div style="font-size:13px;font-weight:800;color:#5b21b6;">Ficha de servicio para Operaciones <span style="font-weight:600;color:#7c3aed;font-size:11.5px;">(obligatoria cuando el pedido trae servicio)</span></div>'
-      + '<div style="font-size:11.5px;color:#64748b;margin:2px 0 10px;">Con esto Operaciones programa sin volver a preguntarte. Calibraciones: aproximadamente 1 hora por tanque.</div>'
+      + '<div style="font-size:11.5px;color:#64748b;margin:2px 0 8px;">Con esto Operaciones programa sin volver a preguntarte. Calibraciones: aproximadamente 1 hora por tanque.</div>'
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px dashed #a78bfa;border-radius:8px;padding:7px 10px;margin:0 0 10px;font-size:12px;color:#475569;">'
+      +   '<span style="flex:1;min-width:200px;">¿No lo hace Operaciones? (es producto, o lo hace un proveedor externo)</span>'
+      +   '<button type="button" onclick="window.__almNoEsServicio()" style="background:#5b21b6;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">No es servicio de Operaciones</button>'
+      + '</div>'
       + '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;">'
       +   '<label style="' + lb + '">Estación donde se hace el servicio<input style="' + inp + '" value="' + esc(f.estacion) + '" oninput="window.__almFicha(\'estacion\',this.value)"></label>'
       +   '<label style="' + lb + '">Cantidad *<input type="number" min="1" step="1" style="' + inp + '" value="' + esc(f.cantidad) + '" oninput="window.__almFicha(\'cantidad\',this.value)"></label>'
@@ -779,6 +786,15 @@
       + '</div>';
   }
   window.__almFicha = function (k, v) { if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha[k] = v; };
+  // Un clic: todas las partidas marcadas como servicio/viáticos pasan a producto (Almacén) y la ficha deja de pedirse.
+  window.__almNoEsServicio = function () {
+    var n = 0;
+    (estado.productos || []).forEach(function (p) { if (p.tipo === 'servicio' || p.tipo === 'viaticos') { p.tipo = 'producto'; p.tipoManual = true; n++; } });
+    estado.ficha = null;
+    if (typeof renderRows === 'function') renderRows(); else renderClasif();
+    msg('');
+    if (n && window.mostrarPush) window.mostrarPush('Pedido', n + ' partida(s) pasaron a Almac\u00e9n como producto.', '');
+  };
   window.__almPdfTipo = function (i, v) { if (estado.productos[i]) { estado.productos[i].tipo = v; estado.productos[i].tipoManual = true; renderClasif(); } };
   window.__almPdfReclasificar = function (i) { var p = estado.productos[i]; if (p && !p.tipoManual) { p.tipo = tipoLinea(p); renderRows(); } };
   window.__almPdfEmpresa = function (v) { estado.empresa = v; };
