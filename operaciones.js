@@ -7091,7 +7091,7 @@
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             ${cat.empresa === "jomar" ? `<span title="JOMAR Verificaciones" style="font-size:8.5px;font-weight:800;color:${cat.color};background:#fff;padding:1px 4px;border-radius:4px;flex-shrink:0;">JOMAR</span>` : ""}
                             <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.texto === "#ffffff" ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.08)"};padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
-                            <span style="font-size:11px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
+                            ${opsArcaBadgeMini(f)}<span style="font-size:11px;font-weight:700;color:${cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(f.estacion)}</span>
                             ${faltaGente ? `<span title="Falta personal contra la receta" style="margin-left:auto;color:#E7402B;background:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${ICON.alert}</span>` : ""}
                         </div>
                         <div style="font-size:10px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(cat.nombre)} · ${opsEsc(f.clienteNombre || "Sin cliente")}</div>
@@ -7159,7 +7159,7 @@
                     return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${d.diaTraslado ? "repeating-linear-gradient(135deg,#e2e8f0 0 6px,#f8fafc 6px 12px)" : cat.fondo};border:none;${d.diaTraslado ? "border-left:5px solid #0f172a;" : ""}box-shadow:inset 0 0 0 1px ${d.diaTraslado ? "#94a3b8" : cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
-                        <div style="font-size:10.5px;font-weight:700;color:${d.diaTraslado ? "#0f172a" : cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsEsc(f.estacion)}</div>
+                        <div style="font-size:10.5px;font-weight:700;color:${d.diaTraslado ? "#0f172a" : cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsArcaBadgeMini(f)}${opsEsc(f.estacion)}</div>
                         <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}${d.diaTraslado || d.ejecucion > 0 ? " · día de descanso trabajado" : ""}</b> ` : ""}${d.diaTraslado ? `<b style="background:#334155;color:#fff;border-radius:4px;padding:0 4px;">DÍA DE TRASLADO (${d.diaTraslado})</b> ` : ""}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
@@ -7397,6 +7397,153 @@
             return null;
         }
     };
+
+    // ═══ Directorio de estaciones ARCA (16-oct-2026, Paloma/Glen) ═══
+    // Fuente: DIRECTORIO_ESTACIONES_ARCA.xlsx. En ARCA hay dos razones sociales:
+    //   · Distribuidora Arca Comercial → Gasolina y Diésel
+    //   · Bebidas Mundiales            → Gas LP y Gas Natural
+    // ARCA es el primer (y por ahora único) cliente con ese detalle: los sitios que manejan
+    // Gas LP o Gas Natural llevan un distintivo naranja muy visible en el panel, el calendario y el PDF.
+    // El sitio se reconoce solo (por permiso o por el nombre de la estación); si no se reconoce
+    // o hay varios posibles, el gestor lo elige en el panel del servicio (queda en f.arcaSitioId).
+    const OPS_ARCA_SITIOS = [
+        { id: "0001", sitio: "P. Matamoros", permiso: "LP/18532/EXP/AUT/2016", region: "Noreste", estado: "Tamaulipas", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Prolongación Calixto Ayala No. 200, Col San Rafael", claves: ["matamoros"] },
+        { id: "0002", sitio: "P. Piedras Negras", permiso: "LP/18577/EXP/AUT/2016", region: "Noreste", estado: "Coahuila", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Carretera 57, Km13, Tramo Piedras Negras-Nava", claves: ["piedras negras"] },
+        { id: "0003", sitio: "P. CD Juárez (Médanos)", permiso: "LP/18541/EXP/AUT/2016", region: "Norte", estado: "Chihuahua", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Blvd. Oscar Flores Sánchez No. 9755 Col. Puente Alto", claves: ["juarez", "cd juarez", "ciudad juarez", "medanos"] },
+        { id: "0004", sitio: "P. Chihuahua", permiso: "LP/18493/EXP/AUT/2016", region: "Norte", estado: "Chihuahua", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Av. Cristóbal Colon No. 18701 Col. Las Carolinas", claves: ["chihuahua"] },
+        { id: "0005", sitio: "P. Guadiana (Dgo)", permiso: "LP/18575/EXP/AUT/2016", region: "Norte", estado: "Durango", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Carretera Durango - Mezquital Km 3.0", claves: ["guadiana", "durango", "dgo"] },
+        { id: "0006", sitio: "Juárez SLP", permiso: "LP/19057/EXP/AUT/2016", region: "Occidente", estado: "San Luis Potosí", gasolina: true, gasLP: true, diesel: true, gasNatural: false, direccion: "Fidel Velázquez, Lado Oriente. S/N, Benito Juárez", claves: ["juarez slp", "juarez san luis"] },
+        { id: "0007", sitio: "Los Altos", permiso: "LP/18539/EXP/AUT/2016", region: "Occidente", estado: "Jalisco", gasolina: false, gasLP: true, diesel: false, gasNatural: false, direccion: "Blvd. Anacleto Glez Flores Sur 2145, Las Aguilillas", claves: ["los altos", "tepatitlan"] },
+        { id: "0008", sitio: "P. Las Fuentes (Gdj)", permiso: "LP/18514/EXP/AUT/2016", region: "Occidente", estado: "Jalisco", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Av. Adolfo López Mateos Sur 6285, El Mante", claves: ["las fuentes", "guadalajara", "gdl", "gdj"] },
+        { id: "0009", sitio: "P. San Luis", permiso: "LP/18523/EXP/AUT/2016", region: "Occidente", estado: "San Luis Potosí", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Periférico, Manuel Gomez Morin #3005 Fracc. Del Saucito", claves: ["san luis", "san luis potosi", "slp"] },
+        { id: "0010", sitio: "P. Zapopan (Gdj)", permiso: "LP/18361/EXP/AUT/2016", region: "Occidente", estado: "Jalisco", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Av. Base Aérea Km 2 2000, San Juan de Ocotán", claves: ["zapopan", "guadalajara", "gdl", "gdj"] },
+        { id: "0011", sitio: "Cabo San Lucas", permiso: null, region: "Pacífico", estado: "Baja California Sur", gasolina: false, gasLP: true, diesel: false, gasNatural: false, direccion: "Carretera, Cabo San Lucas - Todos los Santos Km 7.5, Los Cangrejos", claves: ["cabo san lucas", "los cabos", "cabo"] },
+        { id: "0012", sitio: "Mazatlán", permiso: null, region: "Pacífico", estado: "Sinaloa", gasolina: false, gasLP: true, diesel: false, gasNatural: false, direccion: "Mazatlán-Culiacán S/N, El Venadillo", claves: ["mazatlan"] },
+        { id: "0013", sitio: "P. Culiacán", permiso: null, region: "Pacífico", estado: "Sinaloa", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Calz. Aeropuerto 5501, Gasolinera del Valle", claves: ["culiacan"] },
+        { id: "0014", sitio: "P. Hermosillo", permiso: "LP/18518/EXP/AUT/2016", region: "Pacífico", estado: "Sonora", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Blvd. Luis Encinas J. 632, El Torreón", claves: ["hermosillo"] },
+        { id: "0015", sitio: "P. La Paz", permiso: null, region: "Pacífico", estado: "Baja California Sur", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Luis Donaldo Colosio 143, Jardines del Sur", claves: ["la paz"] },
+        { id: "0016", sitio: "P. Mexicali", permiso: "LP/18524/EXP/AUT/2016", region: "Pacífico", estado: "Baja California", gasolina: false, gasLP: true, diesel: false, gasNatural: true, direccion: "Blvd Lázaro Cárdenas 2400, Plutarco Elías Calles", claves: ["mexicali"] },
+        { id: "0017", sitio: "Fundadores", permiso: null, region: "Noreste", estado: "Coahuila", gasolina: false, gasLP: true, diesel: true, gasNatural: false, direccion: "Blvd. Fundadores No. 2690", claves: ["fundadores"] },
+        { id: "0018", sitio: "Lincoln", permiso: null, region: "Noreste", estado: "Nuevo León", gasolina: true, gasLP: false, diesel: true, gasNatural: false, direccion: "Ave. Lincoln No. 7000 Pte Col. Plutarco Elias Calles", claves: ["lincoln"] },
+        { id: "0019", sitio: "Monclova", permiso: null, region: "Noreste", estado: "Coahuila", gasolina: false, gasLP: true, diesel: true, gasNatural: false, direccion: "Libramiento Carlos Salinas de Gortari S/N, Col. Estancias de San Juan Bautista", claves: ["monclova"] },
+        { id: "0020", sitio: "Monterrey", permiso: null, region: "Noreste", estado: "Nuevo León", gasolina: true, gasLP: false, diesel: true, gasNatural: false, direccion: "Av. Alfonso Reyes No. 3001 Nte, Col. Regina", claves: ["monterrey", "mty", "alfonso reyes"] },
+        { id: "0021", sitio: "P. Ciel Saltillo", permiso: null, region: "Noreste", estado: "Coahuila", gasolina: false, gasLP: true, diesel: true, gasNatural: false, direccion: "Fundadores 6659 - San Jose de los Cerritos", claves: ["ciel saltillo", "ciel", "saltillo"] },
+        { id: "0022", sitio: "P. Guadalupe", permiso: null, region: "Noreste", estado: "Nuevo León", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Ave. Lázaro Cardenas No. 1213 Fracc. El Sabino", claves: ["guadalupe"] },
+        { id: "0023", sitio: "P. Insurgentes", permiso: null, region: "Noreste", estado: "Nuevo León", gasolina: true, gasLP: false, diesel: true, gasNatural: true, direccion: "Ave. Insurgentes No. 1618 Pte Col. Colinas de San Jerónimo", claves: ["insurgentes"] },
+        { id: "0024", sitio: "Suc. Estadio", permiso: null, region: "Norte", estado: "Coahuila", gasolina: true, gasLP: true, diesel: true, gasNatural: false, direccion: "Calzada Moctezuma #703 Col. Carolinas", claves: ["estadio", "torreon"] },
+        { id: "0025", sitio: "Suc. Santa Rita", permiso: null, region: "Norte", estado: "Durango", gasolina: true, gasLP: true, diesel: true, gasNatural: false, direccion: "Boulevard Mexico 222 Col. Ex-ejido Cuba", claves: ["santa rita", "gomez palacio"] },
+        { id: "0026", sitio: "San Agustín (Torreón)", permiso: null, region: "Norte", estado: "Coahuila", gasolina: false, gasLP: false, diesel: false, gasNatural: true, direccion: "C. Alberto N. Swain 347, Cd Industrial", claves: ["san agustin", "torreon"] },
+        { id: "0027", sitio: "Zacatecas", permiso: null, region: "Norte", estado: "Zacatecas", gasolina: true, gasLP: true, diesel: true, gasNatural: false, direccion: "Carretera 54 vía corta Zacatecas-Guadalajara Km. 306.2 Colonia Cieneguillas", claves: ["zacatecas"] },
+        { id: "0028", sitio: "Belenes", permiso: null, region: "Occidente", estado: "Jalisco", gasolina: true, gasLP: true, diesel: true, gasNatural: false, direccion: "Blvd a Bosques de San Isidro 580 Zapopan Jalisco", claves: ["belenes"] },
+        { id: "0029", sitio: "P. Aguascalientes", permiso: null, region: "Occidente", estado: "Aguascalientes", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Camino a San Bartolo #100 Ejido Coyotes", claves: ["aguascalientes", "ags"] },
+        { id: "0030", sitio: "P. Las Trojes (Ags)", permiso: null, region: "Occidente", estado: "Aguascalientes", gasolina: true, gasLP: true, diesel: true, gasNatural: true, direccion: "Primera Priv. Niños Héroes, Trojes de Alonso", claves: ["las trojes", "trojes"] },
+        { id: "0031", sitio: "Suc. Toluquilla", permiso: null, region: "Occidente", estado: "Jalisco", gasolina: true, gasLP: false, diesel: true, gasNatural: false, direccion: "Anillo Perif. Sur Manuel Gómez Morín 6740, Tlaquepaque", claves: ["toluquilla", "tlaquepaque"] },
+    ];
+    const OPS_ARCA_NARANJA = "#ea580c";
+    function opsArcaNorm(x) { return " " + String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9/]+/g, " ").trim() + " "; }
+    function opsEsClienteArca(f) {
+        if (!f) return false;
+        const t = opsArcaNorm([f.clienteNombre, f.estacion, f.estacionRazonSocial, f.estacionNombreComercial].filter(Boolean).join(" "));
+        return / arca /.test(t) || /bebidas mundiales/.test(t) || /arca (continental|comercial)/.test(t);
+    }
+    // Regresa { sitio, posibles, porManual } o null si el servicio no es de ARCA.
+    function opsArcaSitioFolio(f) {
+        if (!f) return null;
+        if (f.arcaSitioId) { const s = OPS_ARCA_SITIOS.find(x => x.id === f.arcaSitioId); if (s) return { sitio: s, posibles: [s], porManual: true }; }
+        const pl = String(f.estacionPermiso || "").trim().toUpperCase();
+        if (pl) { const s = OPS_ARCA_SITIOS.find(x => x.permiso && x.permiso.toUpperCase() === pl); if (s) return { sitio: s, posibles: [s], porManual: false }; }
+        if (!opsEsClienteArca(f)) return null;
+        const t = opsArcaNorm([f.estacion, f.estacionNombreComercial].filter(Boolean).join(" "));
+        let mejor = 0, posibles = [];
+        OPS_ARCA_SITIOS.forEach(s => {
+            const p = Math.max(0, ...s.claves.filter(k => t.includes(" " + k + " ")).map(k => k.length));
+            if (!p) return;
+            if (p > mejor) { mejor = p; posibles = [s]; } else if (p === mejor) posibles.push(s);
+        });
+        return { sitio: posibles.length === 1 ? posibles[0] : null, posibles, porManual: false };
+    }
+    function opsArcaCombustibles(s) {
+        return {
+            arcaComercial: [s.gasolina ? "Gasolina" : "", s.diesel ? "Diésel" : ""].filter(Boolean),
+            bebidasMundiales: [s.gasLP ? "Gas LP" : "", s.gasNatural ? "Gas Natural" : ""].filter(Boolean),
+        };
+    }
+    function opsArcaEsBebidas(f) { const a = opsArcaSitioFolio(f); return !!(a && a.sitio && (a.sitio.gasLP || a.sitio.gasNatural)); }
+    const OPS_ICO_FLAMA = '<path d="M12 22c4 0 7-2.8 7-7 0-3.5-2.2-5.6-3.6-7.4-.4 1.8-1.5 3-2.9 3.4.4-3.3-1-6.4-3.5-8-.2 3-1.9 5-3.4 7C4.4 11.6 5 13 5 15c0 4.2 3 7 7 7z"/>';
+    // Distintivo grande (panel). Naranja fijo para que resalte sobre cualquier color de servicio.
+    function opsArcaBadgeGrande(f) {
+        const a = opsArcaSitioFolio(f); if (!a || !a.sitio) return "";
+        const c = opsArcaCombustibles(a.sitio);
+        if (!c.bebidasMundiales.length) return "";
+        return `<div style="margin-top:10px;background:${OPS_ARCA_NARANJA};color:#fff;border:2px solid #fff;box-shadow:0 0 0 2px ${OPS_ARCA_NARANJA};border-radius:10px;padding:8px 11px;display:flex;align-items:center;gap:9px;">
+            <span style="display:inline-flex;flex-shrink:0;">${OPS_SVG(OPS_ICO_FLAMA, 22)}</span>
+            <div style="line-height:1.25;"><div style="font-size:12.5px;font-weight:900;letter-spacing:.3px;">BEBIDAS MUNDIALES · MANEJA ${opsEsc(c.bebidasMundiales.join(" + ").toUpperCase())}</div>
+            <div style="font-size:10.5px;font-weight:600;opacity:.95;">Además de ${c.arcaComercial.length ? opsEsc(c.arcaComercial.join(" y ")) + " (Distribuidora Arca Comercial)" : "lo habitual"}. Revisa equipo y alcance para estos combustibles.</div></div>
+        </div>`;
+    }
+    // Distintivo chico (tarjetas del calendario y listas).
+    function opsArcaBadgeMini(f) {
+        if (!opsArcaEsBebidas(f)) return "";
+        const c = opsArcaCombustibles(opsArcaSitioFolio(f).sitio).bebidasMundiales;
+        const corto = c.map(x => x === "Gas LP" ? "LP" : "GN").join("·");
+        return `<span title="Bebidas Mundiales: maneja ${opsEsc(c.join(" y "))}" style="display:inline-flex;align-items:center;gap:2px;font-size:8.5px;font-weight:900;color:#fff;background:${OPS_ARCA_NARANJA};border:1px solid #fff;padding:0 4px;border-radius:4px;flex-shrink:0;margin-right:4px;vertical-align:middle;">${OPS_SVG(OPS_ICO_FLAMA, 9)}${corto}</span>`;
+    }
+    // Bloque "Sitio ARCA" dentro de la sección Estación del panel.
+    function opsArcaPanelHTML(f) {
+        const a = opsArcaSitioFolio(f); if (!a) return "";
+        const puede = opsPuedeGestionar();
+        const sel = puede ? `<select onchange="opsFolioArcaSitio('${f.id}',this.value)" style="width:100%;margin-top:8px;border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12px;background:#fff;">
+                <option value="">${a.sitio && !a.porManual ? "Reconocido solo: " + opsEsc(a.sitio.sitio) + " (cambiar…)" : "— Elegir el sitio ARCA —"}</option>
+                ${OPS_ARCA_SITIOS.map(s => `<option value="${s.id}" ${a.porManual && a.sitio && a.sitio.id === s.id ? "selected" : ""}>${opsEsc(s.id + " · " + s.sitio + " · " + (s.estado || ""))}</option>`).join("")}
+            </select>` : "";
+        if (!a.sitio) return `<div style="margin-top:10px;background:#fff7ed;border:1px dashed ${OPS_ARCA_NARANJA};border-radius:8px;padding:9px 11px;font-size:12px;color:#9a3412;">
+                <b>Cliente ARCA: no se identificó el sitio.</b> ${a.posibles.length ? "Posibles: " + a.posibles.map(s => opsEsc(s.sitio)).join(", ") + "." : "El nombre de la estación no coincide con el directorio."}${sel}</div>`;
+        const s = a.sitio, c = opsArcaCombustibles(s);
+        const chip = (t, on) => `<span style="font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;${on ? `background:${OPS_ARCA_NARANJA};color:#fff;` : "background:#e2e8f0;color:#334155;"}">${t}</span>`;
+        return `<div style="margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:9px 11px;font-size:12px;color:#334155;line-height:1.7;">
+            <div style="font-weight:800;color:#9a3412;">Directorio ARCA · ${opsEsc(s.sitio)} <span style="font-weight:600;color:#c2410c;">(ID ${opsEsc(s.id)} · ${opsEsc(s.region)}${s.estado ? " · " + opsEsc(s.estado) : ""})</span></div>
+            Permiso: ${opsEsc(s.permiso || "Sin permiso")}<br>
+            Dirección: ${opsEsc(s.direccion || "—")}<br>
+            ${c.arcaComercial.length ? `<div style="margin-top:4px;">Distribuidora Arca Comercial: ${c.arcaComercial.map(x => chip(x, false)).join(" ")}</div>` : ""}
+            ${c.bebidasMundiales.length ? `<div style="margin-top:4px;">Bebidas Mundiales: ${c.bebidasMundiales.map(x => chip(x, true)).join(" ")}</div>` : ""}
+            ${sel}
+        </div>`;
+    }
+    window.opsFolioArcaSitio = async function (id, sitioId) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        if (!sitioId) { window.opsAbrirPanelFolio(id); return; }
+        const s = OPS_ARCA_SITIOS.find(x => x.id === sitioId); if (!s) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { arcaSitioId: s.id });
+            f.arcaSitioId = s.id;
+            fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), {
+                texto: `Sitio ARCA ligado: ${s.sitio} (ID ${s.id}).`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura",
+                createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
+            }).catch(() => {});
+            try { opsRenderCalendario(); } catch (e) {}
+            window.opsAbrirPanelFolio(id);
+        } catch (e) { alert("No se pudo guardar el sitio ARCA: " + (e.message || e)); }
+    };
+
+    function opsArcaTextoPdf(f) {
+        try {
+            const a = opsArcaSitioFolio(f); if (!a || !a.sitio) return "";
+            const c = opsArcaCombustibles(a.sitio).bebidasMundiales;
+            return c.length ? `ATENCIÓN: SITIO ARCA ${a.sitio.sitio.toUpperCase()} · BEBIDAS MUNDIALES · MANEJA ${c.join(" + ").toUpperCase()}` : "";
+        } catch (e) { return ""; }
+    }
+    // Título grande del panel: QUÉ servicio se va a realizar.
+    function opsPanelTituloServicio(f) {
+        if (Array.isArray(f.normasVisita) && f.normasVisita.length > 1) return "Visita de inspección · " + f.normasVisita.join(" + ");
+        const prog = (f.serviciosProgramados || []).map(x => x && x.nombre).filter(Boolean);
+        if (prog.length) return prog.join(" + ");
+        if (f.conceptoGeneral) return f.conceptoGeneral;
+        if (f.tipoFolio === "inspeccion") return f.normaInspeccion ? "Visita de inspección · " + f.normaInspeccion : "Visita de inspección";
+        const t = opsCalTipoTexto(f);
+        return t && t !== "Servicio técnico" ? t : (opsCalServicioFolio(f).nombre || "Servicio técnico");
+    }
 
     // ═══════════════════════ FASE B — Panel de detalle del folio ═══════════════════════
     // Panel lateral flotante (no modal, no tapa el Calendario de fondo). Reutiliza
@@ -7817,48 +7964,90 @@
         const rolesReq = receta ? (receta.personal || []).reduce((n, p) => n + (p.cantidad || 1), 0) : null;
         const tecnicos = (f.tecnicosAsignadosIds || []).map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
 
+        // ── Panel con el color del servicio (16-oct-2026): encabezado, acentos de cada sección y botones
+        //    principales toman el color del tipo de servicio, para identificar la ventana de un vistazo.
+        const cat = opsCalColorFolio(f), est = opsCalEstatusFolio(f);
+        const C = cat.color, CT = cat.texto, COsc = opsMezclaColor(C, "#0f172a", 0.35), CSuave = opsMezclaColor(C, "#ffffff", 0.9);
+        const tituloServ = opsPanelTituloServicio(f);
+        const empresaServ = (() => { try { return opsEmpresaNombreFolio(f); } catch (e) { return ""; } })();
+        const plazaServ = (() => { try { return opsPlazaFolio(f); } catch (e) { return ""; } })();
+        const ico = {
+            resumen: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+            tarea: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
+            estacion: '<path d="M3 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M3 21h11"/><path d="M14 9h2a2 2 0 0 1 2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M6 8h5"/>',
+            ajustes: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+            equipo: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.5-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18.5 14.8c1.6.8 2.7 2.6 3 5.2"/>',
+            dinero: '<path d="M12 3v18"/><path d="M16.5 7.5c-.8-1.4-2.5-2-4.5-2-2.5 0-4 1.2-4 3s1.5 2.6 4 3.1 4.5 1.3 4.5 3.3-1.8 3.1-4.5 3.1c-2.2 0-3.9-.8-4.7-2.3"/>',
+            ruta: '<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/>',
+            historial: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        };
+        const sec = (titulo, cuerpo, icono, extraEstilo) => `<section class="opf-sec" style="${extraEstilo || ""}"><div class="opf-sec-tit">${icono ? OPS_SVG(icono, 14) : ""}<span>${titulo}</span></div>${cuerpo}</section>`;
+        const dato = (et, val, color) => `<div><div class="opf-et">${et}</div><div class="opf-val" ${color ? `style="color:${color};"` : ""}>${val}</div></div>`;
+        const fechaProg = f.fechaProgramada ? opsEsc(opsFmtFechaCorta(f.fechaProgramada)) : "Sin fecha";
+        const durTxt = f.tiempoEjecucionHrs ? opsEsc(opsAsTxtHoras(Number(f.tiempoEjecucionHrs))) : "";
+        const listaProg = (f.serviciosProgramados || []).filter(x => x && x.nombre);
+        const btnTop = (onclick, texto, icono, solido) => `<button onclick="${onclick}" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 10px;border-radius:9px;font-size:12px;font-weight:800;cursor:pointer;${solido ? `background:${C};color:${CT};border:1px solid ${cat.borde};` : `background:#fff;color:${COsc};border:1.5px solid ${C};`}">${OPS_SVG(icono, 14)}${texto}</button>`;
+
         panel.innerHTML = `
-            <div style="position:sticky;top:0;background:#1D2E73;color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;z-index:1;">
-                <div>
-                    <div style="font-size:10px;opacity:.75;text-transform:uppercase;letter-spacing:.4px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioNumero ? " N.º " + opsEsc(f.folioNumero) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</div>
-                    <div style="font-size:15px;font-weight:700;margin-top:2px;">${opsEsc(f.estacion)}</div>
-                    ${f.pausaActiva ? `<div style="margin-top:6px;background:#fff7ed;color:#9a3412;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;">En pausa desde ${new Date(f.pausaActiva.desde).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ${opsEsc(f.pausaActiva.motivo || "")}${f.pausaActiva.minutosEstimados ? " · ~" + f.pausaActiva.minutosEstimados + " min" : ""} (${opsEsc(f.pausaActiva.por || "")})</div>` : ""}
-                    ${f.tiempoMuertoMin ? `<div style="margin-top:4px;font-size:11px;opacity:.85;">Tiempo muerto acumulado: ${f.tiempoMuertoMin} min en ${(f.tiemposMuertos || []).length} pausa(s)</div>` : ""}
-                    ${opsPuedeGestionar() ? `<button onclick="opsLigarPedidosAFolio('${f.id}')" style="margin-top:6px;margin-right:6px;background:#fff;border:none;color:#1D2E73;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;">+ Ligar pedidos de Ventas${(f.pedidosVentas || []).length ? " (" + f.pedidosVentas.length + ")" : ""}</button>` : ""}
-                    ${(f.pedidosVentas || []).length > 1 ? (f.pedidosVentas || []).map(pv => `<button onclick="opsCalVerPdfPedido('${pv.id}')" style="margin-top:6px;margin-right:4px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;padding:4px 9px;font-size:10.5px;font-weight:700;cursor:pointer;">PDF ${opsEsc(pv.folio || "pedido")}</button>`).join("") : ""}
-                    ${f.pedidoVentasId && (f.pedidosVentas || []).length <= 1 ? `<button onclick="opsCalVerPdfPedido('${f.pedidoVentasId}')" style="margin-top:6px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF de la venta${f.pedidoVentasFolio ? " · " + opsEsc(f.pedidoVentasFolio) : ""}</button>` : ""}
-                </div>
-                <button onclick="opsCerrarPanelFolio()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px;">×</button>
-            </div>
-            <div style="padding:18px;">
-                ${opsPedidosLigadosHTML(f)}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">CLIENTE</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.clienteNombre || "—")}</div></div>
-                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">PRIORIDAD</div><div style="font-size:12.5px;color:#1e293b;font-weight:600;">${opsEsc(f.prioridad || "—")}</div></div>
-                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">VENCIMIENTO SLA</div><div style="font-size:12.5px;font-weight:700;color:${{ verde: "#15803D", rojo: "#E7402B", naranja: "#b45309", gris: "#64748b" }[semaforo.semaforo] || "#1e293b"};">${f.vencimiento ? new Date(f.vencimiento).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
-                    <div><div style="font-size:10px;color:#94a3b8;font-weight:600;">ESTADO</div><div style="font-size:12.5px;font-weight:700;color:${opsCalEstatusFolio(f).color};display:flex;align-items:center;gap:6px;">${opsCalBadgeEstatus(opsCalEstatusFolio(f).clave, 18)}${opsEsc(opsCalEstatusFolio(f).nombre)}</div></div>
-                </div>
-                ${opsPanelPlazaHTML(f)}
-                ${opsPanelServicioHTML(f)}
-                ${opsHTMLAccionesFolio(f)}
-                ${f.grupoProgramacionId ? opsGrupoPanelHTML(f) : ""}
-                ${f.tipoAlta === "programacion" ? opsProgPanelHTML(f) : ""}
-
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Equipo asignado${rolesReq !== null ? ` (${tecnicos.length}/${rolesReq})` : ""}</div>
-                    <div id="ops-panel-equipo" style="display:flex;flex-direction:column;gap:8px;">
-                        ${tecnicos.length ? tecnicos.map(t => `<div id="ops-panel-eq-${t.id}" style="background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;">${opsEsc(t.nombre)} <span style="color:#94a3b8;">— cargando vehículo…</span></div>`).join("") : `<div style="font-size:11.5px;color:#94a3b8;">Sin técnicos asignados todavía.</div>`}
+            <style>
+                #ops-panel-folio{--opf-c:${C};--opf-osc:${COsc};--opf-suave:${CSuave};background:#f4f6fa !important;}
+                #ops-panel-folio .opf-sec{background:#fff;border:1px solid #e2e8f0;border-left:5px solid var(--opf-c);border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(15,23,42,.05);}
+                #ops-panel-folio .opf-sec-tit{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:var(--opf-osc);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;}
+                #ops-panel-folio .opf-et{font-size:9.5px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+                #ops-panel-folio .opf-val{font-size:12.5px;color:#1e293b;font-weight:700;margin-top:1px;}
+                #ops-panel-folio .opf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+                /* Secciones que arman otras funciones (estatus, equipo, contacto, garantías…): mismo estilo de tarjeta */
+                #ops-panel-folio .opf-body > div[style*="border-top:1px solid #e2e8f0"],
+                #ops-panel-folio #ops-panel-garantias > div[style*="border-top:1px solid #e2e8f0"]{background:#fff;border:1px solid #e2e8f0 !important;border-left:5px solid var(--opf-c) !important;border-radius:12px;padding:12px 14px !important;margin-bottom:12px !important;box-shadow:0 1px 2px rgba(15,23,42,.05);}
+                #ops-panel-folio .opf-body div[style*="font-size:11px;font-weight:700;color:#1D2E73"]{color:var(--opf-osc) !important;text-transform:uppercase;letter-spacing:.6px;font-weight:800 !important;}
+            </style>
+            <div style="position:sticky;top:0;background:${C};color:${CT};padding:14px 18px 16px;z-index:2;box-shadow:0 2px 10px rgba(15,23,42,.18);">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;">
+                        <span style="font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;background:${CT === "#ffffff" ? "rgba(255,255,255,.2)" : "rgba(0,0,0,.08)"};border-radius:6px;padding:2px 8px;">${f.tipoFolio === "laboratorio" ? "Laboratorio" : "Servicio"}${f.folioNumero ? " N.º " + opsEsc(f.folioNumero) : ""}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}</span>
+                        ${empresaServ ? `<span title="Empresa que realiza el servicio" style="font-size:10.5px;font-weight:800;background:#fff;color:${COsc};border-radius:6px;padding:2px 8px;">${opsEsc(empresaServ)}</span>` : ""}
                     </div>
-                    ${rolesReq !== null && tecnicos.length < rolesReq ? `<div style="margin-top:6px;font-size:10.5px;color:#E7402B;font-weight:600;">Falta personal contra lo que pide la receta.</div>` : ""}
+                    <button onclick="opsCerrarPanelFolio()" title="Cerrar" style="background:${CT === "#ffffff" ? "rgba(255,255,255,.2)" : "rgba(0,0,0,.08)"};border:none;color:${CT};width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;flex-shrink:0;">×</button>
                 </div>
+                <div style="font-size:20px;font-weight:900;line-height:1.2;margin-top:10px;">${opsEsc(tituloServ)}</div>
+                <div style="font-size:15px;font-weight:700;margin-top:6px;display:flex;align-items:center;gap:6px;">${OPS_SVG(ico.estacion, 16)}<span>${opsEsc(f.estacion || "Sin estación")}</span></div>
+                <div style="font-size:11.5px;opacity:.9;margin-top:3px;">${opsEsc(f.clienteNombre || "Sin cliente")}${plazaServ ? " · Plaza " + opsEsc(plazaServ) : ""} · ${fechaProg}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap;">
+                    <span style="display:inline-flex;align-items:center;gap:5px;background:#fff;color:${est.color};border-radius:999px;padding:3px 10px 3px 4px;font-size:11.5px;font-weight:800;">${opsCalBadgeEstatus(est.clave, 18)}${opsEsc(est.nombre)}</span>
+                    ${f.prioridad ? `<span style="background:#fff;color:#334155;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;">Prioridad: ${opsEsc(f.prioridad)}</span>` : ""}
+                </div>
+                ${opsArcaBadgeGrande(f)}
+                ${f.pausaActiva ? `<div style="margin-top:8px;background:#fff7ed;color:#9a3412;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;">En pausa desde ${new Date(f.pausaActiva.desde).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · ${opsEsc(f.pausaActiva.motivo || "")}${f.pausaActiva.minutosEstimados ? " · ~" + f.pausaActiva.minutosEstimados + " min" : ""} (${opsEsc(f.pausaActiva.por || "")})</div>` : ""}
+                ${f.tiempoMuertoMin ? `<div style="margin-top:4px;font-size:11px;opacity:.85;">Tiempo muerto acumulado: ${f.tiempoMuertoMin} min en ${(f.tiemposMuertos || []).length} pausa(s)</div>` : ""}
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 18px 0;">
+                ${opsPuedeGestionar() ? btnTop(`opsAbrirModalFolio('${f.id}')`, "Editar folio", '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', true) : ""}
+                ${btnTop(`opsDescargarPdfFolio('${f.id}')`, "PDF del servicio", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', !opsPuedeGestionar())}
+            </div>
+            <div class="opf-body" style="padding:12px 18px 18px;">
+                ${sec("Resumen", `<div class="opf-grid">
+                    ${dato("Fecha programada", fechaProg)}
+                    ${dato("Vencimiento SLA", f.vencimiento ? new Date(f.vencimiento).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—", { verde: "#15803D", rojo: "#E7402B", naranja: "#b45309", gris: "#64748b" }[semaforo.semaforo])}
+                    ${dato("Cliente", opsEsc(f.clienteNombre || "—"))}
+                    ${dato("Empresa que realiza", opsEsc(empresaServ || "—"))}
+                    ${dato("Plaza", opsEsc(plazaServ || "—"))}
+                    ${dato("Duración estimada", durTxt || "—")}
+                </div>`, ico.resumen)}
 
-                ${opsPanelContactoHTML(f)}
-                <div id="ops-panel-garantias"></div>
+                ${sec("Qué se va a hacer", `
+                    <div style="background:var(--opf-suave);border-radius:9px;padding:9px 11px;font-size:13px;font-weight:800;color:#1e293b;">${opsEsc(tituloServ)}</div>
+                    ${listaProg.length > 1 && f.tipoAlta !== "programacion" ? `<ul style="margin:8px 0 0;padding-left:18px;font-size:12px;color:#334155;line-height:1.7;">${listaProg.map(x => `<li>${opsEsc(x.nombre)}${Number(x.cantidad) > 1 ? " × " + Number(x.cantidad) : ""}</li>`).join("")}</ul>` : ""}
+                    ${f.comentarios && String(f.comentarios).trim() ? `<div style="margin-top:10px;"><div class="opf-et">Descripción / indicaciones</div><div style="font-size:12.5px;color:#334155;line-height:1.6;white-space:pre-wrap;margin-top:3px;">${opsEsc(String(f.comentarios).trim())}</div></div>` : `<div style="margin-top:8px;font-size:11.5px;color:#94a3b8;">Sin descripción capturada.</div>`}
+                    ${opsPedidosLigadosHTML(f)}
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                        ${opsPuedeGestionar() ? `<button onclick="opsLigarPedidosAFolio('${f.id}')" style="background:#fff;border:1px solid ${C};color:${COsc};border-radius:7px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;">+ Ligar pedidos de Ventas${(f.pedidosVentas || []).length ? " (" + f.pedidosVentas.length + ")" : ""}</button>` : ""}
+                        ${(f.pedidosVentas || []).length > 1 ? (f.pedidosVentas || []).map(pv => `<button onclick="opsCalVerPdfPedido('${pv.id}')" style="background:var(--opf-suave);border:none;color:${COsc};border-radius:7px;padding:4px 9px;font-size:10.5px;font-weight:700;cursor:pointer;">PDF ${opsEsc(pv.folio || "pedido")}</button>`).join("") : ""}
+                        ${f.pedidoVentasId && (f.pedidosVentas || []).length <= 1 ? `<button onclick="opsCalVerPdfPedido('${f.pedidoVentasId}')" style="background:var(--opf-suave);border:none;color:${COsc};border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF de la venta${f.pedidoVentasFolio ? " · " + opsEsc(f.pedidoVentasFolio) : ""}</button>` : ""}
+                    </div>`, ico.tarea)}
 
-                ${f.estacionCatalogoId ? `
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Estación (del catálogo)</div>
+                ${(f.estacionCatalogoId || opsArcaSitioFolio(f)) ? sec("Estación", `
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
+                        <b style="font-size:13px;color:#1e293b;">${opsEsc(f.estacion || "")}</b><br>
                         ${f.estacionRazonSocial ? `Razón social: ${opsEsc(f.estacionRazonSocial)}<br>` : ""}
                         ${f.estacionPermiso ? `Permiso (PL): ${opsEsc(f.estacionPermiso)}<br>` : ""}
                         ${f.estacionCR ? `CR (OXXO): ${opsEsc(f.estacionCR)}<br>` : ""}
@@ -7867,57 +8056,58 @@
                         ${f.estacionDireccion ? `Dirección: ${opsEsc(f.estacionDireccion)}<br>` : ""}
                         ${(f.estacionNumeroTanques || f.estacionNumeroDispensarios || f.estacionNumeroSondas) ? `Equipo: ${[f.estacionNumeroTanques ? f.estacionNumeroTanques + " tanque(s)" : "", f.estacionNumeroDispensarios ? f.estacionNumeroDispensarios + " dispensario(s)" : "", f.estacionNumeroSondas ? f.estacionNumeroSondas + " sonda(s)" : ""].filter(Boolean).join(" · ")}` : ""}
                     </div>
-                </div>` : ""}
+                    ${opsArcaPanelHTML(f)}`, ico.estacion) : ""}
 
-                ${f.esSCFI ? `
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:8px;">Servicio SCFI</div>
+                ${opsHTMLAccionesFolio(f)}
+                ${opsPuedeGestionar() ? sec("Ajustes rápidos", `<div style="padding-top:8px;">${opsPanelPlazaHTML(f)}${opsPanelServicioHTML(f)}</div>`, ico.ajustes) : ""}
+                ${f.grupoProgramacionId ? opsGrupoPanelHTML(f) : ""}
+                ${f.tipoAlta === "programacion" ? opsProgPanelHTML(f) : ""}
+
+                ${sec(`Equipo asignado${rolesReq !== null ? ` (${tecnicos.length}/${rolesReq})` : ""}`, `
+                    <div id="ops-panel-equipo" style="display:flex;flex-direction:column;gap:8px;">
+                        ${tecnicos.length ? tecnicos.map(t => `<div id="ops-panel-eq-${t.id}" style="background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;">${opsEsc(t.nombre)} <span style="color:#94a3b8;">— cargando vehículo…</span></div>`).join("") : `<div style="font-size:11.5px;color:#94a3b8;">Sin técnicos asignados todavía.</div>`}
+                    </div>
+                    ${rolesReq !== null && tecnicos.length < rolesReq ? `<div style="margin-top:6px;font-size:10.5px;color:#E7402B;font-weight:600;">Falta personal contra lo que pide la receta.</div>` : ""}`, ico.equipo)}
+
+                ${opsPanelContactoHTML(f)}
+                <div id="ops-panel-garantias"></div>
+
+                ${f.esSCFI ? sec("Servicio SCFI", `
                     <div style="font-size:12px;color:#334155;line-height:1.7;">
                         ${[f.hologramas != null ? f.hologramas + " holograma(s)" : "", f.precintos != null ? f.precintos + " precinto(s)" : "", f.distintivos != null ? f.distintivos + " distintivo(s)" : "", f.viaticos != null ? f.viaticos + " viático(s)" : ""].filter(Boolean).join(" · ") || "Sin cantidades capturadas."}
-                    </div>
-                </div>` : ""}
+                    </div>`, ico.tarea) : ""}
 
-                ${(f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#0e7490;margin-bottom:8px;">Gastos de viaje (estimado)</div>
-                    <div style="font-size:12px;color:#334155;line-height:1.7;">
+                ${sec("Traslado y gastos de viaje", `
+                    <div class="opf-grid">
+                        ${dato("Origen", opsEsc(f.trasladoOrigen || "No capturado"))}
+                        ${dato("Destino", opsEsc(f.destino || "No capturado"))}
+                        ${dato("Distancia", f.distanciaKm ? f.distanciaKm + " km" : "No capturado")}
+                        ${dato("Hora de salida", opsEsc(f.horaSalida || "No capturada"))}
+                    </div>
+                    ${(f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
+                    <div style="margin-top:10px;background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;line-height:1.7;">
                         ${f.diasTrabajo ? `Días de viaje: ${f.diasTrabajo}<br>` : ""}
                         ${f.viaticosMonto ? `Viáticos: $${f.viaticosMonto.toLocaleString("es-MX")}<br>` : ""}
                         ${f.hospedajeMonto ? `Hospedaje: $${f.hospedajeMonto.toLocaleString("es-MX")}<br>` : ""}
                         ${f.casetasMonto ? `Casetas/gasolina: $${f.casetasMonto.toLocaleString("es-MX")}<br>` : ""}
                         ${f.gastoEstimado ? `<b>Total estimado: $${f.gastoEstimado.toLocaleString("es-MX")}</b>` : ""}
-                    </div>
-                </div>` : ""}
+                    </div>` : ""}`, ico.ruta)}
 
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Traslado</div>
-                    <div style="font-size:12px;color:#334155;line-height:1.7;">
-                        Origen: ${opsEsc(f.trasladoOrigen || "No capturado")}<br>
-                        Destino: ${opsEsc(f.destino || "No capturado")}<br>
-                        Distancia: ${f.distanciaKm ? f.distanciaKm + " km" : "No capturado"} · Casetas: ${f.casetasMonto ? "$" + f.casetasMonto : "No capturado"}<br>
-                        Hora de salida: ${opsEsc(f.horaSalida || "No capturada")}
-                    </div>
-                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Estos campos todavía se capturan a mano (la integración con GPS es la Fase D).</div>
-                </div>
-
-                ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? `
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Precio y comisiones</div>
+                ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? sec("Precio y comisiones", `
                     <div style="font-size:12px;color:#334155;line-height:1.8;">
                         ${f.precioServicio ? `Precio: <b>${opsDinero(f.precioServicio.precio)}</b> <span style="color:#94a3b8;">(${opsEsc(f.precioServicio.lista || "")})</span><br>` : ""}
                         ${f.costosServicio ? `Total a cobrar: <b>${opsDinero(f.costosServicio.totalCobrar)}</b> · Costo: ${opsDinero(f.costosServicio.costoTotal)} · Utilidad: <b style="color:${f.costosServicio.utilidad >= 0 ? "#15803d" : "#E7402B"};">${opsDinero(f.costosServicio.utilidad)}</b><br>` : ""}
-                        ${(f.comisiones || []).map(c => `Comisión ${opsEsc(c.nombre)}${c.concepto ? " · " + opsEsc(c.concepto) : ""}: <b>${opsDinero(c.monto)}</b>`).join("<br>")}
-                    </div>
-                </div>` : ""}
+                        ${(f.comisiones || []).map(c => `Comisión ${opsEsc(c.nombre)}${c.norma ? " · " + opsEsc(c.norma) : ""}${c.concepto ? " · " + opsEsc(c.concepto) : ""}: <b>${opsDinero(c.monto)}</b>`).join("<br>")}
+                    </div>`, ico.dinero) : ""}
 
-                <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-bottom:16px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Historial</div>
-                    <div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>
+                ${sec("Historial", `<div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>`, ico.historial)}
+
+                <div style="display:flex;gap:8px;">
+                    ${btnTop(`opsDescargarPdfFolio('${f.id}')`, "Descargar PDF", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', false)}
+                    ${opsPuedeGestionar() ? btnTop(`opsAbrirModalFolio('${f.id}')`, "Editar folio", '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', true) : ""}
                 </div>
-
-                <button onclick="opsDescargarPdfFolio('${f.id}')" class="mkt-add-btn" style="background:#E7402B;width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:7px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Descargar PDF del servicio</button>
-                ${opsPuedeGestionar() ? `<button onclick="opsAbrirModalFolio('${f.id}')" class="mkt-add-btn" style="background:#1D2E73;width:100%;">Editar folio</button>` : ""}
             </div>`;
+
 
         opsGarPintarEnPanel(f).catch(e => console.warn("[operaciones.js] garantías en panel:", e.message));
 
@@ -9185,9 +9375,9 @@
         encabezado();
         // Título muy visible: servicio, folio y plaza (16-oct-2026).
         y = opsPdfBloqueServicio(doc, EMP, { W, M, k: KMM, y,
-            servicio: (Array.isArray(f.normasVisita) && f.normasVisita.length > 1 ? "Visita de inspección: " + f.normasVisita.join(" + ") : opsCalTipoTexto(f)),
+            servicio: opsPanelTituloServicio(f),
             folio: [f.folioNumero ? "Servicio N.º " + f.folioNumero : "", f.folioOS ? "O.S. " + f.folioOS : ""].filter(Boolean).join("   ·   ") || "Sin folio",
-            estacion: f.estacion || "", plaza: f.plaza || "Chihuahua" }) + 2;
+            estacion: f.estacion || "", plaza: f.plaza || "Chihuahua", aviso: opsArcaTextoPdf(f) }) + 2;
         // Título + estado
         const est = opsCalEstatusFolio(f);
         doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
@@ -14120,6 +14310,14 @@
         doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
         doc.text("PLAZA", P(px + anchoPlaza / 2), P(py + ph / 2 - 6), { align: "center" });
         doc.setFontSize(16); doc.text(String(o.plaza || "Sin plaza").toUpperCase(), P(px + anchoPlaza / 2), P(py + ph / 2 + 12), { align: "center" });
+        // Aviso naranja (ARCA · Bebidas Mundiales: Gas LP / Gas Natural), debajo del bloque.
+        if (o.aviso) {
+            const ya = y0 + alto + 6;
+            doc.setFillColor(234, 88, 12); doc.roundedRect(P(M), P(ya), P(AN), P(22), P(6), P(6), "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+            doc.text(doc.splitTextToSize(String(o.aviso), P(AN - 24))[0], P(M + 12), P(ya + 14.5));
+            return P(ya + 22 + 12);
+        }
         return P(y0 + alto + 12);
     }
     function opsViaFolioServicio(ref) {
@@ -15098,7 +15296,7 @@
             servicio: (s.tarifas && s.tarifas.servicioTexto) || opsViaServicioTexto(s.folio_servicio) || "Servicio sin especificar",
             folio: [s.folio_servicio ? "Servicio " + opsViaFolioLegible(s.folio_servicio) : "Sin servicio ligado", "Solicitud " + (s.folio || "")].filter(Boolean).join("   ·   "),
             estacion: (foServ && foServ.estacion) || s.destino || "",
-            plaza: (foServ && foServ.plaza) || opsPlazaDeTexto(s.destino || "", false) || "Chihuahua" });
+            plaza: (foServ && foServ.plaza) || opsPlazaDeTexto(s.destino || "", false) || "Chihuahua", aviso: foServ ? opsArcaTextoPdf(foServ) : "" });
 
         // ── Tarjetas de resumen: lo que Pagos deposita y lo que Ingresos cobra ──
         const anchoT = (AN - 12) / 2, altoT = 64;
