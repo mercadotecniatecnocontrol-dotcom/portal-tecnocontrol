@@ -6123,10 +6123,15 @@
     }
 
     // Cuenta choques reales: mismo técnico con dos folios cuyo horario se traslapa el mismo día.
+    // Programación ABIERTA (16-oct-2026, Glen): "Atención a folios" y "Guardia" no son un lugar,
+    // son disponibilidad. El técnico puede tener otros servicios ese día y atender el folio que
+    // salga según su prioridad: NO cuenta como choque ni bloquea su agenda.
+    function opsFolioEsAbierto(f) { return !!f && (f.conceptoGeneral === "Atención a folios" || f.conceptoGeneral === "Guardia"); }
     function opsCalDetectarChoques() {
         const porTecnicoDia = new Map();
         let choques = 0;
         opsCalFoliosFiltrados().forEach(f => {
+            if (opsFolioEsAbierto(f)) return;
             const d0 = opsCalDatosFolio(f);
             if (!d0) return;
             const fin0 = opsFolioFechaFin(f);
@@ -9130,17 +9135,12 @@
             if (isNaN(d)) return String(v);
             return d.toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", ...(String(v).length > 10 ? { hour: "2-digit", minute: "2-digit" } : {}) });
         };
+        // Encabezado con logo y razón social de la empresa del servicio (16-oct-2026).
+        const EMP = opsEmpresaDeFolio(f);
+        const KMM = 0.352778;
         const encabezado = () => {
-            doc.setFillColor(...NAVY); doc.rect(0, 0, W, 26, "F");
-            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-            doc.text("HEDMA TECNOCONTROL", M, 11);
-            doc.setFont("helvetica", "normal"); doc.setFontSize(9);
-            doc.text("Operaciones · Ficha de servicio", M, 17);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(10);
-            doc.text(limpio(f.folioOS ? "O.S. " + f.folioOS : "Folio " + f.id.slice(0, 8).toUpperCase()), W - M, 11, { align: "right" });
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-            doc.text("Generado: " + new Date().toLocaleString("es-MX"), W - M, 17, { align: "right" });
-            y = 34;
+            y = opsPdfEncabezadoEmpresa(doc, EMP, { W, M, k: KMM, tipo: "FICHA DE SERVICIO",
+                linea: (f.folioNumero ? "N.º " + f.folioNumero + "  ·  " : "") + "Generado: " + new Date().toLocaleString("es-MX") }) + 6;
         };
         const salto = h => { if (y + h > ALTO - 16) { doc.addPage(); encabezado(); } };
         const seccion = t => {
@@ -9177,6 +9177,11 @@
         };
 
         encabezado();
+        // Título muy visible: servicio, folio y plaza (16-oct-2026).
+        y = opsPdfBloqueServicio(doc, EMP, { W, M, k: KMM, y,
+            servicio: (Array.isArray(f.normasVisita) && f.normasVisita.length > 1 ? "Visita de inspección: " + f.normasVisita.join(" + ") : opsCalTipoTexto(f)),
+            folio: [f.folioNumero ? "Servicio N.º " + f.folioNumero : "", f.folioOS ? "O.S. " + f.folioOS : ""].filter(Boolean).join("   ·   ") || "Sin folio",
+            estacion: f.estacion || "", plaza: f.plaza || "Chihuahua" }) + 2;
         // Título + estado
         const est = opsCalEstatusFolio(f);
         doc.setTextColor(...TINTA); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
@@ -9920,7 +9925,8 @@
                 const x = opsCalDatosFolioDia(f, d); if (!x) return null;
                 const dur = (x.traslado || 0) + (x.ejecucion || 0);
                 const ini = x.horaDecimal, fin = ini + (dur > 0 ? dur : 1);
-                return { ini, fin, estacion: f.estacion || "", choca: !!nuevo && nuevo.ini < fin && nuevo.fin > ini };
+                const abierto = opsFolioEsAbierto(f) || (opsAS && (opsAS.conceptoGeneral === "Atención a folios" || opsAS.conceptoGeneral === "Guardia"));
+                return { ini, fin, estacion: (f.estacion || "") + (opsFolioEsAbierto(f) ? " (abierta)" : ""), choca: !abierto && !!nuevo && nuevo.ini < fin && nuevo.fin > ini };
             }).filter(Boolean).sort((a, b) => a.ini - b.ini);
     }
     function opsAsAgendaTxt(ag) { return ag.map(a => `${opsAsHoraTxt(a.ini)}–${opsAsHoraTxt(a.fin)} ${a.estacion}`).join(" · "); }
@@ -10011,9 +10017,10 @@
                 </div>
                 ${e.permiso ? "" : `<div class="opsas-note opsas-warn">Esta estación no tiene PL en el catálogo. Si lo capturas, se guarda en el folio y en el catálogo.</div>`}
                 ${hermanas.length ? `<div class="opsas-note">Esta razón social tiene ${hermanas.length + 1} estaciones: ${[e, ...hermanas].map(x => opsEsc(x.nombreComercial || x.razonSocial)).join(", ")}.</div>` : ""}
-            </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.conceptoGeneral ? "<b>Concepto general:</b> el técnico queda ocupado esos días sin una estación fija." : s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} ${s.conceptoGeneral ? "" : `<button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button>`}</div>`}
+            </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.conceptoGeneral ? (s.conceptoGeneral === "Atención a folios" || s.conceptoGeneral === "Guardia" ? "<b>Programación abierta:</b> no se liga a ninguna estación ni razón social. El técnico puede tener otros servicios esos días y atiende los folios que salgan según su prioridad; no cuenta como choque. Cada folio que atienda se le liga después." : "<b>Concepto general:</b> el técnico queda ocupado esos días sin una estación fija.") : s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} ${s.conceptoGeneral ? "" : `<button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button>`}</div>`}
             ${e ? "" : `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
                 <span style="font-size:11.5px;color:#64748b;font-weight:700;">Sin estación fija:</span>
+                ${opsAsClientesAtencionHTML()}
                 ${OPS_CONCEPTOS_GENERALES.map(c => `<button type="button" onclick="opsAsConceptoGeneral('${c}')" style="border:1.5px solid ${s.conceptoGeneral === c ? "#1D2E73" : "#cbd5e1"};background:${s.conceptoGeneral === c ? "#1D2E73" : "#fff"};color:${s.conceptoGeneral === c ? "#fff" : "#334155"};border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">${c}</button>`).join("")}
             </div>`}
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
@@ -10278,6 +10285,25 @@
     // "Atención a folios" (los folios de Petro 7 salen durante el día y no se sabe dónde). El técnico
     // queda ocupado en el calendario esos días; los folios que atienda se le ligan después.
     const OPS_CONCEPTOS_GENERALES = ["Traslado", "Atención a folios", "Guardia", "Capacitación", "Proyecto interno"];
+    // Atención a folios (16-oct-2026, Miguel): se programa por CLIENTE (ej. Servicios Gasolineros / OXXO GAS
+    // y Petromax / Petro 7), sin estaciones: todavía no se sabe qué folios ni dónde. Los folios del día se ligan después.
+    window.opsAsClienteAtencion = function (nombre) {
+        const s = opsAS; if (!s) return;
+        const l = Array.isArray(s.clientesAtencion) ? s.clientesAtencion : (s.clientesAtencion = []);
+        const i = l.indexOf(nombre); if (i >= 0) l.splice(i, 1); else l.push(nombre);
+        s.estTexto = "Atención a folios" + (l.length ? " · " + l.join(" + ") : "");
+        opsAsPintar();
+    };
+    function opsAsClientesAtencionHTML() {
+        const s = opsAS; if (!s || s.conceptoGeneral !== "Atención a folios") return "";
+        const nombres = [...new Set((cacheClientes || []).map(c => c.nombre).filter(Boolean))].sort(opsAsAlfa);
+        const l = s.clientesAtencion || [];
+        return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
+            <span style="font-size:11.5px;color:#64748b;font-weight:700;">¿De qué clientes atiende folios?</span>
+            ${nombres.map(n => `<button type="button" onclick="opsAsClienteAtencion('${opsEsc(n).replace(/'/g, "")}')" style="border:1.5px solid ${l.includes(n) ? "#0e7490" : "#cbd5e1"};background:${l.includes(n) ? "#0e7490" : "#fff"};color:${l.includes(n) ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">${opsEsc(n)}</button>`).join("")}
+            <span style="font-size:10.5px;color:#94a3b8;">sin estaciones: los folios del día se ligan después</span>
+        </div>`;
+    }
     window.opsAsConceptoGeneral = function (c) {
         const s = opsAS; if (!s) return;
         if (s.conceptoGeneral === c) { s.conceptoGeneral = null; s.estTexto = ""; }
@@ -10288,7 +10314,7 @@
             s.conceptoGeneral = c; s.est = null; s.estTexto = "Traslado a " + (destino.trim() || "destino por definir"); s.plNuevo = "";
             if (!s.dur) { s.dur = "8"; s.durU = "h"; }
         }
-        else { s.conceptoGeneral = c; s.est = null; s.estTexto = c; s.plNuevo = ""; }
+        else { s.conceptoGeneral = c; s.est = null; s.estTexto = c; s.plNuevo = ""; if (c === "Atención a folios" && !Array.isArray(s.clientesAtencion)) s.clientesAtencion = []; }
         opsAsPintar();
     };
     function opsAsMultiSwitchHTML_aviso() {
@@ -10327,6 +10353,29 @@
         const t = (document.getElementById("opsas-est")?.value || "").trim(); if (!t) return;
         s.estaciones.push({ est: null, texto: t }); s.estTexto = ""; opsAsPintar();
     };
+    // Nombre comercial / coloquial (16-oct-2026, Miguel): con muchas estaciones de una misma razón social
+    // (ej. Petromax) solo con el PL no se sabe cuál es Cumbres, Sima o Prieto Luján. Se muestra
+    // "Nombre · PL" y, si la estación no tiene nombre, se le pone ahí mismo (queda en el catálogo para todos).
+    function opsEstSinNombre(e) { return !e || !String(e.nombreComercial || "").trim() || opsAsRsClave(e.nombreComercial) === opsAsRsClave(e.razonSocial); }
+    function opsEstTitulo(e) { if (!e) return ""; return opsEstSinNombre(e) ? (e.permiso ? e.permiso : (e.razonSocial || "")) : e.nombreComercial; }
+    window.opsAsNombrarEstacion = async function (id) {
+        const cat = window.__opsAsEstCatalogo || [];
+        const e = cat.find(x => x.id === id) || (opsAS && opsAS.estaciones.map(x => x.est).find(x => x && x.id === id)) || (opsAS && opsAS.est && opsAS.est.id === id ? opsAS.est : null);
+        if (!e) return;
+        const nombre = (prompt(`¿Cómo conocemos esta estación?\n${e.razonSocial || ""} · ${e.permiso || "sin PL"} · ${e.municipio || ""}\n\nEj. Cumbres, Sima, Prieto Luján`, opsEstSinNombre(e) ? "" : e.nombreComercial) || "").trim();
+        if (!nombre) return;
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("estaciones_servicio").update({ nombre_comercial: nombre, actualizado_en: new Date().toISOString() }).eq("id", id);
+            if (error) throw error;
+            try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, "estaciones_servicio", id), { nombreComercial: nombre }); } catch (x) { /* la copia de Firestore puede no existir con ese id */ }
+            e.nombreComercial = nombre;
+            cat.forEach(x => { if (x.id === id) x.nombreComercial = nombre; });
+            if (opsAS) opsAS.estaciones.forEach(x => { if (x.est && x.est.id === id) { x.est.nombreComercial = nombre; x.texto = nombre; } });
+            try { await opsAuditar("estaciones", id, "nombre_comercial", null, nombre); } catch (x) {}
+            opsAsPintar();
+        } catch (err) { alert("No se pudo guardar el nombre: " + (err.message || err)); }
+    };
     function opsAsPaso2MultiHTML(numero, cls) {
         const s = opsAS;
         return `
@@ -10341,8 +10390,8 @@
             ${s.estaciones.length ? `<div class="opsas-list" style="margin-top:10px;">${s.estaciones.map((x, i) => `
                 <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9;">
                     <span class="opsas-pill" style="min-width:22px;justify-content:center;">${i + 1}</span>
-                    <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(x.texto)}</div>
-                    <div style="font-size:10.5px;color:#64748b;">${x.est ? opsEsc([x.est.razonSocial, x.est.municipio, x.est.permiso || "sin PL"].filter(Boolean).join(" · ")) : "Escrita a mano (fuera del catálogo)"}</div></div>
+                    <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:700;color:#1e293b;">${x.est ? `${opsEsc(opsEstSinNombre(x.est) ? "Sin nombre comercial" : x.est.nombreComercial)} <span style="color:#1D2E73;">· ${opsEsc(x.est.permiso || "sin PL")}</span>${opsEstSinNombre(x.est) ? ` <button type="button" onclick="opsAsNombrarEstacion('${opsEsc(x.est.id)}')" style="margin-left:6px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:1px 8px;font-size:10.5px;font-weight:700;cursor:pointer;">Ponerle nombre</button>` : ""}` : opsEsc(x.texto)}</div>
+                    <div style="font-size:10.5px;color:#64748b;">${x.est ? opsEsc([x.est.razonSocial, x.est.municipio].filter(Boolean).join(" · ")) : "Escrita a mano (fuera del catálogo)"}</div></div>
                     <button type="button" onclick="opsAsMultiQuitar(${i})" title="Quitar" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">${OPS_SVG('<path d="M18 6 6 18M6 6l12 12"/>', 12)}</button>
                 </div>`).join("")}</div>` : `<div class="opsas-note opsas-warn">Agrega al menos una estación.</div>`}
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
@@ -10552,7 +10601,7 @@
                     html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10px;font-weight:800;letter-spacing:.4px;color:#94a3b8;background:#f8fafc;text-transform:uppercase;"><span style="flex:1;">${opsEsc(e.razonSocial || "Sin razón social")}${nRs > 1 ? ` · ${nRs} estaciones` : ""}</span>${multi && e.razonSocial && nRs > 1 ? `<span onmousedown="event.preventDefault();opsAsMultiAgregarRS(${iRs})" style="cursor:pointer;background:#1D2E73;color:#fff;border-radius:999px;padding:3px 9px;letter-spacing:0;text-transform:none;font-size:10.5px;">+ Agregar las ${nRs}</span>` : ""}</div>`;
                     rsPrev = opsAsRsClave(e.razonSocial);
                 }
-                html += `<div class="opsas-opt" onmousedown="opsAsElegirEstacion('${e.id}')"><b>${opsEsc(e.nombreComercial || e.razonSocial)}</b><small>${opsEsc(e.municipio || "")}${e.permiso ? " · " + opsEsc(e.permiso) : " · sin PL"}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</small></div>`;
+                html += `<div class="opsas-opt" onmousedown="opsAsElegirEstacion('${e.id}')"><b>${opsEsc(opsEstSinNombre(e) ? "Sin nombre comercial" : e.nombreComercial)}${e.permiso ? ` <span style="color:#1D2E73;">· ${opsEsc(e.permiso)}</span>` : ""}</b><small>${opsEsc(e.municipio || "")}${e.permiso ? " · " + opsEsc(e.permiso) : " · sin PL"}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</small></div>`;
             });
             box.innerHTML = html + optAlta; box.style.display = "block";
         });
@@ -10569,7 +10618,7 @@
             setTimeout(() => { const i = document.getElementById("opsas-est"); if (i) i.focus(); }, 30);
             return;
         }
-        s.est = e; s.estTexto = e.nombreComercial || e.razonSocial || ""; s.conceptoGeneral = null;
+        s.est = e; s.estTexto = opsEstSinNombre(e) ? [e.razonSocial, e.permiso].filter(Boolean).join(" · ") : e.nombreComercial; s.conceptoGeneral = null;
         s.dispensarios = e.numeroDispensarios ? String(e.numeroDispensarios) : s.dispensarios;
         opsAsAutoDuracionDispensarios();
         if (!s.plazaManual) s.plaza = opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.nombreComercial, e.direccionNormalizada, e.zona].join(" "), false) || "Chihuahua";
@@ -10832,14 +10881,28 @@
     window.opsNeGuardar = async function () {
         const n = opsNE; if (!n || n.guardando) return;
         const err = msg => { const el = document.getElementById("opsne-error"); if (el) { el.style.display = "block"; el.innerHTML = msg; } else alert(msg); };
+        // Candado (16-oct-2026, Glen): solo se dan de alta estaciones con información REAL y COMPLETA.
         const falta = [];
+        const pl = String(n.permiso || "").trim().toUpperCase();
+        if (!n.nombreComercial.trim()) falta.push("nombre comercial (con el que identificamos la estación, ej. Parador Los Mezquites)");
         if (!n.razonSocial.trim()) falta.push("razón social");
+        if (!pl) falta.push("PL / permiso CRE");
+        else if (!/^PL\/\d{2,6}\/EXP\/ES\/\d{4}/.test(pl.replace(/\s+/g, ""))) falta.push("PL con formato válido (ej. PL/5667/EXP/ES/2015)");
         if (!n.direccion.trim()) falta.push("calle y número");
+        if (!/^\d{5}$/.test(String(n.cp || "").trim())) falta.push("código postal (5 dígitos)");
         if (!n.municipio.trim()) falta.push("municipio");
-        if (falta.length) { err("Falta: " + falta.join(", ") + "."); return; }
+        if (!n.lat || !n.lng) falta.push("ubicación en el mapa");
+        if (!n.encargado.trim()) falta.push("encargado de la estación");
+        if (String(n.telefono || "").replace(/\D/g, "").length < 10) falta.push("teléfono del encargado (10 dígitos)");
+        if (!(Number(n.dispensarios) > 0)) falta.push("número de dispensarios");
+        if (!(Number(n.tanques) > 0)) falta.push("número de tanques");
+        if (falta.length) { err("Para dar de alta la estación falta:<br>• " + falta.join("<br>• ")); return; }
+        n.permiso = pl.replace(/\s+/g, "");
         const dup = opsNeDuplicado();
+        if (dup && dup.permiso && String(dup.permiso).replace(/\s+/g, "").toUpperCase() === n.permiso) {
+            err(`Ese PL ya existe en el catálogo: <b>${opsEsc(dup.nombreComercial || dup.razonSocial)}</b>. Búscala por su nombre en lugar de darla de alta otra vez.`); return;
+        }
         if (dup && !confirm(`Ya existe "${dup.nombreComercial || dup.razonSocial}"${dup.permiso ? " (" + dup.permiso + ")" : ""} en el catálogo.\n\n¿Dar de alta otra de todos modos?`)) return;
-        if (!n.lat && !confirm("La estación no tiene ubicación en el mapa. Sin ubicación no saldrá en los mapas ni se podrán calcular viáticos.\n\n¿Guardar así?")) return;
         n.guardando = true;
         const btn = document.getElementById("opsne-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
         const ahora = new Date().toISOString(), yo = opsUsuarioActual();
@@ -11046,6 +11109,7 @@
             folioOS: s.os.trim(),
             estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
             conceptoGeneral: !e && s.conceptoGeneral ? s.conceptoGeneral : null,
+            clientesAtencion: !e && s.conceptoGeneral === "Atención a folios" && (s.clientesAtencion || []).length ? s.clientesAtencion.slice() : null,
             estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
             estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
             estacionDireccion: e?.direccionNormalizada || (e ? null : s.estTexto.trim()), estacionRazonSocial: e?.razonSocial || null,
@@ -11251,7 +11315,7 @@
                     s.comisiones = (respaldo.comisiones || []).filter(c => (normas.length > 1 && c.norma) ? c.norma === normas[j] : j === 0);
                     const r = opsAsArmarDatos(receta);
                     tecs = r.tecs; if (orden === 1) durH0 = r.durH;
-                    const datos = { ...r.datos, estacion: e ? (e.nombreComercial || e.razonSocial) : x.texto,
+                    const datos = { ...r.datos, estacion: e ? (opsEstSinNombre(e) ? [e.razonSocial, e.permiso].filter(Boolean).join(" · ") : e.nombreComercial) : x.texto,
                         grupoProgramacionId: grupoId, grupoTotal: total, grupoOrden: orden,
                         ventanaInicio: ventanaIni, ventanaFin, ordenLibre: multi,
                         visitaConjunta: normas.length > 1, normasVisita: normas.length > 1 ? normas : null };
@@ -13913,11 +13977,108 @@
         const prog = (fo.serviciosProgramados || []).map(x => x && (x.nombre || x.desc || x.servicio)).filter(Boolean).join(", ");
         return normas || prog || (typeof opsCalTipoTexto === "function" ? opsCalTipoTexto(fo) : "") || fo.comentarios || "";
     }
-    // Encabezado del PDF según la empresa que entrega el viático.
-    const OPS_VIA_EMPRESA_PDF = {
-        "Tecnocontrol": ["HEDMA TECNOCONTROL", "S.A. DE C.V."], "JOMAR": ["JOMAR VERIFICACIONES", ""],
-        "VH Verificaciones": ["VH VERIFICACIONES", ""], "TecnoLab": ["TECNOLAB ENSAYO Y CALIBRACIÓN", "S.A. DE C.V."],
+    // ═══ Empresas del grupo para los PDF (16-oct-2026, Glen) ═══
+    // Cada PDF sale con el logo, colores, razón social, RFC y domicilio fiscal de la empresa que
+    // corresponde (datos de las Constancias de Situación Fiscal). Logos pequeños (PNG ~9 KB).
+    const OPS_LOGO_VH_B64 = "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";
+    const OPS_LOGO_DESARROLLOS_B64 = "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";
+    const OPS_EMPRESAS_DOC = {
+        tecno: { corto: "Tecnocontrol", razon: "HEDMA TECNOCONTROL, S.A. DE C.V.", rfc: "HTE1107133B3",
+            dom: "Av. Fuerza Aérea Mexicana 7030 Int. B3, Col. Tabalaopa, C.P. 31376, Chihuahua, Chih.",
+            color: [29, 46, 115], acento: [231, 64, 43], logo: () => window.LOGO_TECNOCONTROL_B64 ? { b64: window.LOGO_TECNOCONTROL_B64, ratio: 24 / 7.14 } : null },
+        jomar: { corto: "JOMAR", razon: "JOMAR VERIFICACIONES, S. DE R.L. DE C.V.", rfc: "JVE120530F55",
+            dom: "Av. Fuerza Aérea Mexicana 7030 Int. B2, Col. Tabalaopa, C.P. 31376, Chihuahua, Chih.",
+            color: [24, 24, 27], acento: [232, 137, 43], logo: () => null, logoTexto: ["JOMAR", "V E R I F I C A C I O N E S"] },
+        vh: { corto: "VH Verificaciones", razon: "VH VERIFICACIÓN DE HIDROCARBUROS, S.A. DE C.V.", rfc: "LES210319D32",
+            dom: "Calle Monte Domo 301, Col. Francisco Garza Sada, C.P. 66490, San Nicolás de los Garza, N.L.",
+            color: [6, 90, 112], acento: [149, 181, 36], logo: () => ({ b64: OPS_LOGO_VH_B64, ratio: 193 / 200 }) },
+        desarrollos: { corto: "Desarrollos", razon: "DESARROLLOS Y CONSTRUCCIONES TECNO-CONTROL ML, S.A. DE C.V.", rfc: "DCT2301067TA",
+            dom: "Calle González Cossío 4104, Col. Las Granjas, C.P. 31100, Chihuahua, Chih.",
+            color: [10, 26, 79], acento: [244, 196, 48], logo: () => ({ b64: OPS_LOGO_DESARROLLOS_B64, ratio: 238 / 200 }) },
+        tecnolab: { corto: "TecnoLab", razon: "TECNOLAB ENSAYO Y CALIBRACIÓN, S.A. DE C.V.", rfc: "", dom: "Chihuahua, Chih.",
+            color: [29, 46, 115], acento: [231, 64, 43], logo: () => null, logoTexto: ["TECNOLAB", "E N S A Y O   Y   C A L I B R A C I Ó N"] },
     };
+    function opsEmpresaDoc(nombre) {
+        const t = opsAsNorm(nombre || "");
+        if (/\bvh\b|hidrocarb/.test(t)) return OPS_EMPRESAS_DOC.vh;
+        if (/jomar/.test(t)) return OPS_EMPRESAS_DOC.jomar;
+        if (/desarroll|construcc/.test(t)) return OPS_EMPRESAS_DOC.desarrollos;
+        if (/tecnolab/.test(t)) return OPS_EMPRESAS_DOC.tecnolab;
+        return OPS_EMPRESAS_DOC.tecno;
+    }
+    function opsEmpresaDeFolio(f) {
+        if (!f) return OPS_EMPRESAS_DOC.tecno;
+        if (f.empresaServicio || f.pedidoVentasEmpresa) return opsEmpresaDoc(f.empresaServicio || f.pedidoVentasEmpresa);
+        try { if (opsEsFolioJomar(f)) return OPS_EMPRESAS_DOC.jomar; } catch (e) {}
+        return OPS_EMPRESAS_DOC.tecno;
+    }
+    // Encabezado con logo + franja de razón social. Funciona en pt (k=1) y en mm (k=0.352778).
+    // Regresa la "y" (en las unidades del documento) donde termina.
+    function opsPdfEncabezadoEmpresa(doc, emp, o) {
+        const k = o.k || 1, W = o.W / k, M = o.M / k;
+        const P = v => v * k;
+        doc.setFillColor(...emp.acento); doc.rect(0, 0, P(W), P(5), "F");
+        let logoOk = false;
+        const lg = emp.logo && emp.logo();
+        if (lg && lg.b64) {
+            const h = 54, w = Math.min(160, h * lg.ratio);
+            try { doc.addImage("data:image/png;base64," + lg.b64, "PNG", P(M), P(12), P(w), P(w / lg.ratio)); logoOk = true; } catch (e) {}
+        }
+        if (!logoOk) {
+            const tx = emp.logoTexto || [emp.corto.toUpperCase(), ""];
+            doc.setTextColor(...emp.color); doc.setFont("times", "bold"); doc.setFontSize(28); doc.text(tx[0], P(M), P(44));
+            if (tx[1]) { doc.setTextColor(...emp.acento); doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.text(tx[1], P(M + 1), P(57)); }
+        }
+        doc.setTextColor(...emp.color); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+        doc.text(o.tipo || "", P(W - M), P(30), { align: "right" });
+        doc.setTextColor(100, 116, 139); doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+        if (o.linea) doc.text(o.linea, P(W - M), P(44), { align: "right" });
+        if (o.estatus) {
+            const est = String(o.estatus).toUpperCase();
+            doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+            const wEst = doc.getTextWidth(est) / k + 16;
+            doc.setFillColor(...emp.color); doc.roundedRect(P(W - M - wEst), P(50), P(wEst), P(15), P(7), P(7), "F");
+            doc.setTextColor(255, 255, 255); doc.text(est, P(W - M - wEst / 2), P(60), { align: "center" });
+        }
+        doc.setFillColor(...emp.color); doc.rect(0, P(72), P(W), P(32), "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(emp.razon, P(M), P(86));
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+        doc.text([emp.rfc ? "RFC " + emp.rfc : "", emp.dom].filter(Boolean).join("   ·   "), P(M), P(98));
+        return P(104);
+    }
+    // Bloque grande: NOMBRE DEL SERVICIO (título), folio, estación y PLAZA bien visibles.
+    function opsPdfBloqueServicio(doc, emp, o) {
+        const k = o.k || 1, W = o.W / k, M = o.M / k, y0 = o.y / k;
+        const P = v => v * k;
+        const AN = W - 2 * M, anchoPlaza = 128;
+        doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+        const lineas = doc.splitTextToSize(String(o.servicio || "Servicio"), P(AN - anchoPlaza - 34)).slice(0, 2);
+        const alto = 50 + lineas.length * 19 + (o.estacion ? 12 : 0);
+        doc.setFillColor(248, 250, 252); doc.setDrawColor(...emp.color); doc.setLineWidth(P(1.2));
+        doc.roundedRect(P(M), P(y0), P(AN), P(alto), P(8), P(8), "FD");
+        doc.setFillColor(...emp.acento); doc.rect(P(M), P(y0), P(6), P(alto), "F");
+        doc.setTextColor(100, 116, 139); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text("SERVICIO A REALIZAR", P(M + 18), P(y0 + 16));
+        doc.setTextColor(...emp.color); doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+        doc.text(lineas, P(M + 18), P(y0 + 35));
+        let yy = y0 + 35 + (lineas.length - 1) * 19 + 15;
+        doc.setTextColor(30, 41, 59); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.text(String(o.folio || "Sin folio"), P(M + 18), P(yy));
+        if (o.estacion) { doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(71, 85, 105); doc.text(doc.splitTextToSize(String(o.estacion), P(AN - anchoPlaza - 34))[0], P(M + 18), P(yy + 12)); }
+        // Plaza: recuadro de color, letras grandes
+        const px = W - M - anchoPlaza - 10, py = y0 + 10, ph = alto - 20;
+        doc.setFillColor(...emp.color); doc.roundedRect(P(px), P(py), P(anchoPlaza), P(ph), P(7), P(7), "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+        doc.text("PLAZA", P(px + anchoPlaza / 2), P(py + ph / 2 - 6), { align: "center" });
+        doc.setFontSize(16); doc.text(String(o.plaza || "Sin plaza").toUpperCase(), P(px + anchoPlaza / 2), P(py + ph / 2 + 12), { align: "center" });
+        return P(y0 + alto + 12);
+    }
+    function opsViaFolioServicio(ref) {
+        if (!ref) return null;
+        const lista = (typeof cacheFolios !== "undefined" && cacheFolios.length ? cacheFolios : (typeof opsViaFoliosSb !== "undefined" ? opsViaFoliosSb || [] : []));
+        return lista.find(x => x.id === ref || (x.folioOS && x.folioOS === ref)) || null;
+    }
     function opsViaFolioLegible(ref) {
         if (!ref) return "";
         const lista = (typeof cacheFolios !== "undefined" && cacheFolios.length ? cacheFolios : (typeof opsViaFoliosSb !== "undefined" ? opsViaFoliosSb || [] : []));
@@ -14026,7 +14187,7 @@
         return { si, no, totalSi: sum(si), totalNo: sum(no) };
     }
     function opsViaCobroCliente(s) { return s && s.cobro_cliente != null ? Number(s.cobro_cliente) : (Number(s && s.total) || 0); }
-    const OPS_VIA_EMPRESAS = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "TecnoLab"];
+    const OPS_VIA_EMPRESAS = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "Desarrollos", "TecnoLab"];
     function opsViaHTMLBloques() {
         const f = opsViaForm;
         const sel = (campo, val, vacio) => `<select onchange="opsViaCampo('${campo}', this.value, true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;margin-top:3px;box-sizing:border-box;">${vacio ? `<option value="">${vacio}</option>` : ""}${OPS_VIA_EMPRESAS.map(e => `<option ${e === val ? "selected" : ""}>${e}</option>`).join("")}</select>`;
@@ -14730,7 +14891,7 @@
             estatus: "Pendiente",
             solicitante_email: opsUsuarioActual(), solicitante_nombre: opsNombreActual(),
             folio_servicio: f.folioServicio || null, cliente: f.cliente || (f.estacion ? f.estacion.razon_social : null),
-            destino: f.destinoTexto, motivo: opsViaServicioTexto(f.folioServicio) || null,
+            destino: f.destinoTexto, motivo: null,
             fecha_salida: f.salida.slice(0, 10), fecha_regreso: (f.regreso || f.salida).slice(0, 10),
             dias: Math.max(1, opsViaNum(f.noches) + 1), personas: f.personas,
             integrantes: f.tecnicos.map(t => t.nombre).join(", "),
@@ -14743,6 +14904,7 @@
             hotel_modo: f.noches > 0 ? (f.hotelModo || "deposito") : null, hotel_nombre: f.hotelNombre || null,
             notas: f.notas || null,
             tarifas: {
+                servicioTexto: opsViaServicioTexto(f.folioServicio) || null,
                 requiereViaticos: !!f.requiere, salida: f.salida, regreso: f.regreso, horasServicio: opsViaNum(f.horasServicio), horasIda: opsViaNum(f.horasIda),
                 noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNocheTotal), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
                 habitaciones: { sencillas: f.habSencillas, precioSencilla: opsViaNum(f.precioSencilla), dobles: f.habDobles, precioDoble: opsViaNum(f.precioDoble) },
@@ -14826,7 +14988,7 @@
         return `SOLICITUD DE VIÁTICOS ${s.folio}\n`
             + `Solicita: ${s.solicitante_nombre || s.solicitante_email || ""}\n`
             + `Viáticos salen de: ${s.empresa_entrega || "Tecnocontrol"}\n`
-            + `Servicio: ${s.motivo || opsViaServicioTexto(s.folio_servicio) || "—"}\n`
+            + `Servicio: ${(s.tarifas && s.tarifas.servicioTexto) || opsViaServicioTexto(s.folio_servicio) || "—"}\n`
             + `Destino: ${s.destino || ""}${s.folio_servicio ? " (servicio " + s.folio_servicio + ")" : ""}\n`
             + `Personal (${s.personas}): ${s.integrantes || ""}\n`
             + `Salida: ${(t.salida || s.fecha_salida || "").replace("T", " ")} · Regreso: ${(t.regreso || s.fecha_regreso || "").replace("T", " ")}\n`
@@ -14861,34 +15023,28 @@
         let y;
 
         // ── Encabezado ──
-        const encabezado = () => {
-            doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 72, "F");
-            doc.setFillColor(...PDF_ROJO); doc.rect(0, 72, W, 3, "F");
-            doc.setTextColor(255, 255, 255);
-            const empPdf = OPS_VIA_EMPRESA_PDF[s.empresa_entrega] || (s.empresa_entrega ? [String(s.empresa_entrega).toUpperCase(), ""] : OPS_VIA_EMPRESA_PDF.Tecnocontrol);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(empPdf[0], M, 32);
-            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text((empPdf[1] ? empPdf[1] + "  ·  " : "") + "Departamento de Operaciones", M, 47);
-            doc.setFontSize(8); doc.text("Chihuahua, Chihuahua, México", M, 59);
-            doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text("SOLICITUD DE VIÁTICOS", W - M, 30, { align: "right" });
-            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Folio " + (s.folio || s.id) + "  ·  " + fecha(s.creado_en || new Date().toISOString()), W - M, 45, { align: "right" });
-            const est = s.estatus || "Pendiente";
-            doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-            const wEst = doc.getTextWidth(est.toUpperCase()) + 14;
-            doc.setFillColor(255, 255, 255); doc.roundedRect(W - M - wEst, 51, wEst, 14, 7, 7, "F");
-            doc.setTextColor(...PDF_AZUL); doc.text(est.toUpperCase(), W - M - wEst / 2, 60.5, { align: "center" });
-        };
-        const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 60) { doc.addPage(); encabezado(); y = 100; } };
+        // Encabezado con logo, colores y razón social de la empresa que entrega el viático (16-oct-2026).
+        const EMP = opsEmpresaDoc(s.empresa_entrega);
+        const foServ = opsViaFolioServicio(s.folio_servicio);
+        const encabezado = () => opsPdfEncabezadoEmpresa(doc, EMP, { W, M, tipo: "SOLICITUD DE VIÁTICOS",
+            linea: "Folio " + (s.folio || s.id) + "  ·  " + fecha(s.creado_en || new Date().toISOString()), estatus: s.estatus || "Pendiente" });
+        const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 60) { doc.addPage(); y = encabezado() + 14; } };
         const titulo = txt => {
             nuevaPaginaSiHaceFalta(36);
             y += 6;
-            doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(txt.toUpperCase(), M, y);
-            doc.setDrawColor(...PDF_ROJO); doc.setLineWidth(1.5); doc.line(M, y + 5, M + 34, y + 5);
+            doc.setTextColor(...EMP.color); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(txt.toUpperCase(), M, y);
+            doc.setDrawColor(...EMP.acento); doc.setLineWidth(1.5); doc.line(M, y + 5, M + 34, y + 5);
             doc.setDrawColor(...LINEA); doc.setLineWidth(0.5); doc.line(M + 36, y + 5, W - M, y + 5);
             y += 18;
         };
 
-        encabezado();
-        y = 98;
+        y = encabezado() + 10;
+        // Título muy visible: servicio que se va a atender, folio y plaza.
+        y = opsPdfBloqueServicio(doc, EMP, { W, M, y,
+            servicio: (s.tarifas && s.tarifas.servicioTexto) || opsViaServicioTexto(s.folio_servicio) || "Servicio sin especificar",
+            folio: [s.folio_servicio ? "Servicio " + opsViaFolioLegible(s.folio_servicio) : "Sin servicio ligado", "Solicitud " + (s.folio || "")].filter(Boolean).join("   ·   "),
+            estacion: (foServ && foServ.estacion) || s.destino || "",
+            plaza: (foServ && foServ.plaza) || opsPlazaDeTexto(s.destino || "", false) || "Chihuahua" });
 
         // ── Tarjetas de resumen: lo que Pagos deposita y lo que Ingresos cobra ──
         const anchoT = (AN - 12) / 2, altoT = 64;
@@ -14903,9 +15059,9 @@
         tarjeta(M, VERDE, VERDE_CL, "DEPOSITAR AL TÉCNICO · PAGOS", deposito,
             [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", "Incluye: " + (opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "nada")]);
         const enCuadrilla = s.rol_viaje === "cuadrilla" && t.trasladoViaje, hojaN = t.hoja || 1;
-        if (enCuadrilla) tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", t.trasladoViaje.cobro,
+        if (enCuadrilla) tarjeta(M + anchoT + 12, EMP.color, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", t.trasladoViaje.cobro,
             [hojaN === 1 ? "Todo el viaje (se cobra en esta hoja)" : "Todo el viaje · ya se cobra en la hoja 1", "Costo del viaje: " + din(t.trasladoViaje.totalViaje) + (s.empresa_cobra ? " · " + s.empresa_cobra : "")]);
-        else tarjeta(M + anchoT + 12, PDF_AZUL, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
+        else tarjeta(M + anchoT + 12, EMP.color, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
             ["Costo real del viaje: " + din(s.total), s.empresa_cobra ? "Se cobra a: " + s.empresa_cobra : ""]);
         y += altoT + 8;
 
@@ -14926,7 +15082,6 @@
         };
         const fila1 = (a) => { nuevaPaginaSiHaceFalta(36); y += par(a[0], a[1], M, AN) + 3; };
         fila2(["Viáticos salen de (empresa)", s.empresa_entrega || "Tecnocontrol"], ["Se cobra a", s.empresa_cobra || s.empresa_entrega || "—"]);
-        fila1(["Servicio que se va a realizar", s.motivo || opsViaServicioTexto(s.folio_servicio) || "—"]);
         fila1(["Destino", s.destino]);
         fila2(["Cliente", s.cliente], ["Folio de servicio", s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "—"]);
         fila2(["Salida", fecha(t.salida || s.fecha_salida)], ["Regreso estimado", fecha(t.regreso || s.fecha_regreso)]);
@@ -14982,7 +15137,7 @@
             dep.no.some(x => x.soloInfo) ? "TRASLADO DEL VIAJE (se contabiliza en la hoja 1)" : "TOTAL QUE NO SE DEPOSITA");
         nuevaPaginaSiHaceFalta(46);
         doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
-        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+        doc.setTextColor(...EMP.color); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
         doc.text(enCuadrilla ? "COSTO DE ESTA HOJA (A + B contabilizados aquí)" : "COSTO TOTAL DEL VIAJE (A + B)", c1, y + 2); doc.setFontSize(11); doc.text(din(s.total), c3, y + 2, { align: "right" });
         y += 22;
         doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
@@ -15054,6 +15209,11 @@
             <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;padding:22px;">
                 <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:#15803d;margin-bottom:6px;">✅ Solicitud ${opsEsc(s.folio)} registrada</div>
                 <div style="font-size:12.5px;color:#475569;margin-bottom:12px;">Quedó en la lista de Viáticos con estatus <b>${opsEsc(s.estatus || "Pendiente")}</b> y se avisó en el portal a Cristina Acosta y a Pagos. Para asegurarte de que la vean hoy, mándala también por correo o WhatsApp:</div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#334155;">
+                    <b>Empresa que entrega el viático (sale en el PDF):</b>
+                    <select onchange="opsViaCambiarEmpresa('${opsEsc(s.id)}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">${OPS_VIA_EMPRESAS.map(e => `<option ${e === (s.empresa_entrega || "Tecnocontrol") ? "selected" : ""}>${e}</option>`).join("")}</select>
+                    <span id="ops-via-emp-msg" style="color:#15803d;font-weight:700;"></span>
+                </div>
                 <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:260px;overflow-y:auto;">${opsEsc(resumen)}</pre>
                 <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
@@ -15065,6 +15225,23 @@
             </div>
         </div>`;
     }
+    // Corregir la empresa de una solicitud ya registrada (las viejas salían todas como Tecnocontrol).
+    window.opsViaCambiarEmpresa = async function (id, empresa) {
+        const s = opsViaLista.find(x => x.id === id) || (opsViaUltima && opsViaUltima.id === id ? opsViaUltima : null);
+        if (!s) return;
+        const msg = document.getElementById("ops-via-emp-msg");
+        const antes = s.empresa_entrega || "Tecnocontrol";
+        const cambios = { empresa_entrega: empresa };
+        if (!s.empresa_cobra || s.empresa_cobra === antes) cambios.empresa_cobra = empresa;
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ ...cambios, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
+            if (error) throw error;
+            Object.assign(s, cambios); if (opsViaUltima && opsViaUltima.id === id) Object.assign(opsViaUltima, cambios);
+            if (msg) msg.textContent = "Guardado. Descarga el PDF de nuevo.";
+            try { await opsAuditar("viaticos", id, "empresa_entrega", antes, empresa); } catch (e) {}
+        } catch (e) { alert("No se pudo cambiar la empresa: " + (e.message || e)); }
+    };
     window.opsViaVerDetalle = function (id) {
         const s = opsViaLista.find(x => x.id === id);
         if (s) opsViaMostrarEnviada(s, opsViaResumenTexto(s));
