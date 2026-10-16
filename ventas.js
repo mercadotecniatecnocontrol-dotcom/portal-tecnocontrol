@@ -6387,6 +6387,11 @@ async function ventasCargarCatalogoYTecnicos(){
             const snap = await getDoc(doc(window.db,'catalogo','productos'));
             ventasCatalogoProductos = snap.exists() && Array.isArray(snap.data().items) ? snap.data().items : [];
         }catch(e){ console.warn('[ventas] no se pudo leer catalogo/productos:', e.message); }
+        // 16-oct-2026: la clave y descripción de Aspel son siempre las correctas
+        if(window.tcAspelCorregirCatalogo){
+            try{ ventasCatalogoProductos = await window.tcAspelCorregirCatalogo(ventasCatalogoProductos); }
+            catch(e){ console.warn('[ventas] catálogo Aspel no disponible:', e.message); }
+        }
     }
     if(!ventasTecnicosCache.length){
         try{

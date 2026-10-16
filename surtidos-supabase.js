@@ -27,7 +27,11 @@
     _clientePromesa = import('https://esm.sh/@supabase/supabase-js@2').then(function (mod) {
       var cliente = mod.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       window.tcSupabase = cliente; // disponible globalmente por si otro módulo lo necesita
-      return cliente;
+      // 16-oct-2026: antes de la primera consulta se carga el catálogo de
+      // Aspel (clave → descripción oficial). Máximo 5 s; si falla, sigue igual.
+      return _conTiempo(_cargarCatAspel(cliente), 5000, 'Catálogo Aspel')
+        .catch(function (e) { console.warn('[aspel] catálogo no disponible:', e && e.message); })
+        .then(function () { return cliente; });
       // Nota: ya no se intenta iniciar sesión anónima aquí — desde que las
       // políticas de seguridad permiten escribir con el rol "anon" (ver
       // migración 0006), no hace falta, y el intento fallaba siempre con un
@@ -51,6 +55,101 @@
     return _clientePromesa;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  //  CATÁLOGO DE ASPEL (16-oct-2026)
+  //  Regla: la CLAVE y la DESCRIPCIÓN de Aspel SAE son siempre las correctas.
+  //  La tabla aspel_productos la llena sincronizar-productos-aspel.js desde
+  //  INVE01. Todo surtido que se guarda o se lee pasa por aquí: si la clave
+  //  existe en Aspel, la descripción (y la clave) se toman de Aspel. Así se
+  //  corrigen también los pedidos viejos al verlos o imprimirlos.
+  //  Claves que no existen en Aspel se quedan tal cual.
+  // ═══════════════════════════════════════════════════════════════════════
+  var _catAspel = null;          // Map CLAVE_NORMALIZADA -> { clave, desc, unidad, status }
+  var _catAspelPromesa = null;
+  function _normClave(c) { return String(c == null ? '' : c).trim().toUpperCase(); }
+  function _cargarCatAspel(sb) {
+    if (_catAspelPromesa) return _catAspelPromesa;
+    var mapa = new Map();
+    function pagina(desde) {
+      return sb.from('aspel_productos').select('clave,descripcion,unidad,status')
+        .eq('empresa', '01').order('clave').range(desde, desde + 999)
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var filas = r.data || [];
+          filas.forEach(function (x) {
+            var k = _normClave(x.clave), d = String(x.descripcion || '').trim();
+            if (k && d) mapa.set(k, { clave: String(x.clave).trim(), desc: d, unidad: x.unidad || '', status: x.status || '' });
+          });
+          if (filas.length === 1000 && desde < 50000) return pagina(desde + 1000);
+        });
+    }
+    _catAspelPromesa = pagina(0).then(function () {
+      _catAspel = mapa;
+      console.log('[aspel] catálogo cargado:', mapa.size, 'claves');
+      return mapa;
+    }).catch(function (err) {
+      // Reintentar más tarde (no en cada consulta, para no cargar la base)
+      setTimeout(function () { _catAspelPromesa = null; }, 5 * 60 * 1000);
+      throw err;
+    });
+    return _catAspelPromesa;
+  }
+  // Devuelve una copia con descripción de Aspel (no modifica el original)
+  function _corregirProductos(lista) {
+    if (!Array.isArray(lista)) return [];
+    if (!_catAspel || !_catAspel.size) return lista;
+    return lista.map(function (it) {
+      if (!it || typeof it !== 'object') return it;
+      var a = _catAspel.get(_normClave(it.clave));
+      if (!a || (a.desc === it.desc && a.clave === it.clave)) return it;
+      return Object.assign({}, it, { clave: a.clave, desc: a.desc });
+    });
+  }
+  // Igual, pero cambia los mismos objetos (para que el PDF que arma quien
+  // guarda la solicitud también salga con la descripción de Aspel)
+  function _corregirEnSitio(lista) {
+    if (!Array.isArray(lista) || !_catAspel || !_catAspel.size) return;
+    lista.forEach(function (it) {
+      if (!it || typeof it !== 'object') return;
+      var a = _catAspel.get(_normClave(it.clave));
+      if (a) { it.clave = a.clave; it.desc = a.desc; }
+    });
+  }
+  window.tcAspelCatalogo = function () {
+    return cargarSupabase().then(function () { return _catAspel; });
+  };
+  window.tcAspelDescripcion = function (clave) {
+    var a = _catAspel && _catAspel.get(_normClave(clave));
+    return a ? a.desc : '';
+  };
+  window.tcAspelCorregirProductos = function (lista) { return _corregirProductos(lista); };
+  // Para buscadores (kiosco, Ventas): toma un catálogo [{clave,desc,...}],
+  // pone la descripción de Aspel, quita claves repetidas y agrega las claves
+  // activas de Aspel que falten. Cada elemento conserva en _k su llave
+  // original (clave|desc vieja) para seguir encontrando su foto.
+  window.tcAspelCorregirCatalogo = function (items) {
+    return window.tcAspelCatalogo().then(function (cat) {
+      items = Array.isArray(items) ? items : [];
+      if (!cat || !cat.size) return items;
+      var vistas = {}, out = [];
+      items.forEach(function (it) {
+        if (!it) return;
+        var k = _normClave(it.clave), a = k ? cat.get(k) : null;
+        if (k && vistas[k]) return;
+        if (k) vistas[k] = 1;
+        var n = Object.assign({}, it);
+        n._k = ((it.clave || '') + '|' + (it.desc || '')).toLowerCase();
+        if (a) { n.clave = a.clave; n.desc = a.desc; }
+        out.push(n);
+      });
+      cat.forEach(function (a, k) {
+        if (vistas[k] || a.status === 'B') return;
+        out.push({ clave: a.clave, desc: a.desc });
+      });
+      return out;
+    }).catch(function () { return items; });
+  };
+
   // ── Conversión de nombres de columnas (snake_case) ↔ campos que ya
   //    espera el resto del código (camelCase, mismos nombres que traía
   //    Firestore) — así almacen.js casi no necesita cambiar su forma de
@@ -62,7 +161,7 @@
       id: row.id,
       folio: row.folio || '—', cliente: row.cliente || '', vendedor: row.vendedor || '',
       prioridad: row.prioridad || 'normal', estado: row.estado || 'pendiente',
-      productos: Array.isArray(row.productos) ? row.productos : [],
+      productos: Array.isArray(row.productos) ? _corregirProductos(row.productos) : [],
       check: row.check || {},
       tipo: row.tipo || 'venta', firma: row.firma || '', fechaEntrega: row.fecha_entrega || '',
       recibioNombre: row.recibio_nombre || '', firmaEntrega: row.firma_entrega || '',
@@ -123,6 +222,7 @@
   };
   function aColumnas(datosCamelCase) {
     var out = {};
+    if (datosCamelCase && Array.isArray(datosCamelCase.productos)) _corregirEnSitio(datosCamelCase.productos);
     Object.keys(datosCamelCase || {}).forEach(function (k) {
       var col = MAPA_CAMPOS[k];
       if (col) out[col] = datosCamelCase[k];
@@ -665,7 +765,10 @@
     var id = datos.id || ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
     delete datos.id;
     window.tcSbUltimoEnCola = false;
-    return _enviarSurtido(id, datos).catch(function (err) {
+    return cargarSupabase().catch(function () {}).then(function () {
+      _corregirEnSitio(datos.productos);
+      return _enviarSurtido(id, datos);
+    }).catch(function (err) {
       if (datos.tipo === 'material' && _esFallaDeRed(err)) {
         console.warn('[surtidos] sin conexión — solicitud guardada en este equipo:', datos.folio, err);
         var cola = _leer(COLA_KEY).filter(function (x) { return x.id !== id; });

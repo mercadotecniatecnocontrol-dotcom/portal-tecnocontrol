@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="material-pdf.js?v=3"></script>
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
-<script src="surtidos-supabase.js"></script>
+<script src="surtidos-supabase.js?v=12"></script>
 <script src="operaciones-supabase.js?v=ops1"></script>
 </head>
 <body>
@@ -290,6 +290,16 @@ window.cerrarSesionKiosco = function(){ signOut(auth).catch(()=>{}); };
 
 /* ============ Catálogo (derivado de cotizaciones, lectura pública) ============ */
 let CATALOGO = [];
+/* 16-oct-2026: la clave y la descripción de Aspel son siempre las correctas.
+   El catálogo viejo se corrige contra Aspel (y se completa con lo que falte). */
+function aplicarAspelAlCatalogo(){
+  if(!window.tcAspelCorregirCatalogo) return Promise.resolve();
+  return window.tcAspelCorregirCatalogo(CATALOGO).then(c=>{
+    CATALOGO = c;
+    console.log('[kiosco] catálogo con descripciones de Aspel:', CATALOGO.length, 'productos');
+    if(typeof renderGrid==='function') renderGrid();
+  });
+}
 authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
   if(snap.exists()){
     const d = snap.data() || {};
@@ -299,7 +309,7 @@ authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
   } else {
     console.warn('[kiosco] no existe catalogo/productos — captura manual disponible');
   }
-}).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message)));
+}).catch(e=>console.warn('[kiosco] catálogo no disponible:', e.message))).then(aplicarAspelAlCatalogo);
 
 /* ============ Técnicos (para saber quién solicita y para quién) ============
    Lectura de ops_tecnicos — ahora con sesión REAL, así que ya cumple la regla
@@ -467,7 +477,7 @@ function bindQtyInput(root, k){
   if(sel){ sel.onclick = e=>e.stopPropagation(); sel.onchange = ()=>{ if(carrito[k]){ carrito[k].unidad = sel.value; renderGrid(); renderCarrito(); } }; }
 }
 let _imgCache = {};  // key -> dataURL | null (null = ya se buscó, no hay foto)
-function keyDe(it){ return ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }
+function keyDe(it){ return it._k || ((it.clave||'')+'|'+(it.desc||'')).toLowerCase(); }  /* _k = llave original (fotos) */
 /* Firestore no permite "/" dentro de un solo segmento de ruta (lo interpreta como sub-ruta) */
 function keyFirestore(k){ return k.replace(/\//g,'_'); }
 
