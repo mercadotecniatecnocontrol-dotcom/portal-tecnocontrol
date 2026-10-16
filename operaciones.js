@@ -1542,7 +1542,7 @@
             const snap = await Promise.race([fs.getDoc(ref), new Promise((_, ko) => setTimeout(() => ko(new Error("tiempo agotado")), 8000))]);
             if (snap.exists() && snap.data().roles) {
                 const d = snap.data();
-                opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice(), rolPorDefecto: d.rolPorDefecto || "", version: d.version || 1, avisos: d.avisos };
+                opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice(), rolPorDefecto: d.rolPorDefecto || "", version: d.version || 1, avisos: d.avisos, empresasServicio: d.empresasServicio || {} };
                 const cambios = opsAccNormalizarV2(opsAccCfg);
                 // Solo un admin del portal guarda la actualización (queda en la bitácora).
                 if (cambios.length && window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
@@ -8210,6 +8210,11 @@
                     <div id="ops-fol-estacion-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:8px;max-height:200px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(2,20,50,.14);"></div>
                     <div id="ops-fol-estacion-info" style="font-size:10px;color:#15803D;font-weight:600;min-height:14px;margin-bottom:6px;">${f?.estacionCatalogoId ? `Del catálogo${f.estacionEncargado ? " · Encargado: " + opsEsc(f.estacionEncargado) : ""}${f.estacionZona ? " · Zona " + opsEsc(f.estacionZona) : ""}` : ""}</div></div>
 
+                    <div style="margin-bottom:10px;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Empresa que presta el servicio <span style="font-weight:500;color:#94a3b8;">(sale en el PDF y en viáticos)</span></label>
+                    <select id="ops-fol-empresa" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;">
+                        <option value="">Automática (${opsEsc(opsEmpresaSugerida(f || {}))})</option>
+                        ${OPS_EMPRESAS_NOMBRES.map(e => `<option ${f && f.empresaServicioManual && f.empresaServicio === e ? "selected" : ""}>${e}</option>`).join("")}
+                    </select></div>
                     <input type="checkbox" id="ops-fol-es-scfi" ${secIni.includes("scfi") ? "checked" : ""} style="display:none;">
                     ${secAbre("scfi")}
                     <div id="ops-fol-scfi-campos" style="background:#faf5ff;border:1px solid #ede4fb;border-radius:10px;padding:14px;margin-bottom:14px;">
@@ -8715,6 +8720,7 @@
             estacionLat: window.__opsFolioEstMeta?.lat ?? null,
             estacionLng: window.__opsFolioEstMeta?.lng ?? null,
             esSCFI: document.getElementById("ops-fol-es-scfi").checked,
+            ...(() => { const v = (document.getElementById("ops-fol-empresa") || {}).value || ""; return v ? { empresaServicio: v, empresaServicioManual: true } : { empresaServicio: null, empresaServicioManual: false }; })(),
             seccionesAplica: [...(window.__opsFolioSecciones || [])],
             hologramas: document.getElementById("ops-fol-hologramas").value ? Number(document.getElementById("ops-fol-hologramas").value) : null,
             precintos: document.getElementById("ops-fol-precintos").value ? Number(document.getElementById("ops-fol-precintos").value) : null,
@@ -10028,6 +10034,7 @@
                 ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
                 ${s.est && !s.plazaManual ? `<span style="font-size:10.5px;color:#94a3b8;">detectada por la estación</span>` : ""}
             </div>
+            ${opsAsEmpresaHTML()}
         </div>`;
 
         if (multiEst) paso2 = opsAsPaso2MultiHTML(n, lock(listo1));
@@ -10358,6 +10365,24 @@
     // "Nombre · PL" y, si la estación no tiene nombre, se le pone ahí mismo (queda en el catálogo para todos).
     function opsEstSinNombre(e) { return !e || !String(e.nombreComercial || "").trim() || opsAsRsClave(e.nombreComercial) === opsAsRsClave(e.razonSocial); }
     function opsEstTitulo(e) { if (!e) return ""; return opsEstSinNombre(e) ? (e.permiso ? e.permiso : (e.razonSocial || "")) : e.nombreComercial; }
+    // Empresa que presta el servicio, en el alta. "Automática" = según la regla de cada norma/tipo.
+    function opsAsEmpresaSugeridaAlta(norma) {
+        const s = opsAS; if (!s) return "Tecnocontrol";
+        return opsEmpresaSugerida({ tipoFolio: s.tipo === "inspeccion" ? "inspeccion" : s.tipo === "laboratorio" ? "laboratorio" : "servicio", tipoAlta: s.tipo, normaInspeccion: s.tipo === "inspeccion" ? (norma || s.norma) : null });
+    }
+    function opsAsEmpresaHTML() {
+        const s = opsAS; if (!s || !s.tipo) return "";
+        const normas = opsAsNormasVisita().filter(Boolean);
+        const auto = normas.length > 1 ? normas.map(n => n + ": " + opsAsEmpresaSugeridaAlta(n)).join(" · ") : opsAsEmpresaSugeridaAlta();
+        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <span class="opsas-lb" style="margin:0;">Empresa que presta el servicio</span>
+            <select class="opsas-in" style="width:auto;min-width:200px;" onchange="opsAS.empresaServicio=this.value;opsAsPintar()">
+                <option value="" ${!s.empresaServicio ? "selected" : ""}>Automática (${opsEsc(auto)})</option>
+                ${OPS_EMPRESAS_NOMBRES.map(e => `<option ${s.empresaServicio === e ? "selected" : ""}>${e}</option>`).join("")}
+            </select>
+            <span style="font-size:10.5px;color:#94a3b8;">sale en el PDF del servicio y en los viáticos</span>
+        </div>`;
+    }
     window.opsAsNombrarEstacion = async function (id) {
         const cat = window.__opsAsEstCatalogo || [];
         const e = cat.find(x => x.id === id) || (opsAS && opsAS.estaciones.map(x => x.est).find(x => x && x.id === id)) || (opsAS && opsAS.est && opsAS.est.id === id ? opsAS.est : null);
@@ -10399,6 +10424,7 @@
                 ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
                 <span style="font-size:10.5px;color:#94a3b8;">${s.plazaManual ? "aplica a todas" : "cada estación toma la de su municipio"}</span>
             </div>
+            ${opsAsEmpresaHTML()}
         </div>`;
     }
     function opsAsPaso3MultiHTML(numero, cls) {
@@ -11109,6 +11135,8 @@
             folioOS: s.os.trim(),
             estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
             conceptoGeneral: !e && s.conceptoGeneral ? s.conceptoGeneral : null,
+            empresaServicio: s.empresaServicio || opsAsEmpresaSugeridaAlta(s.tipo === "inspeccion" ? s.norma : null),
+            empresaServicioManual: !!s.empresaServicio,
             clientesAtencion: !e && s.conceptoGeneral === "Atención a folios" && (s.clientesAtencion || []).length ? s.clientesAtencion.slice() : null,
             estacionCatalogoId: e?.id || null, estacionEncargado: e?.encargado || null, estacionZona: e?.zona || null,
             estacionNumeroTanques: e?.numeroTanques || null, estacionNumeroDispensarios: e?.numeroDispensarios || null, estacionNumeroSondas: e?.numeroSondas || null,
@@ -14006,12 +14034,32 @@
         if (/tecnolab/.test(t)) return OPS_EMPRESAS_DOC.tecnolab;
         return OPS_EMPRESAS_DOC.tecno;
     }
-    function opsEmpresaDeFolio(f) {
-        if (!f) return OPS_EMPRESAS_DOC.tecno;
-        if (f.empresaServicio || f.pedidoVentasEmpresa) return opsEmpresaDoc(f.empresaServicio || f.pedidoVentasEmpresa);
-        try { if (opsEsFolioJomar(f)) return OPS_EMPRESAS_DOC.jomar; } catch (e) {}
-        return OPS_EMPRESAS_DOC.tecno;
+    // ═══ Qué empresa presta cada servicio (16-oct-2026, Glen) ═══
+    // Regla por tipo de servicio / norma, editable en Control de acceso → "Empresa por servicio".
+    // Cada servicio guarda además su empresa (empresaServicio) y se puede cambiar al programar o al editar.
+    const OPS_EMPRESAS_NOMBRES = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "Desarrollos", "TecnoLab"];
+    const OPS_EMPRESA_SERVICIO_SEED = {
+        "Anexo 21 y 22": "JOMAR", "ASEA": "JOMAR", "Calidad de los Petrolíferos": "JOMAR", "SCFI": "JOMAR",
+        "Calibración Medida Volumétrica": "JOMAR", "Alto Flujo": "JOMAR", "Laboratorio": "TecnoLab",
+        "Servicio técnico / póliza / programación": "Tecnocontrol",
+    };
+    function opsEmpresaServicioReglas() {
+        return Object.assign({}, OPS_EMPRESA_SERVICIO_SEED, (opsAccCfg && opsAccCfg.empresasServicio) || {});
     }
+    // Empresa que le toca a un servicio según la regla (sin contar lo capturado a mano).
+    function opsEmpresaSugerida(f) {
+        if (!f) return "Tecnocontrol";
+        const R = opsEmpresaServicioReglas();
+        if (f.tipoFolio === "laboratorio") return R["Laboratorio"] || "TecnoLab";
+        const norma = f.normaInspeccion || f.norma;
+        if (norma && R[norma]) return R[norma];
+        if (f.tipoFolio === "inspeccion" || f.tipoAlta === "inspeccion") return "JOMAR";
+        if (f.pedidoVentasEmpresa) return opsEmpresaDoc(f.pedidoVentasEmpresa).corto;
+        try { if (opsEsFolioJomar(f)) return "JOMAR"; } catch (e) {}
+        return R["Servicio técnico / póliza / programación"] || "Tecnocontrol";
+    }
+    function opsEmpresaNombreFolio(f) { return (f && f.empresaServicioManual && f.empresaServicio) ? f.empresaServicio : opsEmpresaSugerida(f); }
+    function opsEmpresaDeFolio(f) { return opsEmpresaDoc(opsEmpresaNombreFolio(f)); }
     // Encabezado con logo + franja de razón social. Funciona en pt (k=1) y en mm (k=0.352778).
     // Regresa la "y" (en las unidades del documento) donde termina.
     function opsPdfEncabezadoEmpresa(doc, emp, o) {
@@ -14602,6 +14650,7 @@
     window.opsViaCampo = function (campo, valor, repintar) {
         if (!opsViaForm) return;
         opsViaForm[campo] = valor;
+        if (campo === "empresaEntrega") opsViaForm.empresaEntregaManual = true;
         opsViaRecalcular();
         if (repintar) opsViaPintarFormulario();
     };
@@ -14654,6 +14703,8 @@
         if (!fo || !f) return;
         f.folioServicio = fo.folioOS || fo.id;
         f.cliente = fo.clienteNombre || "";
+        // La empresa del viático es la del servicio (JOMAR, VH, Tecnocontrol…), salvo que la hayan cambiado a mano.
+        if (!f.empresaEntregaManual) { f.empresaEntrega = opsEmpresaNombreFolio(fo); if (!f.empresaCobra) f.empresaCobra = ""; }
         // Personal asignado al folio
         const ids = fo.tecnicosAsignadosIds || [];
         if (ids.length) f.tecnicos = ids.map(tid => cacheTec.find(t => t.id === tid)).filter(Boolean).map(t => ({ id: t.id, nombre: t.nombre, correo: t.correo || null }));
@@ -14905,6 +14956,7 @@
             notas: f.notas || null,
             tarifas: {
                 servicioTexto: opsViaServicioTexto(f.folioServicio) || null,
+                empresaManual: !!f.empresaEntregaManual,
                 requiereViaticos: !!f.requiere, salida: f.salida, regreso: f.regreso, horasServicio: opsViaNum(f.horasServicio), horasIda: opsViaNum(f.horasIda),
                 noches: opsViaNum(f.noches), hospedajePorNoche: opsViaNum(f.hospedajePorNocheTotal), desayuno: opsViaCfg.desayuno, comida: opsViaCfg.comida, cena: opsViaCfg.cena,
                 habitaciones: { sencillas: f.habSencillas, precioSencilla: opsViaNum(f.precioSencilla), dobles: f.habDobles, precioDoble: opsViaNum(f.precioDoble) },
@@ -15024,8 +15076,10 @@
 
         // ── Encabezado ──
         // Encabezado con logo, colores y razón social de la empresa que entrega el viático (16-oct-2026).
-        const EMP = opsEmpresaDoc(s.empresa_entrega);
         const foServ = opsViaFolioServicio(s.folio_servicio);
+        const EMPN = opsViaEmpresaEfectiva(s, foServ);
+        const EMP = opsEmpresaDoc(EMPN);
+        const COBRA = (s.tarifas && s.tarifas.empresaManual) ? (s.empresa_cobra || s.empresa_entrega || EMPN) : EMPN;
         const encabezado = () => opsPdfEncabezadoEmpresa(doc, EMP, { W, M, tipo: "SOLICITUD DE VIÁTICOS",
             linea: "Folio " + (s.folio || s.id) + "  ·  " + fecha(s.creado_en || new Date().toISOString()), estatus: s.estatus || "Pendiente" });
         const nuevaPaginaSiHaceFalta = alto => { if (y + alto > H - 60) { doc.addPage(); y = encabezado() + 14; } };
@@ -15057,12 +15111,12 @@
             lineas.filter(Boolean).forEach((l, i) => doc.text(l, x + 16, y + 50 + i * 9));
         };
         tarjeta(M, VERDE, VERDE_CL, "DEPOSITAR AL TÉCNICO · PAGOS", deposito,
-            [s.empresa_entrega ? "Entrega: " + s.empresa_entrega : "", "Incluye: " + (opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "nada")]);
+            ["Entrega: " + EMPN, "Incluye: " + (opsViaDesgloseDeposito(s).si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "nada")]);
         const enCuadrilla = s.rol_viaje === "cuadrilla" && t.trasladoViaje, hojaN = t.hoja || 1;
         if (enCuadrilla) tarjeta(M + anchoT + 12, EMP.color, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", t.trasladoViaje.cobro,
-            [hojaN === 1 ? "Todo el viaje (se cobra en esta hoja)" : "Todo el viaje · ya se cobra en la hoja 1", "Costo del viaje: " + din(t.trasladoViaje.totalViaje) + (s.empresa_cobra ? " · " + s.empresa_cobra : "")]);
+            [hojaN === 1 ? "Todo el viaje (se cobra en esta hoja)" : "Todo el viaje · ya se cobra en la hoja 1", "Costo del viaje: " + din(t.trasladoViaje.totalViaje) + (" · " + COBRA)]);
         else tarjeta(M + anchoT + 12, EMP.color, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
-            ["Costo real del viaje: " + din(s.total), s.empresa_cobra ? "Se cobra a: " + s.empresa_cobra : ""]);
+            ["Costo real del viaje: " + din(s.total), "Se cobra a: " + COBRA]);
         y += altoT + 8;
 
         // ── Datos del viaje en dos columnas ──
@@ -15081,7 +15135,7 @@
             y += Math.max(h1, h2) + 3;
         };
         const fila1 = (a) => { nuevaPaginaSiHaceFalta(36); y += par(a[0], a[1], M, AN) + 3; };
-        fila2(["Viáticos salen de (empresa)", s.empresa_entrega || "Tecnocontrol"], ["Se cobra a", s.empresa_cobra || s.empresa_entrega || "—"]);
+        fila2(["Viáticos salen de (empresa)", EMPN], ["Se cobra a", COBRA]);
         fila1(["Destino", s.destino]);
         fila2(["Cliente", s.cliente], ["Folio de servicio", s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "—"]);
         fila2(["Salida", fecha(t.salida || s.fecha_salida)], ["Regreso estimado", fecha(t.regreso || s.fecha_regreso)]);
@@ -15141,7 +15195,7 @@
         doc.text(enCuadrilla ? "COSTO DE ESTA HOJA (A + B contabilizados aquí)" : "COSTO TOTAL DEL VIAJE (A + B)", c1, y + 2); doc.setFontSize(11); doc.text(din(s.total), c3, y + 2, { align: "right" });
         y += 22;
         doc.setFillColor(...AZUL_CL); doc.rect(M, y - 11, AN, 20, "F");
-        doc.setFontSize(9.5); doc.text(enCuadrilla ? (hojaN === 1 ? "COBRAR AL CLIENTE · TODO EL VIAJE (se cobra en esta hoja)" : "COBRAR AL CLIENTE · TODO EL VIAJE (ya se cobra en la hoja 1)") : "COBRAR AL CLIENTE" + (s.empresa_cobra ? " (" + s.empresa_cobra + ")" : ""), c1, y + 2);
+        doc.setFontSize(9.5); doc.text(enCuadrilla ? (hojaN === 1 ? "COBRAR AL CLIENTE · TODO EL VIAJE (se cobra en esta hoja)" : "COBRAR AL CLIENTE · TODO EL VIAJE (ya se cobra en la hoja 1)") : "COBRAR AL CLIENTE (" + COBRA + ")", c1, y + 2);
         doc.setFontSize(11); doc.text(din(enCuadrilla ? t.trasladoViaje.cobro : cobro), c3, y + 2, { align: "right" });
         y += 26;
 
@@ -15211,7 +15265,7 @@
                 <div style="font-size:12.5px;color:#475569;margin-bottom:12px;">Quedó en la lista de Viáticos con estatus <b>${opsEsc(s.estatus || "Pendiente")}</b> y se avisó en el portal a Cristina Acosta y a Pagos. Para asegurarte de que la vean hoy, mándala también por correo o WhatsApp:</div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#334155;">
                     <b>Empresa que entrega el viático (sale en el PDF):</b>
-                    <select onchange="opsViaCambiarEmpresa('${opsEsc(s.id)}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">${OPS_VIA_EMPRESAS.map(e => `<option ${e === (s.empresa_entrega || "Tecnocontrol") ? "selected" : ""}>${e}</option>`).join("")}</select>
+                    <select onchange="opsViaCambiarEmpresa('${opsEsc(s.id)}', this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;">${OPS_VIA_EMPRESAS.map(e => `<option ${opsEmpresaDoc(e) === opsEmpresaDoc(opsViaEmpresaEfectiva(s)) ? "selected" : ""}>${e}</option>`).join("")}</select>
                     <span id="ops-via-emp-msg" style="color:#15803d;font-weight:700;"></span>
                 </div>
                 <pre style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:11.5px;white-space:pre-wrap;max-height:260px;overflow-y:auto;">${opsEsc(resumen)}</pre>
@@ -15225,13 +15279,22 @@
             </div>
         </div>`;
     }
+    // Empresa con la que sale la solicitud: la elegida a mano; si no, la del servicio ligado
+    // (así las solicitudes viejas, guardadas como "Tecnocontrol" por omisión, salen con la empresa correcta).
+    function opsViaEmpresaEfectiva(s, fo) {
+        const t = s.tarifas || {};
+        if (t.empresaManual) return s.empresa_entrega || "Tecnocontrol";
+        fo = fo || opsViaFolioServicio(s.folio_servicio);
+        if (fo) return opsEmpresaNombreFolio(fo);
+        return s.empresa_entrega || "Tecnocontrol";
+    }
     // Corregir la empresa de una solicitud ya registrada (las viejas salían todas como Tecnocontrol).
     window.opsViaCambiarEmpresa = async function (id, empresa) {
         const s = opsViaLista.find(x => x.id === id) || (opsViaUltima && opsViaUltima.id === id ? opsViaUltima : null);
         if (!s) return;
         const msg = document.getElementById("ops-via-emp-msg");
         const antes = s.empresa_entrega || "Tecnocontrol";
-        const cambios = { empresa_entrega: empresa };
+        const cambios = { empresa_entrega: empresa, tarifas: { ...(s.tarifas || {}), empresaManual: true } };
         if (!s.empresa_cobra || s.empresa_cobra === antes) cambios.empresa_cobra = empresa;
         try {
             const sb = await opsSb();
@@ -16946,7 +17009,7 @@
     async function opsAccGuardarCfg(entidadId, campo, antes, despues) {
         const { db, fs } = await opsGetFB();
         await fs.setDoc(fs.doc(db, COL_CONFIG_PERMISOS, "general"),
-            { roles: opsAccCfg.roles, usuarios: opsAccCfg.usuarios, dinero: opsAccCfg.dinero, rolPorDefecto: opsAccCfg.rolPorDefecto || "consulta_basica", version: opsAccCfg.version || OPS_ACC_VERSION, avisos: Array.isArray(opsAccCfg.avisos) ? opsAccCfg.avisos : [], actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
+            { roles: opsAccCfg.roles, usuarios: opsAccCfg.usuarios, dinero: opsAccCfg.dinero, rolPorDefecto: opsAccCfg.rolPorDefecto || "consulta_basica", version: opsAccCfg.version || OPS_ACC_VERSION, avisos: Array.isArray(opsAccCfg.avisos) ? opsAccCfg.avisos : [], empresasServicio: opsAccCfg.empresasServicio || {}, actualizado: opsFechaHora(), actualizadoPor: opsUsuarioActual() });
         await opsAuditar("permisos", entidadId, campo,
             antes == null ? null : (typeof antes === "string" ? antes : JSON.stringify(antes)),
             despues == null ? null : (typeof despues === "string" ? despues : JSON.stringify(despues)));
@@ -16962,12 +17025,13 @@
             return;
         }
         const edit = opsAccEditable();
-        const pest = [["roles", "Roles"], ["usuarios", "Usuarios"], ["dinero", "Ver dinero"], ["avisos", "Avisos con voz"], ["bitacora", "Bitácora"]];
+        const pest = [["roles", "Roles"], ["usuarios", "Usuarios"], ["dinero", "Ver dinero"], ["avisos", "Avisos con voz"], ["empresas", "Empresa por servicio"], ["bitacora", "Bitácora"]];
         let cuerpo = "";
         if (opsAccVista === "roles") cuerpo = opsAccHTMLRoles(edit);
         else if (opsAccVista === "usuarios") cuerpo = opsAccHTMLUsuarios(edit);
         else if (opsAccVista === "dinero") cuerpo = opsAccHTMLDinero(edit);
         else if (opsAccVista === "avisos") cuerpo = opsAccHTMLAvisos(edit);
+        else if (opsAccVista === "empresas") cuerpo = opsAccHTMLEmpresas(edit);
         else cuerpo = opsAccHTMLBitacora();
         el.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -17236,6 +17300,29 @@
         const antes = opsAccCfg.dinero.slice();
         opsAccCfg.dinero = opsAccCfg.dinero.filter(x => x !== c);
         try { await opsAccGuardarCfg("dinero:" + c, "ver_dinero", "sí", "no"); } catch (e) { opsAccCfg.dinero = antes; alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderAccesos();
+    };
+
+    // ── Empresa que presta cada tipo de servicio (sale en PDF del servicio y en viáticos) ──
+    function opsAccHTMLEmpresas(edit) {
+        const R = opsEmpresaServicioReglas();
+        return `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;">
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Qué empresa presta cada tipo de servicio. Con esto el PDF del servicio y la solicitud de viáticos salen con el logo, colores y razón social correctos. Se aplica a todos los servicios que tengan la empresa en "Automática" (también a los ya programados). Si un servicio en particular es de otra empresa, se cambia al programarlo o al editarlo.</div>
+            ${Object.keys(OPS_EMPRESA_SERVICIO_SEED).map(k => `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;">
+                <div style="flex:1;min-width:200px;font-weight:600;color:#1e293b;">${opsEsc(k)}</div>
+                <select ${edit ? `onchange="opsAccEmpresaServicio('${opsEsc(k)}', this.value)"` : "disabled"} style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 8px;font-size:12px;min-width:180px;">
+                    ${OPS_EMPRESAS_NOMBRES.map(e => `<option ${R[k] === e ? "selected" : ""}>${e}</option>`).join("")}
+                </select>
+            </div>`).join("")}
+        </div>`;
+    }
+    window.opsAccEmpresaServicio = async function (clave, empresa) {
+        if (!opsAccEditable()) return;
+        const antes = opsEmpresaServicioReglas()[clave];
+        opsAccCfg.empresasServicio = Object.assign({}, opsAccCfg.empresasServicio || {}, { [clave]: empresa });
+        try { await opsAccGuardarCfg("empresa_servicio:" + clave, "empresa", antes, empresa); }
+        catch (e) { opsAccCfg.empresasServicio[clave] = antes; alert("No se pudo guardar: " + (e.message || e)); }
         opsRenderAccesos();
     };
 
