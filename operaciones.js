@@ -5840,6 +5840,207 @@
         }
     }
 
+    // ═══════════════════ MESA DE FOLIOS (17-oct-2026, junta con Sandra/Paloma/Miguel) ═══════════════════
+    // · Turno de día (8:00–17:00): técnico(s) programados con "Atención a folios" ese día (por cliente).
+    //   Turno de guardia (17:00–8:00, y días sin turno de día): la Guardia programada ese día o, si no hay,
+    //   la rotación semanal de Guardias.
+    // · Los folios de cliente que llegan sin técnico se reparten al turno que corresponde según la hora
+    //   en que se solicitaron; queda registro de cada asignación (para efectividad y reincidencia).
+    // · Efectividad: de los folios asignados a cada técnico, cuántos finalizó. Reincidencia: folios que
+    //   se trabajaron en más de un día (o por más de un técnico). Motivos: por qué no se finalizó.
+    const OPS_TURNO_INI = 8, OPS_TURNO_FIN = 17;
+    let opsMesaRango = "semana", opsMesaAbierta = true;
+    function opsHoyLocal() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+    function opsAhoraLocal() { const d = new Date(); return opsHoyLocal() + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+    function opsEsFolioCliente(f) {
+        return !!f && f.cancelado !== true && !f.conceptoGeneral && f.tipoAlta !== "programacion" && f.tipoFolio !== "inspeccion" && f.tipoFolio !== "laboratorio"
+            && !!(f.folioClienteId || f.vencimiento || f.prioridad);
+    }
+    function opsClienteFolioNombre(f) { return f.clienteNombre || (cacheClientes.find(c => c.id === f.clienteId) || {}).nombre || ""; }
+    function opsFolioSinTecnico(f) { return !(f.tecnicosAsignadosIds || []).length && !f.tecnicoResponsableId; }
+    function opsTecPorId(id) { return cacheTec.find(t => t.id === id) || null; }
+    // Quién atiende folios un día: { dia: [{tec, clientes, origenId}], guardia: [{tec, fuente}] }
+    function opsTurnoFolios(diaISO) {
+        const dia = [], guardia = [];
+        cacheFolios.filter(f => f.cancelado !== true && f.conceptoGeneral === "Atención a folios" && opsFolioCubreDia(f, diaISO)).forEach(f => {
+            const ids = [...new Set((f.tecnicosAsignadosIds || []).concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : []))];
+            ids.forEach(id => { const t = opsTecPorId(id); if (t && !dia.some(x => x.tec.id === id)) dia.push({ tec: t, clientes: f.clientesAtencion || [], origenId: f.id }); });
+        });
+        cacheFolios.filter(f => f.cancelado !== true && f.conceptoGeneral === "Guardia" && opsFolioCubreDia(f, diaISO)).forEach(f => {
+            (f.tecnicosAsignadosIds || []).forEach(id => { const t = opsTecPorId(id); if (t && !guardia.some(x => x.tec.id === id)) guardia.push({ tec: t, fuente: "calendario" }); });
+        });
+        if (!guardia.length) {
+            const g = (cacheGuardiasProgramadas || []).find(x => x.semanaInicio === opsLunesDe(diaISO));
+            const t = g ? (opsTecPorId(g.tecnicoId) || (typeof opsPersonalGuardias === "function" ? opsPersonalGuardias().find(p => p.id === g.tecnicoId) : null)) : null;
+            if (t) guardia.push({ tec: t, fuente: "rotación semanal" });
+        }
+        return { dia, guardia };
+    }
+    function opsTurnoAtiendeCliente(item, f) {
+        const cl = item.clientes || []; if (!cl.length) return true;
+        const n = opsAsNorm(opsClienteFolioNombre(f)); return !!n && cl.some(c => opsAsNorm(c) === n);
+    }
+    // Turno que le toca a un folio por la hora en que se solicitó (sin hora = ahora).
+    function opsTurnoParaFolio(f) {
+        const ref = String(f.fechaSolicitud || "").length > 10 ? f.fechaSolicitud : opsAhoraLocal();
+        const d = new Date(ref); const diaISO = String(ref).slice(0, 10);
+        const t = opsTurnoFolios(diaISO);
+        const horaDia = !isNaN(d) && d.getHours() >= OPS_TURNO_INI && d.getHours() < OPS_TURNO_FIN;
+        const deDia = t.dia.filter(x => opsTurnoAtiendeCliente(x, f));
+        if (horaDia && deDia.length) {
+            const carga = id => cacheFolios.filter(x => opsEsFolioCliente(x) && !x.fechaSolucion && (x.tecnicosAsignadosIds || []).includes(id)).length;
+            const elegido = deDia.slice().sort((a, b) => carga(a.tec.id) - carga(b.tec.id))[0];
+            return { tipo: "dia", tec: elegido.tec, dia: diaISO };
+        }
+        // En horario de oficina sin turno para ese cliente: no se le carga a la guardia, lo decide Operaciones.
+        if (horaDia) return null;
+        if (t.guardia.length) return { tipo: "guardia", tec: t.guardia[0].tec, dia: diaISO };
+        return null;
+    }
+    async function opsAsignarFolioATecnico(f, tec, tipo) {
+        const { db, fs } = await opsGetFB();
+        const ahora = opsFechaHora(), yo = opsNombreActual(), dia = opsHoyLocal();
+        const cambios = {
+            tecnicosAsignadosIds: [tec.id], tecnicosAsignadosNombres: [tec.nombre || ""],
+            tecnicoResponsableId: tec.id, tecnicoResponsableNombre: tec.nombre || "", tecnicoResponsableCorreo: String(tec.correo || "").toLowerCase().trim() || null,
+            fechaProgramada: f.fechaProgramada || opsAhoraLocal(),
+            turnoFolios: { tipo, dia, por: yo, en: ahora },
+            asignaciones: (f.asignaciones || []).concat([{ dia, tecnicoId: tec.id, nombre: tec.nombre || "", turno: tipo, por: yo, en: ahora }]),
+        };
+        await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+        Object.assign(f, cambios);
+        fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `Folio asignado a ${tec.nombre} (${tipo === "guardia" ? "guardia" : "turno de folios 8 a 5"}) por ${yo}.`, autor: yo, tipo: "asignacion", createdAt: ahora }).catch(() => {});
+        try { await opsAvisarTecnicosAsignados(f, [tec], `Folio ${f.folioClienteId || f.folioOS || ""} ${f.prioridad ? "(" + f.prioridad + ")" : ""}`.trim()); } catch (e) {}
+    }
+    window.opsMesaAsignarUno = async function (id, tecId) {
+        const f = cacheFolios.find(x => x.id === id), t = opsTecPorId(tecId) || (opsPersonalGuardias ? opsPersonalGuardias().find(p => p.id === tecId) : null);
+        if (!f || !t) return;
+        try { await opsAsignarFolioATecnico(f, t, opsTurnoParaFolio(f)?.tipo || "dia"); opsRenderFolios(); }
+        catch (e) { alert("No se pudo asignar: " + (e.message || e)); }
+    };
+    window.opsMesaAsignarTodos = async function () {
+        if (!opsPuedeGestionar()) return;
+        const pend = cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion && opsFolioSinTecnico(f));
+        const plan = pend.map(f => ({ f, t: opsTurnoParaFolio(f) })).filter(x => x.t);
+        if (!plan.length) { alert("No hay a quién asignarlos: programa un turno de \"Atención a folios\" o la guardia de esta semana."); return; }
+        const resumen = {}; plan.forEach(x => { resumen[x.t.tec.nombre] = (resumen[x.t.tec.nombre] || 0) + 1; });
+        if (!confirm(`Se asignarán ${plan.length} folio(s):\n\n${Object.entries(resumen).map(([n, c]) => `• ${n}: ${c}`).join("\n")}${pend.length > plan.length ? `\n\n${pend.length - plan.length} se quedan sin asignar (no hay turno que atienda a ese cliente).` : ""}\n\nCada técnico recibe el aviso en la app. ¿Continuar?`)) return;
+        let ok = 0;
+        for (const x of plan) { try { await opsAsignarFolioATecnico(x.f, x.t.tec, x.t.tipo); ok++; } catch (e) { console.warn("[Mesa de folios]", e); } }
+        alert(`Listo: ${ok} de ${plan.length} folio(s) asignados.`);
+        opsRenderFolios();
+    };
+    window.opsMesaRango = function (r) { opsMesaRango = r; opsRenderFolios(); };
+    window.opsMesaToggle = function () { opsMesaAbierta = !opsMesaAbierta; opsRenderFolios(); };
+    window.opsMesaProgramarTurno = function () { window.opsAbrirAltaServicio(opsHoyLocal()); };
+    function opsMesaRangoDias() {
+        const hoy = opsHoyLocal();
+        if (opsMesaRango === "hoy") return [hoy, hoy];
+        if (opsMesaRango === "mes") return [hoy.slice(0, 8) + "01", hoy];
+        return [opsLunesDe(hoy), hoy];
+    }
+    // Indicadores por técnico en el rango
+    function opsMesaIndicadores() {
+        const [a, b] = opsMesaRangoDias();
+        const enR = d => d && d >= a && d <= b;
+        const porTec = new Map(), motivos = new Map();
+        const fila = (id, nombre) => { if (!porTec.has(id)) porTec.set(id, { id, nombre, asignados: 0, finalizados: 0, sinFinalizar: 0, reincidentes: 0 }); return porTec.get(id); };
+        let reincTotal = 0, trabajados = 0;
+        cacheFolios.filter(opsEsFolioCliente).forEach(f => {
+            const asig = (f.asignaciones || []).filter(x => enR(x.dia));
+            const aten = (f.atenciones || []).filter(x => enR(String(x.fin || x.inicio || "").slice(0, 10)));
+            if (!asig.length && !aten.length) return;
+            trabajados++;
+            const dias = new Set((f.asignaciones || []).map(x => x.dia).concat((f.atenciones || []).map(x => String(x.inicio || x.fin || "").slice(0, 10))).filter(Boolean));
+            const tecs = new Set((f.asignaciones || []).map(x => x.tecnicoId).concat((f.atenciones || []).map(x => x.tecnicoId)).filter(Boolean));
+            const reinc = dias.size > 1 || tecs.size > 1; if (reinc) reincTotal++;
+            const ultimo = (f.asignaciones || []).slice(-1)[0];
+            asig.forEach(x => {
+                const r = fila(x.tecnicoId, x.nombre); r.asignados++;
+                if (f.fechaSolucion && ultimo && ultimo.tecnicoId === x.tecnicoId && x === ultimo) r.finalizados++;
+                if (reinc) r.reincidentes++;
+            });
+            aten.filter(x => x.resultado === "no_finalizado").forEach(x => {
+                fila(x.tecnicoId, x.nombre).sinFinalizar++;
+                motivos.set(x.motivo || "Sin motivo", (motivos.get(x.motivo || "Sin motivo") || 0) + 1);
+            });
+        });
+        return { filas: [...porTec.values()].sort((x, y) => opsAsAlfa(x.nombre, y.nombre)), motivos: [...motivos.entries()].sort((x, y) => y[1] - x[1]), reincTotal, trabajados };
+    }
+    function opsMesaFoliosHTML() {
+        const gestion = opsPuedeGestionar();
+        const hoy = opsHoyLocal(), t = opsTurnoFolios(hoy);
+        const abiertos = cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion);
+        const salieronHoy = cacheFolios.filter(f => opsEsFolioCliente(f) && String(f.fechaSolicitud || "").slice(0, 10) === hoy);
+        const vencenHoy = abiertos.filter(f => f.vencimiento && String(f.vencimiento).slice(0, 10) <= hoy);
+        const sinTec = abiertos.filter(opsFolioSinTecnico).sort((x, y) => String(x.vencimiento || "9").localeCompare(String(y.vencimiento || "9")));
+        const ind = opsMesaIndicadores();
+        const chip = (txt, bg, fg) => `<span style="display:inline-flex;align-items:center;gap:5px;background:${bg};color:${fg};border-radius:999px;padding:4px 11px;font-size:12px;font-weight:700;">${txt}</span>`;
+        const personal = opsTecOperativos().concat((typeof opsPersonalGuardias === "function" ? opsPersonalGuardias() : []).filter(p => !opsTecOperativos().some(x => x.id === p.id))).sort((x, y) => opsAsAlfa(x.nombre, y.nombre));
+        const pct = (n, d) => d ? Math.round(n * 100 / d) + "%" : "—";
+        const colorPct = (n, d) => !d ? "#94a3b8" : n / d >= 0.85 ? "#15803d" : n / d >= 0.6 ? "#b45309" : "#E7402B";
+        return `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-top:3px solid #0e7490;margin-bottom:16px;overflow:hidden;">
+            <div onclick="opsMesaToggle()" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;cursor:pointer;">
+                <div><div style="font-size:14px;font-weight:800;color:#0e7490;">Mesa de folios · hoy ${opsEsc(opsFmtFechaCorta(hoy))}</div>
+                <div style="font-size:11.5px;color:#64748b;">${salieronHoy.length} salieron hoy · ${vencenHoy.length} vencen hoy o ya vencieron · <b style="color:${sinTec.length ? "#E7402B" : "#15803d"};">${sinTec.length} sin técnico</b></div></div>
+                <span style="font-size:12px;color:#64748b;font-weight:700;">${opsMesaAbierta ? "Ocultar" : "Ver"}</span>
+            </div>
+            ${!opsMesaAbierta ? "" : `<div style="padding:0 16px 16px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                    <div style="background:#ecfeff;border-radius:10px;padding:10px 12px;">
+                        <div style="font-size:10.5px;font-weight:800;color:#0e7490;text-transform:uppercase;letter-spacing:.4px;">Turno de folios · ${OPS_TURNO_INI}:00 a ${OPS_TURNO_FIN}:00</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;">${t.dia.length ? t.dia.map(x => chip(opsEsc(x.tec.nombre) + (x.clientes.length ? ` <span style="font-weight:500;opacity:.8;">· ${opsEsc(x.clientes.join(" + "))}</span>` : ""), "#0e7490", "#fff")).join("")
+                            : `<span style="font-size:12px;color:#b45309;font-weight:700;">Nadie programado hoy en "Atención a folios".</span>`}</div>
+                        ${gestion ? `<button onclick="opsMesaProgramarTurno()" style="margin-top:8px;background:#fff;border:1px solid #0e7490;color:#0e7490;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">+ Programar turno (Nuevo servicio → Atención a folios)</button>` : ""}
+                    </div>
+                    <div style="background:#f5f3ff;border-radius:10px;padding:10px 12px;">
+                        <div style="font-size:10.5px;font-weight:800;color:#5b21b6;text-transform:uppercase;letter-spacing:.4px;">Guardia · de ${OPS_TURNO_FIN}:00 en adelante</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;">${t.guardia.length ? t.guardia.map(x => chip(opsEsc(x.tec.nombre) + ` <span style="font-weight:500;opacity:.8;">· ${opsEsc(x.fuente)}</span>`, "#5b21b6", "#fff")).join("")
+                            : `<span style="font-size:12px;color:#b45309;font-weight:700;">Sin guardia esta semana (pestaña Guardias).</span>`}</div>
+                    </div>
+                </div>
+                ${sinTec.length ? `<div style="border:1px solid #fecaca;background:#fff7f7;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+                        <div style="font-size:12.5px;font-weight:800;color:#b91c1c;">Folios sin técnico (${sinTec.length})</div>
+                        ${gestion ? `<button onclick="opsMesaAsignarTodos()" style="background:#0e7490;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">Asignar al turno que corresponde</button>` : ""}
+                    </div>
+                    ${sinTec.slice(0, 25).map(f => { const sug = opsTurnoParaFolio(f); return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #fee2e2;font-size:12px;">
+                        <div style="flex:1;min-width:0;"><b style="color:#1e293b;">${opsEsc(f.folioClienteId || f.folioOS || "Sin folio")}</b> · ${opsEsc(f.estacion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(opsClienteFolioNombre(f))}${f.prioridad ? " · " + opsEsc(f.prioridad) : ""}${f.vencimiento ? " · vence " + opsEsc(opsFmtFechaCorta(f.vencimiento)) : ""}</div></div>
+                        ${gestion ? `<select onchange="if(this.value)opsMesaAsignarUno('${f.id}',this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:5px 7px;font-size:11.5px;max-width:190px;">
+                            <option value="">${sug ? "Sugerido: " + opsEsc(sug.tec.nombre) : "Asignar a…"}</option>
+                            ${sug ? `<option value="${sug.tec.id}">${opsEsc(sug.tec.nombre)} (${sug.tipo === "guardia" ? "guardia" : "turno"})</option>` : ""}
+                            ${personal.map(p => `<option value="${p.id}">${opsEsc(p.nombre)}</option>`).join("")}</select>` : ""}
+                    </div>`; }).join("")}
+                    ${sinTec.length > 25 ? `<div style="font-size:11px;color:#64748b;padding-top:6px;">…y ${sinTec.length - 25} más.</div>` : ""}
+                </div>` : ""}
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+                    <div style="font-size:12.5px;font-weight:800;color:#1e293b;">Efectividad por técnico</div>
+                    <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;">${[["hoy", "Hoy"], ["semana", "Semana"], ["mes", "Mes"]].map(([k, n]) => `<button onclick="opsMesaRango('${k}')" style="border:none;background:${opsMesaRango === k ? "#0e7490" : "transparent"};color:${opsMesaRango === k ? "#fff" : "#475569"};border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${n}</button>`).join("")}</div>
+                </div>
+                ${ind.filas.length ? `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead><tr style="text-align:left;color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;"><th style="padding:6px 4px;">Técnico</th><th>Asignados</th><th>Finalizados</th><th>Efectividad</th><th>Atendidos sin finalizar</th><th>Con reincidencia</th></tr></thead>
+                    <tbody>${ind.filas.map(r => `<tr style="border-top:1px solid #eef1f5;"><td style="padding:7px 4px;font-weight:700;color:#1e293b;">${opsEsc(r.nombre)}</td><td>${r.asignados}</td><td>${r.finalizados}</td>
+                        <td><b style="color:${colorPct(r.finalizados, r.asignados)};">${pct(r.finalizados, r.asignados)}</b></td><td>${r.sinFinalizar}</td><td>${r.reincidentes ? `<b style="color:#b45309;">${r.reincidentes}</b>` : 0}</td></tr>`).join("")}</tbody></table>
+                    <div style="font-size:11.5px;color:#64748b;margin-top:8px;">Reincidencia general: <b>${pct(ind.reincTotal, ind.trabajados)}</b> (${ind.reincTotal} de ${ind.trabajados} folios trabajados se atendieron en más de un día o por más de un técnico).</div>`
+                    : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay folios asignados en este periodo. Se empiezan a contar desde que se asignan con la mesa de folios.</div>`}
+                ${ind.motivos.length ? `<div style="margin-top:10px;"><div style="font-size:11.5px;font-weight:800;color:#1e293b;margin-bottom:4px;">Por qué no se finalizaron</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;">${ind.motivos.map(([m, c]) => chip(`${opsEsc(m)} <b>${c}</b>`, "#fef3c7", "#92400e")).join("")}</div></div>` : ""}
+            </div>`}
+        </div>`;
+    }
+    // Aviso compacto arriba del calendario: quién está en folios y en guardia hoy (para no moverlos).
+    function opsTurnoFoliosBannerHTML() {
+        const hoy = opsHoyLocal(), t = opsTurnoFolios(hoy);
+        const sinTec = cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion && opsFolioSinTecnico(f)).length;
+        return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#ecfeff;border:1px solid #a5f3fc;border-radius:12px;padding:8px 14px;margin:0 0 10px;font-size:12px;color:#155e75;">
+            <b>Hoy en folios (${OPS_TURNO_INI} a ${OPS_TURNO_FIN}):</b> ${t.dia.length ? t.dia.map(x => opsEsc(x.tec.nombre)).join(", ") : '<span style="color:#b45309;font-weight:700;">nadie programado</span>'}
+            <span style="color:#a5b4fc;">|</span>
+            <b style="color:#5b21b6;">Guardia:</b> <span style="color:#5b21b6;">${t.guardia.length ? t.guardia.map(x => opsEsc(x.tec.nombre)).join(", ") : "sin asignar"}</span>
+            ${t.dia.length ? `<span style="color:#64748b;">· No mover a ${t.dia.length > 1 ? "estos técnicos" : "este técnico"} sin cubrir los folios.</span>` : ""}
+            ${sinTec ? `<button onclick="opsCambiarTab('folios')" style="margin-left:auto;background:#E7402B;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${sinTec} folio(s) sin técnico</button>` : ""}
+        </div>`;
+    }
+
     function opsRenderFolios() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -5868,6 +6069,7 @@
         filtrados.sort((a, b) => orden[a.info.semaforo] - orden[b.info.semaforo]);
 
         el.innerHTML = `
+            ${filtroFolioTipo !== "inspeccion" ? opsMesaFoliosHTML() : ""}
             <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:10px;width:fit-content;margin-bottom:14px;">
                 ${[["servicio", `Folios de servicio (${numServicio})`], ["inspeccion", `Visitas de inspección (${numInspeccion})`]].map(([val, label]) => {
                     const on = filtroFolioTipo === val;
@@ -6271,6 +6473,7 @@
 
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
+            ${opsCalFull ? "" : opsTurnoFoliosBannerHTML()}
             ${opsCalFull ? "" : '<div id="ops-cal-pedidos-ventas"></div>'}
             <div id="ops-cal-body"></div>
           ${opsCalFull ? "</div>" : ""}

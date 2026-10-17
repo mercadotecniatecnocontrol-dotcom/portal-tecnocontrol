@@ -6784,6 +6784,109 @@ function opsSvTipo(f){
   if(f.tipoFolio==='laboratorio')return 'Laboratorio';
   return f.categoriaServicio||'Servicio técnico';
 }
+// ── Estación del servicio: nombre comercial y ubicación real (17-oct-2026) ──
+// El folio guarda una COPIA de la estación al darse de alta. Aquí se consulta el catálogo
+// (Supabase estaciones_servicio) por estacionCatalogoId para mostrar siempre lo más reciente:
+// si Operaciones le pone nombre comercial o alguien confirma la ubicación, los servicios ya
+// programados lo reflejan sin volver a capturarlos.
+// · Título: nombre comercial (Cumbres, Cima…). Nunca la razón social como título.
+// · Mapa: coordenadas solo si la ubicación está CONFIRMADA en sitio; si no, búsqueda por la
+//   dirección limpia (las coordenadas viejas del catálogo pueden ser el centro de la ciudad).
+const _opsEstCat=new Map();      // id -> fila del catálogo (o null si no existe)
+let _opsEstPend=null, _opsEstConVerif=true;
+function opsSvNorm(t){return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/gi,'').toUpperCase();}
+function opsSvEst(f){
+  const c=f&&f.estacionCatalogoId?_opsEstCat.get(String(f.estacionCatalogoId)):null;
+  return {
+    nombreComercial:(c&&c.nombre_comercial)||'',
+    razonSocial:(c&&c.razon_social)||f.estacionRazonSocial||'',
+    permiso:(c&&c.permiso)||f.estacionPermiso||'',
+    direccion:(c&&c.direccion_normalizada)||f.estacionDireccion||'',
+    lat:c&&c.lat!=null?c.lat:(f.estacionUbicacionVerificada?f.estacionLat:null),
+    lng:c&&c.lng!=null?c.lng:(f.estacionUbicacionVerificada?f.estacionLng:null),
+    verificada:!!((c&&c.ubicacion_verificada)||f.estacionUbicacionVerificada),
+    enCatalogo:!!c,
+  };
+}
+function opsSvPLCorto(pl){const m=String(pl||'').match(/PL\s*\/\s*(\d+)/i);return m?'PL '+m[1]:String(pl||'');}
+// Nombre con el que se conoce la estación. Si nadie se lo ha puesto, se dice claro (con su PL)
+// en lugar de disfrazar la razón social de nombre.
+function opsSvNombreInfo(f){
+  const e=opsSvEst(f), rs=opsSvNorm(e.razonSocial);
+  const valido=function(n){n=String(n||'').trim();return n&&opsSvNorm(n)!==rs&&!(rs&&opsSvNorm(n).indexOf(rs)===0)?n:'';};
+  const nombre=valido(e.nombreComercial)||valido(f.estacion);
+  if(nombre)return {titulo:nombre,sinNombre:false,e:e};
+  if(!f.estacionCatalogoId&&!e.razonSocial)return {titulo:f.estacion||'Estación sin nombre',sinNombre:false,e:e};
+  return {titulo:e.permiso?'Estación '+opsSvPLCorto(e.permiso):(e.razonSocial||f.estacion||'Estación'),sinNombre:true,e:e};
+}
+function opsSvTitulo(f){return opsSvNombreInfo(f).titulo;}
+function opsSvDirLimpia(d){
+  return String(d||'').replace(/\bNO\.\s*/gi,'').replace(/\bCol\.\s*/gi,'').replace(/\bC\.\s*P\.\s*/gi,'').replace(/\s+,/g,',').replace(/\s{2,}/g,' ').trim();
+}
+function opsSvMapaUrl(f){
+  const e=opsSvEst(f);
+  if(e.verificada&&e.lat!=null&&e.lng!=null)return 'https://www.google.com/maps/search/?api=1&query='+e.lat+','+e.lng;
+  if(e.direccion)return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent('gasolinera '+opsSvDirLimpia(e.direccion)+(/m[eé]xico/i.test(e.direccion)?'':', México'));
+  if(e.lat!=null&&e.lng!=null)return 'https://www.google.com/maps/search/?api=1&query='+e.lat+','+e.lng;
+  return '';
+}
+// Trae del catálogo las estaciones de mis servicios que aún no están en memoria.
+function fmOpsEstRefrescar(forzar){
+  const ids=Array.from(new Set(misOpsServ.map(function(f){return f.estacionCatalogoId?String(f.estacionCatalogoId):'';}).filter(Boolean)))
+    .filter(function(id){return forzar||!_opsEstCat.has(id);});
+  if(!ids.length||_opsEstPend)return _opsEstPend||Promise.resolve();
+  const base='id,razon_social,nombre_comercial,permiso,direccion_normalizada,lat,lng';
+  _opsEstPend=fmvSb().then(async function(sb){
+    let r=await sb.from('estaciones_servicio').select(base+(_opsEstConVerif?',ubicacion_verificada':'')).in('id',ids);
+    if(r.error&&_opsEstConVerif&&/ubicacion_verificada/.test(r.error.message||'')){_opsEstConVerif=false;r=await sb.from('estaciones_servicio').select(base).in('id',ids);}
+    if(r.error)throw r.error;
+    ids.forEach(function(id){_opsEstCat.set(id,null);});
+    (r.data||[]).forEach(function(x){_opsEstCat.set(String(x.id),x);});
+  }).catch(function(e){console.warn('[OPS estaciones]',e&&e.message||e);})
+    .finally(function(){_opsEstPend=null;if(vistaAct==='tareas')renderTareas();if(document.getElementById('fm-ops-det')&&window.__fmOpsDetId)fmOpsServDetalle(window.__fmOpsDetId);});
+  return _opsEstPend;
+}
+// GPS preciso para fijar la ubicación de la estación (aquí sí se espera a tener buena señal).
+function fmOpsGpsPreciso(){
+  return new Promise(function(resolve){
+    if(!navigator.geolocation){resolve({error:'Este teléfono no tiene GPS disponible.'});return;}
+    navigator.geolocation.getCurrentPosition(
+      function(p){resolve({lat:p.coords.latitude,lng:p.coords.longitude,precision:Math.round(p.coords.accuracy||9999)});},
+      function(err){resolve({error:err&&err.code===1?'Activa el permiso de ubicación para la app y vuelve a intentar.':'No se pudo leer el GPS. Sal a cielo abierto y vuelve a intentar.'});},
+      {enableHighAccuracy:true,timeout:20000,maximumAge:0}
+    );
+  });
+}
+const OPS_GPS_PRECISION_MAX=100; // metros
+window.fmOpsEstGuardarUbic=async function(id,btn){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f||!f.estacionCatalogoId)return;
+  const nom=opsSvTitulo(f);
+  if(!confirm('¿Estás DENTRO de la estación '+nom+' en este momento?\n\nSe guardará tu ubicación actual como la ubicación oficial de la estación para todos los servicios. Hazlo solo si estás ahí.'))return;
+  const txt=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Leyendo GPS…';}
+  const fin=function(m,tipo){if(btn){btn.disabled=false;btn.textContent=txt;}if(m)toast(m,tipo||'err');};
+  const g=await fmOpsGpsPreciso();
+  if(g.error){fin(g.error);return;}
+  if(g.precision>OPS_GPS_PRECISION_MAX){fin('Señal de GPS imprecisa (±'+g.precision+' m). Espera unos segundos a cielo abierto y vuelve a intentar.');return;}
+  try{
+    const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+    const sb=await fmvSb();
+    const r=await sb.from('estaciones_servicio').update({lat:g.lat,lng:g.lng,ubicacion_verificada:true,ubicacion_fuente:'tecnico_en_sitio',ubicacion_por:quien,ubicacion_en:ahora,ubicacion_precision_m:g.precision,actualizado_en:ahora}).eq('id',String(f.estacionCatalogoId));
+    if(r.error)throw r.error;
+    // El folio también se queda con la ubicación confirmada (lo usa el portal)
+    await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({estacionLat:g.lat,estacionLng:g.lng,estacionUbicacionVerificada:true});
+    await opsSvComentario(id,'Ubicación de la estación confirmada en sitio por '+quien+' ('+g.lat.toFixed(6)+', '+g.lng.toFixed(6)+', ±'+g.precision+' m).','ubicacion');
+    await opsSvAvisarAdmins('ops_ubicacion_estacion',quien+' confirmó en sitio la ubicación de '+nom+'.',id);
+    const c=_opsEstCat.get(String(f.estacionCatalogoId))||{};
+    _opsEstCat.set(String(f.estacionCatalogoId),Object.assign({},c,{lat:g.lat,lng:g.lng,ubicacion_verificada:true}));
+    fin('Ubicación guardada. Gracias, ya sale bien en el mapa para todos.','ok');
+    if(vistaAct==='tareas')renderTareas();
+    if(document.getElementById('fm-ops-det'))fmOpsServDetalle(id);
+  }catch(e){
+    console.error('[OPS ubicación estación]',e);
+    fin(/ubicacion_/.test(e&&e.message||'')?'Falta activar esta función en la base de datos. Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
+  }
+};
 function opsSvEsMio(f,correo){
   if(f.fechaSolucion||f.cancelado===true)return false;
   if(_opsServTecId&&((f.tecnicosAsignadosIds||[]).indexOf(_opsServTecId)>=0||f.tecnicoResponsableId===_opsServTecId))return true;
@@ -6803,6 +6906,7 @@ async function fmOpsServCargar(){
         .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
       actualizarBadges();
       if(vistaAct==='tareas')renderTareas();
+      fmOpsEstRefrescar(false);
     },function(err){console.warn('[OPS servicios]',err);});
   }
   if(!_unsubOpsAvisos){
@@ -6904,19 +7008,21 @@ function fmOpsServHTML(){
       else if(dia&&f.duracionUnidad==='dias'&&Number(f.duracionValor)>1){const dd=new Date(dia+'T12:00:00');dd.setDate(dd.getDate()+Math.ceil(Number(f.duracionValor))-1);diaFin=dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0');}
       const esHoy=!!dia&&dia<=hoyISO&&hoyISO<=diaFin, atrasado=dia&&diaFin<hoyISO&&!enProc;
       const borde=enProc?'#BFDBFE':atrasado?'#FCA5A5':esHoy?'#FDE68A':'#E2E8F0';
-      const mapa=(f.estacionLat!=null&&f.estacionLng!=null)?'https://www.google.com/maps/search/?api=1&query='+f.estacionLat+','+f.estacionLng:(f.estacionDireccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(f.estacionDireccion):'');
+      const mapa=opsSvMapaUrl(f);
       const tel=f.contactoWhatsapp||f.contactoTelefono||'';
       return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">'+
         '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">'+
           '<span style="font-size:10px;font-weight:800;color:#1D2E73;background:#EEF2FF;padding:2px 8px;border-radius:8px">'+opsSvEsc(opsSvTipo(f))+'</span>'+
           '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;'+(enProc?'background:#DBEAFE;color:#1E40AF':atrasado?'background:#FEE2E2;color:#B91C1C':esHoy?'background:#FEF3C7;color:#92400E':'background:#F1F5F9;color:#475569')+'">'+(enProc?'En proceso':atrasado?'Atrasado':esHoy?'Hoy':'Programado')+'</span>'+
         '</div>'+
-        '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:4px">'+opsSvEsc(f.estacion||'Estación sin nombre')+'</div>'+
+        (function(){const ni=opsSvNombreInfo(f);return '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:2px">'+opsSvEsc(ni.titulo)+(ni.sinNombre?' <span style="font-size:10px;font-weight:800;color:#92400E;background:#FEF3C7;border-radius:6px;padding:1px 6px;vertical-align:middle">Sin nombre comercial</span>':'')+'</div>'+
+          ((ni.e.razonSocial||ni.e.permiso)&&ni.e.razonSocial!==ni.titulo?'<div style="font-size:11px;color:#64748B;margin-bottom:4px">'+opsSvEsc([ni.e.razonSocial,ni.e.permiso].filter(Boolean).join(' · '))+'</div>':'');})()+
         '<div style="font-size:12px;color:#475569;margin-bottom:6px">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+(diaFin!==dia?' al '+opsSvEsc(diaFin.split('-').reverse().join('/')):'')+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+'</div>'+
         (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
         ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
         (f.comentarios?'<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#334155;margin-bottom:8px">'+opsSvEsc(f.comentarios)+'</div>':'')+
+        (f.ultimoNoFinalizado?'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#92400E;margin-bottom:8px"><b>Visita anterior sin finalizar</b> ('+opsSvEsc(f.ultimoNoFinalizado.por||'')+'): '+opsSvEsc(f.ultimoNoFinalizado.motivo||'')+(f.ultimoNoFinalizado.detalle?' · '+opsSvEsc(f.ultimoNoFinalizado.detalle):'')+'</div>':'')+
         (enProc?'<div style="font-size:11px;color:#1E40AF;font-weight:700;margin-bottom:8px">Iniciado: '+opsSvEsc(opsSvFecha(f.iniciadoEn))+'</div>':'')+
         (f.pausaActiva?'<div style="background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#9A3412"><b>En pausa</b> desde '+opsSvEsc(opsSvHora(f.pausaActiva.desde))+' · '+opsSvEsc(f.pausaActiva.motivo||'')+(f.pausaActiva.minutosEstimados?' · ~'+f.pausaActiva.minutosEstimados+' min':'')+
           '<button onclick="fmOpsServReanudar(\''+f.id+'\',this)" style="display:block;width:100%;margin-top:7px;padding:9px;background:#EA580C;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Reanudar servicio</button></div>'
@@ -6924,7 +7030,7 @@ function fmOpsServHTML(){
         '<button onclick="fmOpsServDetalle(\''+f.id+'\')" style="width:100%;padding:10px;margin-bottom:7px;background:#1D2E73;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Ver todo: herramienta, material y datos</button>'+
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
           (enProc
-            ?'<button disabled style="padding:9px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#1E40AF">Iniciado</button>'
+            ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#1E40AF;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Terminar visita</button>'
             :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>')+
           '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:9px;background:#fff;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#334155;cursor:pointer">Comentar</button>'+
           (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="padding:9px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:8px;font-size:11px;font-weight:800;color:#1D2E73;text-align:center;text-decoration:none">Mapa</a>':'')+
@@ -6951,7 +7057,7 @@ function fmOpsMiDiaHTML(hoyISO){
     const otros=(f.tecnicosAsignadosNombres||[]).filter(function(n){return n&&n!==opsSvMiNombre();});
     return '<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid #EEF2F7">'+
       '<div style="font-size:13px;font-weight:800;color:#1D2E73;min-width:44px">'+opsSvEsc(hora)+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#0A1628">'+opsSvEsc(f.estacion||'Servicio')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#0A1628">'+opsSvEsc(opsSvTitulo(f))+'</div>'+
       '<div style="font-size:11.5px;color:#64748B">'+opsSvEsc(opsSvTipo(f))+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+(otros.length?' · con '+opsSvEsc(otros.join(', ')):'')+(f.vehiculoPlaneado?' · '+opsSvEsc(f.vehiculoPlaneado):'')+'</div></div>'+
       (f.pausaActiva?'<span style="font-size:10px;font-weight:800;color:#9A3412;background:#FFEDD5;border-radius:6px;padding:2px 6px;align-self:center">PAUSA</span>':f.iniciadoEn?'<span style="font-size:10px;font-weight:800;color:#1E40AF;background:#DBEAFE;border-radius:6px;padding:2px 6px;align-self:center">EN PROCESO</span>':'')+
     '</div>';
@@ -6975,7 +7081,7 @@ window.fmOpsServPausa=function(id){
   ov.innerHTML=
     '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px">'+
       '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Tiempo muerto / pausa</div>'+
-      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(f.estacion||'')+' · se avisa a Operaciones con la hora exacta.</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(opsSvTitulo(f))+' · se avisa a Operaciones con la hora exacta.</div>'+
       '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Qué pasó?</div>'+
       '<div id="fm-pausa-motivos" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+OPS_PAUSA_MOTIVOS.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivo(this)" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>'+
       '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cuánto calculas que tarda?</div>'+
@@ -7004,7 +7110,7 @@ window.fmOpsServGuardarPausa=async function(id){
     const pausa={motivo:motivo,detalle:det||null,minutosEstimados:min,desde:ahora,por:quien,porEmail:opsSvMiCorreo()};
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({pausaActiva:pausa});
     await opsSvComentario(id,'[Pausa '+opsSvHora(ahora)+'] '+motivo+(min?' · ~'+min+' min':'')+(det?' · '+det:''),'pausa');
-    await opsSvAvisarAdmins('ops_tiempo_muerto',quien+' pausó '+(f.estacion||'un servicio')+': '+motivo+(min?' (~'+min+' min)':'')+(det?' · '+det:''),id);
+    await opsSvAvisarAdmins('ops_tiempo_muerto',quien+' pausó '+(f.id?opsSvTitulo(f):'un servicio')+': '+motivo+(min?' (~'+min+' min)':'')+(det?' · '+det:''),id);
     document.getElementById('fm-ops-pausa')?.remove();
     toast('Pausa registrada. Se avisó a Operaciones.','ok');
   }catch(e){
@@ -7025,7 +7131,7 @@ window.fmOpsServReanudar=async function(id,btn){
     const total=lista.reduce(function(a,x){return a+(Number(x.minutosReales)||0);},0);
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({pausaActiva:null,tiemposMuertos:lista,tiempoMuertoMin:total});
     await opsSvComentario(id,'[Reanudado '+opsSvHora(ahora.toISOString())+'] Pausa por '+p.motivo+': '+minutos+' min.','reanudo');
-    await opsSvAvisarAdmins('ops_tiempo_muerto_fin',opsSvMiNombre()+' reanudó '+(f.estacion||'el servicio')+' tras '+minutos+' min ('+p.motivo+').',id);
+    await opsSvAvisarAdmins('ops_tiempo_muerto_fin',opsSvMiNombre()+' reanudó '+opsSvTitulo(f)+' tras '+minutos+' min ('+p.motivo+').',id);
     toast('Servicio reanudado ('+minutos+' min de pausa).','ok');
   }catch(e){
     console.error('[OPS reanudar]',e);
@@ -7048,21 +7154,95 @@ async function opsSvAvisarAdmins(tipo,mensaje,folioId){
 
 window.fmOpsServIniciar=async function(id,btn){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
-  if(!confirm('¿Confirmas que ya iniciaste el servicio en '+(f.estacion||'la estación')+'?'))return;
+  if(!confirm('¿Confirmas que ya iniciaste el servicio en '+opsSvTitulo(f)+'?'))return;
   if(btn){btn.disabled=true;btn.textContent='Guardando…';btn.style.opacity='.7';}
   try{
     const ahora=new Date().toISOString(), quien=opsSvMiNombre();
     const ub=await herrObtenerUbicacion();
     const cambios={iniciadoEn:ahora,iniciadoPor:quien,iniciadoDesde:'app_flotilla'};
+    if(!f.fechaAtencion&&(f.folioClienteId||f.vencimiento))cambios.fechaAtencion=ahora; // atención del folio para el SLA
     if(ub)cambios.iniciadoUbicacion=ub;
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
     await opsSvComentario(id,'Servicio iniciado desde la app de Flotilla por '+quien+(ub?' · ubicación '+ub.lat.toFixed(5)+', '+ub.lng.toFixed(5):' · sin ubicación')+'.','inicio');
-    await opsSvAvisarAdmins('ops_tecnico_inicio',quien+' inició el servicio en '+(f.estacion||'estación')+'.',id);
+    await opsSvAvisarAdmins('ops_tecnico_inicio',quien+' inició el servicio en '+opsSvTitulo(f)+'.',id);
     toast('Inicio confirmado. Se avisó a Operaciones.','ok');
   }catch(e){
     console.error('[OPS iniciar]',e);
     toast('No se pudo confirmar el inicio. Intenta de nuevo.','err');
     if(btn){btn.disabled=false;btn.textContent='Iniciar servicio';btn.style.opacity='1';}
+  }
+};
+
+// ── Terminar visita (17-oct-2026): resuelto o "atendido sin finalizar" con motivo obligatorio ──
+// Cada visita queda en el folio (atenciones): con eso Operaciones calcula efectividad por técnico
+// y reincidencia (el mismo folio trabajado en más de un día o por otro técnico).
+const OPS_NO_FIN_MOTIVOS=['Falta refacción','Falta material o herramienta','Requiere otro técnico o especialidad','Falla mayor / requiere cotización','El cliente no permitió el trabajo','Estación ocupada / sin acceso','Clima','Se terminó la jornada','Otro'];
+window.fmOpsServTerminar=function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  const ov=document.createElement('div'); ov.id='fm-ops-term';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=
+    '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px;max-height:92vh;overflow-y:auto">'+
+      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Terminar visita</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:12px">'+opsSvEsc(opsSvTitulo(f))+(f.folioClienteId||f.folioOS?' · '+opsSvEsc(f.folioClienteId||f.folioOS):'')+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cómo quedó?</div>'+
+      '<div id="fm-term-res" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'+
+        '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:12px 8px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#15803D">Quedó resuelto</button>'+
+        '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:12px 8px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#B45309">Atendido, NO se finalizó</button>'+
+      '</div>'+
+      '<div id="fm-term-nofin" style="display:none">'+
+        '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se finalizó? <span style="color:#DC2626">*</span></div>'+
+        '<div id="fm-term-motivos" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+OPS_NO_FIN_MOTIVOS.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivoSel(this,\'fm-term-motivos\')" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>'+
+      '</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px" id="fm-term-lbl">¿Qué se hizo?</div>'+
+      '<textarea id="fm-term-txt" rows="3" placeholder="Describe lo que hiciste y lo que falta (ej. se cambió la tarjeta, falta el sensor que pidió Compras)." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
+      '<div id="fm-term-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<button onclick="document.getElementById(\'fm-ops-term\').remove()" style="padding:12px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Cancelar</button>'+
+        '<button id="fm-term-btn" onclick="fmOpsServGuardarTermino(\''+id+'\')" style="padding:12px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Guardar</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+};
+window.fmOpsPausaMotivoSel=function(b,cont){document.querySelectorAll('#'+cont+' button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
+window.fmOpsTermRes=function(b){
+  document.querySelectorAll('#fm-term-res button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});
+  const fin=b.getAttribute('data-r')==='finalizado';
+  b.style.background=fin?'#F0FDF4':'#FFF7ED'; b.style.borderColor=fin?'#15803D':'#EA580C'; b.setAttribute('data-on','1');
+  const nf=document.getElementById('fm-term-nofin'); if(nf)nf.style.display=fin?'none':'block';
+  const lbl=document.getElementById('fm-term-lbl'); if(lbl)lbl.innerHTML=fin?'¿Qué se hizo?':'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>';
+};
+window.fmOpsServGuardarTermino=async function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  const rb=document.querySelector('#fm-term-res button[data-on]'), mb=document.querySelector('#fm-term-motivos button[data-on]');
+  const txt=(document.getElementById('fm-term-txt')?.value||'').trim();
+  const msg=document.getElementById('fm-term-msg'), btn=document.getElementById('fm-term-btn');
+  if(!rb){if(msg)msg.textContent='Elige cómo quedó.';return;}
+  const res=rb.getAttribute('data-r');
+  if(res==='no_finalizado'&&!mb){if(msg)msg.textContent='Elige por qué no se finalizó.';return;}
+  if(res==='no_finalizado'&&txt.length<10){if(msg)msg.textContent='Explica qué se hizo y qué falta (mínimo una frase).';return;}
+  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  try{
+    const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+    const ub=await herrObtenerUbicacion();
+    const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:res==='no_finalizado'?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0};
+    const cambios={atenciones:(f.atenciones||[]).concat([visita]),pausaActiva:null};
+    if(res==='finalizado'){
+      cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde='app_flotilla';
+      if(!f.fechaAtencion)cambios.fechaAtencion=f.iniciadoEn||ahora;
+    }else{
+      // Queda abierto: se limpia el inicio para que la próxima visita se registre aparte (reincidencia).
+      cambios.iniciadoEn=null; cambios.ultimoNoFinalizado={motivo:visita.motivo,detalle:txt,por:quien,en:ahora};
+    }
+    await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
+    await opsSvComentario(id,res==='finalizado'?'[Finalizado] '+(txt||'Servicio terminado desde la app.'):'[Atendido sin finalizar] '+visita.motivo+' · '+txt,res==='finalizado'?'finalizado':'no_finalizado');
+    await opsSvAvisarAdmins(res==='finalizado'?'ops_tecnico_finalizo':'ops_tecnico_no_finalizo',quien+(res==='finalizado'?' finalizó ':' atendió SIN finalizar ')+opsSvTitulo(f)+(res==='finalizado'?'.':': '+visita.motivo+' · '+(txt.length>100?txt.slice(0,100)+'…':txt)),id);
+    document.getElementById('fm-ops-term')?.remove();
+    toast(res==='finalizado'?'Servicio finalizado. Se avisó a Operaciones.':'Registrado como atendido sin finalizar. Se avisó a Operaciones.','ok');
+  }catch(e){
+    console.error('[OPS terminar]',e);
+    if(msg)msg.textContent='No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+    if(btn){btn.disabled=false;btn.textContent='Guardar';}
   }
 };
 
@@ -7073,7 +7253,7 @@ window.fmOpsServComentar=function(id){
   ov.innerHTML=
     '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px">'+
       '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Comentario para Operaciones</div>'+
-      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(f.estacion||'')+' · '+opsSvEsc(opsSvFecha(f.fechaProgramada))+'</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:10px">'+opsSvEsc(opsSvTitulo(f))+' · '+opsSvEsc(opsSvFecha(f.fechaProgramada))+'</div>'+
       '<textarea id="fm-ops-coment-txt" rows="4" placeholder="Ej. Falta material, el encargado no está, llegué a la estación…" style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;resize:vertical"></textarea>'+
       '<div id="fm-ops-coment-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
@@ -7092,7 +7272,7 @@ window.fmOpsServEnviarComentario=async function(id){
   if(btn){btn.disabled=true;btn.textContent='Enviando…';}
   try{
     await opsSvComentario(id,txt,'tecnico');
-    await opsSvAvisarAdmins('ops_tecnico_comentario',opsSvMiNombre()+' comentó en '+(f.estacion||'un servicio')+': '+(txt.length>120?txt.slice(0,120)+'…':txt),id);
+    await opsSvAvisarAdmins('ops_tecnico_comentario',opsSvMiNombre()+' comentó en '+(f.id?opsSvTitulo(f):'un servicio')+': '+(txt.length>120?txt.slice(0,120)+'…':txt),id);
     document.getElementById('fm-ops-coment')?.remove();
     toast('Comentario enviado a Operaciones.','ok');
   }catch(e){
@@ -7118,11 +7298,12 @@ const OPS_SV_DELICADO=/comisi|precio|costo|utilidad|margen|factur|vi[aá]tico|\$
 window.fmOpsServDetalle=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   document.getElementById('fm-ops-det')?.remove();
+  window.__fmOpsDetId=id;
   const ov=document.createElement('div'); ov.id='fm-ops-det';
   ov.style.cssText='position:fixed;inset:0;background:#F4F6F9;z-index:99998;display:flex;flex-direction:column';
   ov.innerHTML='<div style="background:#1D2E73;color:#fff;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 14px;display:flex;align-items:center;gap:10px">'+
       '<button onclick="document.getElementById(\'fm-ops-det\').remove()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;font-weight:800">Cerrar</button>'+
-      '<div style="font-size:15px;font-weight:800;flex:1;line-height:1.2">'+opsSvEsc(f.estacion||'Servicio')+'</div></div>'+
+      '<div style="font-size:15px;font-weight:800;flex:1;line-height:1.2">'+opsSvEsc(opsSvTitulo(f))+'</div></div>'+
     '<div id="fm-ops-det-body" style="flex:1;overflow-y:auto;padding:14px 14px calc(env(safe-area-inset-bottom,0px) + 30px)"><div style="text-align:center;color:#94A3B8;font-size:13px;padding:30px">Cargando…</div></div>';
   document.body.appendChild(ov);
 
@@ -7141,7 +7322,7 @@ window.fmOpsServDetalle=async function(id){
   const cant=Math.max(1,Number(f.cantidadUnidades)||1);
   const tel=f.contactoWhatsapp||f.contactoTelefono||'';
   const wa=f.contactoWhatsapp?String(f.contactoWhatsapp).replace(/\D/g,''):'';
-  const mapa=(f.estacionLat!=null&&f.estacionLng!=null)?'https://www.google.com/maps/search/?api=1&query='+f.estacionLat+','+f.estacionLng:(f.estacionDireccion?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(f.estacionDireccion):'');
+  const mapa=opsSvMapaUrl(f);
 
   // Herramienta: la confirmada en el alta (con palomita) o, si no hay, la de la receta
   const herrFolio=(f.herramientaChecklist||[]);
@@ -7164,6 +7345,7 @@ window.fmOpsServDetalle=async function(id){
   const scfi=[['Hologramas',f.hologramas],['Precintos',f.precintos],['Distintivos',f.distintivos],['Mangueras',f.mangueras]].filter(function(x){return x[1]!=null&&x[1]!=='';});
 
   const body=document.getElementById('fm-ops-det-body'); if(!body)return;
+  const ni=opsSvNombreInfo(f);
   body.innerHTML=
     sec('Servicio',
       fila('Tipo',e(opsSvTipo(f)))+fila('Servicio',r?e(r.nombre):'')+fila('Cantidad',r&&cant>1?e(cant+' unidades'):'')+
@@ -7172,10 +7354,14 @@ window.fmOpsServDetalle=async function(id){
       fila('Vence',f.vencimiento?e(opsSvFecha(f.vencimiento)):''))+
     sec('Indicaciones de Operaciones',f.comentarios?'<div style="font-size:13.5px;color:#0A1628;line-height:1.5;white-space:pre-wrap">'+e(f.comentarios)+'</div>':'')+
     sec('Estación',
-      fila('Nombre',e(f.estacion||''))+fila('Razón social',e(f.estacionRazonSocial||''))+fila('Permiso (PL)',e(f.estacionPermiso||''))+fila('CR',e(f.estacionCR||''))+
-      fila('Dirección',e(f.estacionDireccion||''))+fila('Zona',e(f.estacionZona||f.plaza||''))+fila('Encargado',e(f.estacionEncargado||''))+
+      fila('Nombre',ni.sinNombre?'<span style="color:#92400E">Sin nombre comercial</span><div style="font-size:11px;color:#64748B;font-weight:600">Si sabes cómo se le conoce (ej. Cumbres), díselo a Operaciones con "Comentar".</div>':e(ni.titulo))+
+      fila('Razón social',e(ni.e.razonSocial))+fila('Permiso (PL)',e(ni.e.permiso))+fila('CR',e(f.estacionCR||''))+
+      fila('Dirección',e(ni.e.direccion))+fila('Zona',e(f.estacionZona||f.plaza||''))+fila('Encargado',e(f.estacionEncargado||''))+
       fila('Dispensarios',e(f.numeroDispensarios||f.estacionNumeroDispensarios||''))+fila('Tanques',e(f.estacionNumeroTanques||''))+fila('Sondas',e(f.estacionNumeroSondas||''))+
-      (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:8px;background:#EEF2FF;color:#1D2E73;font-weight:800;font-size:13px;text-decoration:none">Abrir en el mapa</a>':''))+
+      (f.estacionCatalogoId?'<div style="font-size:11.5px;margin-top:8px;font-weight:700;'+(ni.e.verificada?'color:#15803D">Ubicación confirmada en sitio':'color:#B45309">Ubicación aproximada (por dirección)')+'</div>':'')+
+      (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:10px;padding:10px;border-radius:8px;background:#EEF2FF;color:#1D2E73;font-weight:800;font-size:13px;text-decoration:none">Abrir en el mapa</a>':'')+
+      (f.estacionCatalogoId&&!ni.e.verificada&&_opsEstConVerif?'<button onclick="fmOpsEstGuardarUbic(\''+f.id+'\',this)" style="display:block;width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1.5px solid #FDBA74;background:#FFF7ED;color:#9A3412;font-family:inherit;font-weight:800;font-size:13px">Estoy en la estación: guardar ubicación</button>'+
+        '<div style="font-size:11px;color:#64748B;margin-top:4px">Úsalo solo estando dentro de la estación. Corrige el mapa para todos los servicios.</div>':''))+
     sec('Contacto en la estación',f.contactoNombre||tel?
       fila('Nombre',e(f.contactoNombre||''))+fila('Puesto',e(f.contactoPuesto||''))+
       fila('Teléfono',tel?'<a href="tel:'+e(tel)+'" style="color:#1D4ED8">'+e(tel)+'</a>':'')+
@@ -7193,7 +7379,7 @@ window.fmOpsServDetalle=async function(id){
     sec('Seguimiento',coms.length?coms.map(function(c){return '<div style="padding:7px 0;border-bottom:1px solid #F1F5F9"><div style="font-size:10.5px;color:#64748B;font-weight:700">'+e(c.autor||'')+(c.createdAt?' · '+e(opsSvFecha(String(c.createdAt).slice(0,16))):'')+'</div><div style="font-size:12.5px;color:#0A1628;line-height:1.4">'+e(c.texto)+'</div></div>';}).join(''):'')+
     (!herr.length&&!mat.length&&!seg.length?'<div style="font-size:12px;color:#64748B;text-align:center;padding:6px 10px 14px">Este servicio no tiene herramienta ni material capturados. Si te falta algo, usa "Comentar" para avisar a Operaciones.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">'+
-      (f.iniciadoEn?'<button disabled style="padding:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#1E40AF">Iniciado</button>'
+      (f.iniciadoEn?'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServTerminar(\''+f.id+'\')" style="padding:12px;background:#1E40AF;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Terminar visita</button>'
         :'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServIniciar(\''+f.id+'\',null)" style="padding:12px;background:#15803D;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Iniciar servicio</button>')+
       '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:12px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Comentar</button>'+
     '</div>';
