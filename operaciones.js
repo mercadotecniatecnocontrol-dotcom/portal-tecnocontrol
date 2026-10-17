@@ -7290,7 +7290,7 @@
                     return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
                         style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${cat.estClave === "cancelado" ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>${opsCalSelloFinal(cat.estClave, false)}
-                        ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}
+                        ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}${opsMarcaCambioExterno(f)}
                         <div style="display:flex;align-items:center;gap:5px;min-width:0;">
                             ${cat.empresa === "jomar" ? `<span title="JOMAR Verificaciones" style="font-size:8.5px;font-weight:800;color:${cat.color};background:#fff;padding:1px 4px;border-radius:4px;flex-shrink:0;">JOMAR</span>` : ""}
                             <span style="font-size:9px;font-weight:800;color:${cat.texto};background:${cat.texto === "#ffffff" ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.08)"};padding:1px 5px;border-radius:5px;white-space:nowrap;flex-shrink:0;">${f.folioOS ? "O.S. " + opsEsc(f.folioOS) : "S/F"}</span>
@@ -7359,7 +7359,7 @@
                 ${vis.map(f => {
                     const cat = opsCalColorFolio(f), d = opsCalDatosFolioDia(f, fechaISO);
                     const sinHora = !(f.fechaProgramada || "").includes("T");
-                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${d.diaTraslado ? "repeating-linear-gradient(135deg,#e2e8f0 0 6px,#f8fafc 6px 12px)" : cat.fondo};border:none;${d.diaTraslado ? "border-left:5px solid #0f172a;" : ""}box-shadow:inset 0 0 0 1px ${d.diaTraslado ? "#94a3b8" : cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">
+                    return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${d.diaTraslado ? "repeating-linear-gradient(135deg,#e2e8f0 0 6px,#f8fafc 6px 12px)" : cat.fondo};border:none;${d.diaTraslado ? "border-left:5px solid #0f172a;" : ""}box-shadow:inset 0 0 0 1px ${d.diaTraslado ? "#94a3b8" : cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">${opsMarcaCambioExterno(f)}
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${d.diaTraslado ? "#0f172a" : cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsArcaBadgeMini(f)}${opsEsc(f.estacion)}</div>
@@ -7793,11 +7793,112 @@
                     <input type="datetime-local" id="ops-folio-reprog-fecha-${f.id}" value="${opsEsc((f.fechaProgramada || "").slice(0, 16))}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
                     <button onclick="opsFolioAccion('${f.id}','guardarReprog')" class="mkt-add-btn" style="background:#4f46e5;">Guardar</button>
                 </div>
-                <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Motivo (opcional)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Detalle (si cambia de día te pedirá la causa)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
             </div>
             ${extra.length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;line-height:1.6;">${extra.join("<br>")}</div>` : ""}
         </div>`;
     }
+    // ═══════════════════ CAUSA DE CADA CAMBIO DE PROGRAMACIÓN (17-oct-2026) ═══════════════════
+    // Junta Operaciones: "si me mueven a la gente, que quede la evidencia". Reprogramar a otro día,
+    // pasar el servicio a otro técnico o cancelar pide la causa (obligatoria) y quién lo pidió.
+    // Lo que viene de fuera de Operaciones (Dirección, proyectos, otro departamento) se marca con
+    // una franja roja en el calendario y alimenta el reporte de programado contra ejecutado.
+    const OPS_CAUSAS_CAMBIO = [
+        { k: "paloma", n: "Lo movió Paloma", ext: true }, { k: "martin", n: "Lo movió Martín", ext: true },
+        { k: "proyecto", n: "Personal enviado a un proyecto", ext: true }, { k: "otro_depto", n: "Lo pidió otro departamento", ext: true },
+        { k: "cliente", n: "Lo pidió el cliente" }, { k: "urgencia", n: "Se atendió una urgencia / folio" },
+        { k: "material", n: "Falta material o refacción" }, { k: "vehiculo", n: "Falta vehículo" },
+        { k: "personal", n: "Técnico ausente / permiso" }, { k: "clima", n: "Clima" },
+        { k: "agenda", n: "Ajuste de agenda de Operaciones" }, { k: "otro", n: "Otro" },
+    ];
+    function opsCausaNombre(k) { return (OPS_CAUSAS_CAMBIO.find(c => c.k === k) || {}).n || k || ""; }
+    // Abre la ventanita y regresa {causa, causaNombre, externa, solicito, detalle} o null si cancelan.
+    function opsPedirCausaCambio(titulo, subtitulo, detalleInicial) {
+        return new Promise(resolve => {
+            document.getElementById("ops-causa-ov")?.remove();
+            const ov = document.createElement("div"); ov.id = "ops-causa-ov";
+            ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;";
+            ov.innerHTML = `<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25);max-height:92vh;overflow-y:auto;">
+                <div style="font-size:16px;font-weight:800;color:#1e293b;">${opsEsc(titulo)}</div>
+                <div style="font-size:12px;color:#64748b;margin-top:3px;">${opsEsc(subtitulo || "")}</div>
+                <div style="font-size:12px;font-weight:800;color:#334155;margin:12px 0 6px;">¿Por qué? <span style="color:#E7402B;">*</span></div>
+                <div id="ops-causa-opts" style="display:flex;flex-wrap:wrap;gap:6px;">${OPS_CAUSAS_CAMBIO.map(c => `<button type="button" data-k="${c.k}" onclick="document.querySelectorAll('#ops-causa-opts button').forEach(b=>{b.removeAttribute('data-on');b.style.background='#fff';b.style.borderColor='#cbd5e1';b.style.color='#334155';});this.setAttribute('data-on','1');this.style.background='${c.ext ? "#fef2f2" : "#eef2ff"}';this.style.borderColor='${c.ext ? "#E7402B" : "#1D2E73"}';this.style.color='${c.ext ? "#b91c1c" : "#1D2E73"}';" style="border:1.5px solid #cbd5e1;background:#fff;color:#334155;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;">${opsEsc(c.n)}</button>`).join("")}</div>
+                <div style="font-size:12px;font-weight:800;color:#334155;margin:12px 0 4px;">¿Quién lo pidió?</div>
+                <input id="ops-causa-quien" placeholder="Ej. Paloma, Martín, el encargado de la estación…" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">
+                <div style="font-size:12px;font-weight:800;color:#334155;margin:12px 0 4px;">Detalle</div>
+                <textarea id="ops-causa-det" rows="2" placeholder="Ej. Se llevaron a Roberto a ARCA un día antes." style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;">${opsEsc(detalleInicial || "")}</textarea>
+                <div id="ops-causa-err" style="font-size:12px;color:#E7402B;min-height:16px;margin-top:6px;"></div>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <button id="ops-causa-no" style="flex:1;padding:10px;border-radius:9px;border:1px solid #cbd5e1;background:#fff;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button id="ops-causa-si" style="flex:1;padding:10px;border-radius:9px;border:none;background:#1D2E73;color:#fff;font-weight:800;cursor:pointer;">Confirmar</button>
+                </div></div>`;
+            document.body.appendChild(ov);
+            const cerrar = v => { ov.remove(); resolve(v); };
+            ov.querySelector("#ops-causa-no").onclick = () => cerrar(null);
+            ov.querySelector("#ops-causa-si").onclick = () => {
+                const b = ov.querySelector("#ops-causa-opts button[data-on]");
+                const det = ov.querySelector("#ops-causa-det").value.trim(), quien = ov.querySelector("#ops-causa-quien").value.trim();
+                const err = ov.querySelector("#ops-causa-err");
+                if (!b) { err.textContent = "Elige la causa."; return; }
+                const k = b.getAttribute("data-k");
+                if (k === "otro" && det.length < 5) { err.textContent = "Escribe el detalle cuando la causa es \"Otro\"."; return; }
+                const c = OPS_CAUSAS_CAMBIO.find(x => x.k === k);
+                cerrar({ causa: k, causaNombre: c.n, externa: !!c.ext, solicito: quien || null, detalle: det || null });
+            };
+        });
+    }
+    // Campos a guardar en el folio para dejar el registro del cambio.
+    function opsCamposCausa(f, tipo, r, de, a) {
+        const entrada = { tipo, causa: r.causa, causaNombre: r.causaNombre, externa: r.externa, solicito: r.solicito, detalle: r.detalle,
+            de: de || null, a: a || null, por: opsNombreActual(), en: opsFechaHora() };
+        return { cambiosProgramacion: (f.cambiosProgramacion || []).concat([entrada]), ultimaCausaCambio: entrada };
+    }
+    function opsTextoCausa(r) { return r.causaNombre + (r.solicito ? " (pidió: " + r.solicito + ")" : "") + (r.detalle ? " · " + r.detalle : ""); }
+    // Franja roja en el calendario cuando el último cambio vino de fuera de Operaciones.
+    function opsMarcaCambioExterno(f) {
+        const c = f && f.ultimaCausaCambio; if (!c || !c.externa || f.cancelado) return "";
+        return `<div title="${opsEsc("Movido: " + opsTextoCausa(c))}" style="position:absolute;left:0;right:0;top:0;height:4px;background:repeating-linear-gradient(45deg,#E7402B 0 6px,#fca5a5 6px 12px);"></div>`;
+    }
+    function opsPanelCambiosHTML(f) {
+        const l = (f.cambiosProgramacion || []).slice().reverse(); if (!l.length) return "";
+        const tipoTxt = { reprogramacion: "Reprogramado", cambio_tecnico: "Cambio de técnico", cancelacion: "Cancelado" };
+        return `<div class="opf-sec"><div class="opf-sec-tit">Cambios de programación (${l.length})</div>
+            ${l.map(c => `<div style="border-left:3px solid ${c.externa ? "#E7402B" : "#94a3b8"};padding:4px 0 4px 9px;margin-bottom:7px;font-size:12px;color:#334155;">
+                <b>${opsEsc(tipoTxt[c.tipo] || c.tipo)}</b>${c.de || c.a ? ` <span style="color:#64748b;">${opsEsc(String(c.de || "—").replace("T", " "))} → ${opsEsc(String(c.a || "—").replace("T", " "))}</span>` : ""}
+                <div>${opsEsc(c.causaNombre || "")}${c.solicito ? " · pidió " + opsEsc(c.solicito) : ""}${c.detalle ? " · " + opsEsc(c.detalle) : ""}</div>
+                <div style="font-size:10.5px;color:#94a3b8;">${opsEsc(c.por || "")} · ${c.en ? new Date(c.en).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div></div>`).join("")}</div>`;
+    }
+
+    // ═══════════════════ EVIDENCIAS DEL SERVICIO (subidas desde la app) ═══════════════════
+    async function opsPanelEvidenciasPintar(f) {
+        const box = document.getElementById("ops-panel-evidencias"); if (!box) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
+            const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")));
+            const b2 = document.getElementById("ops-panel-evidencias"); if (!b2 || b2.dataset.folio !== f.id) return;
+            window.__opsEvidencias = ev;
+            const et = { orden_servicio: "Orden de servicio / lista", foto: "Foto del trabajo", pausa: "Tiempo muerto" };
+            b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias (${ev.length})</div>
+                ${ev.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${ev.map((e, i) => `<div onclick="opsVerEvidencia(${i})" style="cursor:pointer;">
+                    <img src="${e.imagen}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;">
+                    <div style="font-size:9.5px;color:#64748b;line-height:1.2;margin-top:2px;">${opsEsc(et[e.tipo] || e.tipo || "")}<br>${opsEsc(e.por || "")}</div></div>`).join("")}</div>`
+                : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay evidencias. El técnico las sube al terminar la visita en la app.</div>`}</div>`;
+        } catch (e) {
+            const b2 = document.getElementById("ops-panel-evidencias");
+            if (b2) b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias</div><div style="font-size:11.5px;color:#E7402B;">No se pudieron cargar.</div></div>`;
+        }
+    }
+    window.opsVerEvidencia = function (i) {
+        const e = (window.__opsEvidencias || [])[i]; if (!e) return;
+        const ov = document.createElement("div");
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100002;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;";
+        ov.onclick = () => ov.remove();
+        ov.innerHTML = `<img src="${e.imagen}" style="max-width:100%;max-height:84vh;border-radius:8px;"><div style="color:#fff;font-size:12.5px;margin-top:8px;text-align:center;">${opsEsc(e.por || "")} · ${e.en ? new Date(e.en).toLocaleString("es-MX") : ""}${e.nota ? " · " + opsEsc(e.nota) : ""}</div>
+            <a href="${e.imagen}" download="evidencia_${i + 1}.jpg" onclick="event.stopPropagation()" style="margin-top:8px;color:#fff;font-weight:700;">Descargar</a>`;
+        document.body.appendChild(ov);
+    };
+
     window.opsFolioAccion = async function (id, accion) {
         if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
         const f = cacheFolios.find(x => x.id === id);
@@ -7835,10 +7936,10 @@
             cambios = { fechaSolucion: null, completadoEn: null, facturado: false }; nota = "Servicio reabierto.";
         }
         else if (accion === "cancelar") {
-            const motivo = prompt("Motivo de la cancelación:");
-            if (motivo === null) return;
-            if (!motivo.trim()) { alert("Escribe el motivo para poder cancelarlo."); return; }
-            cambios = { cancelado: true, motivoCancelacion: motivo.trim(), canceladoEn: opsFechaHora(), canceladoPor: quien }; nota = `Servicio CANCELADO · motivo: ${motivo.trim()}.`;
+            const r = await opsPedirCausaCambio("Cancelar servicio", `${f.estacion || "Servicio"} · ${String(f.fechaProgramada || "sin fecha").replace("T", " ")}`);
+            if (!r) return;
+            const motivo = opsTextoCausa(r);
+            cambios = { cancelado: true, motivoCancelacion: motivo, canceladoEn: opsFechaHora(), canceladoPor: quien, ...opsCamposCausa(f, "cancelacion", r, f.fechaProgramada, null) }; nota = `Servicio CANCELADO · ${motivo}.`;
         }
         else if (accion === "reactivar") { cambios = { cancelado: false, motivoCancelacion: null, canceladoEn: null }; nota = "Servicio reactivado."; }
         else if (accion === "guardarReprog") {
@@ -7846,8 +7947,15 @@
             const motivo = ((document.getElementById(`ops-folio-reprog-motivo-${id}`) || {}).value || "").trim();
             if (!nueva) { alert("Elige la nueva fecha y hora."); return; }
             cambios = { fechaProgramada: nueva, ...opsCamposReprogramacion(f, nueva) };
-            if (!cambios.reprogramaciones) cambios.ultimaReprogramacion = opsFechaHora(); // solo cambió la hora
-            nota = `Reprogramado de ${(f.fechaProgramada || "sin fecha").replace("T", " ")} a ${nueva.replace("T", " ")}${motivo ? " · motivo: " + motivo : ""}.`;
+            let causaTxt = motivo;
+            if (cambios.reprogramaciones) {
+                // Cambia de día: la causa es obligatoria (evidencia de por qué no se hizo lo programado)
+                const r = await opsPedirCausaCambio("Reprogramar a otro día", `${(f.fechaProgramada || "sin fecha").replace("T", " ")} → ${nueva.replace("T", " ")}`, motivo);
+                if (!r) return;
+                Object.assign(cambios, opsCamposCausa(f, "reprogramacion", r, f.fechaProgramada, nueva));
+                causaTxt = opsTextoCausa(r);
+            } else cambios.ultimaReprogramacion = opsFechaHora(); // solo cambió la hora
+            nota = `Reprogramado de ${(f.fechaProgramada || "sin fecha").replace("T", " ")} a ${nueva.replace("T", " ")}${causaTxt ? " · causa: " + causaTxt : ""}.`;
         }
         else return;
         try {
@@ -8305,6 +8413,8 @@
                         ${(f.comisiones || []).map(c => `Comisión ${opsEsc(c.nombre)}${c.norma ? " · " + opsEsc(c.norma) : ""}${c.concepto ? " · " + opsEsc(c.concepto) : ""}: <b>${opsDinero(c.monto)}</b>`).join("<br>")}
                     </div>`, ico.dinero) : ""}
 
+                <div id="ops-panel-evidencias" data-folio="${f.id}"></div>
+                ${opsPanelCambiosHTML(f)}
                 ${sec("Historial", `<div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>`, ico.historial)}
 
                 <div style="display:flex;gap:8px;">
@@ -8316,6 +8426,7 @@
 
         opsGarPintarEnPanel(f).catch(e => console.warn("[operaciones.js] garantías en panel:", e.message));
         opsPanelViaticosPintar(f);
+        opsPanelEvidenciasPintar(f);
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
         tecnicos.forEach(async t => {
@@ -8390,13 +8501,21 @@
             nuevosIds = [...(f.tecnicosAsignadosIds || []), tecnicoId]; nuevosNombres = [...(f.tecnicosAsignadosNombres || []), t.nombre];
             accionTexto = `¿Agregar a ${t.nombre} al equipo de "${f.estacion}"${f.folioOS ? " (O.S. " + f.folioOS + ")" : ""}, programado para el ${opsCalFecha.toLocaleDateString("es-MX", { day: "numeric", month: "long" })} a las ${hh}:${mm}?`;
         }
-        if (!confirm(accionTexto)) return;
+        const reprog = opsCamposReprogramacion(f, fechaProgramada);
+        let causa = null;
+        if (reprog.reprogramaciones || teniaOtroUnico) {
+            // Cambia de día o se le quita a un técnico para dárselo a otro: queda la causa.
+            causa = await opsPedirCausaCambio(teniaOtroUnico ? "Pasar el servicio a otro técnico" : "Reprogramar a otro día", accionTexto.replace(/^¿|\?$/g, ""));
+            if (!causa) return;
+        } else if (!confirm(accionTexto)) return;
 
         try {
             const { db, fs } = await opsGetFB();
-            const cambios = { fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres, ...opsCamposReprogramacion(f, fechaProgramada) };
+            const cambios = { fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres, ...reprog,
+                ...(causa ? opsCamposCausa(f, teniaOtroUnico ? "cambio_tecnico" : "reprogramacion", causa, (f.fechaProgramada || "") + (teniaOtroUnico ? " · " + (f.tecnicosAsignadosNombres || [])[0] : ""), fechaProgramada + (teniaOtroUnico ? " · " + t.nombre : "")) : {}) };
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), cambios);
             Object.assign(f, cambios);
+            if (causa) fs.addDoc(fs.collection(db, COL_FOLIOS, folioId, "comentarios"), { texto: `${teniaOtroUnico ? "Pasado a " + t.nombre : "Reprogramado"} para ${fechaProgramada.replace("T", " ")} · causa: ${opsTextoCausa(causa)}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: opsFechaHora() }).catch(() => {});
             opsRenderCalendario();
             if (window.mostrarPush) window.mostrarPush("Operaciones", "Folio programado.", "✅");
         } catch (e) {

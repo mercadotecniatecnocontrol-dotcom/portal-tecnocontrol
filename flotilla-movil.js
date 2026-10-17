@@ -1073,7 +1073,14 @@ function buildHTML(){
   else el.appendChild(div);
 }
 
-function setContent(h){const c=document.getElementById('fm-content');if(c)c.innerHTML=h;}
+function setContent(h){
+  const c=document.getElementById('fm-content'); if(!c)return;
+  // Candado de evidencias: fuera de Tareas y Avisos, la app muestra los servicios pendientes de cerrar.
+  if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&typeof misOpsServ!=='undefined'&&misOpsServ.length){
+    const p=fmOpsPendientesCierre(); if(p.length){c.innerHTML=fmOpsCandadoHTML(p);return;}
+  }
+  c.innerHTML=h;
+}
 
 // ── INIT ──
 // ── Registro de actividad y errores (diagnóstico) ──
@@ -6906,6 +6913,7 @@ async function fmOpsServCargar(){
         .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
       actualizarBadges();
       if(vistaAct==='tareas')renderTareas();
+      else if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
       fmOpsEstRefrescar(false);
     },function(err){console.warn('[OPS servicios]',err);});
   }
@@ -6998,7 +7006,9 @@ function fmOpsServHTML(){
   if(!misOpsServ.length)return '';
   const hoy=new Date(); hoy.setMinutes(hoy.getMinutes()-hoy.getTimezoneOffset());
   const hoyISO=hoy.toISOString().slice(0,10);
-  return fmOpsMiDiaHTML(hoyISO)+'<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
+  const pc=fmOpsPendientesCierre();
+  return (pc.length?'<div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:12px;padding:11px 13px;margin-bottom:12px;font-size:12.5px;color:#7F1D1D"><b style="color:#B91C1C">'+pc.length+' servicio(s) sin cerrar de días anteriores.</b> La app queda bloqueada hasta que termines cada visita con sus evidencias. Búscalos abajo marcados como <b>Atrasado</b>.</div>':'')+
+    fmOpsMiDiaHTML(hoyISO)+'<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
     misOpsServ.map(function(f){
       const enProc=!!f.iniciadoEn;
       const dia=String(f.fechaProgramada||'').slice(0,10);
@@ -7031,7 +7041,8 @@ function fmOpsServHTML(){
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
           (enProc
             ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#1E40AF;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Terminar visita</button>'
-            :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>')+
+            :(atrasado?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#B91C1C;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Cerrar servicio</button>'
+              :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>'))+
           '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:9px;background:#fff;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#334155;cursor:pointer">Comentar</button>'+
           (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="padding:9px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:8px;font-size:11px;font-weight:800;color:#1D2E73;text-align:center;text-decoration:none">Mapa</a>':'')+
         '</div>'+
@@ -7076,6 +7087,7 @@ function fmOpsMiDiaHTML(hoyISO){
 const OPS_PAUSA_MOTIVOS=['Descarga de pipa','Esperando al encargado / cliente','Falta material o herramienta','Estación ocupada / surtiendo','Clima','Tráfico / traslado','Otro'];
 window.fmOpsServPausa=function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  window.__fmEv=window.__fmEv||{orden_servicio:[],foto:[],pausa:[]}; window.__fmEv.pausa=[];
   const ov=document.createElement('div'); ov.id='fm-ops-pausa';
   ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
   ov.innerHTML=
@@ -7086,6 +7098,7 @@ window.fmOpsServPausa=function(id){
       '<div id="fm-pausa-motivos" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+OPS_PAUSA_MOTIVOS.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivo(this)" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>'+
       '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cuánto calculas que tarda?</div>'+
       '<div id="fm-pausa-min" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">'+[15,30,60,120].map(function(n){return '<button type="button" onclick="fmOpsPausaMin(this)" data-n="'+n+'" style="padding:9px 0;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#334155">'+(n<60?n+' min':(n/60)+' h')+'</button>';}).join('')+'</div>'+
+      fmEvPickerHTML('pausa','Foto de evidencia <span style="color:#DC2626">*</span>','Lo que está deteniendo el trabajo: la pipa descargando, la estación ocupada, la lluvia…')+
       '<textarea id="fm-pausa-txt" rows="2" placeholder="Detalle (opcional). Ej. El encargado pidió esperar a que termine la descarga." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
       '<div id="fm-pausa-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
@@ -7102,12 +7115,15 @@ window.fmOpsServGuardarPausa=async function(id){
   const mb=document.querySelector('#fm-pausa-motivos button[data-on]'), nb=document.querySelector('#fm-pausa-min button[data-on]');
   const msg=document.getElementById('fm-pausa-msg'), btn=document.getElementById('fm-pausa-btn');
   if(!mb){if(msg)msg.textContent='Elige qué pasó.';return;}
+  if(!(window.__fmEv&&window.__fmEv.pausa.length)){if(msg)msg.textContent='Toma una foto de lo que está deteniendo el trabajo.';return;}
   const motivo=mb.getAttribute('data-m'), min=nb?Number(nb.getAttribute('data-n')):null;
   const det=(document.getElementById('fm-pausa-txt')?.value||'').trim();
   if(btn){btn.disabled=true;btn.textContent='Registrando…';}
   try{
     const ahora=new Date().toISOString(), quien=opsSvMiNombre();
     const pausa={motivo:motivo,detalle:det||null,minutosEstimados:min,desde:ahora,por:quien,porEmail:opsSvMiCorreo()};
+    await fmEvGuardar(id,'pausa',window.__fmEv.pausa,'Tiempo muerto: '+motivo+(det?' · '+det:''));
+    pausa.fotos=window.__fmEv.pausa.length; window.__fmEv.pausa=[];
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({pausaActiva:pausa});
     await opsSvComentario(id,'[Pausa '+opsSvHora(ahora)+'] '+motivo+(min?' · ~'+min+' min':'')+(det?' · '+det:''),'pausa');
     await opsSvAvisarAdmins('ops_tiempo_muerto',quien+' pausó '+(f.id?opsSvTitulo(f):'un servicio')+': '+motivo+(min?' (~'+min+' min)':'')+(det?' · '+det:''),id);
@@ -7173,28 +7189,126 @@ window.fmOpsServIniciar=async function(id,btn){
   }
 };
 
+// ── Evidencias desde la app (17-oct-2026, bloque 2) ──
+// Fotos comprimidas en base64 en la subcolección ops_folios/{id}/evidencias (una foto por documento,
+// así ninguno pasa de 1 MB). Documento (orden de servicio o lista de inspección) a más resolución
+// para que se pueda leer.
+// Reglas al terminar la visita:
+//   · Quedó resuelto → foto de la orden de servicio o lista de inspección + al menos 1 foto del trabajo.
+//     Excepción: calibración de sonda y alto flujo (no llevan orden de servicio) → solo fotos.
+//   · Atendido sin finalizar → al menos 1 foto de lo que se hizo.
+//   · No se realizó → sin fotos, con motivo.
+const OPS_EV_MAX_BYTES=900000;
+window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
+function fmEvLeer(file,maxW,q){
+  return new Promise(function(res){
+    const fr=new FileReader();
+    fr.onload=async function(){
+      let out=await comprimirBase64(fr.result,maxW,q);
+      if(out.length>OPS_EV_MAX_BYTES)out=await comprimirBase64(fr.result,Math.round(maxW*0.7),0.6);
+      if(out.length>OPS_EV_MAX_BYTES)out=await comprimirBase64(fr.result,900,0.5);
+      res(out);
+    };
+    fr.onerror=function(){res(null);};
+    fr.readAsDataURL(file);
+  });
+}
+window.fmEvAgregar=async function(input,tipo){
+  const files=Array.from(input.files||[]); if(!files.length)return;
+  const box=document.getElementById('fm-ev-'+tipo); if(box)box.insertAdjacentHTML('beforeend','<div class="fm-ev-cargando" style="font-size:11px;color:#64748B;padding:6px">Procesando…</div>');
+  for(const f of files){
+    const b=await fmEvLeer(f,tipo==='orden_servicio'?1600:1100,tipo==='orden_servicio'?0.72:0.66);
+    if(b)window.__fmEv[tipo].push(b);
+  }
+  input.value='';
+  fmEvPintar(tipo);
+};
+window.fmEvQuitar=function(tipo,i){window.__fmEv[tipo].splice(i,1);fmEvPintar(tipo);};
+function fmEvPintar(tipo){
+  const box=document.getElementById('fm-ev-'+tipo); if(!box)return;
+  box.innerHTML=window.__fmEv[tipo].map(function(b,i){
+    return '<div style="position:relative;width:64px;height:64px"><img src="'+b+'" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #E2E8F0">'+
+      '<button type="button" onclick="fmEvQuitar(\''+tipo+'\','+i+')" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#DC2626;color:#fff;font-size:12px;line-height:20px;padding:0">×</button></div>';
+  }).join('');
+}
+function fmEvPickerHTML(tipo,titulo,ayuda){
+  return '<div style="margin-bottom:12px">'+
+    '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:2px">'+titulo+'</div>'+
+    (ayuda?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">'+ayuda+'</div>':'')+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div id="fm-ev-'+tipo+'" style="display:flex;flex-wrap:wrap;gap:8px"></div>'+
+    '<label style="width:64px;height:64px;border:1.5px dashed #94A3B8;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#475569;cursor:pointer;text-align:center">'+
+      '<span style="font-size:20px;line-height:1">+</span>Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="fmEvAgregar(this,\''+tipo+'\')"></label></div></div>';
+}
+async function fmEvGuardar(folioId,tipo,lista,nota){
+  const quien=opsSvMiNombre(), correo=opsSvMiCorreo(), ahora=new Date().toISOString();
+  for(let i=0;i<lista.length;i++){
+    await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('evidencias').add({tipo:tipo,imagen:lista[i],por:quien,porCorreo:correo,en:ahora,origen:'app_flotilla',nota:nota||null,orden:i+1});
+  }
+}
+// Servicios que no llevan orden de servicio (solo evidencia fotográfica)
+const OPS_SIN_ORDEN_RE=/sonda|alto\s*flujo/i;
+async function fmEvSinOrden(f){
+  const r=await opsSvReceta(f.servicioCatalogoId);
+  const txt=[f.categoriaServicio,r&&r.nombre,f.tipoServicioDemo,(f.serviciosProgramados||[]).map(function(x){return x&&x.nombre;}).join(' ')].filter(Boolean).join(' ');
+  return OPS_SIN_ORDEN_RE.test(txt);
+}
+
+// ── Candado: servicios de días anteriores sin cerrar bloquean la app ──
+// Junta Operaciones: "no puedes usar la plataforma ni subir checklists hasta que subas tus evidencias".
+// Cuenta como cerrado: finalizado, o una visita registrada (sin finalizar / no se realizó) de su
+// último día en adelante. Los turnos abiertos (Atención a folios, Guardia, Traslado…) no cuentan.
+var OPS_CANDADO_VISTAS_LIBRES=['tareas','notif']; // var: setContent la lee y puede correr antes de esta línea
+function fmHoyLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmOpsPendientesCierre(){
+  const hoy=fmHoyLocal();
+  return misOpsServ.filter(function(f){
+    if(f.conceptoGeneral||f.fechaSolucion||f.cancelado===true)return false;
+    const fin=opsSvDiaFin(f); if(!fin||fin>=hoy)return false;
+    return !(f.atenciones||[]).some(function(a){return a&&String(a.fin||'').slice(0,10)>=fin;});
+  }).sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
+}
+function fmOpsCandadoHTML(p){
+  return '<div style="padding:18px 6px">'+
+    '<div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:14px;padding:16px">'+
+      '<div style="font-size:16px;font-weight:900;color:#B91C1C;margin-bottom:4px">Cierra tus servicios pendientes</div>'+
+      '<div style="font-size:12.5px;color:#7F1D1D;line-height:1.45;margin-bottom:10px">Tienes '+p.length+' servicio(s) de días anteriores sin cerrar. Para usar el resto de la app primero termina cada visita con sus evidencias (orden de servicio y fotos), o indica por qué no se realizó.</div>'+
+      p.slice(0,8).map(function(f){return '<div style="background:#fff;border-radius:9px;padding:8px 10px;margin-bottom:6px;font-size:12.5px"><b>'+opsSvEsc(opsSvTitulo(f))+'</b><div style="font-size:11px;color:#64748B">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+' · '+opsSvEsc(opsSvTipo(f))+'</div></div>';}).join('')+
+      '<button onclick="fmVista(\'tareas\')" style="width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#B91C1C;color:#fff;font-family:inherit;font-size:13.5px;font-weight:800">Ir a cerrar mis servicios</button>'+
+    '</div></div>';
+}
+
 // ── Terminar visita (17-oct-2026): resuelto o "atendido sin finalizar" con motivo obligatorio ──
 // Cada visita queda en el folio (atenciones): con eso Operaciones calcula efectividad por técnico
 // y reincidencia (el mismo folio trabajado en más de un día o por otro técnico).
 const OPS_NO_FIN_MOTIVOS=['Falta refacción','Falta material o herramienta','Requiere otro técnico o especialidad','Falla mayor / requiere cotización','El cliente no permitió el trabajo','Estación ocupada / sin acceso','Clima','Se terminó la jornada','Otro'];
-window.fmOpsServTerminar=function(id){
+const OPS_NO_REAL_MOTIVOS=['Me mandaron a otro servicio','Se atendió una urgencia / folio','Lo reprogramó Operaciones','El cliente lo canceló o pospuso','Falta vehículo','Falta material o herramienta','No me dio tiempo','Clima','Otro'];
+window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
+  let sinOrden=false; try{sinOrden=await fmEvSinOrden(f);}catch(e){}
+  window.__fmTermSinOrden=sinOrden;
+  document.getElementById('fm-ops-term')?.remove();
+  const chips=function(lista,cont){return '<div id="'+cont+'" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+lista.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivoSel(this,\''+cont+'\')" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>';};
   const ov=document.createElement('div'); ov.id='fm-ops-term';
   ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
   ov.innerHTML=
-    '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px 22px;max-height:92vh;overflow-y:auto">'+
-      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Terminar visita</div>'+
-      '<div style="font-size:11.5px;color:#64748B;margin-bottom:12px">'+opsSvEsc(opsSvTitulo(f))+(f.folioClienteId||f.folioOS?' · '+opsSvEsc(f.folioClienteId||f.folioOS):'')+'</div>'+
+    '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 22px);max-height:92vh;overflow-y:auto">'+
+      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Cerrar visita</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:12px">'+opsSvEsc(opsSvTitulo(f))+' · '+opsSvEsc(opsSvTipo(f))+(f.folioClienteId||f.folioOS?' · '+opsSvEsc(f.folioClienteId||f.folioOS):'')+'</div>'+
       '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cómo quedó?</div>'+
-      '<div id="fm-term-res" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'+
-        '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:12px 8px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#15803D">Quedó resuelto</button>'+
-        '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:12px 8px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#B45309">Atendido, NO se finalizó</button>'+
+      '<div id="fm-term-res" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">'+
+        '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#15803D">Quedó resuelto</button>'+
+        '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#B45309">Atendido, sin finalizar</button>'+
+        '<button type="button" data-r="no_realizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#64748B">No se realizó</button>'+
       '</div>'+
-      '<div id="fm-term-nofin" style="display:none">'+
-        '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se finalizó? <span style="color:#DC2626">*</span></div>'+
-        '<div id="fm-term-motivos" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+OPS_NO_FIN_MOTIVOS.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivoSel(this,\'fm-term-motivos\')" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>'+
+      '<div id="fm-term-bloq-fin" style="display:none">'+
+        (sinOrden?'<div style="font-size:11.5px;color:#0E7490;background:#ECFEFF;border-radius:8px;padding:7px 10px;margin-bottom:10px">Este servicio no lleva orden de servicio: solo fotos del trabajo.</div>'
+          :fmEvPickerHTML('orden_servicio','Orden de servicio o lista de inspección <span style="color:#DC2626">*</span>','Foto completa y clara del documento firmado (servicio en estación: orden de servicio; servicio a unidad: lista de inspección).'))+
       '</div>'+
-      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px" id="fm-term-lbl">¿Qué se hizo?</div>'+
+      '<div id="fm-term-bloq-fotos" style="display:none">'+fmEvPickerHTML('foto','Fotos del trabajo <span style="color:#DC2626">*</span>','Antes y después, lo que se cambió o reparó.')+'</div>'+
+      '<div id="fm-term-nofin" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se finalizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+'</div>'+
+      '<div id="fm-term-noreal" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se realizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_REAL_MOTIVOS,'fm-term-motivos2')+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px" id="fm-term-lbl">Comentario</div>'+
       '<textarea id="fm-term-txt" rows="3" placeholder="Describe lo que hiciste y lo que falta (ej. se cambió la tarjeta, falta el sensor que pidió Compras)." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
       '<div id="fm-term-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
@@ -7207,41 +7321,63 @@ window.fmOpsServTerminar=function(id){
 window.fmOpsPausaMotivoSel=function(b,cont){document.querySelectorAll('#'+cont+' button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
 window.fmOpsTermRes=function(b){
   document.querySelectorAll('#fm-term-res button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});
-  const fin=b.getAttribute('data-r')==='finalizado';
-  b.style.background=fin?'#F0FDF4':'#FFF7ED'; b.style.borderColor=fin?'#15803D':'#EA580C'; b.setAttribute('data-on','1');
-  const nf=document.getElementById('fm-term-nofin'); if(nf)nf.style.display=fin?'none':'block';
-  const lbl=document.getElementById('fm-term-lbl'); if(lbl)lbl.innerHTML=fin?'¿Qué se hizo?':'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>';
+  const r=b.getAttribute('data-r');
+  b.style.background=r==='finalizado'?'#F0FDF4':r==='no_finalizado'?'#FFF7ED':'#F1F5F9'; b.style.borderColor=r==='finalizado'?'#15803D':r==='no_finalizado'?'#EA580C':'#64748B'; b.setAttribute('data-on','1');
+  const ver=function(idx,on){const e=document.getElementById(idx);if(e)e.style.display=on?'block':'none';};
+  ver('fm-term-bloq-fin',r==='finalizado'); ver('fm-term-bloq-fotos',r!=='no_realizado');
+  ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
+  const lbl=document.getElementById('fm-term-lbl');
+  if(lbl)lbl.innerHTML=r==='finalizado'?'¿Qué se hizo?':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
 };
 window.fmOpsServGuardarTermino=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
-  const rb=document.querySelector('#fm-term-res button[data-on]'), mb=document.querySelector('#fm-term-motivos button[data-on]');
+  const rb=document.querySelector('#fm-term-res button[data-on]');
   const txt=(document.getElementById('fm-term-txt')?.value||'').trim();
   const msg=document.getElementById('fm-term-msg'), btn=document.getElementById('fm-term-btn');
-  if(!rb){if(msg)msg.textContent='Elige cómo quedó.';return;}
-  const res=rb.getAttribute('data-r');
-  if(res==='no_finalizado'&&!mb){if(msg)msg.textContent='Elige por qué no se finalizó.';return;}
-  if(res==='no_finalizado'&&txt.length<10){if(msg)msg.textContent='Explica qué se hizo y qué falta (mínimo una frase).';return;}
-  if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const err=function(t){if(msg)msg.textContent=t;};
+  if(!rb){err('Elige cómo quedó.');return;}
+  const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
+  const mb=document.querySelector(res==='no_realizado'?'#fm-term-motivos2 button[data-on]':'#fm-term-motivos button[data-on]');
+  if(res==='finalizado'){
+    if(!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta la foto de la orden de servicio o lista de inspección.');return;}
+    if(!ev.foto.length){err('Falta al menos una foto del trabajo.');return;}
+  }else if(res==='no_finalizado'){
+    if(!mb){err('Elige por qué no se finalizó.');return;}
+    if(!ev.foto.length){err('Sube al menos una foto de lo que se hizo.');return;}
+    if(txt.length<10){err('Explica qué se hizo y qué falta (mínimo una frase).');return;}
+  }else{
+    if(!mb){err('Elige por qué no se realizó.');return;}
+    if(txt.length<5){err('Escribe un detalle.');return;}
+  }
+  if(btn){btn.disabled=true;btn.textContent='Subiendo evidencias…';}
   try{
     const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+    if(ev.orden_servicio.length&&res==='finalizado')await fmEvGuardar(id,'orden_servicio',ev.orden_servicio,'Cierre de visita');
+    if(ev.foto.length&&res!=='no_realizado')await fmEvGuardar(id,'foto',ev.foto,res==='finalizado'?'Cierre de visita':'Visita sin finalizar');
+    if(btn)btn.textContent='Guardando…';
     const ub=await herrObtenerUbicacion();
-    const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:res==='no_finalizado'?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0};
-    const cambios={atenciones:(f.atenciones||[]).concat([visita]),pausaActiva:null};
+    const nDoc=res==='finalizado'?ev.orden_servicio.length:0, nFoto=res!=='no_realizado'?ev.foto.length:0;
+    const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:mb?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0,evidencias:{documentos:nDoc,fotos:nFoto}};
+    const cambios={atenciones:(f.atenciones||[]).concat([visita]),pausaActiva:null,
+      evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
     if(res==='finalizado'){
-      cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde='app_flotilla';
+      cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde='app_flotilla'; cambios.evidenciaCompleta=true;
       if(!f.fechaAtencion)cambios.fechaAtencion=f.iniciadoEn||ahora;
     }else{
-      // Queda abierto: se limpia el inicio para que la próxima visita se registre aparte (reincidencia).
-      cambios.iniciadoEn=null; cambios.ultimoNoFinalizado={motivo:visita.motivo,detalle:txt,por:quien,en:ahora};
+      cambios.iniciadoEn=null;
+      cambios.ultimoNoFinalizado={resultado:res,motivo:visita.motivo,detalle:txt,por:quien,en:ahora};
     }
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
-    await opsSvComentario(id,res==='finalizado'?'[Finalizado] '+(txt||'Servicio terminado desde la app.'):'[Atendido sin finalizar] '+visita.motivo+' · '+txt,res==='finalizado'?'finalizado':'no_finalizado');
-    await opsSvAvisarAdmins(res==='finalizado'?'ops_tecnico_finalizo':'ops_tecnico_no_finalizo',quien+(res==='finalizado'?' finalizó ':' atendió SIN finalizar ')+opsSvTitulo(f)+(res==='finalizado'?'.':': '+visita.motivo+' · '+(txt.length>100?txt.slice(0,100)+'…':txt)),id);
+    const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
+    await opsSvComentario(id,etiqueta+' '+(txt||'Servicio terminado desde la app.')+(nDoc+nFoto?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s))':''),res);
+    const verbo=res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
+    await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+opsSvTitulo(f)+(res==='finalizado'?'.':': '+visita.motivo+' · '+(txt.length>100?txt.slice(0,100)+'…':txt)),id);
+    window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
     document.getElementById('fm-ops-term')?.remove();
-    toast(res==='finalizado'?'Servicio finalizado. Se avisó a Operaciones.':'Registrado como atendido sin finalizar. Se avisó a Operaciones.','ok');
+    toast(res==='finalizado'?'Servicio finalizado con evidencias. Se avisó a Operaciones.':'Registrado. Se avisó a Operaciones.','ok');
   }catch(e){
-    console.error('[OPS terminar]',e);
-    if(msg)msg.textContent='No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+    console.error('[OPS cerrar visita]',e);
+    err(e&&e.code==='permission-denied'?'Sin permiso para guardar evidencias. Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo (las fotos siguen aquí).');
     if(btn){btn.disabled=false;btn.textContent='Guardar';}
   }
 };
