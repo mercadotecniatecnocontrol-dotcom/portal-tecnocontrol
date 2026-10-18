@@ -6915,6 +6915,7 @@ async function fmOpsServCargar(){
       if(vistaAct==='tareas')renderTareas();
       else if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
       fmOpsEstRefrescar(false);
+      fmVigilarVence1h();
     },function(err){console.warn('[OPS servicios]',err);});
   }
   if(!_unsubOpsAvisos){
@@ -7008,7 +7009,7 @@ function fmOpsServHTML(){
   const hoyISO=hoy.toISOString().slice(0,10);
   const pc=fmOpsPendientesCierre();
   return (pc.length?'<div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:12px;padding:11px 13px;margin-bottom:12px;font-size:12.5px;color:#7F1D1D"><b style="color:#B91C1C">'+pc.length+' servicio(s) sin cerrar de días anteriores.</b> La app queda bloqueada hasta que termines cada visita con sus evidencias. Búscalos abajo marcados como <b>Atrasado</b>.</div>':'')+
-    fmOpsMiDiaHTML(hoyISO)+'<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
+    fmMiRutaHTML()+fmOpsMiDiaHTML(hoyISO)+'<div class="fm-sec-hd"><div><div class="fm-sec-t">Servicios de Operaciones</div><div class="fm-sec-s">'+misOpsServ.length+' pendiente(s) · '+misOpsServ.filter(function(f){return f.iniciadoEn;}).length+' en proceso</div></div></div>'+
     misOpsServ.map(function(f){
       const enProc=!!f.iniciadoEn;
       const dia=String(f.fechaProgramada||'').slice(0,10);
@@ -7059,6 +7060,76 @@ function opsSvDiaFin(f){
   return dia;
 }
 // Lo primero que ve el técnico: qué tiene hoy y mañana, a qué hora, dónde y con quién.
+// ── Mi ruta de folios (17-oct-2026, bloque 3) ──
+// Mismo criterio que la "Ruta del día" del portal: primero el que vence antes; si hay otro más
+// cerca que se puede atender sin que el urgente se pase de su hora, se toma de pasada.
+const FM_RUTA_VEL_KMH=40, FM_RUTA_FACTOR=1.35, FM_RUTA_DUR_MIN=90;
+const FM_PLAZA_CENTRO={'Chihuahua':[28.6353,-106.0889],'Juárez':[31.6904,-106.4245],'Parral':[26.9318,-105.6664],'Monterrey':[25.6866,-100.3161]};
+function fmEsFolioCliente(f){return !!f&&!f.conceptoGeneral&&f.tipoAlta!=='programacion'&&f.tipoFolio!=='inspeccion'&&!!(f.folioClienteId||f.vencimiento||f.prioridad);}
+function fmRutaKm(a,b){const R=6371,r=function(x){return x*Math.PI/180;};const dLa=r(b.lat-a.lat),dLo=r(b.lng-a.lng);const h=Math.pow(Math.sin(dLa/2),2)+Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.pow(Math.sin(dLo/2),2);return 2*R*Math.asin(Math.sqrt(h));}
+function fmRutaViaje(a,b){if(!a||!b||a.lat==null||b.lat==null)return 20;return Math.round(fmRutaKm(a,b)*FM_RUTA_FACTOR/FM_RUTA_VEL_KMH*60)+5;}
+function fmRutaOrdenar(items,inicio,ahoraMs){
+  const pend=items.slice(),out=[];let pos=inicio,t=ahoraMs;
+  const V=function(x){return x.venceMs==null?Infinity:x.venceMs;};
+  while(pend.length){
+    pend.sort(function(a,b){return V(a)-V(b);});
+    const e=pend[0];let el=e;const dE=fmRutaViaje(pos,e);
+    const cerca=pend.slice(1).map(function(c){return {c:c,d:fmRutaViaje(pos,c)};}).filter(function(x){return x.d<dE;}).sort(function(x,y){return x.d-y.d;});
+    for(const x of cerca){const finC=t+(x.d+x.c.durMin)*60000;const finE=finC+(fmRutaViaje(x.c,e)+e.durMin)*60000;if(finE<=V(e)&&finC<=V(x.c)){el=x.c;break;}}
+    const d=fmRutaViaje(pos,el),lleg=t+d*60000,fin=lleg+el.durMin*60000;
+    out.push(Object.assign({},el,{viajeMin:d,llegadaMs:lleg,finMs:fin,aTiempo:el.venceMs==null||fin<=el.venceMs}));
+    t=fin;if(el.lat!=null)pos=el;pend.splice(pend.indexOf(el),1);
+  }
+  return out;
+}
+function fmVenceMs(f){const v=f.vencimiento||f.fechaAtencion;if(!v)return null;const d=new Date(String(v).length===10?v+'T23:59:00':v);return isNaN(d)?null:d.getTime();}
+function fmMiRuta(){
+  const folios=misOpsServ.filter(function(f){return fmEsFolioCliente(f)&&!f.fechaSolucion&&f.cancelado!==true;});
+  if(!folios.length)return [];
+  const items=folios.map(function(f){
+    const e=opsSvEst(f);
+    const dur=f.duracionValor?Math.max(15,Math.round(Number(f.duracionValor)*({min:1,h:60,dias:480}[f.duracionUnidad]||60))):(f.tiempoEjecucionHrs?Math.round(Number(f.tiempoEjecucionHrs)*60):FM_RUTA_DUR_MIN);
+    return {f:f,nombre:opsSvTitulo(f),lat:e.verificada?e.lat:null,lng:e.verificada?e.lng:null,dir:e.direccion,venceMs:fmVenceMs(f),durMin:dur};
+  });
+  const c0=FM_PLAZA_CENTRO[folios[0].plaza]||FM_PLAZA_CENTRO.Chihuahua;
+  return fmRutaOrdenar(items,{lat:c0[0],lng:c0[1]},Date.now());
+}
+function fmMiRutaHTML(){
+  const r=fmMiRuta(); if(!r.length)return '';
+  const hora=function(ms){return new Date(ms).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});};
+  const pts=r.slice(0,10).map(function(x){return x.lat!=null?x.lat+','+x.lng:('gasolinera '+opsSvDirLimpia(x.dir||x.nombre));});
+  const url=pts.length?'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(pts[pts.length-1])+(pts.length>1?'&waypoints='+encodeURIComponent(pts.slice(0,-1).join('|')):''):'';
+  return '<div style="background:#fff;border:1.5px solid #A5F3FC;border-radius:12px;padding:12px 13px;margin-bottom:12px">'+
+    '<div style="font-size:13px;font-weight:900;color:#0E7490;margin-bottom:6px">Mi ruta de folios ('+r.length+')</div>'+
+    r.map(function(x,i){return '<div style="display:flex;gap:9px;padding:6px 0;border-top:'+(i?'1px solid #F1F5F9':'none')+'">'+
+      '<div style="width:22px;height:22px;border-radius:50%;background:'+(x.aTiempo?'#0E7490':'#DC2626')+';color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;color:#0A1628">'+opsSvEsc(x.nombre)+(x.f.prioridad?' <span style="font-size:10px;color:#B91C1C;background:#FEE2E2;border-radius:5px;padding:1px 5px">'+opsSvEsc(x.f.prioridad)+'</span>':'')+'</div>'+
+      '<div style="font-size:11px;color:#475569">Llegar ~'+hora(x.llegadaMs)+' · '+(x.venceMs?(x.aTiempo?'vence ':'¡no alcanza! vence ')+new Date(x.venceMs).toLocaleString('es-MX',{weekday:'short',hour:'2-digit',minute:'2-digit'}):'sin vencimiento')+'</div></div></div>';}).join('')+
+    (url?'<a href="'+url+'" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;padding:10px;border-radius:9px;background:#0E7490;color:#fff;font-weight:800;font-size:12.5px;text-decoration:none">Abrir ruta en Google Maps</a>':'')+
+  '</div>';
+}
+// Alarma local 1 hora antes de que venza cada folio (aunque el portal esté cerrado)
+const FM_ALARMA_ANTES_MIN=60;
+function fmVigilarVence1h(){
+  try{
+    const avisados=JSON.parse(localStorage.getItem('fm_vence1h')||'{}'), ahora=Date.now();
+    let cambio=false;
+    misOpsServ.forEach(function(f){
+      if(!fmEsFolioCliente(f)||f.fechaSolucion||f.cancelado===true)return;
+      const v=fmVenceMs(f); if(!v)return;
+      const falta=(v-ahora)/60000, clave=f.id+'|'+v;
+      if(falta>0&&falta<=FM_ALARMA_ANTES_MIN&&!avisados[clave]){
+        avisados[clave]=ahora; cambio=true;
+        try{fmOpsAlarma(10);}catch(e){}
+        toast('Folio '+(f.folioClienteId||f.folioOS||'')+' en '+opsSvTitulo(f)+' vence en '+Math.round(falta)+' min','err');
+      }
+    });
+    Object.keys(avisados).forEach(function(k){if(ahora-avisados[k]>2*86400000){delete avisados[k];cambio=true;}});
+    if(cambio)localStorage.setItem('fm_vence1h',JSON.stringify(avisados));
+  }catch(e){console.warn('[OPS vence 1h]',e);}
+}
+setInterval(fmVigilarVence1h,60000);
+
 function fmOpsMiDiaHTML(hoyISO){
   const m=new Date(hoyISO+'T12:00:00'); m.setDate(m.getDate()+1);
   const mananaISO=m.getFullYear()+'-'+String(m.getMonth()+1).padStart(2,'0')+'-'+String(m.getDate()).padStart(2,'0');
@@ -7176,7 +7247,9 @@ window.fmOpsServIniciar=async function(id,btn){
     const ahora=new Date().toISOString(), quien=opsSvMiNombre();
     const ub=await herrObtenerUbicacion();
     const cambios={iniciadoEn:ahora,iniciadoPor:quien,iniciadoDesde:'app_flotilla'};
-    if(!f.fechaAtencion&&(f.folioClienteId||f.vencimiento))cambios.fechaAtencion=ahora; // atención del folio para el SLA
+    // Primer arribo del técnico (para indicadores). OJO: NO es fechaAtencion — ese campo es la fecha
+    // de compromiso que pone Operaciones y el semáforo la usa como límite.
+    if(!f.primerArriboEn)cambios.primerArriboEn=ahora;
     if(ub)cambios.iniciadoUbicacion=ub;
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
     await opsSvComentario(id,'Servicio iniciado desde la app de Flotilla por '+quien+(ub?' · ubicación '+ub.lat.toFixed(5)+', '+ub.lng.toFixed(5):' · sin ubicación')+'.','inicio');
@@ -7369,7 +7442,7 @@ window.fmOpsServGuardarTermino=async function(id){
       evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
     if(res==='finalizado'){
       cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde='app_flotilla'; cambios.evidenciaCompleta=true;
-      if(!f.fechaAtencion)cambios.fechaAtencion=f.iniciadoEn||ahora;
+      if(!f.primerArriboEn)cambios.primerArriboEn=f.iniciadoEn||ahora;
     }else{
       cambios.iniciadoEn=null;
       cambios.ultimoNoFinalizado={resultado:res,motivo:visita.motivo,detalle:txt,por:quien,en:ahora};

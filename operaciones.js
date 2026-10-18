@@ -1221,19 +1221,6 @@
         return opsAuthTools;
     }
 
-    // Carga perezosa de firebase-storage — solo se usa al guardar fotos de
-    // evidencia de una revisión de herramienta. Reutiliza la app por defecto
-    // (la misma que ya inicializó window.db en index.html).
-    let opsStorageTools = null;
-    async function opsGetStorage() {
-        if (opsStorageTools) return opsStorageTools;
-        const appMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-        const stMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js");
-        const storage = stMod.getStorage(appMod.getApp());
-        opsStorageTools = { storage, stMod };
-        return opsStorageTools;
-    }
-
     // Redimensiona/comprime una imagen en el navegador antes de subirla —
     // "buen tamaño" para el PDF de auditoría, sin subir fotos de 8-12MB
     // directo de la cámara del celular. Máximo ~1600px de lado mayor, JPEG 0.82.
@@ -5811,8 +5798,9 @@
     function opsIniciarVigilanciaFolios() {
         opsVigilarFoliosSeveridad(); // primera pasada: solo establece la base, no alerta
         opsVigilarEvidenciasFolios();
+        try { opsVigilarVencimiento1h(); } catch (e) {}
         if (opsFoliosVigilanciaTimer) clearInterval(opsFoliosVigilanciaTimer);
-        opsFoliosVigilanciaTimer = setInterval(() => { opsVigilarFoliosSeveridad(); opsVigilarEvidenciasFolios(); }, 60000); // recheck cada minuto (el reloj avanza aunque no cambien datos)
+        opsFoliosVigilanciaTimer = setInterval(() => { opsVigilarFoliosSeveridad(); opsVigilarEvidenciasFolios(); try { opsVigilarVencimiento1h(); } catch (e) { console.warn("[Folios] vigilancia 1 h:", e); } }, 60000); // recheck cada minuto (el reloj avanza aunque no cambien datos)
     }
     function opsDetenerVigilanciaFolios() {
         if (opsFoliosVigilanciaTimer) { clearInterval(opsFoliosVigilanciaTimer); opsFoliosVigilanciaTimer = null; }
@@ -6016,6 +6004,7 @@
                     </div>`; }).join("")}
                     ${sinTec.length > 25 ? `<div style="font-size:11px;color:#64748b;padding-top:6px;">…y ${sinTec.length - 25} más.</div>` : ""}
                 </div>` : ""}
+                <button onclick="opsRutaAbrir()" style="width:100%;margin-bottom:12px;background:#0e7490;color:#fff;border:none;border-radius:9px;padding:9px;font-size:12.5px;font-weight:800;cursor:pointer;">Ruta del día por prioridad y ubicación (mapa)</button>
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
                     <div style="font-size:12.5px;font-weight:800;color:#1e293b;">Efectividad por técnico</div>
                     <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:8px;">${[["hoy", "Hoy"], ["semana", "Semana"], ["mes", "Mes"]].map(([k, n]) => `<button onclick="opsMesaRango('${k}')" style="border:none;background:${opsMesaRango === k ? "#0e7490" : "transparent"};color:${opsMesaRango === k ? "#fff" : "#475569"};border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${n}</button>`).join("")}</div>
@@ -6042,6 +6031,167 @@
             ${t.dia.length ? `<span style="color:#64748b;">· No mover a ${t.dia.length > 1 ? "estos técnicos" : "este técnico"} sin cubrir los folios.</span>` : ""}
             ${sinTec ? `<button onclick="opsCambiarTab('folios')" style="margin-left:auto;background:#E7402B;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${sinTec} folio(s) sin técnico</button>` : ""}
         </div>`;
+    }
+
+    // ═══════════════════ RUTA DEL DÍA DE FOLIOS (17-oct-2026, bloque 3) ═══════════════════
+    // Ordena los folios abiertos de un técnico por VENCIMIENTO y UBICACIÓN: va primero al que vence
+    // antes, pero si hay otro más cerca que se puede atender sin que el urgente se pase de su hora,
+    // lo toma de pasada (ej. P1 en Panamericana vence 2 pm y P1 en Majalca vence 6 pm → Panamericana
+    // primero). Tiempos estimados: distancia en línea recta × 1.35, a 40 km/h, + 5 min de llegada;
+    // duración de cada folio 90 min salvo que tenga duración capturada.
+    const OPS_RUTA_VEL_KMH = 40, OPS_RUTA_FACTOR = 1.35, OPS_RUTA_DUR_MIN = 90;
+    const OPS_PLAZA_CENTRO = { "Chihuahua": [28.6353, -106.0889], "Juárez": [31.6904, -106.4245], "Parral": [26.9318, -105.6664], "Monterrey": [25.6866, -100.3161] };
+    function opsRutaKm(a, b) {
+        const R = 6371, r = x => x * Math.PI / 180;
+        const dLa = r(b.lat - a.lat), dLo = r(b.lng - a.lng);
+        const h = Math.sin(dLa / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLo / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    function opsRutaViajeMin(a, b) {
+        if (!a || !b || a.lat == null || b.lat == null) return 20; // sin ubicación: estimado fijo
+        return Math.round(opsRutaKm(a, b) * OPS_RUTA_FACTOR / OPS_RUTA_VEL_KMH * 60) + 5;
+    }
+    // items: [{ id, lat, lng, venceMs, durMin, ... }] → mismo arreglo ordenado con llegada/fin estimados
+    function opsRutaOrdenar(items, inicio, ahoraMs) {
+        const pend = items.slice(), out = [];
+        let pos = inicio, t = ahoraMs;
+        const V = x => x.venceMs == null ? Infinity : x.venceMs;
+        while (pend.length) {
+            pend.sort((a, b) => V(a) - V(b));
+            const e = pend[0]; let elegido = e;
+            const dE = opsRutaViajeMin(pos, e);
+            const cerca = pend.slice(1).map(c => ({ c, d: opsRutaViajeMin(pos, c) })).filter(x => x.d < dE).sort((x, y) => x.d - y.d);
+            for (const { c, d } of cerca) {
+                const finC = t + (d + c.durMin) * 60000;
+                const finE = finC + (opsRutaViajeMin(c, e) + e.durMin) * 60000;
+                if (finE <= V(e) && finC <= V(c)) { elegido = c; break; }
+            }
+            const d = opsRutaViajeMin(pos, elegido), llegada = t + d * 60000, fin = llegada + elegido.durMin * 60000;
+            out.push({ ...elegido, viajeMin: d, llegadaMs: llegada, finMs: fin, aTiempo: elegido.venceMs == null || fin <= elegido.venceMs });
+            t = fin; if (elegido.lat != null) pos = elegido;
+            pend.splice(pend.indexOf(elegido), 1);
+        }
+        return out;
+    }
+    function opsFolioVenceMs(f) { const d = opsAFechaObj(f.vencimiento || f.fechaAtencion); return d ? d.getTime() : null; }
+    function opsFolioDurMin(f) {
+        if (f.duracionValor) return Math.max(15, Math.round(Number(f.duracionValor) * ({ min: 1, h: 60, dias: 480 }[f.duracionUnidad] || 60)));
+        if (f.tiempoEjecucionHrs) return Math.max(15, Math.round(Number(f.tiempoEjecucionHrs) * 60));
+        return OPS_RUTA_DUR_MIN;
+    }
+    async function opsRutaDatos(tecId) {
+        const folios = cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion && (f.tecnicosAsignadosIds || []).includes(tecId));
+        const ids = [...new Set(folios.map(f => f.estacionCatalogoId).filter(Boolean).map(String))];
+        const cat = new Map();
+        if (ids.length) {
+            try {
+                const sb = await opsSb();
+                const { data } = await sb.from("estaciones_servicio").select("id,nombre_comercial,lat,lng,ubicacion_verificada,direccion_normalizada").in("id", ids);
+                (data || []).forEach(x => cat.set(String(x.id), x));
+            } catch (e) { console.warn("[Ruta] estaciones:", e.message || e); }
+        }
+        const items = folios.map(f => {
+            const c = f.estacionCatalogoId ? cat.get(String(f.estacionCatalogoId)) : null;
+            const lat = c && c.lat != null ? c.lat : (f.estacionUbicacionVerificada ? f.estacionLat : null);
+            const lng = c && c.lng != null ? c.lng : (f.estacionUbicacionVerificada ? f.estacionLng : null);
+            return { id: f.id, f, nombre: (c && c.nombre_comercial) || f.estacion || "Estación", lat, lng, aprox: !(c && c.ubicacion_verificada) && !f.estacionUbicacionVerificada,
+                dir: (c && c.direccion_normalizada) || f.estacionDireccion || "", venceMs: opsFolioVenceMs(f), durMin: opsFolioDurMin(f), prioridad: f.prioridad || "" };
+        });
+        const plaza = (folios[0] && folios[0].plaza) || "Chihuahua";
+        const c0 = OPS_PLAZA_CENTRO[plaza] || OPS_PLAZA_CENTRO.Chihuahua;
+        const inicio = { lat: c0[0], lng: c0[1] };
+        return { ruta: opsRutaOrdenar(items, inicio, Date.now()), inicio, plaza };
+    }
+    function opsRutaGoogleUrl(ruta) {
+        const p = ruta.slice(0, 10).map(x => x.lat != null && !x.aprox ? `${x.lat},${x.lng}` : (x.dir ? "gasolinera " + x.dir.replace(/\bNO\.\s*|\bCol\.\s*|\bC\.\s*P\.\s*/gi, "") : `${x.lat},${x.lng}`));
+        if (!p.length) return "";
+        const dest = p[p.length - 1], way = p.slice(0, -1);
+        return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" + encodeURIComponent(dest) + (way.length ? "&waypoints=" + encodeURIComponent(way.join("|")) : "");
+    }
+    let opsRutaMapa = null;
+    window.opsRutaAbrir = async function (tecId) {
+        const tecs = [...new Map(cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion).flatMap(f => (f.tecnicosAsignadosIds || []).map(id => [id, opsTecPorId(id)])).filter(x => x[1])).values()].sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
+        if (!tecId) { const t0 = opsTurnoFolios(opsHoyLocal()).dia[0]; tecId = (t0 && tecs.some(x => x.id === t0.tec.id) ? t0.tec.id : (tecs[0] || {}).id); }
+        document.getElementById("ops-ruta-ov")?.remove();
+        const ov = document.createElement("div"); ov.id = "ops-ruta-ov";
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;";
+        ov.innerHTML = `<div style="background:#fff;border-radius:14px;width:980px;max-width:100%;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #e2e8f0;">
+                <div style="font-size:15px;font-weight:800;color:#0e7490;flex:1;">Ruta del día por prioridad y ubicación</div>
+                <select id="ops-ruta-tec" onchange="opsRutaAbrir(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 9px;font-size:12.5px;">${tecs.length ? tecs.map(t => `<option value="${t.id}" ${t.id === tecId ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("") : `<option>Sin folios asignados</option>`}</select>
+                <button onclick="document.getElementById('ops-ruta-ov').remove()" style="border:none;background:#f1f5f9;border-radius:8px;padding:6px 11px;font-weight:800;cursor:pointer;">Cerrar</button>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);flex:1;min-height:0;">
+                <div id="ops-ruta-mapa" style="min-height:420px;background:#e2e8f0;"></div>
+                <div id="ops-ruta-lista" style="overflow-y:auto;padding:12px 14px;font-size:12.5px;color:#64748b;">Calculando ruta…</div>
+            </div></div>`;
+        ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+        if (!tecId) { document.getElementById("ops-ruta-lista").innerHTML = "No hay folios abiertos asignados a ningún técnico."; return; }
+        const { ruta, inicio } = await opsRutaDatos(tecId);
+        const lista = document.getElementById("ops-ruta-lista"); if (!lista) return;
+        const hora = ms => new Date(ms).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+        const url = opsRutaGoogleUrl(ruta);
+        lista.innerHTML = !ruta.length ? "Este técnico no tiene folios abiertos asignados." : `
+            ${ruta.map((x, i) => `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                <div style="width:26px;height:26px;border-radius:50%;background:${x.aTiempo ? "#0e7490" : "#E7402B"};color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i + 1}</div>
+                <div style="flex:1;min-width:0;color:#1e293b;">
+                    <div style="font-weight:800;">${opsEsc(x.nombre)} ${x.prioridad ? `<span style="font-size:10.5px;background:#fee2e2;color:#b91c1c;border-radius:5px;padding:1px 5px;">${opsEsc(x.prioridad)}</span>` : ""}</div>
+                    <div style="font-size:11.5px;color:#475569;">${opsEsc(x.f.folioClienteId || x.f.folioOS || "")} · ${opsEsc(opsClienteFolioNombre(x.f))}</div>
+                    <div style="font-size:11.5px;color:#334155;margin-top:2px;">Llega ~${hora(x.llegadaMs)} (${x.viajeMin} min de camino) · termina ~${hora(x.finMs)}</div>
+                    <div style="font-size:11.5px;font-weight:700;color:${x.aTiempo ? "#15803d" : "#b91c1c"};">${x.venceMs ? (x.aTiempo ? "A tiempo · vence " : "No alcanza · vence ") + new Date(x.venceMs).toLocaleString("es-MX", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "Sin vencimiento"}${x.lat == null ? ' · <span style="color:#b45309;">sin ubicación</span>' : x.aprox ? ' · <span style="color:#b45309;">ubicación aproximada</span>' : ""}</div>
+                </div></div>`).join("")}
+            ${ruta.some(x => !x.aTiempo) ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:9px;padding:8px 10px;margin-top:10px;font-size:12px;">${ruta.filter(x => !x.aTiempo).length} folio(s) no alcanzan a atenderse a tiempo con un solo técnico. Considera mandar al comodín o a la guardia.</div>` : ""}
+            ${url ? `<a href="${url}" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:12px;background:#0e7490;color:#fff;border-radius:9px;padding:10px;font-weight:800;text-decoration:none;">Abrir ruta en Google Maps</a>` : ""}
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;">Tiempos estimados por distancia en línea recta; el orden se recalcula cada vez que abres esta ventana.</div>`;
+        const el = document.getElementById("ops-ruta-mapa");
+        if (!el || typeof L === "undefined") { if (el) el.innerHTML = '<div style="padding:20px;font-size:12px;color:#64748b;">Mapa no disponible.</div>'; return; }
+        try { if (opsRutaMapa) opsRutaMapa.remove(); } catch (e) {}
+        opsRutaMapa = L.map(el, { attributionControl: false }).setView([inicio.lat, inicio.lng], 11);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(opsRutaMapa);
+        const pts = [[inicio.lat, inicio.lng]];
+        L.circleMarker([inicio.lat, inicio.lng], { radius: 6, color: "#1D2E73", fillColor: "#1D2E73", fillOpacity: 1 }).addTo(opsRutaMapa).bindTooltip("Salida (oficina)");
+        ruta.forEach((x, i) => {
+            if (x.lat == null) return;
+            pts.push([x.lat, x.lng]);
+            L.marker([x.lat, x.lng], { icon: L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 13],
+                html: `<div style="width:26px;height:26px;border-radius:50%;background:${x.aTiempo ? "#0e7490" : "#E7402B"};color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);${x.aprox ? "opacity:.6;" : ""}">${i + 1}</div>` }) })
+                .addTo(opsRutaMapa).bindTooltip(`${i + 1}. ${x.nombre}${x.aprox ? " (aprox.)" : ""}`);
+        });
+        if (pts.length > 1) { L.polyline(pts, { color: "#0e7490", weight: 3, dashArray: "6 6" }).addTo(opsRutaMapa); opsRutaMapa.fitBounds(pts, { padding: [30, 30] }); }
+        setTimeout(() => { try { opsRutaMapa.invalidateSize(); } catch (e) {} }, 150);
+    };
+
+    // ── Alarma de vencimiento: 1 hora antes de que venza cada folio abierto ──
+    // Suena en el portal (Operaciones) y manda aviso con alarma al técnico asignado en la app.
+    // Una sola vez por folio y por vencimiento (si cambian la fecha, vuelve a avisar).
+    const OPS_ALARMA_ANTES_MIN = 60;
+    const opsFolios1hAvisados = new Set();
+    function opsVigilarVencimiento1h() {
+        const ahora = Date.now();
+        for (const f of cacheFolios) {
+            if (f.source === OPS_DEMO_SOURCE || f.cancelado || f.fechaSolucion || !opsEsFolioCliente(f)) continue;
+            const v = opsFolioVenceMs(f); if (!v) continue;
+            const falta = (v - ahora) / 60000;
+            const clave = f.id + "|" + v;
+            if (falta > 0 && falta <= OPS_ALARMA_ANTES_MIN && !opsFolios1hAvisados.has(clave)) {
+                opsFolios1hAvisados.add(clave);
+                if (f.avisoVence1h === clave) continue; // ya lo mandó otra sesión del portal
+                opsReproducirAlarmaFolio();
+                const tecs = (f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico";
+                opsNotifAgregar({ titulo: "Vence en " + Math.round(falta) + " min", color: "#E7402B", accion: "folios", accionTxt: "Ir a Folios",
+                    texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
+                (async () => {
+                    try {
+                        const { db, fs } = await opsGetFB();
+                        await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { avisoVence1h: clave });
+                        const correos = [...new Set((f.tecnicosAsignadosIds || []).map(id => (opsTecPorId(id) || {}).correo).concat([f.tecnicoResponsableCorreo]).filter(Boolean).map(c => String(c).toLowerCase().trim()))];
+                        for (const para of correos) await window.tcNotificar2(fs, db, { tipo: "ops_folio_vence_1h", codigo: f.folioClienteId || f.folioOS || f.estacion, para,
+                            mensaje: `Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${Math.round(falta)} minutos (${new Date(v).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}).`, creadaEn: new Date().toISOString() });
+                    } catch (e) { console.warn("[Folios] aviso 1 h:", e.message || e); }
+                })();
+            }
+        }
     }
 
     function opsRenderFolios() {
