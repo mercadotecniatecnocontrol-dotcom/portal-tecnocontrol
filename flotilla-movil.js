@@ -7190,15 +7190,16 @@ window.fmOpsServIniciar=async function(id,btn){
 };
 
 // ── Evidencias desde la app (17-oct-2026, bloque 2) ──
-// Fotos comprimidas en base64 en la subcolección ops_folios/{id}/evidencias (una foto por documento,
-// así ninguno pasa de 1 MB). Documento (orden de servicio o lista de inspección) a más resolución
-// para que se pueda leer.
+// Todo en Supabase: la imagen (JPG comprimido) va a Supabase Storage, bucket privado
+// "ops-evidencias", en la carpeta del servicio; en ops_docs (subcolección evidencias del folio)
+// solo queda el registro: tipo, ruta del archivo, quién y cuándo. Nada de imágenes en la base.
+// Documento (orden de servicio o lista de inspección) a más resolución para que se pueda leer.
 // Reglas al terminar la visita:
 //   · Quedó resuelto → foto de la orden de servicio o lista de inspección + al menos 1 foto del trabajo.
 //     Excepción: calibración de sonda y alto flujo (no llevan orden de servicio) → solo fotos.
 //   · Atendido sin finalizar → al menos 1 foto de lo que se hizo.
 //   · No se realizó → sin fotos, con motivo.
-const OPS_EV_MAX_BYTES=900000;
+const OPS_EV_MAX_BYTES=900000; // tope por foto (en caracteres del dataURL) antes de subirla a Storage
 window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
 function fmEvLeer(file,maxW,q){
   return new Promise(function(res){
@@ -7239,10 +7240,16 @@ function fmEvPickerHTML(tipo,titulo,ayuda){
     '<label style="width:64px;height:64px;border:1.5px dashed #94A3B8;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#475569;cursor:pointer;text-align:center">'+
       '<span style="font-size:20px;line-height:1">+</span>Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="fmEvAgregar(this,\''+tipo+'\')"></label></div></div>';
 }
+const OPS_EV_BUCKET='ops-evidencias';
 async function fmEvGuardar(folioId,tipo,lista,nota){
   const quien=opsSvMiNombre(), correo=opsSvMiCorreo(), ahora=new Date().toISOString();
+  const sb=await fmvSb();
   for(let i=0;i<lista.length;i++){
-    await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('evidencias').add({tipo:tipo,imagen:lista[i],por:quien,porCorreo:correo,en:ahora,origen:'app_flotilla',nota:nota||null,orden:i+1});
+    const blob=await (await fetch(lista[i])).blob();
+    const ruta=String(folioId).replace(/[^A-Za-z0-9_-]/g,'')+'/'+tipo+'_'+Date.now()+'_'+(i+1)+'.jpg';
+    const up=await sb.storage.from(OPS_EV_BUCKET).upload(ruta,blob,{contentType:'image/jpeg',upsert:false});
+    if(up.error)throw up.error;
+    await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('evidencias').add({tipo:tipo,bucket:OPS_EV_BUCKET,ruta:ruta,bytes:blob.size,por:quien,porCorreo:correo,en:ahora,origen:'app_flotilla',nota:nota||null,orden:i+1});
   }
 }
 // Servicios que no llevan orden de servicio (solo evidencia fotográfica)
@@ -7377,7 +7384,7 @@ window.fmOpsServGuardarTermino=async function(id){
     toast(res==='finalizado'?'Servicio finalizado con evidencias. Se avisó a Operaciones.':'Registrado. Se avisó a Operaciones.','ok');
   }catch(e){
     console.error('[OPS cerrar visita]',e);
-    err(e&&e.code==='permission-denied'?'Sin permiso para guardar evidencias. Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo (las fotos siguen aquí).');
+    err(/bucket|row-level|policy|not found/i.test(String(e&&e.message||''))?'No se pudieron subir las fotos (almacenamiento). Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo (las fotos siguen aquí).');
     if(btn){btn.disabled=false;btn.textContent='Guardar';}
   }
 };

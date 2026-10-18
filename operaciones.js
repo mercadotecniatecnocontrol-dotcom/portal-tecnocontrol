@@ -3400,14 +3400,17 @@
         // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
         if (p.requisicion) {
             try {
-                // Sin await: Compras sigue en Firestore y, sin cuota, esta escritura
-                // podría quedarse colgada — la pieza ya quedó guardada en Supabase.
-                fs.updateDoc(fs.doc(db, "requisiciones_compra", p.requisicion.id), {
+                // Compras vive en Supabase: se escribe por su propio puente (compras-supabase.js).
+                (async () => {
+                    if (!window.tcComprasFS) await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "compras-supabase.js?v=sb1"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar compras-supabase.js")); document.head.appendChild(sc); });
+                    const fsC = await window.tcComprasFS(null);
+                    return fsC.updateDoc(fsC.doc(window.db, "requisiciones_compra", p.requisicion.id), {
                     herramientaId: folio,
                     herramientaDescripcion: p.descripcion,
                     herramientaAltaFecha: opsHoy(),
                     herramientaTecnicoDestinoId: p.tecnicoDestinoId || null,
-                }).catch(err => console.warn("[operaciones.js] requisición de origen no actualizada (Firestore):", err && err.message));
+                    });
+                })().catch(err => console.warn("[operaciones.js] requisición de origen no actualizada:", err && err.message));
             } catch (err) {
                 console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
             }
@@ -7870,18 +7873,26 @@
     }
 
     // ═══════════════════ EVIDENCIAS DEL SERVICIO (subidas desde la app) ═══════════════════
+    // Registro en ops_docs (Supabase) + imagen en Supabase Storage, bucket privado "ops-evidencias".
     async function opsPanelEvidenciasPintar(f) {
         const box = document.getElementById("ops-panel-evidencias"); if (!box) return;
         try {
             const { db, fs } = await opsGetFB();
             const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
             const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")));
+            // Las imágenes viven en Supabase Storage (bucket privado ops-evidencias): ligas firmadas por 1 hora.
+            const conRuta = ev.filter(e => e.ruta);
+            if (conRuta.length) {
+                const sb = await opsSb();
+                const { data } = await sb.storage.from("ops-evidencias").createSignedUrls(conRuta.map(e => e.ruta), 3600);
+                (data || []).forEach((x, i) => { if (x && x.signedUrl) conRuta[i].imagen = x.signedUrl; });
+            }
             const b2 = document.getElementById("ops-panel-evidencias"); if (!b2 || b2.dataset.folio !== f.id) return;
             window.__opsEvidencias = ev;
             const et = { orden_servicio: "Orden de servicio / lista", foto: "Foto del trabajo", pausa: "Tiempo muerto" };
             b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias (${ev.length})</div>
                 ${ev.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${ev.map((e, i) => `<div onclick="opsVerEvidencia(${i})" style="cursor:pointer;">
-                    <img src="${e.imagen}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;">
+                    <img src="${e.imagen || ""}" alt="Evidencia" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;">
                     <div style="font-size:9.5px;color:#64748b;line-height:1.2;margin-top:2px;">${opsEsc(et[e.tipo] || e.tipo || "")}<br>${opsEsc(e.por || "")}</div></div>`).join("")}</div>`
                 : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay evidencias. El técnico las sube al terminar la visita en la app.</div>`}</div>`;
         } catch (e) {
@@ -11149,7 +11160,6 @@
             const sb = await opsSb();
             const { error } = await sb.from("estaciones_servicio").update({ nombre_comercial: nombre, actualizado_en: new Date().toISOString() }).eq("id", id);
             if (error) throw error;
-            try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, "estaciones_servicio", id), { nombreComercial: nombre }); } catch (x) { /* la copia de Firestore puede no existir con ese id */ }
             e.nombreComercial = nombre;
             cat.forEach(x => { if (x.id === id) x.nombreComercial = nombre; });
             if (opsAS) opsAS.estaciones.forEach(x => { if (x.est && x.est.id === id) { x.est.nombreComercial = nombre; x.texto = nombre; } });
@@ -11416,10 +11426,9 @@
     // ═══ Alta de estación / cliente nuevo desde Nuevo servicio (oct-2026) ═══
     // Glen: "si el cliente no está en la lista poderlo dar de alta desde ahí mismo y se comunique
     // con Ventas con ubicaciones y todo, con todos los datos (PL), y se vaya alimentando la base de
-    // datos con los clientes". Guarda en los tres lugares que usa el portal, ligados por el mismo id:
-    //   1) estaciones_servicio en Firestore (Ventas, Almacén, Logística — mismo formato que ventas.js)
-    //   2) estaciones_servicio en Supabase (lo que lee Operaciones y Viáticos)
-    //   3) ventas_clientes en Firestore (Clientes de Ventas, con estacionCatalogoId)
+    // datos con los clientes". Todo en Supabase (regla oct-2026), ligado por el mismo id:
+    //   1) estaciones_servicio (catálogo maestro)
+    //   2) ventas_clientes (Clientes de Ventas, con estacion_catalogo_id)
     let opsNE = null, opsNeMapa = null;
     Object.defineProperty(window, "opsNE", { get: () => opsNE, configurable: true });
     const OPS_NE_CAMPOS_DIR = ["direccion", "colonia", "cp", "municipio", "estado"];
@@ -11636,7 +11645,7 @@
     // Ventana de resultado del alta: deja claro qué se guardó y dónde (Glen: "no sale nada de si se guardó").
     function opsNeMostrarResultado(r) {
         document.getElementById("opsne-resultado")?.remove();
-        const ok = r.firestore && r.supabase && r.ventas;
+        const ok = r.supabase && r.ventas;
         const fila = (bien, txt, det) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid #f1f5f9;">
             <span style="display:inline-flex;width:20px;height:20px;flex-shrink:0;color:${bien ? "#15803D" : "#DC2626"};">${bien ? ICON.check : ICON.xCircle}</span>
             <div><div style="font-size:13px;font-weight:700;color:#1e293b;">${txt}</div>${det ? `<div style="font-size:11.5px;color:${bien ? "#64748b" : "#B91C1C"};">${opsEsc(det)}</div>` : ""}</div></div>`;
@@ -11645,13 +11654,12 @@
         ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:100005;display:flex;align-items:center;justify-content:center;padding:20px;";
         ov.innerHTML = `<div style="background:#fff;border-radius:16px;width:480px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden;">
             <div style="padding:22px 22px 10px;text-align:center;">
-                <div style="width:54px;height:54px;border-radius:50%;background:${ok ? "#DCFCE7" : r.firestore || r.supabase ? "#FEF3C7" : "#FEE2E2"};color:${ok ? "#15803D" : r.firestore || r.supabase ? "#B45309" : "#DC2626"};display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><span style="display:inline-flex;width:28px;height:28px;">${ok ? ICON.check : ICON.alert}</span></div>
-                <div style="font-size:18px;font-weight:800;color:${ok ? "#15803D" : "#B45309"};">${ok ? "Estación dada de alta" : r.firestore || r.supabase ? "Se guardó con avisos" : "No se pudo dar de alta"}</div>
+                <div style="width:54px;height:54px;border-radius:50%;background:${ok ? "#DCFCE7" : r.supabase ? "#FEF3C7" : "#FEE2E2"};color:${ok ? "#15803D" : r.supabase ? "#B45309" : "#DC2626"};display:flex;align-items:center;justify-content:center;margin:0 auto 10px;"><span style="display:inline-flex;width:28px;height:28px;">${ok ? ICON.check : ICON.alert}</span></div>
+                <div style="font-size:18px;font-weight:800;color:${ok ? "#15803D" : "#B45309"};">${ok ? "Estación dada de alta" : r.supabase ? "Se guardó con avisos" : "No se pudo dar de alta"}</div>
                 <div style="font-size:13px;color:#334155;margin-top:4px;font-weight:600;">${opsEsc(r.nombre || "")}</div>
             </div>
             <div style="padding:4px 22px 8px;">
-                ${fila(r.firestore, "Catálogo de estaciones (Ventas, Almacén, Logística)", r.errFirestore || "")}
-                ${fila(r.supabase, "Catálogo de Operaciones y Viáticos", r.errSupabase || "")}
+                ${fila(r.supabase, "Catálogo de estaciones (Operaciones, Viáticos, Flotilla, Ventas, Almacén)", r.errSupabase || "")}
                 ${fila(r.ventas, "Clientes de Ventas (con PL y ubicación)", r.errVentas || "")}
             </div>
             ${r.usada ? `<div style="margin:6px 22px 0;background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;border-radius:10px;padding:9px 12px;font-size:12.5px;">Ya quedó seleccionada en el servicio que estás capturando.</div>` : ""}
@@ -11691,24 +11699,18 @@
         const num = v => (v === "" || v == null) ? null : Number(v);
         const rs = n.razonSocial.trim().toUpperCase(), nc = n.nombreComercial.trim();
         const dirCompleta = [n.direccion.trim(), n.colonia.trim() ? "Col. " + n.colonia.trim() : "", n.cp.trim() ? "C.P. " + n.cp.trim() : ""].filter(Boolean).join(", ");
-        const resultado = { firestore: false, supabase: false, ventas: false, nombre: nc || rs };
-        let id = null;
+        // Regla (oct-2026): todo en Supabase. Ya no se escribe nada en Firestore.
+        const resultado = { supabase: false, ventas: false, nombre: nc || rs };
+        // Mismo formato de id que el resto del catálogo (20 caracteres alfanuméricos)
+        const ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const rnd = new Uint8Array(20); (window.crypto || crypto).getRandomValues(rnd);
+        let id = Array.from(rnd, x => ABC[x % ABC.length]).join("");
         try {
-            const { db, fs } = await opsGetFB();
-            // 1) Catálogo maestro en Firestore (mismo formato que ventas.js)
-            const refEst = await opsConLimite(fs.addDoc(fs.collection(db, "estaciones_servicio"), {
-                razonSocial: rs, nombreComercial: nc || null, permiso: n.permiso.trim() || "", codigoEstacionCre: n.codigoCre.trim() || null,
-                direccionNormalizada: dirCompleta, domicilioRaw: dirCompleta, colonia: n.colonia.trim() || null, codigoPostal: n.cp.trim() || "",
-                municipio: n.municipio.trim(), estado: n.estado.trim() || null, lat: n.lat, lng: n.lng, ubicacionVerificada: !!n.lat,
-                encargado: n.encargado.trim() || null, telefono: n.telefono.trim() || null, correo: n.correo.trim() || null, zona: n.zona.trim() || null,
-                numeroDispensarios: num(n.dispensarios), numeroTanques: num(n.tanques), numeroSondas: num(n.sondas),
-                activo: true, origen: "operaciones_alta", creadoPor: yo, creadoEn: ahora,
-            }), 20000, "Catálogo de estaciones");
-            id = refEst.id; resultado.firestore = true;
-            // 2) Mismo registro en Supabase (lo que lee Operaciones), con el mismo id
+            const sb = await opsSb();
+            // 1) Catálogo maestro de estaciones (Operaciones, Viáticos, Flotilla, Ventas, Almacén)
             const fila = {
-                razon_social: rs, nombre_comercial: nc || null, permiso: n.permiso.trim() || null, codigo_estacion_cre: n.codigoCre.trim() || null,
-                direccion_normalizada: dirCompleta, domicilio_raw: dirCompleta, colonia: n.colonia.trim() || null,
+                id, razon_social: rs, nombre_comercial: nc || null, permiso: n.permiso.trim() || null, codigo_estacion_cre: n.codigoCre.trim() || null,
+                direccion_normalizada: dirCompleta, domicilio_raw: dirCompleta, colonia: n.colonia.trim() || null, codigo_postal: n.cp.trim() || null,
                 municipio: n.municipio.trim(), estado: n.estado.trim() || null, lat: n.lat, lng: n.lng,
                 // Pin puesto a mano o con el GPS del teléfono = ubicación confirmada (la app de Flotilla
                 // usa coordenadas solo si están confirmadas; si no, busca por dirección).
@@ -11716,39 +11718,32 @@
                 ubicacion_por: yo, ubicacion_en: ahora,
                 encargado: n.encargado.trim() || null, zona: n.zona.trim() || null,
                 numero_dispensarios: num(n.dispensarios), numero_tanques: num(n.tanques), numero_sondas: num(n.sondas),
-                activo: true, actualizado_en: ahora,
+                activo: true, creado_en: ahora, actualizado_en: ahora,
             };
+            const r = await opsConLimite(sb.from("estaciones_servicio").insert(fila).select("id").single(), 20000, "Catálogo de estaciones");
+            if (r.error) throw r.error;
+            id = String(r.data && r.data.id || id);
+            resultado.supabase = true;
+            // 2) Cliente en Ventas, ligado al catálogo
             try {
-                const sb = await opsSb();
-                let r = await opsConLimite(sb.from("estaciones_servicio").insert({ id, ...fila }).select("id").single(), 20000, "Catálogo de Operaciones");
-                if (r.error) { console.warn("[Alta estación] Supabase con id de Firestore:", r.error.message); r = await opsConLimite(sb.from("estaciones_servicio").insert(fila).select("id").single(), 20000, "Catálogo de Operaciones"); }
-                if (r.error) throw r.error;
-                if (r.data && r.data.id != null && String(r.data.id) !== String(id)) {
-                    // Supabase generó su propio id: se anota en Firestore para que queden ligados.
-                    fs.updateDoc(fs.doc(db, "estaciones_servicio", id), { supabaseId: r.data.id }).catch(() => {});
-                    id = String(r.data.id);
-                }
-                resultado.supabase = true;
-            } catch (e2) { console.error("[Alta estación] Supabase:", e2); resultado.errSupabase = e2.message || String(e2); }
-            // 3) Cliente en Ventas, ligado al catálogo
-            try {
-                await opsConLimite(fs.addDoc(fs.collection(db, "ventas_clientes"), {
+                const rv = await opsConLimite(sb.from("ventas_clientes").insert({
                     nombre: `${rs} — ${[dirCompleta, n.municipio.trim()].filter(Boolean).join(", ")}`,
-                    lat: n.lat, lng: n.lng, ciudad: n.municipio.trim(), estado: n.estado.trim(), direccion: dirCompleta,
-                    contacto: n.encargado.trim(), tel: n.telefono.trim(), correo: n.correo.trim() || "", sector: n.sector, visitas: 0, producto: "",
-                    notas: [n.notas.trim(), nc ? "Estación: " + nc : "", n.permiso.trim() ? "PL: " + n.permiso.trim() : "", "Alta desde Operaciones por " + opsNombreActual()].filter(Boolean).join(" · "),
-                    vendedor: "", fotoUrl: "", permiso: n.permiso.trim() || "", estacionCatalogoId: refEst.id,
-                    origen: "operaciones", actualizadoEn: ahora, actualizadoPor: yo,
+                    lat: n.lat, lng: n.lng, ciudad: n.municipio.trim(), estado: n.estado.trim() || null, direccion: dirCompleta,
+                    contacto: n.encargado.trim() || null, tel: n.telefono.trim() || null, sector: n.sector || null, visitas: 0, producto: null,
+                    notas: [n.notas.trim(), nc ? "Estación: " + nc : "", n.permiso.trim() ? "PL: " + n.permiso.trim() : "", n.correo.trim() ? "Correo: " + n.correo.trim() : "", "Alta desde Operaciones por " + opsNombreActual()].filter(Boolean).join(" · "),
+                    vendedor: null, foto_url: null, permiso: n.permiso.trim() || null, estacion_catalogo_id: id,
+                    origen: "operaciones", actualizado_por: yo, creado_en: ahora, actualizado_en: ahora,
                 }), 20000, "Clientes de Ventas");
+                if (rv.error) throw rv.error;
                 resultado.ventas = true;
             } catch (e3) { console.error("[Alta estación] ventas_clientes:", e3); resultado.errVentas = e3.message || String(e3); }
         } catch (e) {
             console.error("[Alta estación]", e);
             n.guardando = false;
             if (btn) { btn.disabled = false; btn.innerHTML = `<span style="display:inline-flex;width:15px;height:15px;">${ICON.check}</span>Reintentar`; }
-            const motivo = e && e.code === "permission-denied" ? "Tu usuario no tiene permiso de escritura en el catálogo." : (e.message || String(e));
+            const motivo = e.message || String(e);
             err("No se dio de alta la estación. " + opsEsc(motivo));
-            opsNeMostrarResultado({ ...resultado, errFirestore: motivo, errSupabase: resultado.errSupabase || "No se intentó", errVentas: resultado.errVentas || "No se intentó" });
+            opsNeMostrarResultado({ ...resultado, errSupabase: motivo, errVentas: resultado.errVentas || "No se intentó" });
             return;
         }
         // Al catálogo en memoria y al servicio que se está capturando
