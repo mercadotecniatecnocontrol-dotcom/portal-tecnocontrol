@@ -9552,7 +9552,7 @@
             const sb = await opsSb();
             let todos = [], desde = 0;
             while (true) {
-                const { data, error } = await sb.from("estaciones_servicio").select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,colonia,municipio,estado,lat,lng,encargado,zona,numero_tanques,numero_dispensarios,numero_sondas,cr,activo").order("id").range(desde, desde + 999);
+                const { data, error } = await sb.from("estaciones_servicio").select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,colonia,codigo_postal,municipio,estado,lat,lng,encargado,zona,numero_tanques,numero_dispensarios,numero_sondas,cr,activo,cliente_id").order("id").range(desde, desde + 999);
                 if (error) throw error;
                 todos = todos.concat(data || []);
                 if (!data || data.length < 1000) break;
@@ -10925,9 +10925,10 @@
         const hermanas = e && e.razonSocial ? (window.__opsAsEstCatalogo || []).filter(x => x.razonSocial === e.razonSocial && x.id !== e.id).sort((a, b) => opsAsAlfa(a.nombreComercial || a.razonSocial, b.nombreComercial || b.razonSocial)) : [];
         let paso2 = `
         <div class="opsas-sec ${lock(listo1)}">
-            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Estación de servicio</div><div class="opsas-hint">Catálogo de Ventas · nombre, razón social, PL o municipio</div></div>
+            <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Estación de servicio</div><div class="opsas-hint">Elige el cliente para ver todas sus estaciones, o busca por nombre, razón social, PL o municipio</div></div>
+            ${opsAsClientesChipsHTML()}
             <div style="position:relative;">
-                <input id="opsas-est" class="opsas-in" value="${opsEsc(e ? (e.nombreComercial || e.razonSocial) : s.estTexto)}" placeholder="Escribe para buscar… (si no está, deja la dirección escrita)" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
+                <input id="opsas-est" class="opsas-in" value="${opsEsc(e ? (e.nombreComercial || e.razonSocial) : s.estTexto)}" placeholder="Escribe para buscar… (si no está, deja la dirección escrita)" onfocus="if(opsAS&&opsAS.clienteFiltro&&!opsAS.est)opsAsBuscarEstacion(this.value)" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
                 <div id="opsas-est-drop" class="opsas-drop"></div>
             </div>
             ${e ? `
@@ -11323,8 +11324,9 @@
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Estaciones (${s.estaciones.length})</div><div class="opsas-hint">Busca y agrega todas, o "+ Agregar las N" de un grupo</div></div>
             <div class="opsas-sw on" style="margin-bottom:10px;" onclick="opsAsSetMulti(false)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Toca para volver a una sola estación</div></div></div>
+            ${opsAsClientesChipsHTML()}
             <div style="position:relative;">
-                <input id="opsas-est" class="opsas-in" value="${opsEsc(s.estTexto)}" placeholder="Escribe para buscar y agregar otra estación…" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsMultiTexto();}" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
+                <input id="opsas-est" class="opsas-in" value="${opsEsc(s.estTexto)}" onfocus="if(opsAS&&opsAS.clienteFiltro)opsAsBuscarEstacion(this.value)" placeholder="Escribe para buscar y agregar otra estación…" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsMultiTexto();}" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
                 <div id="opsas-est-drop" class="opsas-drop"></div>
             </div>
             <div class="opsas-note" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">Si no está en el catálogo: <button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button> o escribe la dirección y presiona Enter.</div>
@@ -11522,12 +11524,13 @@
         s.est = null; s.estTexto = valor; s.plNuevo = ""; s.conceptoGeneral = null;
         const box = document.getElementById("opsas-est-drop");
         if (!box) return;
-        if (!valor || valor.trim().length < 2 || false) { box.style.display = "none"; return; }
+        // Con un cliente elegido se listan TODAS sus estaciones aunque no se haya escrito nada.
+        if (!s.clienteFiltro && (!valor || valor.trim().length < 2)) { box.style.display = "none"; return; }
         opsCatalogoEstaciones().then(lista => {
             window.__opsAsEstCatalogo = lista || [];
-            const q = opsAsNorm(valor);
-            const f = (lista || []).filter(e => opsAsNorm([e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ")).includes(q))
-                .sort((a, b) => opsAsAlfa(opsAsRsClave(a.razonSocial), opsAsRsClave(b.razonSocial)) || opsAsAlfa(a.nombreComercial, b.nombreComercial)).slice(0, 40);
+            const q = opsAsNorm(valor || "");
+            const f = (lista || []).filter(e => (!s.clienteFiltro || e.clienteId === s.clienteFiltro) && (!q || opsAsNorm([e.razonSocial, e.nombreComercial, e.municipio, e.permiso, e.zona].filter(Boolean).join(" ")).includes(q)))
+                .sort((a, b) => opsAsAlfa(opsAsRsClave(a.razonSocial), opsAsRsClave(b.razonSocial)) || opsAsAlfa(a.nombreComercial, b.nombreComercial)).slice(0, s.clienteFiltro ? 200 : 40);
             const optAlta = `<div class="opsas-opt" onmousedown="opsNeAbrir()" style="background:#f0fdf4;"><b style="color:#15803d;display:flex;align-items:center;gap:6px;">${OPS_SVG('<path d="M12 5v14M5 12h14"/>', 12)}Dar de alta estación / cliente nuevo</b><small>Con PL, ubicación en mapa y datos. Se guarda en el catálogo y en Clientes de Ventas.</small></div>`;
             if (!f.length) { box.innerHTML = optAlta + `<div class="opsas-opt"><small>Sin resultados — o déjalo como lugar escrito a mano.</small></div>`; box.style.display = "block"; return; }
             // Agrupado por razón social: así se ve cuando una razón social tiene varias estaciones.
@@ -11586,6 +11589,7 @@
     const OPS_NE_SECTORES = ["Hidrocarburos", "Industria", "Comercial", "Gobierno", "Construcción", "Otro"];
     window.opsNeAbrir = function () {
         // Desde "Nuevo servicio" (opsAS) o directo desde Operaciones con el botón "+ Alta de estación".
+        if (!document.getElementById("ops-cli-modal")) window.__opsNeClienteId = null; // solo se liga solo si se abrió desde la ficha del cliente
         const s = opsAS || { estTexto: "", plaza: opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? opsCalFiltroPlaza : "Chihuahua" };
         const texto = (s.estTexto || "").trim();
         const plazaCentro = { "Chihuahua": [28.6353, -106.0889], "Juárez": [31.6904, -106.4245], "Parral": [26.9318, -105.6664], "Monterrey": [25.6866, -100.3161] }[s.plaza] || [28.6353, -106.0889];
@@ -11868,6 +11872,8 @@
                 ubicacion_por: yo, ubicacion_en: ahora,
                 encargado: n.encargado.trim() || null, zona: n.zona.trim() || null,
                 numero_dispensarios: num(n.dispensarios), numero_tanques: num(n.tanques), numero_sondas: num(n.sondas),
+                // Cliente al que pertenece (desde Operaciones → Clientes, o el cliente elegido en Nuevo servicio)
+                cliente_id: window.__opsNeClienteId || (opsAS && opsAS.clienteFiltro) || null,
                 activo: true, creado_en: ahora, actualizado_en: ahora,
             };
             const r = await opsConLimite(sb.from("estaciones_servicio").insert(fila).select("id").single(), 20000, "Catálogo de estaciones");
@@ -11914,6 +11920,8 @@
         }
         resultado.usada = !!opsAS;
         opsNeMostrarResultado(resultado);
+        window.__opsNeClienteId = null;
+        if (typeof window.__opsNeAlGuardar === "function") { try { window.__opsNeAlGuardar(); } catch (e) {} window.__opsNeAlGuardar = null; }
     };
 
     window.opsAsBuscarContacto = function (valor) {
@@ -12687,7 +12695,350 @@
     };
 
     // ═══════════════════════ TAB: CLIENTES (catálogo de SLA por prioridad) ═══════════════════════
+    // ═══════════════════ CLIENTES (catálogo único, compartido con SUDI · oct-2026) ═══════════════════
+    // Tabla Supabase clientes_catalogo: la usan Operaciones → Clientes y la página de Clientes de SUDI
+    // (JOMAR), así lo que se capture en uno aparece en el otro (con tiempo real).
+    // Cada estación se liga con estaciones_servicio.cliente_id = clientes_catalogo.id.
+    // La tabla de SLA por prioridad sigue en ops_clientes (la usan folios y vencimientos) y se liga
+    // con clientes_catalogo.ops_cliente_id.
+    const OPS_CLI_REGIMENES = [["601", "General de Ley Personas Morales"], ["603", "Personas Morales con Fines no Lucrativos"], ["605", "Sueldos y Salarios"], ["606", "Arrendamiento"], ["612", "Personas Físicas con Actividades Empresariales y Profesionales"], ["616", "Sin obligaciones fiscales"], ["621", "Incorporación Fiscal"], ["625", "Plataformas Tecnológicas"], ["626", "Régimen Simplificado de Confianza"]];
+    const OPS_CLI_EMPRESAS = ["Tecnocontrol", "JOMAR"];
+    let opsCliLista = [], opsCliConteo = {}, opsCliCargado = false, opsCliBusca = "", opsCliEmpresa = "todas", opsCliCanal = null;
+    let opsCliEdit = null, opsCliTab = "general", opsCliEstaciones = [];
+    async function opsCliCargar(forzar) {
+        if (opsCliCargado && !forzar) return;
+        const sb = await opsSb();
+        const { data, error } = await sb.from("clientes_catalogo").select("*").order("razon_social");
+        if (error) throw error;
+        opsCliLista = data || [];
+        const conteo = {}; let desde = 0;
+        while (true) {
+            const r = await sb.from("estaciones_servicio").select("cliente_id").not("cliente_id", "is", null).range(desde, desde + 999);
+            if (r.error) break;
+            (r.data || []).forEach(x => { conteo[x.cliente_id] = (conteo[x.cliente_id] || 0) + 1; });
+            if (!r.data || r.data.length < 1000) break; desde += 1000;
+        }
+        opsCliConteo = conteo; opsCliCargado = true;
+        if (!opsCliCanal && sb.channel) {
+            // Cambios hechos desde SUDI (o desde otra sesión) se reflejan solos.
+            opsCliCanal = sb.channel("ops-clientes-catalogo").on("postgres_changes", { event: "*", schema: "public", table: "clientes_catalogo" }, () => {
+                opsCliCargar(true).then(() => { if (document.getElementById("ops-cli-tabla")) opsRenderClientes(); }).catch(() => {});
+            }).subscribe();
+        }
+    }
+    function opsCliNombre(c) { return (c && (c.nombre_comercial || c.razon_social)) || "Cliente"; }
+    function opsCliNorm(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+    function opsCliChip(t, bg, fg, bd) { return `<span style="display:inline-block;background:${bg};color:${fg};border:1px solid ${bd};font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;border-radius:6px;padding:2px 7px;">${opsEsc(t)}</span>`; }
     function opsRenderClientes() {
+        const el = document.getElementById("ops-tab-content");
+        if (!el) return;
+        if (!opsCliCargado) {
+            el.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;">Cargando clientes…</div>`;
+            opsCliCargar().then(opsRenderClientes).catch(e => { el.innerHTML = `<div style="padding:20px;color:#E7402B;font-size:13px;">No se pudieron cargar los clientes: ${opsEsc(e.message || e)}</div>`; });
+            return;
+        }
+        const gestion = opsPuedeGestionar();
+        const q = opsCliNorm(opsCliBusca);
+        const lista = opsCliLista.filter(c => c.activo !== false)
+            .filter(c => opsCliEmpresa === "todas" || (c.empresas || []).includes(opsCliEmpresa))
+            .filter(c => !q || opsCliNorm([c.nombre_comercial, c.razon_social, c.rfc, c.representante, c.correo].join(" ")).includes(q));
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <div>
+                    <div style="font-size:15px;font-weight:800;color:#1e293b;">Gestión de clientes</div>
+                    <div style="font-size:11.5px;color:#64748b;">${opsCliLista.length} clientes · catálogo compartido con SUDI (JOMAR)</div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                    <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:9px;">${[["todas", "Todos"], ["Tecnocontrol", "Tecnocontrol"], ["JOMAR", "JOMAR"]].map(([k, n]) => `<button onclick="opsCliSetEmpresa('${k}')" style="border:none;background:${opsCliEmpresa === k ? "#1D2E73" : "transparent"};color:${opsCliEmpresa === k ? "#fff" : "#475569"};border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;">${n}</button>`).join("")}</div>
+                    <input id="ops-cli-busca" value="${opsEsc(opsCliBusca)}" oninput="opsCliBuscar(this.value)" placeholder="Buscar cliente por nombre o RFC…" style="width:260px;max-width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:8px 11px;font-size:13px;">
+                    ${gestion ? `<button onclick="opsCliAbrir()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Añadir cliente</button>` : ""}
+                </div>
+            </div>
+            <div style="overflow-x:auto;">
+            <table id="ops-cli-tabla" style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:960px;">
+                <thead><tr style="background:#1f2937;color:#fff;text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;">
+                    <th style="padding:9px 10px;border-radius:8px 0 0 8px;">Nombre comercial</th><th style="padding:9px 10px;">Representante</th><th style="padding:9px 10px;">Teléfono</th><th style="padding:9px 10px;">Correo</th>
+                    <th style="padding:9px 10px;text-align:center;">Estaciones</th><th style="padding:9px 10px;text-align:center;">Normas</th><th style="padding:9px 10px;text-align:center;">Atiende</th><th style="padding:9px 10px;border-radius:0 8px 8px 0;text-align:right;">Acciones</th>
+                </tr></thead>
+                <tbody>${lista.length ? lista.map((c, i) => {
+                    const n = opsCliConteo[c.id] || 0, dec = c.estaciones_declaradas;
+                    const falta = dec != null && dec > n;
+                    return `<tr onclick="opsCliAbrir('${c.id}')" style="cursor:pointer;background:${i % 2 ? "#f8fafc" : "#fff"};border-bottom:1px solid #eef1f5;">
+                        <td style="padding:9px 10px;"><div style="font-weight:700;color:#1e293b;">${opsEsc(opsCliNombre(c))}</div>${c.nombre_comercial && c.razon_social ? `<div style="font-size:11px;color:#64748b;">${opsEsc(c.razon_social)}</div>` : ""}${c.rfc ? `<div style="font-size:10.5px;color:#94a3b8;">RFC ${opsEsc(c.rfc)}</div>` : ""}</td>
+                        <td style="padding:9px 10px;color:#334155;">${opsEsc(c.representante || "—")}</td>
+                        <td style="padding:9px 10px;color:#334155;white-space:nowrap;">${opsEsc(c.telefono || "—")}</td>
+                        <td style="padding:9px 10px;color:#334155;">${opsEsc(c.correo || "—")}</td>
+                        <td style="padding:9px 10px;text-align:center;"><span style="background:#eef2ff;color:#1D2E73;font-weight:800;border-radius:7px;padding:2px 8px;">${n}</span>${falta ? `<div style="font-size:10px;color:#b45309;margin-top:2px;">faltan ${dec - n} de ${dec}</div>` : ""}</td>
+                        <td style="padding:9px 10px;text-align:center;">${(c.normas || []).map(x => x === "ASEA" ? opsCliChip(x, "#ecfdf5", "#047857", "#a7f3d0") : opsCliChip(x, "#eff6ff", "#1d4ed8", "#bfdbfe")).join(" ") || "—"}</td>
+                        <td style="padding:9px 10px;text-align:center;">${(c.empresas || []).map(x => opsCliChip(x, "#f8fafc", "#475569", "#e2e8f0")).join(" ") || "—"}</td>
+                        <td style="padding:9px 10px;text-align:right;"><button onclick="event.stopPropagation();opsCliAbrir('${c.id}')" style="border:none;background:#eef2f7;color:#1f2937;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">Ver</button></td>
+                    </tr>`;
+                }).join("") : `<tr><td colspan="8" style="padding:24px;text-align:center;color:#94a3b8;">Sin clientes con ese filtro.</td></tr>`}</tbody>
+            </table></div>
+        </div>`;
+    }
+    window.opsRenderClientes = opsRenderClientes;
+    let opsCliBuscaT = null;
+    window.opsCliBuscar = function (v) { opsCliBusca = v; clearTimeout(opsCliBuscaT); opsCliBuscaT = setTimeout(() => { opsRenderClientes(); const i = document.getElementById("ops-cli-busca"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 200); };
+    window.opsCliSetEmpresa = function (k) { opsCliEmpresa = k; opsRenderClientes(); };
+
+    // ── Ficha del cliente (pestañas como en SUDI + Estaciones + SLA) ──
+    window.opsCliAbrir = async function (id) {
+        const c = id ? opsCliLista.find(x => x.id === id) : null;
+        opsCliEdit = c ? JSON.parse(JSON.stringify(c)) : { razon_social: "", nombre_comercial: "", rfc: "", normas: [], empresas: ["Tecnocontrol"], contactos: [{ nombre: "", puesto: "", telefono: "", correo: "", principal: true }], palabras_clave: [], activo: true };
+        if (!Array.isArray(opsCliEdit.contactos) || !opsCliEdit.contactos.length) opsCliEdit.contactos = [{ nombre: opsCliEdit.representante || "", puesto: "", telefono: opsCliEdit.telefono || "", correo: opsCliEdit.correo || "", principal: true }];
+        opsCliTab = "general"; opsCliEstaciones = [];
+        if (c) { try { const sb = await opsSb(); const r = await sb.from("estaciones_servicio").select("*").eq("cliente_id", c.id).order("municipio"); opsCliEstaciones = r.data || []; } catch (e) {} }
+        opsCliPintar();
+    };
+    window.opsCliTabSet = function (t) { opsCliGuardarCampos(); opsCliTab = t; opsCliPintar(); };
+    function opsCliCampo(lbl, campo, ph, extra) {
+        return `<div ${extra || ""}><label style="display:block;font-size:11.5px;font-weight:700;color:#475569;margin-bottom:4px;">${lbl}</label><input data-cli="${campo}" value="${opsEsc(opsCliEdit[campo] || "")}" placeholder="${opsEsc(ph || "")}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;"></div>`;
+    }
+    function opsCliGuardarCampos() {
+        if (!opsCliEdit) return;
+        document.querySelectorAll("#ops-cli-modal [data-cli]").forEach(i => { opsCliEdit[i.getAttribute("data-cli")] = i.value.trim(); });
+        document.querySelectorAll("#ops-cli-modal [data-cli-arr]").forEach(i => {
+            const k = i.getAttribute("data-cli-arr"); opsCliEdit[k] = Array.from(document.querySelectorAll(`#ops-cli-modal [data-cli-arr="${k}"]:checked`)).map(x => x.value);
+        });
+        const pc = document.getElementById("ops-cli-palabras2"); if (pc) opsCliEdit.palabras_clave = pc.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+        document.querySelectorAll("#ops-cli-modal [data-ct]").forEach(i => { const [n, k] = i.getAttribute("data-ct").split("|"); if (opsCliEdit.contactos[n]) opsCliEdit.contactos[n][k] = i.value.trim(); });
+    }
+    function opsCliEstFaltan(e) {
+        const f = [];
+        if (!e.nombre_comercial || opsCliNorm(e.nombre_comercial) === opsCliNorm(e.razon_social)) f.push("nombre comercial");
+        if (!e.permiso) f.push("PL"); if (!e.direccion_normalizada) f.push("dirección"); if (!e.codigo_postal) f.push("CP");
+        if (e.lat == null) f.push("ubicación"); if (!e.encargado) f.push("encargado"); if (!e.numero_dispensarios) f.push("dispensarios");
+        return f;
+    }
+    function opsCliPintar() {
+        const c = opsCliEdit; if (!c) return;
+        const gestion = opsPuedeGestionar();
+        let wrap = document.getElementById("ops-cli-modal");
+        if (!wrap) { wrap = document.createElement("div"); wrap.id = "ops-cli-modal"; document.body.appendChild(wrap); }
+        const tabs = [["general", "Información general"], ["fiscal", "Datos fiscales"], ["contactos", "Contactos"], ["estaciones", `Estaciones (${opsCliEstaciones.length})`], ["sla", "SLA"]].filter(t => c.id || (t[0] !== "estaciones" && t[0] !== "sla"));
+        const sla = c.ops_cliente_id ? cacheClientes.find(x => x.id === c.ops_cliente_id) : null;
+        let cuerpo = "";
+        if (opsCliTab === "general") cuerpo = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                ${opsCliCampo("Nombre comercial", "nombre_comercial", "Como se le conoce (ej. Rendilitros)")}
+                ${opsCliCampo("Razón social", "razon_social", "Razón social completa, como en su constancia")}
+                ${opsCliCampo("RFC", "rfc", "ABC123456T1")}
+                ${opsCliCampo("Estaciones que declara tener", "estaciones_declaradas", "Ej. 20")}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:28px;margin-top:16px;">
+                <div><div style="font-size:11.5px;font-weight:700;color:#475569;margin-bottom:6px;">Normas que aplican</div>${["SCFI", "ASEA"].map(n => `<label style="margin-right:16px;font-size:13px;font-weight:700;color:#1e293b;cursor:pointer;"><input type="checkbox" data-cli-arr="normas" value="${n}" ${(c.normas || []).includes(n) ? "checked" : ""}> ${n}</label>`).join("")}</div>
+                <div><div style="font-size:11.5px;font-weight:700;color:#475569;margin-bottom:6px;">Lo atiende</div>${OPS_CLI_EMPRESAS.map(n => `<label style="margin-right:16px;font-size:13px;font-weight:700;color:#1e293b;cursor:pointer;"><input type="checkbox" data-cli-arr="empresas" value="${n}" ${(c.empresas || []).includes(n) ? "checked" : ""}> ${n}</label>`).join("")}</div>
+            </div>
+            <div style="margin-top:14px;"><label style="display:block;font-size:11.5px;font-weight:700;color:#475569;margin-bottom:4px;">Palabras clave para reconocer sus folios (separadas por coma)</label><input id="ops-cli-palabras2" value="${opsEsc((c.palabras_clave || []).join(", "))}" placeholder="ej. oxxo, rendilitros" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;"></div>
+            <div style="margin-top:12px;"><label style="display:block;font-size:11.5px;font-weight:700;color:#475569;margin-bottom:4px;">Notas</label><input data-cli="notas" value="${opsEsc(c.notas || "")}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;"></div>`;
+        else if (opsCliTab === "fiscal") cuerpo = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                ${opsCliCampo("Dirección fiscal completa", "direccion_fiscal", "Calle, número exterior e interior, colonia…", 'style="grid-column:1/-1;"')}
+                ${opsCliCampo("Código postal", "codigo_postal", "Ej. 31000")}
+                <div><label style="display:block;font-size:11.5px;font-weight:700;color:#475569;margin-bottom:4px;">Régimen fiscal</label><select data-cli="regimen_fiscal" style="width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;background:#fff;"><option value="">Selecciona…</option>${OPS_CLI_REGIMENES.map(([k, n]) => `<option value="${k}" ${c.regimen_fiscal === k ? "selected" : ""}>${k} · ${n}</option>`).join("")}</select></div>
+            </div>
+            <div style="font-size:11.5px;color:#64748b;margin-top:10px;">La razón social y el RFC deben quedar exactamente como en su constancia de situación fiscal (así los pide el SAT para facturar).</div>`;
+        else if (opsCliTab === "contactos") cuerpo = `
+            ${c.contactos.map((k, i) => `<div style="border:1px solid ${k.principal ? "#c7d2fe" : "#e2e8f0"};background:${k.principal ? "#f5f7ff" : "#fff"};border-radius:11px;padding:12px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><label style="font-size:12.5px;font-weight:800;color:#1D2E73;cursor:pointer;"><input type="radio" name="ops-cli-principal" ${k.principal ? "checked" : ""} onchange="opsCliPrincipal(${i})"> ${k.principal ? "Contacto principal (representante)" : "Marcar como principal"}</label>${c.contactos.length > 1 ? `<button onclick="opsCliQuitarContacto(${i})" style="border:none;background:none;color:#E7402B;font-size:12px;font-weight:700;cursor:pointer;">Quitar</button>` : ""}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${[["nombre", "Nombre completo"], ["puesto", "Puesto o cargo"], ["telefono", "Teléfono"], ["correo", "Correo electrónico"]].map(([f, ph]) => `<input data-ct="${i}|${f}" value="${opsEsc(k[f] || "")}" placeholder="${ph}" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">`).join("")}</div>
+            </div>`).join("")}
+            <button onclick="opsCliAgregarContacto()" style="width:100%;border:1.5px dashed #cbd5e1;background:#fff;color:#475569;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;">+ Añadir contacto adicional</button>`;
+        else if (opsCliTab === "estaciones") {
+            const dec = c.estaciones_declaradas;
+            cuerpo = `
+            ${dec != null && dec > opsCliEstaciones.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:9px;padding:8px 11px;font-size:12px;margin-bottom:10px;">El cliente declara <b>${dec}</b> estaciones y hay <b>${opsCliEstaciones.length}</b> ligadas. Liga las que ya existen en el catálogo o dalas de alta.</div>` : ""}
+            ${gestion ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;position:relative;">
+                <input id="ops-cli-ligar" oninput="opsCliBuscarLigar(this.value)" placeholder="Ligar una estación del catálogo: busca por nombre, razón social, PL o municipio…" style="flex:1;min-width:260px;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;">
+                <button onclick="opsCliAltaEstacion()" style="border:none;background:#15803d;color:#fff;border-radius:9px;padding:9px 13px;font-size:12.5px;font-weight:800;cursor:pointer;">+ Alta de estación nueva</button>
+                <div id="ops-cli-ligar-drop" style="display:none;position:absolute;top:42px;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:5;"></div>
+            </div>` : ""}
+            ${opsCliEstaciones.length ? opsCliEstaciones.map(e => { const f = opsCliEstFaltan(e); return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;">
+                <div style="flex:1;min-width:0;"><div style="font-weight:800;color:#1e293b;font-size:13px;">${opsEsc(e.nombre_comercial && opsCliNorm(e.nombre_comercial) !== opsCliNorm(e.razon_social) ? e.nombre_comercial : "Sin nombre comercial")}${e.permiso ? ` <span style="color:#1D2E73;font-weight:700;">· ${opsEsc(e.permiso)}</span>` : ""}</div>
+                <div style="font-size:11.5px;color:#64748b;">${opsEsc([e.direccion_normalizada, e.municipio, e.estado].filter(Boolean).join(" · ") || "Sin dirección")}</div>
+                ${f.length ? `<div style="font-size:11px;color:#b45309;margin-top:2px;">Falta: ${opsEsc(f.join(", "))}</div>` : `<div style="font-size:11px;color:#15803d;margin-top:2px;">Datos completos</div>`}</div>
+                ${gestion ? `<button onclick="opsEstEditar('${e.id}')" style="border:none;background:${f.length ? "#fff7ed" : "#eef2f7"};color:${f.length ? "#9a3412" : "#1f2937"};border-radius:8px;padding:6px 11px;font-size:12px;font-weight:800;cursor:pointer;">${f.length ? "Completar" : "Editar"}</button>
+                <button onclick="opsCliDesligar('${e.id}')" title="Quitar de este cliente" style="border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;">×</button>` : ""}
+            </div>`; }).join("") : `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px;">Este cliente no tiene estaciones ligadas.</div>`}`;
+        } else if (opsCliTab === "sla") cuerpo = `
+            <div style="font-size:12px;color:#64748b;margin-bottom:10px;">Horas para atender un folio de este cliente según su prioridad. Con esto se calcula el vencimiento de cada folio.</div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;">${OPS_PRIORIDADES.map(p => `<div><label style="font-size:11px;color:#64748b;font-weight:700;">${p} (horas)</label><input type="number" min="0" id="ops-cli-sla-${p}" value="${sla && sla.horasSLA && sla.horasSLA[p] != null ? sla.horasSLA[p] : ""}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;"></div>`).join("")}</div>
+            ${sla ? "" : `<div style="font-size:11.5px;color:#b45309;margin-top:8px;">Todavía no tiene tabla de SLA: al guardar se crea.</div>`}`;
+        wrap.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)opsCliCerrar()">
+            <div style="background:#fff;border-radius:16px;width:900px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+                <div style="display:flex;align-items:center;gap:12px;padding:16px 20px 0;">
+                    <div style="flex:1;"><div style="font-size:18px;font-weight:800;color:#1e293b;">${c.id ? opsEsc(opsCliNombre(c)) : "Añadir cliente"}</div><div style="font-size:12px;color:#64748b;">Datos de la empresa, normas, contactos y estaciones. Se comparte con SUDI.</div></div>
+                    <button onclick="opsCliCerrar()" style="border:none;background:#f1f5f9;border-radius:9px;padding:7px 11px;font-weight:800;cursor:pointer;">Cerrar</button>
+                </div>
+                <div style="display:flex;gap:4px;border-bottom:1px solid #e2e8f0;padding:12px 20px 0;overflow-x:auto;">${tabs.map(([k, n]) => `<button onclick="opsCliTabSet('${k}')" style="border:none;background:none;border-bottom:2.5px solid ${opsCliTab === k ? "#1D2E73" : "transparent"};color:${opsCliTab === k ? "#1D2E73" : "#64748b"};padding:9px 12px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;">${opsEsc(n)}</button>`).join("")}</div>
+                <div style="padding:16px 20px;overflow-y:auto;flex:1;">${cuerpo}</div>
+                ${gestion && opsCliTab !== "estaciones" ? `<div style="display:flex;justify-content:space-between;gap:8px;padding:12px 20px;border-top:1px solid #e2e8f0;">
+                    <div>${c.id ? `<button onclick="opsCliDesactivar()" style="border:none;background:#fef2f2;color:#E7402B;border-radius:9px;padding:9px 13px;font-weight:700;cursor:pointer;">Dar de baja</button>` : ""}</div>
+                    <div style="display:flex;gap:8px;"><button onclick="opsCliCerrar()" style="border:none;background:#f1f5f9;color:#475569;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button id="ops-cli-guardar" onclick="opsCliGuardar()" style="border:none;background:#1D2E73;color:#fff;border-radius:9px;padding:9px 16px;font-weight:800;cursor:pointer;">Guardar cliente</button></div>
+                </div>` : ""}
+            </div></div>`;
+    }
+    window.opsCliCerrar = function () { document.getElementById("ops-cli-modal")?.remove(); opsCliEdit = null; };
+    window.opsCliPrincipal = function (i) { opsCliGuardarCampos(); opsCliEdit.contactos.forEach((k, j) => k.principal = j === i); opsCliPintar(); };
+    window.opsCliAgregarContacto = function () { opsCliGuardarCampos(); opsCliEdit.contactos.push({ nombre: "", puesto: "", telefono: "", correo: "", principal: false }); opsCliPintar(); };
+    window.opsCliQuitarContacto = function (i) { opsCliGuardarCampos(); const era = opsCliEdit.contactos[i].principal; opsCliEdit.contactos.splice(i, 1); if (era && opsCliEdit.contactos[0]) opsCliEdit.contactos[0].principal = true; opsCliPintar(); };
+    window.opsCliGuardar = async function () {
+        opsCliGuardarCampos();
+        const c = opsCliEdit;
+        if (!c.razon_social) { opsCliTab = "general"; opsCliPintar(); alert("La razón social es obligatoria."); return; }
+        const btn = document.getElementById("ops-cli-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb();
+            const contactos = (c.contactos || []).filter(k => k.nombre || k.telefono || k.correo);
+            const p = contactos.find(k => k.principal) || contactos[0] || {};
+            const n = String(c.estaciones_declaradas || "").replace(/\D/g, "");
+            // SLA (si se editó en su pestaña)
+            if (c.id && document.getElementById("ops-cli-sla-P1")) {
+                const horasSLA = {}; OPS_PRIORIDADES.forEach(pr => { const v = document.getElementById("ops-cli-sla-" + pr).value; if (v !== "") horasSLA[pr] = Number(v); });
+                const { db, fs } = await opsGetFB();
+                const datosSla = { nombre: opsCliNombre(c), palabrasClave: c.palabras_clave || [], horasSLA, contactoNombre: p.nombre || null, contactoTelefono: p.telefono || null, facturarA: c.razon_social };
+                if (c.ops_cliente_id) await fs.updateDoc(fs.doc(db, COL_CLIENTES, c.ops_cliente_id), datosSla);
+                else if (Object.keys(horasSLA).length) { const ref = await fs.addDoc(fs.collection(db, COL_CLIENTES), datosSla); c.ops_cliente_id = ref.id; }
+                const snap = await fs.getDocs(fs.collection(db, COL_CLIENTES)); cacheClientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+            const fila = {
+                nombre_comercial: c.nombre_comercial || null, razon_social: c.razon_social.trim(), rfc: (c.rfc || "").toUpperCase() || null,
+                representante: p.nombre || null, telefono: p.telefono || null, correo: (p.correo || "").toLowerCase() || null,
+                normas: c.normas || [], empresas: c.empresas || [], direccion_fiscal: c.direccion_fiscal || null, codigo_postal: c.codigo_postal || null,
+                regimen_fiscal: c.regimen_fiscal || null, contactos, palabras_clave: c.palabras_clave || [], ops_cliente_id: c.ops_cliente_id || null,
+                estaciones_declaradas: n ? Number(n) : null, notas: c.notas || null, activo: c.activo !== false,
+                actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual(),
+            };
+            const r = c.id ? await sb.from("clientes_catalogo").update(fila).eq("id", c.id).select().single()
+                : await sb.from("clientes_catalogo").insert({ ...fila, origen: "portal_operaciones" }).select().single();
+            if (r.error) throw r.error;
+            await opsCliCargar(true);
+            opsCliEdit = JSON.parse(JSON.stringify(r.data)); if (!opsCliEdit.contactos || !opsCliEdit.contactos.length) opsCliEdit.contactos = [{ nombre: "", puesto: "", telefono: "", correo: "", principal: true }];
+            opsRenderClientes(); opsCliPintar();
+            if (window.mostrarPush) mostrarPush("Operaciones", "Cliente guardado.", "🏢");
+        } catch (e) {
+            alert(/clientes_catalogo_razon_social_uq|duplicate/i.test(e.message || "") ? "Ya existe un cliente con esa razón social." : "No se pudo guardar: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar cliente"; }
+        }
+    };
+    window.opsCliDesactivar = async function () {
+        const c = opsCliEdit; if (!c || !c.id) return;
+        if (!confirm(`¿Dar de baja a ${opsCliNombre(c)}? Sus estaciones y folios se conservan; deja de aparecer en la lista.`)) return;
+        const sb = await opsSb();
+        const { error } = await sb.from("clientes_catalogo").update({ activo: false, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", c.id);
+        if (error) { alert(error.message); return; }
+        await opsCliCargar(true); opsCliCerrar(); opsRenderClientes();
+    };
+    // Ligar / desligar estaciones del catálogo
+    let opsCliLigarT = null;
+    window.opsCliBuscarLigar = function (v) {
+        clearTimeout(opsCliLigarT);
+        opsCliLigarT = setTimeout(async () => {
+            const box = document.getElementById("ops-cli-ligar-drop"); if (!box) return;
+            if (!v || v.trim().length < 2) { box.style.display = "none"; return; }
+            const lista = await opsCatalogoEstaciones(); const q = opsCliNorm(v);
+            const r = lista.filter(e => e.clienteId !== opsCliEdit.id && opsCliNorm([e.nombreComercial, e.razonSocial, e.permiso, e.municipio].join(" ")).includes(q)).slice(0, 30);
+            box.innerHTML = r.length ? r.map(e => { const otro = e.clienteId ? opsCliLista.find(x => x.id === e.clienteId) : null; return `<div onmousedown="opsCliLigar('${e.id}')" style="padding:8px 11px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:12.5px;">
+                <b>${opsEsc(opsEstSinNombre(e) ? "Sin nombre comercial" : e.nombreComercial)}</b>${e.permiso ? ` · <span style="color:#1D2E73;">${opsEsc(e.permiso)}</span>` : ""}<div style="font-size:11px;color:#64748b;">${opsEsc([e.razonSocial, e.municipio].filter(Boolean).join(" · "))}${otro ? ` · <span style="color:#b45309;">hoy ligada a ${opsEsc(opsCliNombre(otro))}</span>` : ""}</div></div>`; }).join("")
+                : `<div style="padding:10px;font-size:12px;color:#94a3b8;">Sin resultados. Usa "Alta de estación nueva".</div>`;
+            box.style.display = "block";
+        }, 200);
+    };
+    async function opsCliRecargarEstaciones() {
+        const sb = await opsSb(); const r = await sb.from("estaciones_servicio").select("*").eq("cliente_id", opsCliEdit.id).order("municipio");
+        opsCliEstaciones = r.data || []; _opsCatEstProm = null; await opsCliCargar(true); opsCliPintar(); opsRenderClientes();
+    }
+    window.opsCliLigar = async function (estId) {
+        const sb = await opsSb();
+        const { error } = await sb.from("estaciones_servicio").update({ cliente_id: opsCliEdit.id, actualizado_en: new Date().toISOString() }).eq("id", estId);
+        if (error) { alert(error.message); return; }
+        await opsCliRecargarEstaciones();
+    };
+    window.opsCliDesligar = async function (estId) {
+        if (!confirm("¿Quitar esta estación de este cliente? La estación sigue en el catálogo.")) return;
+        const sb = await opsSb();
+        const { error } = await sb.from("estaciones_servicio").update({ cliente_id: null, actualizado_en: new Date().toISOString() }).eq("id", estId);
+        if (error) { alert(error.message); return; }
+        await opsCliRecargarEstaciones();
+    };
+    window.opsCliAltaEstacion = function () {
+        window.__opsNeClienteId = opsCliEdit.id;
+        window.__opsNeAlGuardar = () => { if (opsCliEdit && opsCliEdit.id) opsCliRecargarEstaciones(); };
+        window.opsNeAbrir();
+        setTimeout(() => { if (window.opsNE && !window.opsNE.razonSocial) { window.opsNE.razonSocial = opsCliEdit.razon_social || ""; if (typeof opsNePintar === "function") opsNePintar(); } }, 50);
+    };
+    // ── Editar / completar una estación ──
+    const OPS_EST_CAMPOS = [["nombre_comercial", "Nombre comercial", "Como se le conoce (ej. Cumbres)"], ["razon_social", "Razón social", ""], ["permiso", "PL / permiso CRE", "PL/5667/EXP/ES/2015"], ["codigo_estacion_cre", "Código CRE", ""],
+        ["direccion_normalizada", "Dirección (calle y número, colonia)", ""], ["colonia", "Colonia", ""], ["codigo_postal", "Código postal", ""], ["municipio", "Municipio", ""], ["estado", "Estado", ""], ["zona", "Zona", ""],
+        ["encargado", "Encargado", ""], ["numero_dispensarios", "Dispensarios", ""], ["numero_tanques", "Tanques", ""], ["numero_sondas", "Sondas", ""], ["cr", "CR (OXXO)", ""], ["lat", "Latitud", "28.6353"], ["lng", "Longitud", "-106.0889"]];
+    window.opsEstEditar = async function (id) {
+        const sb = await opsSb();
+        const { data: e, error } = await sb.from("estaciones_servicio").select("*").eq("id", id).single();
+        if (error || !e) { alert("No se encontró la estación."); return; }
+        document.getElementById("ops-est-edit")?.remove();
+        const ov = document.createElement("div"); ov.id = "ops-est-edit";
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100003;display:flex;align-items:center;justify-content:center;padding:16px;";
+        ov.innerHTML = `<div style="background:#fff;border-radius:14px;width:760px;max-width:100%;max-height:92vh;overflow-y:auto;padding:18px 20px;">
+            <div style="font-size:16px;font-weight:800;color:#1e293b;margin-bottom:2px;">Datos de la estación</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:12px;">Lo que guardes aquí se usa en todo el portal (Operaciones, Viáticos, Flotilla, Ventas, Almacén) y en SUDI.</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">${OPS_EST_CAMPOS.map(([k, n, ph]) => `<div ${k === "direccion_normalizada" ? 'style="grid-column:1/-1;"' : ""}><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px;">${n}</label><input data-est="${k}" value="${opsEsc(e[k] == null ? "" : String(e[k]))}" placeholder="${opsEsc(ph)}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;"></div>`).join("")}</div>
+            <div style="font-size:11px;color:#64748b;margin-top:8px;">Ubicación: pega las coordenadas desde Google Maps (clic derecho sobre la estación → copiar coordenadas). Al guardarlas quedan como ubicación confirmada.</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+                <button onclick="document.getElementById('ops-est-edit').remove()" style="border:none;background:#f1f5f9;color:#475569;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;">Cancelar</button>
+                <button id="ops-est-guardar" onclick="opsEstGuardar('${e.id}')" style="border:none;background:#1D2E73;color:#fff;border-radius:9px;padding:9px 16px;font-weight:800;cursor:pointer;">Guardar estación</button>
+            </div></div>`;
+        ov.addEventListener("click", ev => { if (ev.target === ov) ov.remove(); });
+        document.body.appendChild(ov);
+        ov.querySelector('[data-est="lat"]').addEventListener("paste", ev => {
+            const t = (ev.clipboardData || window.clipboardData).getData("text"); const m = t.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+            if (m) { ev.preventDefault(); ov.querySelector('[data-est="lat"]').value = m[1]; ov.querySelector('[data-est="lng"]').value = m[2]; }
+        });
+    };
+    window.opsEstGuardar = async function (id) {
+        const ov = document.getElementById("ops-est-edit"); if (!ov) return;
+        const v = {}; ov.querySelectorAll("[data-est]").forEach(i => { v[i.getAttribute("data-est")] = i.value.trim(); });
+        const num = x => x === "" ? null : Number(x);
+        const lat = num(v.lat), lng = num(v.lng);
+        if ((lat != null && (isNaN(lat) || Math.abs(lat) > 90)) || (lng != null && (isNaN(lng) || Math.abs(lng) > 180))) { alert("Revisa la latitud y la longitud."); return; }
+        if (v.permiso && !/^PL\/\d{2,6}\/EXP\/ES\/\d{4}/i.test(v.permiso.replace(/\s+/g, ""))) { if (!confirm("El PL no tiene el formato PL/0000/EXP/ES/2015. ¿Guardar así?")) return; }
+        const sb = await opsSb();
+        const { data: antes } = await sb.from("estaciones_servicio").select("lat,lng").eq("id", id).single();
+        const fila = { nombre_comercial: v.nombre_comercial || null, razon_social: v.razon_social || null, permiso: v.permiso ? v.permiso.replace(/\s+/g, "").toUpperCase() : null, codigo_estacion_cre: v.codigo_estacion_cre || null,
+            direccion_normalizada: v.direccion_normalizada || null, colonia: v.colonia || null, codigo_postal: v.codigo_postal || null, municipio: v.municipio || null, estado: v.estado || null, zona: v.zona || null,
+            encargado: v.encargado || null, numero_dispensarios: num(v.numero_dispensarios), numero_tanques: num(v.numero_tanques), numero_sondas: num(v.numero_sondas), cr: v.cr || null, lat, lng, actualizado_en: new Date().toISOString() };
+        if (lat != null && (!antes || antes.lat !== lat || antes.lng !== lng)) Object.assign(fila, { ubicacion_verificada: true, ubicacion_fuente: "edicion_clientes", ubicacion_por: opsUsuarioActual(), ubicacion_en: new Date().toISOString() });
+        const btn = document.getElementById("ops-est-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const { error } = await sb.from("estaciones_servicio").update(fila).eq("id", id);
+        if (error) { alert("No se pudo guardar: " + error.message); if (btn) { btn.disabled = false; btn.textContent = "Guardar estación"; } return; }
+        try { await opsAuditar("estaciones", id, "edicion", null, JSON.stringify(fila).slice(0, 500)); } catch (e) {}
+        ov.remove(); _opsCatEstProm = null;
+        if (opsCliEdit && opsCliEdit.id) await opsCliRecargarEstaciones();
+        if (window.mostrarPush) mostrarPush("Operaciones", "Estación guardada.", "⛽");
+    };
+
+    // ── Nuevo servicio: elegir cliente y ver todas sus estaciones ──
+    function opsAsClientesChipsHTML() {
+        const s = opsAS; if (!s) return "";
+        const top = opsCliLista.filter(c => c.activo !== false && (opsCliConteo[c.id] || 0) > 0).sort((a, b) => (opsCliConteo[b.id] || 0) - (opsCliConteo[a.id] || 0));
+        if (!opsCliCargado) { opsCliCargar().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {}); return ""; }
+        const sel = s.clienteFiltro ? opsCliLista.find(c => c.id === s.clienteFiltro) : null;
+        return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
+            <span style="font-size:11px;font-weight:800;color:#64748b;">Cliente:</span>
+            ${top.slice(0, 6).map(c => `<button type="button" onclick="opsAsElegirCliente('${c.id}')" style="border:1px solid ${s.clienteFiltro === c.id ? "#1D2E73" : "#cbd5e1"};background:${s.clienteFiltro === c.id ? "#1D2E73" : "#fff"};color:${s.clienteFiltro === c.id ? "#fff" : "#334155"};border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${opsEsc(opsCliNombre(c))} <span style="opacity:.7;">${opsCliConteo[c.id] || 0}</span></button>`).join("")}
+            <select onchange="opsAsElegirCliente(this.value)" style="border:1px solid #cbd5e1;border-radius:999px;padding:4px 8px;font-size:11.5px;max-width:220px;"><option value="">${sel && !top.slice(0, 6).includes(sel) ? opsEsc(opsCliNombre(sel)) : "Otro cliente…"}</option>${top.slice(6).concat(opsCliLista.filter(c => c.activo !== false && !(opsCliConteo[c.id] || 0))).map(c => `<option value="${c.id}">${opsEsc(opsCliNombre(c))} (${opsCliConteo[c.id] || 0})</option>`).join("")}</select>
+            ${s.clienteFiltro ? `<button type="button" onclick="opsAsElegirCliente('')" style="border:none;background:none;color:#E7402B;font-size:11.5px;font-weight:700;cursor:pointer;">Quitar filtro</button>` : ""}
+        </div>`;
+    }
+    window.opsAsElegirCliente = function (id) {
+        const s = opsAS; if (!s) return;
+        s.clienteFiltro = id || null; opsAsPintar();
+        if (id) setTimeout(() => { const i = document.getElementById("opsas-est"); if (i) { i.focus(); window.opsAsBuscarEstacion(i.value || ""); } }, 40);
+    };
+
+    function opsRenderClientesSLAAnterior() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
         const gestion = opsPuedeHacer("gestionar_herramientas");
@@ -12716,8 +13067,6 @@
                 </div>
             </div>`;
     }
-    window.opsRenderClientes = opsRenderClientes;
-
     window.opsAbrirModalCliente = function (id) {
         const c = id ? cacheClientes.find(x => x.id === id) : null;
         const wrap = document.getElementById("ops-modal-wrap");
