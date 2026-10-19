@@ -496,7 +496,7 @@ function renderRHDash(data, key){
 // Selector de áreas
 // Áreas RH — lista base + campo para escribir una diferente
 const RH_AREAS_LIST = ['Ingresos','Egresos','Contabilidad','Recursos Humanos','Marketing','Administración','Ventas',
-    'Operaciones','Logística','Almacén','Servicios Técnicos','Compras','TI / Sistemas','Dirección General'];
+    'Operaciones','Logística','Almacén','Servicios Técnicos','Compras','TI / Sistemas','Dirección General','Externos'];
 const RH_AREA_SEL = () => `
     <select class="rh-form-input" id="rh-f-area-sel" onchange="rhAreaSelChange(this)" style="margin-bottom:4px;">
         ${RH_AREAS_LIST.map(a=>`<option value="${a}">${a}</option>`).join('')}

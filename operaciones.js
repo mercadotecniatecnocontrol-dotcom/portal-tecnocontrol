@@ -566,6 +566,7 @@
         { nombre: "Consulta de Operaciones", departamento: "Operaciones", permisos: ["consulta"] },
         { nombre: "Técnico de Operaciones",               departamento: "Operaciones", permisos: ["consulta_propia"] },
         // Departamentos ya existentes en el portal (index.html) — puesto genérico por si se liga una persona de otro depto.
+        { nombre: "Técnico externo", departamento: "Externos", permisos: ["consulta_propia"] }, // personal externo (oct-2026)
         ...["Ingresos","Egresos","Contabilidad","Recursos Humanos","Marketing","Administración","Ventas","Pagos","Gestoría","Almacén","Compras","Flotilla","Contraloría"]
             .map(d => ({ nombre: d, departamento: d, permisos: d === "Almacén" ? ["gestionar_herramientas", "autorizar_material"] : ["consulta"] })),
     ];
