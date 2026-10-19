@@ -155,6 +155,9 @@
 .tv-ruta-anim{stroke-dasharray:1 9;stroke-linecap:round;animation:tvRutaFlow 900ms linear infinite;}
 @keyframes tvRutaFlow{to{stroke-dashoffset:-20;}}
 </style>
+<!-- Mismo diseño de notificaciones que el portal (19-oct-2026) -->
+<script>window.TC_NOTIF_SIN_CAMPANA = true;</script>
+<script src="notificaciones.js?v=1"></script>
 </head>
 
 <body>
@@ -1096,7 +1099,7 @@ function updateChips(){
 
 /* ===== SOLO LECTURA: la validación/avance se hace desde el portal ===== */
 let toastT;
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
+function toast(msg){if(window.tcNotif&&window.tcNotif.aviso){window.tcNotif.aviso(msg,/no se pudo|error|falt/i.test(msg)?'error':/listo|guardad|enviad|surtid|entregad/i.test(msg)?'ok':'info');return;}const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2600)}
 
 /* ===== Sonido (Web Audio) ===== */
 // Desbloqueo silencioso de audio: Chrome bloquea el AudioContext hasta que

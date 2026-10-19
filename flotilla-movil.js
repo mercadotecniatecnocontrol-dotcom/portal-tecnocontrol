@@ -523,6 +523,8 @@ function dbg(msg, tipo='info'){
 
 // ── TOAST ──
 function toast(txt,tipo='info'){
+  // Mismo diseño de tarjeta que el portal (notificaciones.js); si no cargó, el estilo de antes.
+  if(window.tcNotif&&window.tcNotif.aviso){ window.tcNotif.aviso(txt, tipo==='ok'?'ok':tipo==='err'?'error':'info'); return; }
   const col={info:'#1E3A5F',ok:'#15803D',err:'#B91C1C'}[tipo]||'#1E3A5F';
   const t=document.createElement('div');
   t.style.cssText=`position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${col};color:#fff;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;z-index:9999;font-family:inherit;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:88vw;text-align:center;white-space:normal;line-height:1.35`;
@@ -1362,8 +1364,9 @@ async function cargarMisTareas(){
                 notifTipo: n.tipo||'msg',
               });
             }
-            // 2) Toast visual dentro de la app
-            toast(cuerpo, n.tipo?.includes('rechazada')?'err':'ok');
+            // 2) Tarjeta dentro de la app (mismo diseño que el portal); al tocarla abre Avisos
+            if(window.tcNotif) window.tcNotif.agregar({titulo:'Flotilla', texto:cuerpo, nivel:n.tipo?.includes('rechazada')?'urgente':'normal', modulo:'Flotilla', grupo:'Flotilla', ir:{tipo:'fn',fn:'fmVista',args:['notif']}});
+            else toast(cuerpo, n.tipo?.includes('rechazada')?'err':'ok');
           });
         }
         actualizarBadges();
@@ -7124,8 +7127,8 @@ function fmVigilarVence1h(){
       const falta=(v-ahora)/60000, clave=f.id+'|'+v;
       if(falta>0&&falta<=FM_ALARMA_ANTES_MIN&&!avisados[clave]){
         avisados[clave]=ahora; cambio=true;
-        try{fmOpsAlarma(10);}catch(e){}
-        toast('Folio '+(f.folioClienteId||f.folioOS||'')+' en '+opsSvTitulo(f)+' vence en '+Math.round(falta)+' min','err');
+        if(window.tcNotif) window.tcNotif.agregar({titulo:'Folio vence en '+Math.round(falta)+' min', texto:(f.folioClienteId||f.folioOS||'')+' · '+opsSvTitulo(f), nivel:'urgente', modulo:'Mis servicios', ir:{tipo:'fn',fn:'fmVista',args:['tareas']}});
+        else { try{fmOpsAlarma(10);}catch(e){} toast('Folio '+(f.folioClienteId||f.folioOS||'')+' en '+opsSvTitulo(f)+' vence en '+Math.round(falta)+' min','err'); }
       }
     });
     Object.keys(avisados).forEach(function(k){if(ahora-avisados[k]>2*86400000){delete avisados[k];cambio=true;}});
@@ -7710,7 +7713,10 @@ function fmvEscucharAvisos(correo){
         .sort(function(a,b){return String(b.fecha||'').localeCompare(String(a.fecha||''));});
       // Solo tras la primera carga: un aviso nuevo muestra toast y refresca montos/estatus.
       const nuevo=fmvNotifs.find(function(n){return !antes.has(n.id);});
-      if(_fmvBaseNotif&&nuevo){ const esPerm=/^perm_/.test(String(nuevo.tipo||'')); toast((esPerm?'Permisos: ':'Viáticos: ')+(nuevo.mensaje||'nuevo aviso').slice(0,70),esPerm&&/rechaz/.test(nuevo.tipo)?'err':'info'); if(!esPerm) fmViaCargar(); }
+      if(_fmvBaseNotif&&nuevo){ const esPerm=/^perm_/.test(String(nuevo.tipo||''));
+        if(window.tcNotif) window.tcNotif.agregar({titulo:esPerm?'Permisos':'Viáticos', texto:(nuevo.mensaje||'Nuevo aviso'), nivel:/rechaz/.test(nuevo.tipo)?'urgente':'normal', modulo:esPerm?'Permisos':'Viáticos', ir:{tipo:'fn',fn:'fmVista',args:['notif']}});
+        else toast((esPerm?'Permisos: ':'Viáticos: ')+(nuevo.mensaje||'nuevo aviso').slice(0,70),esPerm&&/rechaz/.test(nuevo.tipo)?'err':'info');
+        if(!esPerm) fmViaCargar(); }
       _fmvBaseNotif=true;
       actualizarBadges();
       if(vistaAct==='notif')renderNotif();

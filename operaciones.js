@@ -5735,6 +5735,8 @@
     // Solo suena mientras el portal está abierto en esta pestaña — misma limitación
     // honesta que el resto de las alarmas del portal (Flotilla/siniestros).
     function opsReproducirAlarmaFolio() {
+        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (window.tcNotif) return; // el centro de notificaciones del portal ya suena (tono urgente)
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             let tiempo = ctx.currentTime;
@@ -5757,9 +5759,10 @@
 
     // ── Ventana flotante imposible de ignorar (apilable, varias a la vez) ──
     function opsMostrarFlotanteFolio(f, info) {
+        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         const c = OPS_SEMAFORO[info.semaforo] || OPS_SEMAFORO.rojo;
         opsNotifAgregar({
-            titulo: info.estado + (info.enAtencion ? " · Seguimiento" : ""), color: c.dot, accion: "folios", accionTxt: "Ir a Folios",
+            titulo: info.estado + (info.enAtencion ? " · Seguimiento" : ""), color: c.dot, accion: "folio", accionTxt: "Ver servicio", folioId: f.id,
             texto: `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""} · ${info.diasTexto} · Responsable: ${opsResponsableFolio(f)}`,
         });
     }
@@ -5768,6 +5771,7 @@
     // lista para surtir", etc.) — mismo estilo/comportamiento que la de folios pero
     // sin datos de folio específicos, para cualquier mensaje de texto simple. ──
     function opsMostrarFlotanteGenerica(mensaje, colorHex) {
+        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         opsNotifAgregar({ titulo: "Operaciones", texto: mensaje, color: colorHex || "#1D2E73" });
     }
 
@@ -5797,6 +5801,7 @@
     let opsFoliosVigilanciaTimer = null;
 
     function opsVigilarFoliosSeveridad() {
+        if (opsAccFiltroEmpresa()) return;
         for (const f of cacheFolios) {
             if (f.source === OPS_DEMO_SOURCE) continue; // los folios DEMO del Calendario nunca hacen sonar alarmas
             const info = opsCalcularSemaforoFolio(f);
@@ -5831,6 +5836,7 @@
     // sonido repetido para no confundir las dos alarmas entre sí. ──
     let opsFoliosEvidenciaAlertados = new Set();
     function opsVigilarEvidenciasFolios() {
+        if (opsAccFiltroEmpresa()) return;
         const ahora = Date.now();
         for (const f of cacheFolios) {
             if (f.fechaSolucion) continue; // folio cerrado, no aplica
@@ -6184,6 +6190,7 @@
     const OPS_ALARMA_ANTES_MIN = 60;
     const opsFolios1hAvisados = new Set();
     function opsVigilarVencimiento1h() {
+        if (opsAccFiltroEmpresa()) return;
         const ahora = Date.now();
         for (const f of cacheFolios) {
             if (f.source === OPS_DEMO_SOURCE || f.cancelado || f.fechaSolucion || !opsEsFolioCliente(f)) continue;
@@ -6195,14 +6202,14 @@
                 if (f.avisoVence1h === clave) continue; // ya lo mandó otra sesión del portal
                 opsReproducirAlarmaFolio();
                 const tecs = (f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico";
-                opsNotifAgregar({ titulo: "Vence en " + Math.round(falta) + " min", color: "#E7402B", accion: "folios", accionTxt: "Ir a Folios",
+                opsNotifAgregar({ titulo: "Vence en " + Math.round(falta) + " min", color: "#E7402B", accion: "folio", accionTxt: "Ver folio", folioId: f.id,
                     texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
                 (async () => {
                     try {
                         const { db, fs } = await opsGetFB();
                         await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { avisoVence1h: clave });
                         const correos = [...new Set((f.tecnicosAsignadosIds || []).map(id => (opsTecPorId(id) || {}).correo).concat([f.tecnicoResponsableCorreo]).filter(Boolean).map(c => String(c).toLowerCase().trim()))];
-                        for (const para of correos) await window.tcNotificar2(fs, db, { tipo: "ops_folio_vence_1h", codigo: f.folioClienteId || f.folioOS || f.estacion, para,
+                        for (const para of correos) await window.tcNotificar2(fs, db, { tipo: "ops_folio_vence_1h", codigo: f.folioClienteId || f.folioOS || f.estacion, folioId: f.id, para,
                             mensaje: `Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${Math.round(falta)} minutos (${new Date(v).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}).`, creadaEn: new Date().toISOString() });
                     } catch (e) { console.warn("[Folios] aviso 1 h:", e.message || e); }
                 })();
@@ -6635,7 +6642,7 @@
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
-                    ${opsPuedeCrear() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
+                    ${opsPuedeCrear() && !opsAccFiltroEmpresa() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
@@ -6898,6 +6905,7 @@
     function opsNombreVoz(t) { return String(t || "").toLowerCase().replace(/\b([a-záéíóúñ])/g, m => m.toUpperCase()).trim(); }
     let opsAudioCtx = null;
     function opsCampanita() {
+        if (window.tcNotif) return; // el centro de notificaciones del portal ya hace su sonido
         try {
             opsAudioCtx = opsAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
             if (opsAudioCtx.state === "suspended") opsAudioCtx.resume();
@@ -6911,6 +6919,7 @@
         } catch (e) {}
     }
     function opsHablarServicio(frase) {
+        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         try {
             if (!("speechSynthesis" in window)) return;
             const voces = window.speechSynthesis.getVoices().filter(v => /^es([-_]|$)/i.test(v.lang));
@@ -8519,7 +8528,7 @@
             </div>
             <div style="display:flex;gap:8px;padding:12px 18px 0;">
                 ${opsPuedeGestionar() ? btnTop(`opsAbrirModalFolio('${f.id}')`, "Editar folio", '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', true) : ""}
-                ${btnTop(`opsDescargarPdfFolio('${f.id}')`, "PDF del servicio", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', !opsPuedeGestionar())}
+                ${opsAccFiltroEmpresa() ? "" : btnTop(`opsDescargarPdfFolio('${f.id}')`, "PDF del servicio", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', !opsPuedeGestionar())}
             </div>
             <div class="opf-body" style="padding:12px 18px 18px;">
                 ${sec("Resumen", `<div class="opf-grid">
@@ -16787,6 +16796,7 @@
     let opsViaFiltroComp = "activas", opsViaBuscaComp = "", opsViaOrdenComp = "alfabetico";
 
     function opsViaToast(msg, color) {
+        if (window.tcNotif) { window.tcNotif.aviso(msg, /15803d|16a34a|22c55e/i.test(color || "") ? "ok" : /b91c1c|dc2626|e7402b/i.test(color || "") ? "error" : /no se pudo|error/i.test(msg) ? "error" : "ok", "Viáticos"); return; } // mismo diseño que el portal
         const t = document.createElement("div");
         t.style.cssText = `position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:${color || "#1D2E73"};color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:100001;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:90vw;`;
         t.textContent = msg; document.body.appendChild(t);
@@ -18117,6 +18127,8 @@
         return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
     }
     function opsNotifBotonHTML() {
+        if (opsAccFiltroEmpresa()) return "";
+        if (window.tcNotif) return ""; // una sola campanita para todo el portal (abajo a la derecha)
         const n = opsNotifSinLeer();
         return `<button id="ops-notif-btn" onclick="opsNotifToggle()" title="Notificaciones" style="position:relative;background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;">${ICON.bell}<span id="ops-notif-badge" style="position:absolute;top:-5px;right:-5px;background:#E7402B;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:${n ? "flex" : "none"};align-items:center;justify-content:center;padding:0 4px;box-sizing:border-box;">${n > 99 ? "99+" : n}</span></button>`;
     }
@@ -18125,8 +18137,21 @@
         const n = opsNotifSinLeer(); b.textContent = n > 99 ? "99+" : n; b.style.display = n ? "flex" : "none";
     }
     function opsNotifAgregar(n) {
+        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         n.id = "n" + Date.now() + Math.floor(Math.random() * 1000); n.en = new Date().toISOString(); n.leida = false;
         opsNotifs.unshift(n); opsNotifs = opsNotifs.slice(0, 80); opsNotifGuardar(); opsNotifPintarBoton();
+        // Centro de notificaciones del portal (19-oct-2026): la tarjeta, el sonido y la campanita
+        // son los mismos para todo el portal; al darle clic lleva directo al servicio o a la pestaña.
+        if (window.tcNotif) {
+            const rojo = /e7402b|dc2626|b91c1c|ef4444/i.test(n.color || "");
+            const ir = n.accion === "folio" && n.folioId ? { tipo: "ops_folio", id: n.folioId }
+                : n.folioId ? { tipo: "ops_folio", id: n.folioId }
+                : n.accion ? { tipo: "ops_tab", tab: n.accion } : { tipo: "ops_tab", tab: "calendario" };
+            window.tcNotif.agregar({ titulo: n.titulo || "Operaciones", texto: n.texto || "", modulo: "Operaciones", grupo: "Operaciones",
+                nivel: rojo || /vence|vencid/i.test((n.titulo || "") + " " + (n.texto || "")) ? "urgente" : /sin evidencia|pendiente/i.test((n.titulo || "") + " " + (n.texto || "")) ? "pendiente" : "normal", ir });
+            if (opsNotifAbierto) opsNotifPintarPanel();
+            return;
+        }
         if (opsNotifAbierto) opsNotifPintarPanel(); else opsNotifToast(n);
     }
     function opsNotifToast(n) {
@@ -18146,6 +18171,8 @@
     }
     window.opsNotifQuitarToast = function () { const t = document.getElementById("ops-notif-toast"); if (t) t.remove(); opsNotifToastN = 0; clearTimeout(opsNotifToastT); };
     window.opsNotifToggle = function (abrir) {
+        // La campanita de Operaciones abre el centro de notificaciones del portal (mismo diseño), en Operaciones.
+        if (window.tcNotif) { window.tcNotif.abrirPanel("Operaciones"); return; }
         opsNotifAbierto = abrir === true ? true : !opsNotifAbierto;
         opsNotifQuitarToast();
         let p = document.getElementById("ops-notif-panel");
