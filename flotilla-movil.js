@@ -5924,7 +5924,7 @@ let _matCatalogo=null; // se carga una sola vez por sesión de la app — sin vo
 let _matTecnicoResuelto=undefined; // undefined=sin resolver, null=no encontrado, obj=encontrado
 
 async function _matResolverTecnico(){
-  if(_matTecnicoResuelto!==undefined)return _matTecnicoResuelto;
+  if(_matTecnicoResuelto)return _matTecnicoResuelto; // si no se encontró, se vuelve a buscar (por si lo vincularon después)
   try{
     const correo=(window.auth?.currentUser?.email||'').toLowerCase().trim();
     const snap=await opsDb().collection('ops_tecnicos').where('correo','==',correo).get();
@@ -5951,6 +5951,9 @@ window.renderFlotMaterial=async function(){
   const tec=_matTecnicoResuelto;
   // Área: preseleccionada según el usuario (técnico vinculado en Operaciones → Operaciones),
   // pero se puede cambiar — no todos los que usan Flotilla capturan siempre para su propia área.
+  // 19-oct-2026: antes, sin técnico vinculado el área quedaba vacía pero el selector MOSTRABA
+  // "Operaciones" (primera opción), así que al enviar decía "Elige el área" aunque se viera elegida.
+  // Ahora el selector tiene una opción vacía visible y, si es técnico, se preselecciona Operaciones.
   if(!window.matState.area) window.matState.area = tec ? 'Operaciones' : '';
   const carritoArr=Object.values(window.matState.carrito);
   body.innerHTML=`
@@ -5964,6 +5967,7 @@ window.renderFlotMaterial=async function(){
     </select>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Área</label>
     <select onchange="matSetField('area',this.value)" style="width:100%;padding:11px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13.5px;margin-bottom:12px;background:#fff">
+      <option value="" ${!window.matState.area?'selected':''} disabled>Elige el área…</option>
       ${MAT_AREAS.map(a=>`<option value="${esc(a)}" ${window.matState.area===a?'selected':''}>${esc(a)}</option>`).join('')}
     </select>
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Razón social</label>
