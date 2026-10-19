@@ -1445,6 +1445,9 @@
             consulta_contacto: { nombre: "Consulta con contacto", matriz: opsAccMatrizTodas(["ver", "contacto"]) },
             pagos: { nombre: "Pagos (consulta + aprueba viáticos)", matriz: pagos },
             consulta_basica: { nombre: "Consulta básica", matriz: opsAccMatrizTodas(["ver"]) },
+            // 19-oct-2026: VH Verificaciones solo ve SU calendario (servicios de VH y los técnicos que van),
+            // con datos del cliente; sin precios, comisiones ni viáticos, y sin poder cambiar nada.
+            consulta_vh: { nombre: "Consulta VH (solo calendario de VH)", soloLectura: true, filtroEmpresa: "VH Verificaciones", matriz: { calendario: ["ver", "contacto"] } },
         };
     }
     function opsAccUsuariosSeed() {
@@ -1592,6 +1595,13 @@
         return opsAccSugerido(opsAccCorreo());
     }
     function opsAccSeccion(seccion) { return OPS_ACC_ALIAS[seccion] || seccion; }
+    // Empresa a la que está limitado el usuario (ej. VH): solo ve servicios de esa empresa.
+    function opsAccFiltroEmpresa() {
+        const a = opsAccAsignacion(); if (!a || !opsAccCfg) return null;
+        const r = opsAccCfg.roles[a.rol] || {};
+        return a.filtroEmpresa || r.filtroEmpresa || null;
+    }
+    function opsFolioDeEmpresa(f, empresa) { try { return opsEmpresaDoc(opsEmpresaNombreFolio(f)) === opsEmpresaDoc(empresa); } catch (e) { return false; } }
     function opsAccTiene(seccion, accion) {
         const a = opsAccAsignacion();
         if (!a) return null; // null = admin del portal o matriz sin cargar → decide la regla anterior
@@ -6464,6 +6474,8 @@
     // las tarjetas de arriba, la detección de choques y las tres vistas la comparten.
     function opsCalFoliosFiltrados() {
         let l = cacheFolios;
+        const fe = opsAccFiltroEmpresa();
+        if (fe) l = l.filter(f => opsFolioDeEmpresa(f, fe)); // usuario limitado a una empresa (ej. VH)
         if (opsCalFiltroTipo === "inspeccion") l = l.filter(f => f.tipoFolio === "inspeccion");
         else if (opsCalFiltroTipo === "laboratorio") l = l.filter(f => f.tipoFolio === "laboratorio");
         else if (opsCalFiltroTipo === "servicio") l = l.filter(f => f.tipoFolio !== "inspeccion");
@@ -6627,8 +6639,8 @@
 
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
-            ${opsCalFull ? "" : opsTurnoFoliosBannerHTML()}
-            ${opsCalFull ? "" : '<div id="ops-cal-pedidos-ventas"></div>'}
+            ${opsCalFull || opsAccFiltroEmpresa() ? "" : opsTurnoFoliosBannerHTML()}
+            ${opsCalFull || opsAccFiltroEmpresa() ? "" : '<div id="ops-cal-pedidos-ventas"></div>'}
             <div id="ops-cal-body"></div>
           ${opsCalFull ? "</div>" : ""}
 
@@ -7253,6 +7265,11 @@
     function opsCalTecnicosFiltrados() {
         // Orden alfabético por nombre (ignora acentos y mayúsculas) en Día, Semana y Mes.
         let activos = opsTecOperativos().slice().sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { sensitivity: "base" }));
+        if (opsAccFiltroEmpresa()) {
+            // Usuario limitado a una empresa: solo los técnicos que tienen servicios de esa empresa.
+            const conServ = new Set(opsCalFoliosFiltrados().flatMap(f => (f.tecnicosAsignadosIds || []).concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : [])));
+            activos = activos.filter(t => conServ.has(t.id));
+        }
         if (opsCalFiltroTecnico) activos = activos.filter(t => t.id === opsCalFiltroTecnico);
         if (opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas") {
             // Técnico de la plaza (sin plaza capturada cuenta como Chihuahua) o con algún servicio en esa plaza
@@ -8424,6 +8441,8 @@
       try {
         const f = cacheFolios.find(x => x.id === folioId);
         if (!f) { alert("No se encontró ese folio en memoria — recarga la página e intenta otra vez."); return; }
+        const feP = opsAccFiltroEmpresa();
+        if (feP && !opsFolioDeEmpresa(f, feP)) { alert("Este servicio no es de " + feP + "."); return; }
         let panel = document.getElementById("ops-panel-folio");
         if (!panel) {
             panel = document.createElement("div");
@@ -8557,7 +8576,7 @@
                         ${dato("Distancia", f.distanciaKm ? f.distanciaKm + " km" : "No capturado")}
                         ${dato("Hora de salida", opsEsc(f.horaSalida || "No capturada"))}
                     </div>
-                    ${(f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
+                    ${opsAccPuedeVer("viaticos") && (f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
                     <div style="margin-top:10px;background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;line-height:1.7;">
                         ${f.diasTrabajo ? `Días de viaje: ${f.diasTrabajo}<br>` : ""}
                         ${f.viaticosMonto ? `Viáticos: $${f.viaticosMonto.toLocaleString("es-MX")}<br>` : ""}
@@ -8566,7 +8585,7 @@
                         ${f.gastoEstimado ? `<b>Total estimado: $${f.gastoEstimado.toLocaleString("es-MX")}</b>` : ""}
                     </div>` : ""}`, ico.ruta)}
 
-                <div id="ops-panel-viaticos" data-folio="${f.id}"><div class="opf-sec"><div class="opf-sec-tit">Viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Cargando…</div></div></div>
+                <div id="ops-panel-viaticos" data-folio="${f.id}" ${opsAccPuedeVer("viaticos") ? "" : 'style="display:none;"'}><div class="opf-sec"><div class="opf-sec-tit">Viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Cargando…</div></div></div>
 
                 ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? sec("Precio y comisiones", `
                     <div style="font-size:12px;color:#334155;line-height:1.8;">
@@ -9872,12 +9891,13 @@
     // Sección "Viáticos" en el detalle del servicio (se llena sola al abrir el panel).
     async function opsPanelViaticosPintar(f) {
         const el = document.getElementById("ops-panel-viaticos"); if (!el) return;
+        if (!opsAccPuedeVer("viaticos")) { el.innerHTML = ""; return; }
         try {
             const { folios, vias } = await opsProgramacionCompleta(f);
             const box = document.getElementById("ops-panel-viaticos"); if (!box || box.dataset.folio !== f.id) return;
             const propios = vias.filter(v => v._directo && opsFolioLlaves(f).includes(String(v.folio_servicio || "").trim()) || (v._cubre || []).includes(f.id));
             const lista = propios.length ? propios : vias;
-            const total = lista.reduce((a, v) => a + (Number(v.total) || 0), 0);
+            const total = lista.reduce((a, v) => a + (Number(opsViaDeposito(v)) || 0), 0);
             const tarjeta = v => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:9px 11px;margin-bottom:7px;">
                 <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
                     <b style="font-size:12.5px;color:#1e293b;">${opsEsc(v.folio || "Viático")}</b>
@@ -9885,13 +9905,15 @@
                 </div>
                 <div style="font-size:11.5px;color:#475569;margin-top:2px;">${opsEsc(opsViaRango(v))}${v.integrantes ? " · " + opsEsc(v.integrantes) : ""}</div>
                 ${v.destino ? `<div style="font-size:11.5px;color:#64748b;">${opsEsc(v.destino)}</div>` : ""}
-                <div style="font-size:11.5px;color:#334155;margin-top:5px;line-height:1.6;">${opsViaDesglose(v).map(x => `${opsEsc(x[0])}: <b>${opsDinero(x[1])}</b>${x[2] ? ` <span style="color:#94a3b8;">(${opsEsc(x[2])})</span>` : ""}`).join("<br>")}</div>
-                <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:12px;"><span style="color:#64748b;">${v._directo ? "Ligado a este servicio" : "Cubre este servicio por fechas y técnico"}</span><b style="color:#1D2E73;">${opsDinero(v.total)}</b></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;background:#dcfce7;border:1.5px solid #15803d;border-radius:8px;padding:7px 10px;margin-top:7px;">
+                    <span style="font-size:11.5px;font-weight:800;color:#15803d;">SE DEPOSITA AL TÉCNICO</span><b style="font-size:17px;color:#15803d;">${opsDinero(opsViaDeposito(v))}</b></div>
+                <div style="font-size:11px;color:#64748b;margin-top:5px;line-height:1.6;">No se deposita (informativo): ${opsViaDesgloseDeposito(v).no.filter(x => x.importe > 0).map(x => `${opsEsc(x.concepto)} ${opsDinero(x.importe)}`).join(" · ") || "nada"}</div>
+                <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:11px;color:#94a3b8;"><span>${v._directo ? "Ligado a este servicio" : "Cubre este servicio por fechas y técnico"} · lo entrega ${opsEsc(opsViaEmpresaEfectiva(v))}</span><span>Costo del viaje ${opsDinero(v.total)}</span></div>
             </div>`;
             const trasl = opsViaTraslapes(vias);
             box.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Viáticos${lista.length ? ` (${lista.length})` : ""}</div>
                 ${trasl.length ? `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:11.5px;color:#92400E;"><b>Revisar posible doble viático:</b><br>${trasl.map(opsEsc).join("<br>")}</div>` : ""}
-                ${lista.length ? lista.map(tarjeta).join("") + `<div style="text-align:right;font-size:12.5px;font-weight:800;color:#1e293b;">Total: ${opsDinero(total)}</div>`
+                ${lista.length ? lista.map(tarjeta).join("") + `<div style="text-align:right;font-size:13px;font-weight:800;color:#15803d;">Total que se deposita: ${opsDinero(total)}</div>`
                     : `<div style="font-size:12px;color:#94a3b8;">Este servicio no tiene viáticos solicitados.</div>`}
                 ${folios.length > 1 ? `<div style="margin-top:10px;background:#EEF2FF;border-radius:9px;padding:9px 11px;font-size:12px;color:#1D2E73;">
                     Es parte de una programación de <b>${folios.length} servicios</b> (${opsEsc(opsVlFecha(opsFolioDia(folios[0])))} al ${opsEsc(opsVlFecha(opsFolioDia(folios[folios.length - 1])))})${vias.length ? ` con <b>${vias.length} viático(s)</b> por ${opsDinero(vias.reduce((a, v) => a + (Number(v.total) || 0), 0))}` : ""}.
@@ -9917,6 +9939,7 @@
         if (!modo && prog.folios.length > 1) { opsPdfElegirModo(f, prog); return; }
         modo = modo === "programacion" && prog.folios.length > 1 ? "programacion" : "servicio";
         const folios = modo === "programacion" ? prog.folios : [f];
+        if (!opsAccPuedeVer("viaticos")) prog.vias = [];
         const viasServ = modo === "servicio" ? prog.vias.filter(v => (v._directo && opsFolioLlaves(f).includes(String(v.folio_servicio || "").trim())) || (v._cubre || []).includes(f.id)) : prog.vias;
 
         const comentariosDe = async fx => {
@@ -9987,47 +10010,73 @@
             return fx.tipoFolio === "inspeccion" ? "Visita de inspección" + (fx.normaInspeccion ? " · " + fx.normaInspeccion : "") : fx.tipoFolio === "laboratorio" ? "Laboratorio" : (receta ? receta.nombre : (fx.tipoAlta === "programacion" ? "Programación" + ((fx.serviciosProgramados || []).length ? " · " + opsProgServiciosTxt(fx.serviciosProgramados) : "") : "Servicio técnico"));
         };
 
-        // Bloque de viáticos: desglose de cada solicitud y total.
+        // Bloque de viáticos (19-oct-2026): pensado para que se entienda a la primera.
+        // Cada solicitud abre con un recuadro VERDE grande "SE DEPOSITA" (lo único que Pagos transfiere)
+        // y abajo, en gris, "NO SE DEPOSITA" (gasolina con tag, casetas, hotel que paga Compras).
+        const VERDE = [21, 128, 61], VERDE_CL = [220, 252, 231], GRIS_CL = [241, 245, 249];
+        const cajaDeposito = (titulo, monto, explicacion) => {
+            salto(44);
+            doc.setFillColor(...VERDE_CL); doc.setDrawColor(...VERDE); doc.setLineWidth(0.9); doc.roundedRect(M, y - 5, AN, 32, 2.5, 2.5, "FD");
+            doc.setFillColor(...VERDE); doc.roundedRect(M, y - 5, 4, 32, 1.5, 1.5, "F");
+            doc.setTextColor(...VERDE); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+            doc.text(limpio(titulo), M + 8, y + 2);
+            doc.setFontSize(22); doc.text(limpio(opsDinero(monto)), W - M - 5, y + 13, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...TINTA);
+            doc.text(doc.splitTextToSize(limpio(explicacion), AN - 75), M + 8, y + 9);
+            y += 33;
+        };
         const seccionViaticos = (vias, titulo) => {
             seccion(titulo);
             if (!vias.length) { parrafo("No hay viáticos solicitados para " + (modo === "programacion" ? "esta programación." : "este servicio."), { color: GRIS }); y += 2; return; }
             const trasl = opsViaTraslapes(vias);
             if (trasl.length) { parrafo("Revisar posible doble viático: " + trasl.join("; ") + ".", { bold: true, color: [180, 83, 9], size: 9 }); y += 2; }
+            let totalDep = 0, totalViaje = 0;
             vias.forEach(v => {
-                salto(22);
+                const dep = opsViaDesgloseDeposito(v), deposito = opsViaDeposito(v);
+                const empV = opsViaEmpresaEfectiva(v);
+                totalDep += deposito; totalViaje += Number(v.total) || 0;
+                salto(30);
                 doc.setFillColor(244, 246, 250); doc.roundedRect(M, y - 4, AN, 8, 1.5, 1.5, "F");
                 doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(...NAVY);
-                doc.text(limpio(`${v.folio || "Viático"}  ·  ${opsViaRango(v)}`), M + 2, y + 1.2);
+                doc.text(limpio(`${v.folio || "Viático"}  ·  ${opsViaRango(v)}  ·  ${v.integrantes || ""}`), M + 2, y + 1.2);
                 doc.setFontSize(9); doc.setTextColor(...TINTA);
-                doc.text(limpio(`${v.estatus || ""}  ·  ${opsDinero(v.total)}`), W - M - 2, y + 1.2, { align: "right" });
+                doc.text(limpio(v.estatus || ""), W - M - 2, y + 1.2, { align: "right" });
                 y += 9;
+                const quienes = String(v.integrantes || "").split(",").map(x => x.trim()).filter(Boolean);
+                cajaDeposito("SE DEPOSITA AL TÉCNICO" + (quienes.length ? ": " + quienes.join(", ") : ""), deposito,
+                    deposito > 0 ? "Esto es lo único que Pagos transfiere. Es para: " + (dep.si.filter(x => x.importe > 0).map(x => x.concepto.toLowerCase()).filter(Boolean).join(", ") || "—") + ". Lo entrega " + empV + "."
+                        : "Este viático no lleva depósito: todo se paga por otro medio.");
+                const noDep = dep.no.filter(x => x.importe > 0);
+                if (noDep.length) {
+                    doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+                    salto(6); doc.text("NO SE DEPOSITA (solo para saber cuánto cuesta el viaje):", M + 4, y); y += 4.6;
+                    noDep.forEach(x => {
+                        salto(5);
+                        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+                        doc.text(limpio(`${x.concepto || ""}  —  ${x.medio || "otro medio"}`), M + 8, y);
+                        doc.text(limpio(opsDinero(x.importe)), W - M - 2, y, { align: "right" });
+                        y += 4.4;
+                    });
+                }
+                salto(6);
+                doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+                doc.text(limpio(`Costo total del viaje (informativo): ${opsDinero(v.total)}   ·   Se cobra al cliente: ${Number(v.cobro_cliente) > 0 ? opsDinero(v.cobro_cliente) : "—"}   ·   Destino: ${v.destino || "—"}`).slice(0, 160), M + 4, y);
+                y += 4.6;
                 const servLigados = modo === "programacion" ? folios.filter(x => (v._cubre || []).includes(x.id) || (v._directo && opsFolioLlaves(x).includes(String(v.folio_servicio || "").trim()))).map(x => `${x.estacion || "Servicio"} (${opsVlFecha(opsFolioDia(x))})`) : [];
-                pares([["Destino", v.destino], ["Integrantes", v.integrantes], ["Personas", v.personas], ["Días de viático", v.dias],
-                    ["Vehículo", [v.vehiculo, v.tipo_vehiculo].filter(Boolean).join(" · ")], ["Forma de entrega", v.forma_entrega === "tarjeta_nomina" ? "Tarjeta de nómina" : v.forma_entrega === "efectivo" ? "Efectivo" : v.forma_entrega],
-                    ["Empresa que entrega", v.empresa_entrega], ["Se cobra al cliente", Number(v.cobro_cliente) > 0 ? opsDinero(v.cobro_cliente) + (v.empresa_cobra ? " · " + v.empresa_cobra : "") : null],
-                    ["Motivo", v.motivo], ["Servicios que cubre", servLigados.length ? servLigados.join(", ") : null]]);
-                opsViaDesglose(v).forEach(x => {
-                    salto(6);
-                    doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(...TINTA);
-                    doc.text(limpio(x[0] + (x[2] ? "  (" + x[2] + ")" : "")), M + 4, y);
-                    doc.setFont("helvetica", "bold"); doc.text(limpio(opsDinero(x[1])), W - M - 2, y, { align: "right" });
-                    y += 5;
-                });
-                salto(7);
-                doc.setDrawColor(...LINEA); doc.line(M + 4, y - 3, W - M, y - 3);
-                doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(...NAVY);
-                doc.text("Total del viático", M + 4, y + 1); doc.text(limpio(opsDinero(v.total)), W - M - 2, y + 1, { align: "right" });
-                y += 7;
-                if (v.notas) { parrafo("Notas: " + v.notas, { color: GRIS, size: 8.5, indent: 4 }); y += 1; }
-                y += 2;
+                if (servLigados.length) { parrafo("Cubre: " + servLigados.join(", "), { color: GRIS, size: 8.5, indent: 4 }); }
+                if (v.notas) { parrafo("Notas: " + v.notas, { color: GRIS, size: 8.5, indent: 4 }); }
+                y += 4;
             });
-            const total = vias.reduce((a, v) => a + (Number(v.total) || 0), 0);
-            salto(12);
-            doc.setFillColor(...NAVY); doc.roundedRect(M, y - 4, AN, 9, 1.5, 1.5, "F");
-            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
-            doc.text(limpio(`TOTAL DE VIÁTICOS (${vias.length})`), M + 3, y + 1.8);
-            doc.text(limpio(opsDinero(total)), W - M - 3, y + 1.8, { align: "right" });
-            y += 11;
+            // Totales: el depósito en grande y verde; el costo del viaje chiquito y gris.
+            salto(26);
+            doc.setFillColor(...VERDE); doc.roundedRect(M, y - 5, AN, 15, 2.5, 2.5, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+            doc.text(limpio(`TOTAL QUE SE DEPOSITA (${vias.length} viático${vias.length === 1 ? "" : "s"})`), M + 4, y + 4.5);
+            doc.setFontSize(17); doc.text(limpio(opsDinero(totalDep)), W - M - 4, y + 5, { align: "right" });
+            y += 16;
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+            doc.text(limpio(`Costo total de los viajes, contando lo que no se deposita (informativo): ${opsDinero(totalViaje)}`), M + 2, y);
+            y += 7;
         };
 
         // Ficha de un servicio (la de siempre)
@@ -10111,7 +10160,7 @@
             }
             if (fx.comentarios) { seccion("Comentarios"); parrafo(fx.comentarios); y += 2; }
 
-            if (conViaticos) seccionViaticos(viasServ, "Viáticos");
+            if (conViaticos && opsAccPuedeVer("viaticos")) seccionViaticos(viasServ, "Viáticos");
             else if (prog.vias.some(v => (v._cubre || []).includes(fx.id) || (v._directo && opsFolioLlaves(fx).includes(String(v.folio_servicio || "").trim())))) {
                 seccion("Viáticos");
                 const suyos = prog.vias.filter(v => (v._cubre || []).includes(fx.id) || (v._directo && opsFolioLlaves(fx).includes(String(v.folio_servicio || "").trim())));
@@ -10163,7 +10212,7 @@
                 y += h;
             });
             y += 3;
-            seccionViaticos(prog.vias, `Viáticos de la programación (${prog.vias.length})`);
+            if (opsAccPuedeVer("viaticos")) seccionViaticos(prog.vias, `Viáticos de la programación (${prog.vias.length})`);
             // Una ficha por servicio, cada una en su página
             folios.forEach(fx => { doc.addPage(); ficha(fx, comentariosPor.get(fx.id) || [], false); });
         } else {
@@ -15310,7 +15359,7 @@
     // Cada servicio guarda además su empresa (empresaServicio) y se puede cambiar al programar o al editar.
     const OPS_EMPRESAS_NOMBRES = ["Tecnocontrol", "JOMAR", "VH Verificaciones", "Desarrollos", "TecnoLab"];
     const OPS_EMPRESA_SERVICIO_SEED = {
-        "Anexo 21 y 22": "JOMAR", "ASEA": "JOMAR", "Calidad de los Petrolíferos": "JOMAR", "SCFI": "JOMAR",
+        "Anexo 21 y 22": "VH Verificaciones", "ASEA": "JOMAR", // 19-oct-2026: Anexo 21 y 22 lo presta VH "Calidad de los Petrolíferos": "JOMAR", "SCFI": "JOMAR",
         "Calibración Medida Volumétrica": "JOMAR", "Alto Flujo": "JOMAR", "Laboratorio": "TecnoLab",
         "Servicio técnico / póliza / programación": "Tecnocontrol",
     };
@@ -15324,6 +15373,7 @@
         if (f.tipoFolio === "laboratorio") return R["Laboratorio"] || "TecnoLab";
         const norma = f.normaInspeccion || f.norma;
         if (norma && R[norma]) return R[norma];
+        if (/anexo\s*21/i.test([norma, f.categoriaServicio, f.servicio].filter(Boolean).join(" "))) return R["Anexo 21 y 22"] || "VH Verificaciones";
         if (f.tipoFolio === "inspeccion" || f.tipoAlta === "inspeccion") return "JOMAR";
         if (f.pedidoVentasEmpresa) return opsEmpresaDoc(f.pedidoVentasEmpresa).corto;
         try { if (opsEsFolioJomar(f)) return "JOMAR"; } catch (e) {}
@@ -16320,7 +16370,7 @@
         const det = (t.casetasDetalle || []).map(c => `   · ${c.nombre}: ${opsViaDinero(c.costo)} × ${c.cruces} = ${opsViaDinero(c.subtotal)}`).join("\n");
         return `SOLICITUD DE VIÁTICOS ${s.folio}\n`
             + `Solicita: ${s.solicitante_nombre || s.solicitante_email || ""}\n`
-            + `Viáticos salen de: ${s.empresa_entrega || "Tecnocontrol"}\n`
+            + `Viáticos salen de: ${opsViaEmpresaEfectiva(s)}\n`
             + `Servicio: ${(s.tarifas && s.tarifas.servicioTexto) || opsViaServicioTexto(s.folio_servicio) || "—"}\n`
             + `Destino: ${s.destino || ""}${s.folio_servicio ? " (servicio " + s.folio_servicio + ")" : ""}\n`
             + `Personal (${s.personas}): ${s.integrantes || ""}\n`
@@ -16381,6 +16431,18 @@
             estacion: (foServ && foServ.estacion) || s.destino || "",
             plaza: (foServ && foServ.plaza) || opsPlazaDeTexto(s.destino || "", false) || "Chihuahua", aviso: foServ ? opsArcaTextoPdf(foServ) : "" });
 
+        // ── Lo más importante, en grande y primero (19-oct-2026): cuánto SÍ se deposita ──
+        {
+            const quien = String(s.integrantes || "").split(",").map(x => x.trim()).filter(Boolean).join(", ") || "el técnico";
+            doc.setFillColor(21, 128, 61); doc.roundedRect(M, y, AN, 52, 8, 8, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+            doc.text("PAGOS: ESTO ES LO ÚNICO QUE SE DEPOSITA", M + 14, y + 17);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+            doc.text(doc.splitTextToSize("A: " + quien + ". Lo demás (gasolina con tag, casetas, hotel que paga Compras) NO se deposita.", AN - 190), M + 14, y + 31);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(28);
+            doc.text(din(deposito), W - M - 14, y + 35, { align: "right" });
+            y += 60;
+        }
         // ── Tarjetas de resumen: lo que Pagos deposita y lo que Ingresos cobra ──
         const anchoT = (AN - 12) / 2, altoT = 64;
         const tarjeta = (x, color, fondo, etiqueta, monto, lineas) => {
@@ -16582,8 +16644,12 @@
             const { error } = await sb.from("ops_solicitudes_viaticos").update({ ...cambios, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", id);
             if (error) throw error;
             Object.assign(s, cambios); if (opsViaUltima && opsViaUltima.id === id) Object.assign(opsViaUltima, cambios);
-            if (msg) msg.textContent = "Guardado. Descarga el PDF de nuevo.";
             try { await opsAuditar("viaticos", id, "empresa_entrega", antes, empresa); } catch (e) {}
+            // Se vuelve a pintar la ventana: el texto y el PDF ya salen con la empresa nueva.
+            opsViaUltima = s;
+            opsViaMostrarEnviada(s, opsViaResumenTexto(s));
+            const m2 = document.getElementById("ops-via-emp-msg"); if (m2) { m2.textContent = "Guardado: ahora sale como " + empresa + ". El PDF ya sale con su logo."; m2.style.color = "#15803d"; m2.style.fontWeight = "700"; }
+            if (typeof opsRenderViaticos === "function" && document.getElementById("ops-via-tabla")) { try { opsRenderViaticos(); } catch (e) {} }
         } catch (e) { alert("No se pudo cambiar la empresa: " + (e.message || e)); }
     };
     window.opsViaVerDetalle = function (id) {
