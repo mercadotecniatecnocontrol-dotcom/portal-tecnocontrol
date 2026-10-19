@@ -82,16 +82,24 @@
   <button id="btn-confirmar-rechazo" style="display:none;width:100%;background:#E23B2E;color:#fff;margin-top:6px" onclick="rechazar()">Confirmar rechazo</button>
 </div>
 
+<!-- Compras vive en Supabase: requisiciones, fotos y flujo se leen/escriben por este puente -->
+<script src="compras-supabase.js?v=sb1"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, updateDoc, collection, getDocs, query, where, addDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import * as fsMod from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
-const db = getFirestore(app);
+const db = fsMod.getFirestore(app);
 const auth = getAuth(app);
 window.db = db;
+// Puente de Compras (oct-2026): requisiciones_compra (+ fotos) y config_flujo_compras van a
+// Supabase; colaboradores y config_organigrama todavía se pasan a Firestore hasta el corte de RH.
+const F = await window.tcComprasFS(fsMod);
+const { doc, getDoc, updateDoc, collection, getDocs, query, where } = F;
+// Avisos al portal (tabla portal_notificaciones en Supabase), ya no a Firestore.
+const notificar = datos => window.tcCpNotificar(datos).catch(e => console.warn('[firmar] aviso:', e && e.message));
 
 const params = new URLSearchParams(location.search);
 const reqId = params.get('id');
@@ -255,7 +263,7 @@ window.autorizar = async function(){
       } else if(siguiente.label==='Compras'){
         (cfg.aprobadoresCompras||[]).forEach(a=>{ if(a.correo) destinos.push(a.correo); });
       }
-      await Promise.all(destinos.map(correo => addDoc(collection(db,'flotilla_notificaciones'), {
+      await Promise.all(destinos.map(correo => notificar({
         para: (correo||'').toLowerCase().trim(), tipo:'requisicion_autorizar',
         mensaje: 'Requisición '+(dReq.folio||reqId)+' espera tu autorización',
         link: 'firmar.html?id='+reqId,
@@ -277,8 +285,9 @@ window.rechazar = async function(){
   if(!motivo){ alert('Escribe el motivo del rechazo.'); return; }
   try{
     await updateDoc(doc(db,'requisiciones_compra',reqId), { estatus:'rechazada', motivoRechazo: motivo });
-    await addDoc(collection(db,'flotilla_notificaciones'), {
-      para: (dReq.solicitante||'').toLowerCase().trim(), tipo:'requisicion_rechazada',
+    await notificar({
+      // Antes se mandaba al NOMBRE del solicitante; el aviso se entrega por correo.
+      para: (dReq.solicitanteEmail||dReq.solicitante||'').toLowerCase().trim(), tipo:'requisicion_rechazada',
       mensaje: 'Tu requisición '+(dReq.folio||reqId)+' fue rechazada: '+motivo,
       leido:false, creadaEn:new Date().toISOString(),
     });

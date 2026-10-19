@@ -8244,7 +8244,9 @@ async function getFB(){
   const a=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
   const f=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const app=a.getApps()[0];
-  return {db:f.getFirestore(app),fs:f};
+  // Solicitudes vehiculares en Supabase (oct-2026): mismo adaptador que flotilla.js y pagos.js.
+  if(!window.tcFlSbShim) await new Promise(function(ok,ko){const s=document.createElement('script');s.src='flotilla-supabase.js?v=4';s.onload=ok;s.onerror=function(){ko(new Error('No se pudo cargar flotilla-supabase.js'));};document.head.appendChild(s);});
+  return {db:f.getFirestore(app),fs:window.tcFlSbShim(f,{SOLS:'flotilla_solicitudes'})};
 }
 
 function flMesKey(){return `${appFlAnio}-${String(appFlMes+1).padStart(2,'0')}`;}

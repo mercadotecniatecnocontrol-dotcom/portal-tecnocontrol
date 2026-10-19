@@ -540,7 +540,12 @@ async function _getDB(){
   const fsMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
   const authMod= await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
   const app = appMod.getApps()[0];
-  return { db:fsMod.getFirestore(app), fs:fsMod, auth:authMod.getAuth(app) };
+  // Las solicitudes vehiculares (flotilla_solicitudes, sus adjuntos y flotilla_notificaciones)
+  // viven en Supabase desde oct-2026: mismo adaptador que usa flotilla.js. Sin él, Pagos
+  // leía la copia vieja de Firestore y no veía las solicitudes nuevas.
+  if(!window.tcFlSbShim) throw new Error('No cargó flotilla-supabase.js; recarga la página.');
+  const fs = window.tcFlSbShim(fsMod,{SOLS:'flotilla_solicitudes'});
+  return { db:fsMod.getFirestore(app), fs:fs, auth:authMod.getAuth(app) };
 }
 
 async function _esUsuarioPagos(email){

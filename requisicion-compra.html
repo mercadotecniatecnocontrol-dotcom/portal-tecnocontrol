@@ -495,7 +495,7 @@ async function notificarJefeArea(idDoc, data){
       leido: false, creadaEn: new Date().toISOString(),
     };
     // Al portal (Supabase) y a la app de Flotilla (Firestore).
-    await Promise.allSettled([ window.tcCpNotificar(aviso), addDoc(collection(db,'flotilla_notificaciones'), aviso) ]);
+    await Promise.allSettled([ window.tcCpNotificar(aviso) ]); // solo Supabase (portal_notificaciones); ya no se duplica en Firestore
   }catch(e){ console.warn('[requisición] no se pudo notificar al jefe de área:', e.message); }
 }
 
