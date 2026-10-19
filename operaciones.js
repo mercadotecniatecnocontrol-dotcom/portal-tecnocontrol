@@ -11589,7 +11589,8 @@
     const OPS_NE_SECTORES = ["Hidrocarburos", "Industria", "Comercial", "Gobierno", "Construcción", "Otro"];
     window.opsNeAbrir = function () {
         // Desde "Nuevo servicio" (opsAS) o directo desde Operaciones con el botón "+ Alta de estación".
-        if (!document.getElementById("ops-cli-modal")) window.__opsNeClienteId = null; // solo se liga solo si se abrió desde la ficha del cliente
+        if (!document.getElementById("ops-cli-modal")) window.__opsNeClienteId = null;
+        window.opsNePintar = opsNePintar; // solo se liga solo si se abrió desde la ficha del cliente
         const s = opsAS || { estTexto: "", plaza: opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? opsCalFiltroPlaza : "Chihuahua" };
         const texto = (s.estTexto || "").trim();
         const plazaCentro = { "Chihuahua": [28.6353, -106.0889], "Juárez": [31.6904, -106.4245], "Parral": [26.9318, -105.6664], "Monterrey": [25.6866, -100.3161] }[s.plaza] || [28.6353, -106.0889];
@@ -11625,7 +11626,8 @@
                     <div class="opsas-grid">
                         <div><label class="opsas-lb">Razón social *</label><input class="opsas-in" list="opsne-razones" value="${opsEsc(n.razonSocial)}" placeholder="Ej. GASOLINERA EL CIMARRÓN SA DE CV" oninput="opsNE.razonSocial=this.value"><datalist id="opsne-razones">${razones.map(r => `<option value="${opsEsc(r)}">`).join("")}</datalist></div>
                         ${inp("nombreComercial", "Nombre comercial / de la estación", "Ej. Cimarrón Nogales")}
-                        ${inp("permiso", "PL / permiso CRE", "PL/_____/EXP/ES/____")}
+                        <div>${n.sinPL ? `<label class="opsas-lb">PL / permiso CRE</label><input class="opsas-in" disabled value="No aplica" style="background:#f1f5f9;">` : inp("permiso", "PL / permiso CRE *", "PL/_____/EXP/ES/____")}
+                            <label style="display:flex;gap:6px;align-items:center;font-size:11.5px;color:#475569;margin-top:4px;cursor:pointer;"><input type="checkbox" ${n.sinPL ? "checked" : ""} onchange="opsNE.sinPL=this.checked;if(this.checked)opsNE.permiso='';opsNePintar()"> Sin permiso CRE (planta, industria o autoconsumo, ej. ARCA)</label></div>
                         ${inp("codigoCre", "Número de estación (opcional)", "Ej. E12345")}
                         ${inp("zona", "Zona (opcional)", "")}
                         <div><label class="opsas-lb">Sector</label><select class="opsas-in" onchange="opsNE.sector=this.value">${OPS_NE_SECTORES.map(x => `<option ${n.sector === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
@@ -11830,16 +11832,19 @@
         const pl = String(n.permiso || "").trim().toUpperCase();
         if (!n.nombreComercial.trim()) falta.push("nombre comercial (con el que identificamos la estación, ej. Parador Los Mezquites)");
         if (!n.razonSocial.trim()) falta.push("razón social");
-        if (!pl) falta.push("PL / permiso CRE");
-        else if (!/^PL\/\d{2,6}\/EXP\/ES\/\d{4}/.test(pl.replace(/\s+/g, ""))) falta.push("PL con formato válido (ej. PL/5667/EXP/ES/2015)");
+        // 19-oct-2026: plantas, industria o autoconsumo (ej. ARCA) no tienen PL de la CRE ni dispensarios
+        // al público; con "Sin permiso CRE" esos datos dejan de ser obligatorios (lo demás sí).
+        const sinPL = !!n.sinPL;
+        if (!sinPL && !pl) falta.push("PL / permiso CRE (o marca \"Sin permiso CRE\" si es planta, industria o autoconsumo)");
+        else if (pl && !/^PL\/\d{2,6}\/EXP\/ES\/\d{4}/.test(pl.replace(/\s+/g, ""))) falta.push("PL con formato válido (ej. PL/5667/EXP/ES/2015)");
         if (!n.direccion.trim()) falta.push("calle y número");
         if (!/^\d{5}$/.test(String(n.cp || "").trim())) falta.push("código postal (5 dígitos)");
         if (!n.municipio.trim()) falta.push("municipio");
         if (!n.lat || !n.lng) falta.push("ubicación en el mapa");
         if (!n.encargado.trim()) falta.push("encargado de la estación");
         if (String(n.telefono || "").replace(/\D/g, "").length < 10) falta.push("teléfono del encargado (10 dígitos)");
-        if (!(Number(n.dispensarios) > 0)) falta.push("número de dispensarios");
-        if (!(Number(n.tanques) > 0)) falta.push("número de tanques");
+        if (!sinPL && !(Number(n.dispensarios) > 0)) falta.push("número de dispensarios");
+        if (!sinPL && !(Number(n.tanques) > 0)) falta.push("número de tanques");
         if (falta.length) { err("Para dar de alta la estación falta:<br>• " + falta.join("<br>• ")); return; }
         n.permiso = pl.replace(/\s+/g, "");
         const dup = opsNeDuplicado();
