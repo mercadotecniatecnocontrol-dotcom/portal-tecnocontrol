@@ -9552,7 +9552,7 @@
             const sb = await opsSb();
             let todos = [], desde = 0;
             while (true) {
-                const { data, error } = await sb.from("estaciones_servicio").select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,colonia,codigo_postal,municipio,estado,lat,lng,encargado,zona,numero_tanques,numero_dispensarios,numero_sondas,cr,activo,cliente_id").order("id").range(desde, desde + 999);
+                const { data, error } = await sb.from("estaciones_servicio").select("id,razon_social,nombre_comercial,codigo_estacion_cre,permiso,direccion_normalizada,domicilio_raw,colonia,codigo_postal,municipio,estado,lat,lng,encargado,zona,numero_tanques,numero_dispensarios,numero_sondas,cr,activo,cliente_id,region,identificador_cliente,combustibles").order("id").range(desde, desde + 999);
                 if (error) throw error;
                 todos = todos.concat(data || []);
                 if (!data || data.length < 1000) break;
@@ -11546,7 +11546,7 @@
                     html += `<div style="display:flex;align-items:center;gap:8px;padding:5px 11px;font-size:10px;font-weight:800;letter-spacing:.4px;color:#94a3b8;background:#f8fafc;text-transform:uppercase;"><span style="flex:1;">${opsEsc(e.razonSocial || "Sin razón social")}${nRs > 1 ? ` · ${nRs} estaciones` : ""}</span>${multi && e.razonSocial && nRs > 1 ? `<span onmousedown="event.preventDefault();opsAsMultiAgregarRS(${iRs})" style="cursor:pointer;background:#1D2E73;color:#fff;border-radius:999px;padding:3px 9px;letter-spacing:0;text-transform:none;font-size:10.5px;">+ Agregar las ${nRs}</span>` : ""}</div>`;
                     rsPrev = opsAsRsClave(e.razonSocial);
                 }
-                html += `<div class="opsas-opt" onmousedown="opsAsElegirEstacion('${e.id}')"><b>${opsEsc(opsEstSinNombre(e) ? "Sin nombre comercial" : e.nombreComercial)}${e.permiso ? ` <span style="color:#1D2E73;">· ${opsEsc(e.permiso)}</span>` : ""}</b><small>${opsEsc(e.municipio || "")}${e.permiso ? " · " + opsEsc(e.permiso) : " · sin PL"}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</small></div>`;
+                html += `<div class="opsas-opt" onmousedown="opsAsElegirEstacion('${e.id}')"><b>${opsEsc(opsEstSinNombre(e) ? "Sin nombre comercial" : e.nombreComercial)}${e.permiso ? ` <span style="color:#1D2E73;">· ${opsEsc(e.permiso)}</span>` : ""}</b><small>${e.identificadorCliente ? "#" + opsEsc(e.identificadorCliente) + " · " : ""}${opsEsc([e.municipio, e.estado].filter(Boolean).join(", "))}${e.permiso ? " · " + opsEsc(e.permiso) : (e.identificadorCliente ? "" : " · sin PL")}${e.zona ? " · Zona " + opsEsc(e.zona) : ""}</small>${(e.combustibles || []).length ? `<div style="margin-top:3px;">${opsCombustiblesHTML(e.combustibles)}</div>` : ""}</div>`;
             });
             box.innerHTML = html + optAlta; box.style.display = "block";
         });
@@ -12810,11 +12810,18 @@
         const pc = document.getElementById("ops-cli-palabras2"); if (pc) opsCliEdit.palabras_clave = pc.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
         document.querySelectorAll("#ops-cli-modal [data-ct]").forEach(i => { const [n, k] = i.getAttribute("data-ct").split("|"); if (opsCliEdit.contactos[n]) opsCliEdit.contactos[n][k] = i.value.trim(); });
     }
+    // Distintivo por combustible (Gas LP resaltado, como se pidió para los sitios de ARCA)
+    function opsCombustiblesHTML(lista) {
+        const c = { "Gas LP": ["#fff7ed", "#c2410c", "#fdba74"], "Gas natural": ["#ecfeff", "#0e7490", "#a5f3fc"], "Diésel": ["#f1f5f9", "#334155", "#cbd5e1"], "Gasolina": ["#f0fdf4", "#15803d", "#bbf7d0"] };
+        return (lista || []).map(x => { const k = c[x] || ["#f8fafc", "#475569", "#e2e8f0"]; return `<span style="display:inline-block;background:${k[0]};color:${k[1]};border:1px solid ${k[2]};font-size:10px;font-weight:800;border-radius:6px;padding:1px 6px;margin-right:3px;">${opsEsc(x)}</span>`; }).join("");
+    }
+    window.opsCombustiblesHTML = opsCombustiblesHTML;
     function opsCliEstFaltan(e) {
         const f = [];
         if (!e.nombre_comercial || opsCliNorm(e.nombre_comercial) === opsCliNorm(e.razon_social)) f.push("nombre comercial");
-        if (!e.permiso) f.push("PL"); if (!e.direccion_normalizada) f.push("dirección"); if (!e.codigo_postal) f.push("CP");
-        if (e.lat == null) f.push("ubicación"); if (!e.encargado) f.push("encargado"); if (!e.numero_dispensarios) f.push("dispensarios");
+        // Sitios industriales del directorio del cliente (ej. ARCA) pueden no tener permiso: no se marca como faltante.
+        if (!e.permiso && !e.identificador_cliente) f.push("PL"); if (!e.direccion_normalizada) f.push("dirección"); if (!e.municipio) f.push("municipio"); if (!e.codigo_postal) f.push("CP");
+        if (e.lat == null) f.push("ubicación"); if (!e.encargado) f.push("encargado"); if (!e.numero_dispensarios && !e.identificador_cliente) f.push("dispensarios");
         return f;
     }
     function opsCliPintar() {
@@ -12862,7 +12869,8 @@
             </div>` : ""}
             ${opsCliEstaciones.length ? opsCliEstaciones.map(e => { const f = opsCliEstFaltan(e); return `<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #f1f5f9;">
                 <div style="flex:1;min-width:0;"><div style="font-weight:800;color:#1e293b;font-size:13px;">${opsEsc(e.nombre_comercial && opsCliNorm(e.nombre_comercial) !== opsCliNorm(e.razon_social) ? e.nombre_comercial : "Sin nombre comercial")}${e.permiso ? ` <span style="color:#1D2E73;font-weight:700;">· ${opsEsc(e.permiso)}</span>` : ""}</div>
-                <div style="font-size:11.5px;color:#64748b;">${opsEsc([e.direccion_normalizada, e.municipio, e.estado].filter(Boolean).join(" · ") || "Sin dirección")}</div>
+                <div style="font-size:11.5px;color:#64748b;">${e.identificador_cliente ? `<b>#${opsEsc(e.identificador_cliente)}</b> · ` : ""}${opsEsc([e.direccion_normalizada, e.municipio, e.estado, e.region ? "Región " + e.region : ""].filter(Boolean).join(" · ") || "Sin dirección")}</div>
+                ${(e.combustibles || []).length ? `<div style="margin-top:3px;">${opsCombustiblesHTML(e.combustibles)}</div>` : ""}
                 ${f.length ? `<div style="font-size:11px;color:#b45309;margin-top:2px;">Falta: ${opsEsc(f.join(", "))}</div>` : `<div style="font-size:11px;color:#15803d;margin-top:2px;">Datos completos</div>`}</div>
                 ${gestion ? `<button onclick="opsEstEditar('${e.id}')" style="border:none;background:${f.length ? "#fff7ed" : "#eef2f7"};color:${f.length ? "#9a3412" : "#1f2937"};border-radius:8px;padding:6px 11px;font-size:12px;font-weight:800;cursor:pointer;">${f.length ? "Completar" : "Editar"}</button>
                 <button onclick="opsCliDesligar('${e.id}')" title="Quitar de este cliente" style="border:none;background:none;color:#94a3b8;font-size:16px;cursor:pointer;">×</button>` : ""}
@@ -12978,7 +12986,7 @@
     // ── Editar / completar una estación ──
     const OPS_EST_CAMPOS = [["nombre_comercial", "Nombre comercial", "Como se le conoce (ej. Cumbres)"], ["razon_social", "Razón social", ""], ["permiso", "PL / permiso CRE", "PL/5667/EXP/ES/2015"], ["codigo_estacion_cre", "Código CRE", ""],
         ["direccion_normalizada", "Dirección (calle y número, colonia)", ""], ["colonia", "Colonia", ""], ["codigo_postal", "Código postal", ""], ["municipio", "Municipio", ""], ["estado", "Estado", ""], ["zona", "Zona", ""],
-        ["encargado", "Encargado", ""], ["numero_dispensarios", "Dispensarios", ""], ["numero_tanques", "Tanques", ""], ["numero_sondas", "Sondas", ""], ["cr", "CR (OXXO)", ""], ["lat", "Latitud", "28.6353"], ["lng", "Longitud", "-106.0889"]];
+        ["encargado", "Encargado", ""], ["numero_dispensarios", "Dispensarios", ""], ["numero_tanques", "Tanques", ""], ["numero_sondas", "Sondas", ""], ["cr", "CR (OXXO)", ""], ["identificador_cliente", "Número con el que la identifica el cliente", "Ej. 0004"], ["region", "Región", "Ej. Norte"], ["combustibles", "Combustibles (separados por coma)", "Gasolina, Diésel, Gas LP, Gas natural"], ["lat", "Latitud", "28.6353"], ["lng", "Longitud", "-106.0889"]];
     window.opsEstEditar = async function (id) {
         const sb = await opsSb();
         const { data: e, error } = await sb.from("estaciones_servicio").select("*").eq("id", id).single();
@@ -12989,7 +12997,7 @@
         ov.innerHTML = `<div style="background:#fff;border-radius:14px;width:760px;max-width:100%;max-height:92vh;overflow-y:auto;padding:18px 20px;">
             <div style="font-size:16px;font-weight:800;color:#1e293b;margin-bottom:2px;">Datos de la estación</div>
             <div style="font-size:12px;color:#64748b;margin-bottom:12px;">Lo que guardes aquí se usa en todo el portal (Operaciones, Viáticos, Flotilla, Ventas, Almacén) y en SUDI.</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">${OPS_EST_CAMPOS.map(([k, n, ph]) => `<div ${k === "direccion_normalizada" ? 'style="grid-column:1/-1;"' : ""}><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px;">${n}</label><input data-est="${k}" value="${opsEsc(e[k] == null ? "" : String(e[k]))}" placeholder="${opsEsc(ph)}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;"></div>`).join("")}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">${OPS_EST_CAMPOS.map(([k, n, ph]) => `<div ${k === "direccion_normalizada" ? 'style="grid-column:1/-1;"' : ""}><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px;">${n}</label><input data-est="${k}" value="${opsEsc(e[k] == null ? "" : Array.isArray(e[k]) ? e[k].join(", ") : String(e[k]))}" placeholder="${opsEsc(ph)}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;"></div>`).join("")}</div>
             <div style="font-size:11px;color:#64748b;margin-top:8px;">Ubicación: pega las coordenadas desde Google Maps (clic derecho sobre la estación → copiar coordenadas). Al guardarlas quedan como ubicación confirmada.</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
                 <button onclick="document.getElementById('ops-est-edit').remove()" style="border:none;background:#f1f5f9;color:#475569;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;">Cancelar</button>
@@ -13013,7 +13021,10 @@
         const { data: antes } = await sb.from("estaciones_servicio").select("lat,lng").eq("id", id).single();
         const fila = { nombre_comercial: v.nombre_comercial || null, razon_social: v.razon_social || null, permiso: v.permiso ? v.permiso.replace(/\s+/g, "").toUpperCase() : null, codigo_estacion_cre: v.codigo_estacion_cre || null,
             direccion_normalizada: v.direccion_normalizada || null, colonia: v.colonia || null, codigo_postal: v.codigo_postal || null, municipio: v.municipio || null, estado: v.estado || null, zona: v.zona || null,
-            encargado: v.encargado || null, numero_dispensarios: num(v.numero_dispensarios), numero_tanques: num(v.numero_tanques), numero_sondas: num(v.numero_sondas), cr: v.cr || null, lat, lng, actualizado_en: new Date().toISOString() };
+            encargado: v.encargado || null, numero_dispensarios: num(v.numero_dispensarios), numero_tanques: num(v.numero_tanques), numero_sondas: num(v.numero_sondas), cr: v.cr || null,
+            identificador_cliente: v.identificador_cliente || null, region: v.region || null,
+            combustibles: (v.combustibles || "").split(",").map(x => x.trim()).filter(Boolean).map(x => ({ "gas lp": "Gas LP", "lp": "Gas LP", "gas natural": "Gas natural", "gn": "Gas natural", "diesel": "Diésel", "diésel": "Diésel", "gasolina": "Gasolina" })[x.toLowerCase()] || x),
+            lat, lng, actualizado_en: new Date().toISOString() };
         if (lat != null && (!antes || antes.lat !== lat || antes.lng !== lng)) Object.assign(fila, { ubicacion_verificada: true, ubicacion_fuente: "edicion_clientes", ubicacion_por: opsUsuarioActual(), ubicacion_en: new Date().toISOString() });
         const btn = document.getElementById("ops-est-guardar"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
         const { error } = await sb.from("estaciones_servicio").update(fila).eq("id", id);
