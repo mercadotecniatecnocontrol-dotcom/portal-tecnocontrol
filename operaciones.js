@@ -8066,15 +8066,32 @@
             const conRuta = ev.filter(e => e.ruta);
             if (conRuta.length) {
                 const sb = await opsSb();
-                const { data } = await sb.storage.from("ops-evidencias").createSignedUrls(conRuta.map(e => e.ruta), 3600);
-                (data || []).forEach((x, i) => { if (x && x.signedUrl) conRuta[i].imagen = x.signedUrl; });
+                // Cada evidencia se firma contra su propio espacio: fotos y firma en ops-evidencias,
+                // video en el espacio de videos de Flotilla (20-oct-2026, reemplazo de Connecteam).
+                const porBucket = {};
+                conRuta.forEach(e => { const b = e.bucket || "ops-evidencias"; (porBucket[b] = porBucket[b] || []).push(e); });
+                for (const b of Object.keys(porBucket)) {
+                    const lista = porBucket[b];
+                    try {
+                        const { data } = await sb.storage.from(b).createSignedUrls(lista.map(e => e.ruta), 3600);
+                        (data || []).forEach((x, i) => { if (x && x.signedUrl) lista[i].imagen = x.signedUrl; });
+                    } catch (eb) { console.warn("[OPS evidencias " + b + "]", eb); }
+                }
             }
             const b2 = document.getElementById("ops-panel-evidencias"); if (!b2 || b2.dataset.folio !== f.id) return;
             window.__opsEvidencias = ev;
-            const et = { orden_servicio: "Orden de servicio / lista", foto: "Foto del trabajo", pausa: "Tiempo muerto" };
-            b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias (${ev.length})</div>
+            const et = { orden_servicio: "Orden de servicio / lista", foto: "Foto del trabajo", pausa: "Tiempo muerto", firma: "Firma de conformidad", video: "Video de evidencia" };
+            const fc = f.firmaConformidad, ma = f.materialAlmacen;
+            const cierreHTML = (fc || ma || f.tecnicoAuxiliar) ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#334155;line-height:1.5;">
+                    ${fc ? `<div><b>Firmó de conformidad:</b> ${opsEsc(fc.nombre || "")}${fc.en ? ` <span style="color:#94a3b8;">· ${new Date(fc.en).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>` : ""}</div>` : ""}
+                    ${f.tecnicoAuxiliar ? `<div><b>Técnico auxiliar:</b> ${opsEsc(f.tecnicoAuxiliar)}</div>` : ""}
+                    ${ma ? `<div><b>Material de almacén:</b> ${ma.usado ? opsEsc(ma.almacen || "Sí") + (ma.detalle ? " · " + opsEsc(ma.detalle) : "") : "No se utilizó"}</div>` : ""}
+                </div>` : "";
+            b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias (${ev.length})</div>${cierreHTML}
                 ${ev.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${ev.map((e, i) => `<div onclick="opsVerEvidencia(${i})" style="cursor:pointer;">
-                    <img src="${e.imagen || ""}" alt="Evidencia" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;">
+                    ${e.tipo === "video"
+                        ? `<div style="position:relative;"><video src="${e.imagen || ""}" muted playsinline preload="metadata" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;background:#0f172a;"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></div></div>`
+                        : `<img src="${e.imagen || ""}" alt="Evidencia" style="width:100%;aspect-ratio:1;object-fit:${e.tipo === "firma" ? "contain" : "cover"};background:#fff;border-radius:7px;border:1px solid #e2e8f0;">`}
                     <div style="font-size:9.5px;color:#64748b;line-height:1.2;margin-top:2px;">${opsEsc(et[e.tipo] || e.tipo || "")}<br>${opsEsc(e.por || "")}</div></div>`).join("")}</div>`
                 : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay evidencias. El técnico las sube al terminar la visita en la app.</div>`}</div>`;
         } catch (e) {
@@ -8087,8 +8104,10 @@
         const ov = document.createElement("div");
         ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100002;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;";
         ov.onclick = () => ov.remove();
-        ov.innerHTML = `<img src="${e.imagen}" style="max-width:100%;max-height:84vh;border-radius:8px;"><div style="color:#fff;font-size:12.5px;margin-top:8px;text-align:center;">${opsEsc(e.por || "")} · ${e.en ? new Date(e.en).toLocaleString("es-MX") : ""}${e.nota ? " · " + opsEsc(e.nota) : ""}</div>
-            <a href="${e.imagen}" download="evidencia_${i + 1}.jpg" onclick="event.stopPropagation()" style="margin-top:8px;color:#fff;font-weight:700;">Descargar</a>`;
+        const esVid = e.tipo === "video";
+        const ext = esVid ? ((String(e.ruta || "").match(/\.([a-z0-9]{2,5})$/i) || [])[1] || "mp4") : "jpg";
+        ov.innerHTML = `${esVid ? `<video src="${e.imagen}" controls autoplay playsinline onclick="event.stopPropagation()" style="max-width:100%;max-height:80vh;border-radius:8px;background:#000;"></video>` : `<img src="${e.imagen}" style="max-width:100%;max-height:84vh;border-radius:8px;">`}<div style="color:#fff;font-size:12.5px;margin-top:8px;text-align:center;">${opsEsc(e.por || "")} · ${e.en ? new Date(e.en).toLocaleString("es-MX") : ""}${e.nota ? " · " + opsEsc(e.nota) : ""}</div>
+            <a href="${e.imagen}" download="evidencia_${i + 1}.${ext}" onclick="event.stopPropagation()" style="margin-top:8px;color:#fff;font-weight:700;">Descargar</a>`;
         document.body.appendChild(ov);
     };
 

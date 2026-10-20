@@ -7369,9 +7369,95 @@ function fmOpsCandadoHTML(p){
 // y reincidencia (el mismo folio trabajado en más de un día o por otro técnico).
 const OPS_NO_FIN_MOTIVOS=['Falta refacción','Falta material o herramienta','Requiere otro técnico o especialidad','Falla mayor / requiere cotización','El cliente no permitió el trabajo','Estación ocupada / sin acceso','Clima','Se terminó la jornada','Otro'];
 const OPS_NO_REAL_MOTIVOS=['Me mandaron a otro servicio','Se atendió una urgencia / folio','Lo reprogramó Operaciones','El cliente lo canceló o pospuso','Falta vehículo','Falta material o herramienta','No me dio tiempo','Clima','Otro'];
+// ── Campos de SERVICIO TECNICO (reemplazo de Connecteam, 20-oct-2026) ──
+// Técnico auxiliar, material de almacén (sí/no + cuál almacén), video opcional y firma de conformidad.
+// Se piden al cerrar como "Quedó resuelto" o "Atendido, sin finalizar"; no en "No se realizó".
+function fmTermExtraHTML(){
+  const lbl=function(t,ob){return '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">'+t+(ob?' <span style="color:#DC2626">*</span>':'')+'</div>';};
+  const inp='width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;margin-bottom:12px;background:#fff';
+  const chip='padding:9px 18px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12.5px;font-weight:800;color:#334155';
+  return '<div id="fm-term-extra" style="display:none">'+
+    lbl('Técnico auxiliar')+
+    '<input id="fm-term-aux" type="text" placeholder="Nombre del técnico que te apoyó (si aplica)" style="'+inp+'">'+
+    lbl('¿Se utilizó material de almacén?',true)+
+    '<div id="fm-term-mat" style="display:flex;gap:8px;margin-bottom:10px">'+
+      '<button type="button" data-v="si" onclick="fmTermMatSel(this)" style="'+chip+'">Sí</button>'+
+      '<button type="button" data-v="no" onclick="fmTermMatSel(this)" style="'+chip+'">No</button>'+
+    '</div>'+
+    '<div id="fm-term-mat-si" style="display:none">'+
+      lbl('¿De cuál almacén?',true)+
+      '<select id="fm-term-alm" style="'+inp+'"><option value="">Cargando almacenes…</option></select>'+
+      '<input id="fm-term-alm-txt" type="text" placeholder="Escribe el almacén" style="'+inp+';display:none">'+
+      lbl('Material usado')+
+      '<input id="fm-term-mat-det" type="text" placeholder="Ej. 2 mangueras 3/4, 1 breakaway" style="'+inp+'">'+
+    '</div>'+
+    lbl('Video de evidencia')+
+    '<div id="fm-term-video" style="margin-bottom:12px">'+fmTermVideoHTML()+'</div>'+
+    lbl('Firma de conformidad',true)+
+    '<input id="fm-term-firmante" type="text" placeholder="Nombre de quien firma (encargado de la estación)" style="'+inp+'">'+
+    '<div style="border:1.5px dashed #94A3B8;border-radius:10px;background:#F8FAFC;margin-bottom:6px">'+
+      '<canvas id="fm-term-firma" width="320" height="170" style="display:block;width:100%;height:170px;touch-action:none;border-radius:10px"></canvas>'+
+    '</div>'+
+    '<button type="button" onclick="limpiarFirma(\'fm-term-firma\')" style="padding:7px 14px;border-radius:8px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#475569;margin-bottom:12px">Limpiar firma</button>'+
+  '</div>';
+}
+window.fmTermMatSel=function(b){
+  document.querySelectorAll('#fm-term-mat button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';});
+  b.style.background='#EFF6FF';b.style.borderColor='#1D2E73';
+  window.__fmTermMat=b.getAttribute('data-v');
+  const box=document.getElementById('fm-term-mat-si'); if(box)box.style.display=window.__fmTermMat==='si'?'block':'none';
+};
+async function fmTermCargarAlmacenes(){
+  const sel=document.getElementById('fm-term-alm'), txt=document.getElementById('fm-term-alm-txt');
+  try{
+    const snap=await opsDb().collection(C.OPS_ALMACENES).get();
+    const lista=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).filter(function(a){return a.activo!==false;})
+      .sort(function(a,b){return ((a.tipo==='general'?-1:1)-(b.tipo==='general'?-1:1))||String(a.nombre||'').localeCompare(String(b.nombre||''));});
+    if(!sel)return;
+    if(!lista.length)throw new Error('sin almacenes');
+    sel.innerHTML='<option value="">Elige el almacén</option>'+lista.map(function(a){return '<option value="'+opsSvEsc(a.id)+'">'+opsSvEsc(a.nombre||a.id)+'</option>';}).join('');
+  }catch(e){
+    console.warn('[OPS cierre almacenes]',e);
+    if(sel)sel.style.display='none'; if(txt)txt.style.display='block';
+  }
+}
+function fmTermVideoHTML(){
+  const v=window.__fmTermVideo;
+  if(v)return '<div style="display:flex;align-items:center;gap:10px;background:#F1F5F9;border-radius:10px;padding:8px 10px">'+
+    '<video src="'+v.url+'" style="width:72px;height:54px;object-fit:cover;border-radius:6px;background:#000" muted playsinline></video>'+
+    '<div style="flex:1;font-size:12px;color:#334155"><b>Video listo</b><div style="color:#64748B">'+_fmTamTxt(v.blob.size)+'</div></div>'+
+    '<button type="button" onclick="fmTermVideoQuitar()" style="padding:7px 10px;border-radius:8px;border:none;background:#DC2626;color:#fff;font-family:inherit;font-size:11.5px;font-weight:800">Quitar</button></div>';
+  return '<button type="button" onclick="fmTermVideoCapturar()" style="width:100%;padding:11px;border-radius:10px;border:1.5px dashed #94A3B8;background:#fff;font-family:inherit;font-size:12.5px;font-weight:800;color:#475569">+ Grabar o elegir video (opcional)</button>';
+}
+window.fmTermVideoCapturar=function(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='video/*';inp.style.display='none';
+  document.body.appendChild(inp);
+  inp.onchange=function(){
+    const file=this.files&&this.files[0]; document.body.removeChild(inp); if(!file)return;
+    if(file.size>VIDEO_MAX_BYTES){toast('El video pesa '+_fmTamTxt(file.size)+' — el máximo es 1 GB. Graba uno más corto.','err');return;}
+    window.__fmTermVideo={blob:file,nombre:file.name,mime:file.type,url:URL.createObjectURL(file)};
+    const box=document.getElementById('fm-term-video'); if(box)box.innerHTML=fmTermVideoHTML();
+  };
+  inp.click();
+};
+window.fmTermVideoQuitar=function(){
+  const v=window.__fmTermVideo; if(v&&v.url){try{URL.revokeObjectURL(v.url);}catch(e){}}
+  window.__fmTermVideo=null;
+  const box=document.getElementById('fm-term-video'); if(box)box.innerHTML=fmTermVideoHTML();
+};
+// Sube el video al espacio de videos de Flotilla (subida por partes, hasta 1 GB) y lo registra en el folio
+async function fmEvGuardarVideo(folioId,v,onPct){
+  const tc=window.tcFlSb; if(!tc)throw new Error('Falta flotilla-supabase.js en la página');
+  const ext=_fmExtVideo(v), mime=_fmMimeVideo(v);
+  const ruta='operaciones/'+String(folioId).replace(/[^A-Za-z0-9_-]/g,'')+'/video_'+Date.now()+'.'+ext;
+  await tc.subirArchivo(tc.BUCKET_VIDEOS,ruta,v.blob,mime,function(e){if(onPct)onPct(e);});
+  await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('evidencias').add({tipo:'video',bucket:tc.BUCKET_VIDEOS,ruta:ruta,mime:mime,bytes:v.blob.size,por:opsSvMiNombre(),porCorreo:opsSvMiCorreo(),en:new Date().toISOString(),origen:'app_flotilla',nota:'Video de evidencia',orden:1});
+}
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
+  window.__fmTermVideo=null; window.__fmTermMat=null;
   let sinOrden=false; try{sinOrden=await fmEvSinOrden(f);}catch(e){}
   window.__fmTermSinOrden=sinOrden;
   document.getElementById('fm-ops-term')?.remove();
@@ -7395,6 +7481,7 @@ window.fmOpsServTerminar=async function(id){
       '<div id="fm-term-bloq-fotos" style="display:none">'+fmEvPickerHTML('foto','Fotos del trabajo <span style="color:#DC2626">*</span>','Antes y después, lo que se cambió o reparó.')+'</div>'+
       '<div id="fm-term-nofin" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se finalizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+'</div>'+
       '<div id="fm-term-noreal" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se realizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_REAL_MOTIVOS,'fm-term-motivos2')+'</div>'+
+      fmTermExtraHTML()+
       '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px" id="fm-term-lbl">Comentario</div>'+
       '<textarea id="fm-term-txt" rows="3" placeholder="Describe lo que hiciste y lo que falta (ej. se cambió la tarjeta, falta el sensor que pidió Compras)." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
       '<div id="fm-term-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
@@ -7404,6 +7491,8 @@ window.fmOpsServTerminar=async function(id){
       '</div>'+
     '</div>';
   document.body.appendChild(ov);
+  initFirmaCanvas('fm-term-firma');
+  fmTermCargarAlmacenes();
 };
 window.fmOpsPausaMotivoSel=function(b,cont){document.querySelectorAll('#'+cont+' button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
 window.fmOpsTermRes=function(b){
@@ -7413,8 +7502,9 @@ window.fmOpsTermRes=function(b){
   const ver=function(idx,on){const e=document.getElementById(idx);if(e)e.style.display=on?'block':'none';};
   ver('fm-term-bloq-fin',r==='finalizado'); ver('fm-term-bloq-fotos',r!=='no_realizado');
   ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
+  ver('fm-term-extra',r!=='no_realizado');
   const lbl=document.getElementById('fm-term-lbl');
-  if(lbl)lbl.innerHTML=r==='finalizado'?'¿Qué se hizo?':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
+  if(lbl)lbl.innerHTML=r==='finalizado'?'Descripción rápida del servicio realizado <span style="color:#DC2626">*</span>':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
 };
 window.fmOpsServGuardarTermino=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
@@ -7428,6 +7518,7 @@ window.fmOpsServGuardarTermino=async function(id){
   if(res==='finalizado'){
     if(!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta la foto de la orden de servicio o lista de inspección.');return;}
     if(!ev.foto.length){err('Falta al menos una foto del trabajo.');return;}
+    if(txt.length<10){err('Escribe una descripción rápida de lo que se hizo (mínimo una frase).');return;}
   }else if(res==='no_finalizado'){
     if(!mb){err('Elige por qué no se finalizó.');return;}
     if(!ev.foto.length){err('Sube al menos una foto de lo que se hizo.');return;}
@@ -7436,17 +7527,45 @@ window.fmOpsServGuardarTermino=async function(id){
     if(!mb){err('Elige por qué no se realizó.');return;}
     if(txt.length<5){err('Escribe un detalle.');return;}
   }
+  // Datos de SERVICIO TECNICO (antes en Connecteam): auxiliar, material, video y firma de conformidad
+  let extra={auxiliar:null,material:null,firmante:null,firma:null};
+  if(res!=='no_realizado'){
+    const aux=(document.getElementById('fm-term-aux')?.value||'').trim();
+    const mat=window.__fmTermMat;
+    if(mat!=='si'&&mat!=='no'){err('Indica si se utilizó material de almacén.');return;}
+    let almNom=null;
+    if(mat==='si'){
+      const sel=document.getElementById('fm-term-alm');
+      almNom=sel&&sel.value?(sel.options[sel.selectedIndex].text||sel.value):(document.getElementById('fm-term-alm-txt')?.value||'').trim();
+      if(!almNom){err('Indica de cuál almacén salió el material.');return;}
+    }
+    const matDet=(document.getElementById('fm-term-mat-det')?.value||'').trim();
+    const firmante=(document.getElementById('fm-term-firmante')?.value||'').trim();
+    if(!firmante){err('Escribe el nombre de quien firma de conformidad.');return;}
+    if(!firmaTieneTrazo('fm-term-firma')){err('Falta la firma de conformidad.');return;}
+    extra={auxiliar:aux||null,material:{usado:mat==='si',almacen:almNom,detalle:matDet||null},firmante:firmante,firma:firmaExportar('fm-term-firma')};
+  }
   if(btn){btn.disabled=true;btn.textContent='Subiendo evidencias…';}
   try{
     const ahora=new Date().toISOString(), quien=opsSvMiNombre();
     if(ev.orden_servicio.length&&res==='finalizado')await fmEvGuardar(id,'orden_servicio',ev.orden_servicio,'Cierre de visita');
     if(ev.foto.length&&res!=='no_realizado')await fmEvGuardar(id,'foto',ev.foto,res==='finalizado'?'Cierre de visita':'Visita sin finalizar');
+    if(extra.firma){if(btn)btn.textContent='Subiendo firma…';await fmEvGuardar(id,'firma',[extra.firma],'Firma de conformidad · '+extra.firmante);}
+    let nVid=0, videoFallo=false;
+    if(res!=='no_realizado'&&window.__fmTermVideo){
+      try{await fmEvGuardarVideo(id,window.__fmTermVideo,function(pct){if(btn)btn.textContent='Subiendo video… '+Math.round(pct)+'%';});nVid=1;}
+      catch(ve){console.error('[OPS video cierre]',ve);videoFallo=true;}
+    }
     if(btn)btn.textContent='Guardando…';
     const ub=await herrObtenerUbicacion();
     const nDoc=res==='finalizado'?ev.orden_servicio.length:0, nFoto=res!=='no_realizado'?ev.foto.length:0;
-    const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:mb?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0,evidencias:{documentos:nDoc,fotos:nFoto}};
+    const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:mb?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0,evidencias:{documentos:nDoc,fotos:nFoto,videos:nVid,firma:!!extra.firma},
+      tecnicoAuxiliar:extra.auxiliar,materialAlmacen:extra.material,firmante:extra.firmante};
     const cambios={atenciones:(f.atenciones||[]).concat([visita]),pausaActiva:null,
-      evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
+      evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,evidenciasVideos:(Number(f.evidenciasVideos)||0)+nVid,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
+    if(extra.firmante)cambios.firmaConformidad={nombre:extra.firmante,en:ahora,por:quien};
+    if(extra.auxiliar)cambios.tecnicoAuxiliar=extra.auxiliar;
+    if(extra.material)cambios.materialAlmacen=extra.material;
     if(res==='finalizado'){
       cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde='app_flotilla'; cambios.evidenciaCompleta=true;
       if(!f.primerArriboEn)cambios.primerArriboEn=f.iniciadoEn||ahora;
@@ -7456,12 +7575,16 @@ window.fmOpsServGuardarTermino=async function(id){
     }
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
     const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
-    await opsSvComentario(id,etiqueta+' '+(txt||'Servicio terminado desde la app.')+(nDoc+nFoto?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s))':''),res);
+    const resumenExtra=(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'');
+    await opsSvComentario(id,etiqueta+' '+(txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);
     const verbo=res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
     await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+opsSvTitulo(f)+(res==='finalizado'?'.':': '+visita.motivo+' · '+(txt.length>100?txt.slice(0,100)+'…':txt)),id);
     window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
+    if(window.__fmTermVideo&&window.__fmTermVideo.url){try{URL.revokeObjectURL(window.__fmTermVideo.url);}catch(e){}}
+    window.__fmTermVideo=null; window.__fmTermMat=null;
     document.getElementById('fm-ops-term')?.remove();
-    toast(res==='finalizado'?'Servicio finalizado con evidencias. Se avisó a Operaciones.':'Registrado. Se avisó a Operaciones.','ok');
+    if(videoFallo)toast('El servicio se guardó, pero el video no se pudo subir. Avisa a Operaciones.','err');
+    else toast(res==='finalizado'?'Servicio finalizado con evidencias. Se avisó a Operaciones.':'Registrado. Se avisó a Operaciones.','ok');
   }catch(e){
     console.error('[OPS cerrar visita]',e);
     err(/bucket|row-level|policy|not found/i.test(String(e&&e.message||''))?'No se pudieron subir las fotos (almacenamiento). Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo (las fotos siguen aquí).');
