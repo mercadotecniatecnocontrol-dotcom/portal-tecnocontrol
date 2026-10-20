@@ -7072,7 +7072,7 @@ function fmOpsServHTML(){
       const tel=f.contactoWhatsapp||f.contactoTelefono||'';
       return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">'+
         '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">'+
-          '<span style="font-size:10px;font-weight:800;color:#1D2E73;background:#EEF2FF;padding:2px 8px;border-radius:8px">'+opsSvEsc(opsSvTipo(f))+'</span>'+
+          '<span style="display:inline-flex;gap:5px;flex-wrap:wrap">'+(fmOpsEsPoliza(f)?'<span style="font-size:10px;font-weight:900;color:#fff;background:#7C3AED;padding:2px 8px;border-radius:8px">PÓLIZA</span>':'<span style="font-size:10px;font-weight:900;color:#fff;background:#1D2E73;padding:2px 8px;border-radius:8px">SERVICIO TÉCNICO</span>')+'<span style="font-size:10px;font-weight:800;color:#1D2E73;background:#EEF2FF;padding:2px 8px;border-radius:8px">'+opsSvEsc(opsSvTipo(f))+'</span></span>'+
           '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;'+(enProc?'background:#DBEAFE;color:#1E40AF':atrasado?'background:#FEE2E2;color:#B91C1C':esHoy?'background:#FEF3C7;color:#92400E':'background:#F1F5F9;color:#475569')+'">'+(enProc?'En proceso':atrasado?'Atrasado':esHoy?'Hoy':'Programado')+'</span>'+
         '</div>'+
         (function(){const ni=opsSvNombreInfo(f);return '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:2px">'+opsSvEsc(ni.titulo)+(ni.sinNombre?' <span style="font-size:10px;font-weight:800;color:#92400E;background:#FEF3C7;border-radius:6px;padding:1px 6px;vertical-align:middle">Sin nombre comercial</span>':'')+'</div>'+
@@ -7087,10 +7087,11 @@ function fmOpsServHTML(){
         (f.pausaActiva?'<div style="background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#9A3412"><b>En pausa</b> desde '+opsSvEsc(opsSvHora(f.pausaActiva.desde))+' · '+opsSvEsc(f.pausaActiva.motivo||'')+(f.pausaActiva.minutosEstimados?' · ~'+f.pausaActiva.minutosEstimados+' min':'')+
           '<button onclick="fmOpsServReanudar(\''+f.id+'\',this)" style="display:block;width:100%;margin-top:7px;padding:9px;background:#EA580C;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Reanudar servicio</button></div>'
           :'<button onclick="fmOpsServPausa(\''+f.id+'\')" style="width:100%;padding:9px;margin-bottom:7px;background:#FFF7ED;border:1.5px solid #FDBA74;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#9A3412;cursor:pointer">Tiempo muerto / pausa (avisa a Operaciones)</button>')+
+        (fmOpsEsPoliza(f)?'<button onclick="fmOpsAbrirPolizas(\''+f.id+'\')" style="width:100%;padding:12px;margin-bottom:7px;background:#7C3AED;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:900;color:#fff;cursor:pointer">Llenar la póliza en la app de Pólizas</button>'+(f.polizaAbiertaEn?'<div style="font-size:10.5px;color:#6D28D9;margin:-3px 0 7px;text-align:center">Abriste la app de Pólizas el '+opsSvEsc(opsSvFecha(f.polizaAbiertaEn))+'. Al terminar allá, regresa y toca «Cerrar servicio».</div>':''):'')+
         '<button onclick="fmOpsServDetalle(\''+f.id+'\')" style="width:100%;padding:10px;margin-bottom:7px;background:#1D2E73;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Ver todo: herramienta, material y datos</button>'+
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
           (enProc
-            ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#1E40AF;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Terminar visita</button>'
+            ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#1E40AF;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Cerrar servicio</button>'
             :(atrasado?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#B91C1C;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Cerrar servicio</button>'
               :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>'))+
           '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:9px;background:#fff;border:1.5px solid #CBD5E1;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#334155;cursor:pointer">Comentar</button>'+
@@ -7414,34 +7415,22 @@ const OPS_NO_REAL_MOTIVOS=['Me mandaron a otro servicio','Se atendió una urgenc
 // ── Campos de SERVICIO TECNICO (reemplazo de Connecteam, 20-oct-2026) ──
 // Técnico auxiliar, material de almacén (sí/no + cuál almacén), video opcional y firma de conformidad.
 // Se piden al cerrar como "Quedó resuelto" o "Atendido, sin finalizar"; no en "No se realizó".
-function fmTermExtraHTML(){
-  const lbl=function(t,ob){return '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">'+t+(ob?' <span style="color:#DC2626">*</span>':'')+'</div>';};
-  const inp='width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;margin-bottom:12px;background:#fff';
+const FM_TERM_INP='width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px;margin-bottom:12px;background:#fff';
+function fmTermTitTxt(n,t,ob){return '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;background:#1D2E73;color:#fff;font-size:10.5px;font-weight:900;margin-right:6px">'+n+'</span>'+t+(ob?' <span style="color:#DC2626">*</span>':'');}
+function fmTermTit(n,t,ob){return '<div style="font-size:12.5px;font-weight:800;color:#0A1628;margin-bottom:6px">'+fmTermTitTxt(n,t,ob)+'</div>';}
+function fmTermMaterialHTML(){
   const chip='padding:9px 18px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12.5px;font-weight:800;color:#334155';
-  return '<div id="fm-term-extra" style="display:none">'+
-    lbl('Técnico auxiliar')+
-    '<input id="fm-term-aux" type="text" placeholder="Nombre del técnico que te apoyó (si aplica)" style="'+inp+'">'+
-    lbl('¿Se utilizó material de almacén?',true)+
-    '<div id="fm-term-mat" style="display:flex;gap:8px;margin-bottom:10px">'+
+  return fmTermTit('8','¿Se utilizó material de almacén?',true)+
+    '<div id="fm-term-mat" style="display:flex;gap:8px;margin-bottom:12px">'+
       '<button type="button" data-v="si" onclick="fmTermMatSel(this)" style="'+chip+'">Sí</button>'+
       '<button type="button" data-v="no" onclick="fmTermMatSel(this)" style="'+chip+'">No</button>'+
     '</div>'+
     '<div id="fm-term-mat-si" style="display:none">'+
-      lbl('¿De cuál almacén?',true)+
-      '<select id="fm-term-alm" style="'+inp+'"><option value="">Cargando almacenes…</option></select>'+
-      '<input id="fm-term-alm-txt" type="text" placeholder="Escribe el almacén" style="'+inp+';display:none">'+
-      lbl('Material usado')+
-      '<input id="fm-term-mat-det" type="text" placeholder="Ej. 2 mangueras 3/4, 1 breakaway" style="'+inp+'">'+
-    '</div>'+
-    lbl('Video de evidencia')+
-    '<div id="fm-term-video" style="margin-bottom:12px">'+fmTermVideoHTML()+'</div>'+
-    lbl('Firma de conformidad',true)+
-    '<input id="fm-term-firmante" type="text" placeholder="Nombre de quien firma (encargado de la estación)" style="'+inp+'">'+
-    '<div style="border:1.5px dashed #94A3B8;border-radius:10px;background:#F8FAFC;margin-bottom:6px">'+
-      '<canvas id="fm-term-firma" width="320" height="170" style="display:block;width:100%;height:170px;touch-action:none;border-radius:10px"></canvas>'+
-    '</div>'+
-    '<button type="button" onclick="limpiarFirma(\'fm-term-firma\')" style="padding:7px 14px;border-radius:8px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#475569;margin-bottom:12px">Limpiar firma</button>'+
-  '</div>';
+      fmTermTit('9','¿De cuál almacén?',true)+
+      '<select id="fm-term-alm" style="'+FM_TERM_INP+'"><option value="">Cargando almacenes…</option></select>'+
+      '<input id="fm-term-alm-txt" type="text" placeholder="Escribe el almacén" style="'+FM_TERM_INP+';display:none">'+
+      '<input id="fm-term-mat-det" type="text" placeholder="Material usado (ej. 2 mangueras 3/4, 1 breakaway)" style="'+FM_TERM_INP+'">'+
+    '</div>';
 }
 window.fmTermMatSel=function(b){
   document.querySelectorAll('#fm-term-mat button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';});
@@ -7522,40 +7511,82 @@ async function fmOpsCerrarCuadrilla(f,id,quien,ahora){
   }
   return gemelos.length;
 }
+// ── Pólizas (21-oct-2026, Glen): los servicios de póliza se llenan en la app de Pólizas
+// (j2tecno-app). En Flotilla la tarjeta dice PÓLIZA o SERVICIO TÉCNICO, y la póliza trae
+// un botón que abre esa app. Al terminar allá, el técnico cierra el servicio aquí marcando
+// «Ya llené la póliza en la app de Pólizas» (no se le piden otra vez fotos ni firma).
+const FM_POLIZAS_URL='https://j2tecno-app.expo.app/';
+function fmOpsEsPoliza(f){
+  if(!f)return false;
+  const txt=[f.categoriaServicio,f.tipoServicioDemo,f.conceptoGeneral,f.servicioNombre,f.tipoServicio,
+    (f.serviciosProgramados||[]).map(function(x){return x&&x.nombre;}).join(' '),
+    (function(){try{return opsSvTipo(f);}catch(e){return '';}})()].filter(Boolean).join(' ');
+  return /p[oó]liza/i.test(txt);
+}
+window.fmOpsAbrirPolizas=async function(id){
+  const f=misOpsServ.find(function(x){return x.id===id;});
+  const url=FM_POLIZAS_URL+(f?('?folio='+encodeURIComponent(f.folioClienteId||f.folioOS||f.id)+'&estacion='+encodeURIComponent(f.estacionPermiso||opsSvTitulo(f)||'')):'');
+  window.open(url,'_blank','noopener');
+  if(f&&!f.polizaAbiertaEn){
+    try{await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({polizaAbiertaEn:new Date().toISOString(),polizaAbiertaPor:opsSvMiNombre()});}catch(e){}
+  }
+};
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
   window.__fmTermVideo=null; window.__fmTermMat=null;
   let sinOrden=false; try{sinOrden=await fmEvSinOrden(f);}catch(e){}
   window.__fmTermSinOrden=sinOrden;
+  const esPol=fmOpsEsPoliza(f); window.__fmTermPoliza=esPol;
   document.getElementById('fm-ops-term')?.remove();
   const chips=function(lista,cont){return '<div id="'+cont+'" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+lista.map(function(m){return '<button type="button" onclick="fmOpsPausaMotivoSel(this,\''+cont+'\')" data-m="'+opsSvEsc(m)+'" style="padding:8px 10px;border-radius:20px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#334155">'+opsSvEsc(m)+'</button>';}).join('')+'</div>';};
+  const ni=opsSvNombreInfo(f), e=ni.e||{};
+  const cliente=f.clienteNombre||f.facturarA||e.razonSocial||f.estacionRazonSocial||'—';
+  const fechaServ=f.iniciadoEn||f.fechaProgramada;
+  const ro=function(n,t,v,ayuda){return fmTermTit(n,t,false)+'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:13.5px;font-weight:700;color:#0A1628;margin-bottom:'+(ayuda?'3px':'12px')+'">'+opsSvEsc(v||'—')+'</div>'+(ayuda?'<div style="font-size:11px;color:#64748B;margin-bottom:12px">'+ayuda+'</div>':'');};
   const ov=document.createElement('div'); ov.id='fm-ops-term';
   ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
   ov.innerHTML=
     '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 22px);max-height:92vh;overflow-y:auto">'+
-      '<div style="font-size:15px;font-weight:800;color:#0A1628;margin-bottom:2px">Cerrar visita</div>'+
-      '<div style="font-size:11.5px;color:#64748B;margin-bottom:12px">'+opsSvEsc(opsSvTitulo(f))+' · '+opsSvEsc(opsSvTipo(f))+(f.folioClienteId||f.folioOS?' · '+opsSvEsc(f.folioClienteId||f.folioOS):'')+'</div>'+
-      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Cómo quedó?</div>'+
+      '<div style="font-size:15px;font-weight:900;color:#0A1628;margin-bottom:2px">Cerrar servicio · '+(esPol?'PÓLIZA':'SERVICIO TÉCNICO')+'</div>'+
+      '<div style="font-size:11.5px;color:#64748B;margin-bottom:8px">'+opsSvEsc(opsSvTitulo(f))+' · '+opsSvEsc(opsSvTipo(f))+'</div>'+
+      '<div style="font-size:11.5px;color:#1E3A8A;background:#EFF6FF;border-radius:10px;padding:9px 11px;margin-bottom:14px;line-height:1.45">Son los mismos datos que pedía Connecteam, en el mismo orden. <b>Nada se sube mientras llenas</b>: las fotos, el video y la firma se suben al expediente del servicio cuando tocas <b>«Guardar y cerrar servicio»</b>, al final.</div>'+
+      (esPol?'<div style="font-size:12px;color:#5B21B6;background:#F5F3FF;border:1.5px solid #C4B5FD;border-radius:10px;padding:10px 11px;margin-bottom:14px;line-height:1.45"><b>Este servicio es PÓLIZA.</b> El checklist y las evidencias de la póliza se llenan en la app de Pólizas.<button type="button" onclick="fmOpsAbrirPolizas(\''+id+'\')" style="display:block;width:100%;margin-top:8px;padding:10px;border:none;border-radius:8px;background:#7C3AED;color:#fff;font-family:inherit;font-size:12.5px;font-weight:900">Abrir la app de Pólizas</button><label style="display:flex;gap:8px;align-items:center;margin-top:9px;font-weight:700"><input type="checkbox" id="fm-term-pol-ok" style="width:18px;height:18px"> Ya llené la póliza en la app de Pólizas</label></div>':'')+
+      ro('1','Cliente',cliente)+
+      ro('2','Fecha del servicio',opsSvFecha(fechaServ),f.iniciadoEn?'Hora real en que tocaste «Iniciar servicio».':'Fecha programada por Operaciones.')+
+      ro('3','Razón social',e.razonSocial||f.estacionRazonSocial||cliente)+
+      fmTermTit('4','No. folio / O.S.',true)+
+      '<input id="fm-term-os" type="text" inputmode="numeric" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Número de la orden de servicio en papel (ej. 4362)" style="'+FM_TERM_INP+'">'+
+      ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
+      ro('5','Estación de servicio',ni.titulo,'La ubicación GPS se toma sola cuando guardas, desde donde estás.')+
+      '<div id="fm-term-bloq-fin">'+
+        (sinOrden?fmTermTit('6','Orden de servicio',false)+'<div style="font-size:11.5px;color:#0E7490;background:#ECFEFF;border-radius:8px;padding:7px 10px;margin-bottom:12px">Este servicio no lleva orden de servicio: solo evidencia fotográfica.</div>'
+          :fmEvPickerHTML('orden_servicio',fmTermTitTxt('6','Orden de servicio',!esPol),'Foto completa y clara de la orden de servicio en papel, ya firmada. Puedes subir varias si son varias hojas.'))+
+      '</div>'+
+      '<div style="font-size:12.5px;font-weight:800;color:#0A1628;margin-bottom:6px" id="fm-term-lbl">'+fmTermTitTxt('7','Descripción rápida del servicio realizado',false)+'</div>'+
+      '<textarea id="fm-term-txt" rows="3" placeholder="Qué se hizo (ej. se cambió la tarjeta del dispensario 2 y se probó el despacho)." style="'+FM_TERM_INP+'"></textarea>'+
+      fmTermMaterialHTML()+
+      fmTermTit('10','¿Se concluyó satisfactoriamente el servicio?',true)+
       '<div id="fm-term-res" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">'+
-        '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#15803D">Quedó resuelto</button>'+
-        '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#B45309">Atendido, sin finalizar</button>'+
-        '<button type="button" data-r="no_realizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#64748B">No se realizó</button>'+
+        '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#15803D">Sí</button>'+
+        '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#B45309">No: se atendió, falta terminar</button>'+
+        '<button type="button" data-r="no_realizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#64748B">No: no se pudo realizar</button>'+
       '</div>'+
-      '<div id="fm-term-bloq-fin" style="display:none">'+
-        (sinOrden?'<div style="font-size:11.5px;color:#0E7490;background:#ECFEFF;border-radius:8px;padding:7px 10px;margin-bottom:10px">Este servicio no lleva orden de servicio: solo fotos del trabajo.</div>'
-          :fmEvPickerHTML('orden_servicio','Orden de servicio o lista de inspección <span style="color:#DC2626">*</span>','Foto completa y clara del documento firmado (servicio en estación: orden de servicio; servicio a unidad: lista de inspección).'))+
-      '</div>'+
-      '<div id="fm-term-bloq-fotos" style="display:none">'+fmEvPickerHTML('foto','Fotos del trabajo <span style="color:#DC2626">*</span>','Antes y después, lo que se cambió o reparó.')+'</div>'+
-      '<div id="fm-term-nofin" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se finalizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+'</div>'+
-      '<div id="fm-term-noreal" style="display:none"><div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">¿Por qué no se realizó? <span style="color:#DC2626">*</span></div>'+chips(OPS_NO_REAL_MOTIVOS,'fm-term-motivos2')+'</div>'+
-      fmTermExtraHTML()+
-      '<div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px" id="fm-term-lbl">Comentario</div>'+
-      '<textarea id="fm-term-txt" rows="3" placeholder="Describe lo que hiciste y lo que falta (ej. se cambió la tarjeta, falta el sensor que pidió Compras)." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:10px;padding:10px;font-family:inherit;font-size:14px"></textarea>'+
-      '<div id="fm-term-msg" style="font-size:12px;color:#B91C1C;min-height:16px;margin:6px 0"></div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div id="fm-term-nofin" style="display:none">'+fmTermTit('11','Si tu respuesta fue no, ¿por qué?',true)+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+'</div>'+
+      '<div id="fm-term-noreal" style="display:none">'+fmTermTit('11','Si tu respuesta fue no, ¿por qué?',true)+chips(OPS_NO_REAL_MOTIVOS,'fm-term-motivos2')+'</div>'+
+      '<div id="fm-term-bloq-fotos">'+fmEvPickerHTML('foto',fmTermTitTxt('12','Evidencia del servicio realizado',!esPol),'Fotos del trabajo: antes y después, lo que se cambió o reparó, placas y precintos. Sube todas las que necesites.')+'</div>'+
+      fmTermTit('13','Video de evidencia',false)+
+      '<div id="fm-term-video" style="margin-bottom:12px">'+fmTermVideoHTML()+'</div>'+
+      fmTermTit('14','Técnico auxiliar',false)+
+      '<input id="fm-term-aux" type="text" value="'+opsSvEsc(((f.tecnicosAsignadosNombres||[]).filter(function(n){return n&&n!==opsSvMiNombre();})).join(', '))+'" placeholder="Nombre del técnico que te apoyó (si aplica)" style="'+FM_TERM_INP+'">'+
+      fmTermTit('15','Firma de conformidad',!esPol)+
+      '<input id="fm-term-firmante" type="text" placeholder="Nombre de quien firma (encargado de la estación)" style="'+FM_TERM_INP+'">'+
+      '<div style="border:1.5px dashed #94A3B8;border-radius:10px;background:#F8FAFC;margin-bottom:6px"><canvas id="fm-term-firma" width="320" height="170" style="display:block;width:100%;height:170px;touch-action:none;border-radius:10px"></canvas></div>'+
+      '<button type="button" onclick="limpiarFirma(\'fm-term-firma\')" style="padding:7px 14px;border-radius:8px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:700;color:#475569;margin-bottom:12px">Limpiar firma</button>'+
+      '<div id="fm-term-msg" style="font-size:12.5px;color:#B91C1C;min-height:16px;margin:6px 0;font-weight:700"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1.6fr;gap:8px">'+
         '<button onclick="document.getElementById(\'fm-ops-term\').remove()" style="padding:12px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Cancelar</button>'+
-        '<button id="fm-term-btn" onclick="fmOpsServGuardarTermino(\''+id+'\')" style="padding:12px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Guardar</button>'+
+        '<button id="fm-term-btn" onclick="fmOpsServGuardarTermino(\''+id+'\')" style="padding:12px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Guardar y cerrar servicio</button>'+
       '</div>'+
     '</div>';
   document.body.appendChild(ov);
@@ -7568,11 +7599,7 @@ window.fmOpsTermRes=function(b){
   const r=b.getAttribute('data-r');
   b.style.background=r==='finalizado'?'#F0FDF4':r==='no_finalizado'?'#FFF7ED':'#F1F5F9'; b.style.borderColor=r==='finalizado'?'#15803D':r==='no_finalizado'?'#EA580C':'#64748B'; b.setAttribute('data-on','1');
   const ver=function(idx,on){const e=document.getElementById(idx);if(e)e.style.display=on?'block':'none';};
-  ver('fm-term-bloq-fin',r==='finalizado'); ver('fm-term-bloq-fotos',r!=='no_realizado');
   ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
-  ver('fm-term-extra',r!=='no_realizado');
-  const lbl=document.getElementById('fm-term-lbl');
-  if(lbl)lbl.innerHTML=r==='finalizado'?'Descripción rápida del servicio realizado (opcional)':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
 };
 window.fmOpsServGuardarTermino=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
@@ -7580,16 +7607,20 @@ window.fmOpsServGuardarTermino=async function(id){
   const txt=(document.getElementById('fm-term-txt')?.value||'').trim();
   const msg=document.getElementById('fm-term-msg'), btn=document.getElementById('fm-term-btn');
   const err=function(t){if(msg)msg.textContent=t;};
-  if(!rb){err('Elige cómo quedó.');return;}
+  const osNum=(document.getElementById('fm-term-os')?.value||'').trim();
+  const esPol=!!window.__fmTermPoliza;
+  if(!rb){err('Falta el punto 10: ¿Se concluyó satisfactoriamente el servicio?');return;}
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
+  if(res!=='no_realizado'&&!osNum){err('Falta el punto 4: No. folio / O.S.');return;}
+  if(esPol&&res!=='no_realizado'&&!document.getElementById('fm-term-pol-ok')?.checked){err('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');return;}
   const mb=document.querySelector(res==='no_realizado'?'#fm-term-motivos2 button[data-on]':'#fm-term-motivos button[data-on]');
   if(res==='finalizado'){
-    if(!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta la foto de la orden de servicio o lista de inspección.');return;}
-    if(!ev.foto.length){err('Falta al menos una foto del trabajo.');return;}
+    if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta el punto 6: foto de la Orden de servicio.');return;}
+    if(!esPol&&!ev.foto.length){err('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');return;}
   }else if(res==='no_finalizado'){
     if(!mb){err('Elige por qué no se finalizó.');return;}
-    if(!ev.foto.length){err('Sube al menos una foto de lo que se hizo.');return;}
-    if(txt.length<10){err('Explica qué se hizo y qué falta (mínimo una frase).');return;}
+    if(!esPol&&!ev.foto.length){err('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');return;}
+    if(txt.length<10){err('En el punto 7 explica qué se hizo y qué falta (mínimo una frase).');return;}
   }else{
     if(!mb){err('Elige por qué no se realizó.');return;}
     if(txt.length<5){err('Escribe un detalle.');return;}
@@ -7599,18 +7630,19 @@ window.fmOpsServGuardarTermino=async function(id){
   if(res!=='no_realizado'){
     const aux=(document.getElementById('fm-term-aux')?.value||'').trim();
     const mat=window.__fmTermMat;
-    if(mat!=='si'&&mat!=='no'){err('Indica si se utilizó material de almacén.');return;}
+    if(!esPol&&mat!=='si'&&mat!=='no'){err('Falta el punto 8: ¿Se utilizó material de almacén?');return;}
     let almNom=null;
     if(mat==='si'){
       const sel=document.getElementById('fm-term-alm');
       almNom=sel&&sel.value?(sel.options[sel.selectedIndex].text||sel.value):(document.getElementById('fm-term-alm-txt')?.value||'').trim();
-      if(!almNom){err('Indica de cuál almacén salió el material.');return;}
+      if(!almNom){err('Falta el punto 9: ¿De cuál almacén?');return;}
     }
     const matDet=(document.getElementById('fm-term-mat-det')?.value||'').trim();
     const firmante=(document.getElementById('fm-term-firmante')?.value||'').trim();
-    if(!firmante){err('Escribe el nombre de quien firma de conformidad.');return;}
-    if(!firmaTieneTrazo('fm-term-firma')){err('Falta la firma de conformidad.');return;}
-    extra={auxiliar:aux||null,material:{usado:mat==='si',almacen:almNom,detalle:matDet||null},firmante:firmante,firma:firmaExportar('fm-term-firma')};
+    const hayFirma=firmaTieneTrazo('fm-term-firma');
+    if(!esPol&&!firmante){err('Punto 15: escribe el nombre de quien firma de conformidad.');return;}
+    if(!esPol&&!hayFirma){err('Falta el punto 15: Firma de conformidad.');return;}
+    extra={auxiliar:aux||null,material:(mat==='si'||mat==='no')?{usado:mat==='si',almacen:almNom,detalle:matDet||null}:null,firmante:firmante||null,firma:hayFirma?firmaExportar('fm-term-firma'):null};
   }
   if(btn){btn.disabled=true;btn.textContent='Subiendo evidencias…';}
   try{
@@ -7627,10 +7659,12 @@ window.fmOpsServGuardarTermino=async function(id){
     const ub=await herrObtenerUbicacion();
     const nDoc=res==='finalizado'?ev.orden_servicio.length:0, nFoto=res!=='no_realizado'?ev.foto.length:0;
     const visita={tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:res,motivo:mb?mb.getAttribute('data-m'):null,detalle:txt||null,ubicacion:ub||null,tiempoMuertoMin:f.tiempoMuertoMin||0,evidencias:{documentos:nDoc,fotos:nFoto,videos:nVid,firma:!!extra.firma},
-      tecnicoAuxiliar:extra.auxiliar,materialAlmacen:extra.material,firmante:extra.firmante};
+      tecnicoAuxiliar:extra.auxiliar,materialAlmacen:extra.material,firmante:extra.firmante,osTecnico:osNum||null,poliza:esPol||undefined,polizaLlenadaEnApp:esPol&&res!=='no_realizado'?true:undefined};
     const cambios={atenciones:(f.atenciones||[]).concat([visita]),pausaActiva:null,
       evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,evidenciasVideos:(Number(f.evidenciasVideos)||0)+nVid,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
     if(extra.firmante)cambios.firmaConformidad={nombre:extra.firmante,en:ahora,por:quien};
+    if(osNum){cambios.osTecnico=osNum; if(!f.folioOS)cambios.folioOS=osNum;}
+    if(esPol&&res!=='no_realizado'){cambios.polizaLlenadaEnApp=true;cambios.polizaLlenadaEn=ahora;}
     if(extra.auxiliar)cambios.tecnicoAuxiliar=extra.auxiliar;
     if(extra.material)cambios.materialAlmacen=extra.material;
     if(res==='finalizado'){
@@ -7644,7 +7678,7 @@ window.fmOpsServGuardarTermino=async function(id){
     let nCuadrilla=0;
     if(res==='finalizado'){try{nCuadrilla=await fmOpsCerrarCuadrilla(f,id,quien,ahora);}catch(ce){console.warn('[OPS cuadrilla]',ce);}}
     const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
-    const resumenExtra=(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'');
+    const resumenExtra=(osNum?' · O.S. '+osNum:'')+(esPol&&res!=='no_realizado'?' · Póliza llenada en la app de Pólizas':'')+(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'');
     await opsSvComentario(id,etiqueta+' '+(txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);
     const verbo=res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
     await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+opsSvTitulo(f)+(res==='finalizado'?'.':': '+visita.motivo+' · '+(txt.length>100?txt.slice(0,100)+'…':txt)),id);
@@ -7794,7 +7828,7 @@ window.fmOpsServDetalle=async function(id){
     sec('Seguimiento',coms.length?coms.map(function(c){return '<div style="padding:7px 0;border-bottom:1px solid #F1F5F9"><div style="font-size:10.5px;color:#64748B;font-weight:700">'+e(c.autor||'')+(c.createdAt?' · '+e(opsSvFecha(String(c.createdAt).slice(0,16))):'')+'</div><div style="font-size:12.5px;color:#0A1628;line-height:1.4">'+e(c.texto)+'</div></div>';}).join(''):'')+
     (!herr.length&&!mat.length&&!seg.length?'<div style="font-size:12px;color:#64748B;text-align:center;padding:6px 10px 14px">Este servicio no tiene herramienta ni material capturados. Si te falta algo, usa "Comentar" para avisar a Operaciones.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">'+
-      (f.iniciadoEn?'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServTerminar(\''+f.id+'\')" style="padding:12px;background:#1E40AF;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Terminar visita</button>'
+      (f.iniciadoEn?'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServTerminar(\''+f.id+'\')" style="padding:12px;background:#1E40AF;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Cerrar servicio</button>'
         :'<button onclick="document.getElementById(\'fm-ops-det\').remove();fmOpsServIniciar(\''+f.id+'\',null)" style="padding:12px;background:#15803D;border:none;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Iniciar servicio</button>')+
       '<button onclick="fmOpsServComentar(\''+f.id+'\')" style="padding:12px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Comentar</button>'+
     '</div>';
