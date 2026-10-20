@@ -6947,6 +6947,48 @@ function opsSvAudio(){
 // Los navegadores solo dejan sonar audio después de un toque: se "desbloquea" al primero.
 document.addEventListener('touchstart',function(){opsSvAudio();},{once:true,passive:true});
 document.addEventListener('click',function(){opsSvAudio();},{once:true});
+// ── Tipo de aviso por usuario (20-oct-2026, Glen) ──
+// Por defecto la app usa los sonidos nuevos del portal (notificaciones.js: tarjeta urgente,
+// 3 notas que se repiten si nadie la atiende). La alarma sísmica de 10 s solo suena para
+// los usuarios a quienes un administrador se la activó desde el portal
+// (Operaciones → Técnicos → Alerta sísmica). Se guarda en Supabase: ops_alertas_usuario.
+let _fmSismica=null, _fmSismicaLeidaEn=0;
+async function fmOpsSismicaActiva(){
+  if(_fmSismica!==null&&Date.now()-_fmSismicaLeidaEn<5*60000)return _fmSismica;
+  try{
+    const sb=await fmvSb();
+    const r=await sb.from('ops_alertas_usuario').select('alerta_sismica').eq('correo',opsSvMiCorreo()).maybeSingle();
+    _fmSismica=!!(r&&r.data&&r.data.alerta_sismica);
+  }catch(e){if(_fmSismica===null)_fmSismica=false;}
+  _fmSismicaLeidaEn=Date.now();
+  return _fmSismica;
+}
+// aviso={titulo,texto} — decide entre alerta sísmica (si está activada) o el sonido nuevo del portal
+async function fmOpsAvisoSonoro(aviso){
+  if(await fmOpsSismicaActiva()){fmOpsAlarma(10);return;}
+  try{
+    if(window.tcNotif&&typeof window.tcNotif.agregar==='function'){
+      window.tcNotif.agregar({titulo:aviso.titulo,texto:aviso.texto||'',nivel:'urgente',modulo:aviso.modulo||'Mis servicios',grupo:'ops_app',ir:aviso.ir||{tipo:'fn',fn:'fmVista',args:['tareas']}});
+      try{if(navigator.vibrate)navigator.vibrate([250,120,250]);}catch(e){}
+      return;
+    }
+  }catch(e){console.warn('[OPS aviso]',e);}
+  fmOpsTonoSuave();
+}
+// Respaldo si notificaciones.js no cargó: 3 notas suaves (como la tarjeta urgente)
+function fmOpsTonoSuave(){
+  const ac=opsSvAudio(); if(!ac)return;
+  try{
+    const t0=ac.currentTime+0.03;
+    [659.25,880,1046.5].forEach(function(fr,i){
+      const o=ac.createOscillator(),g=ac.createGain(),t=t0+i*0.16;
+      o.type='sine';o.frequency.value=fr;o.connect(g);g.connect(ac.destination);
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.12,t+0.02);g.gain.exponentialRampToValueAtTime(0.0008,t+0.6);
+      o.start(t);o.stop(t+0.65);
+    });
+    if(navigator.vibrate)navigator.vibrate([250,120,250]);
+  }catch(e){}
+}
 function fmOpsAlarma(seg){
   fmOpsAlarmaParar();
   seg=seg||10;
@@ -6998,7 +7040,7 @@ function fmOpsAvisoSiguiente(){
       '</div>'+
     '</div>';
   document.body.appendChild(ov);
-  fmOpsAlarma(10);
+  fmOpsAvisoSonoro({titulo:'Nuevo servicio asignado',texto:[n.tipoServicio,n.estacion].filter(Boolean).join(' · ')});
 }
 window.fmOpsAvisoEnterado=async function(id,ver){
   fmOpsAlarmaParar();
@@ -7127,8 +7169,8 @@ function fmVigilarVence1h(){
       const falta=(v-ahora)/60000, clave=f.id+'|'+v;
       if(falta>0&&falta<=FM_ALARMA_ANTES_MIN&&!avisados[clave]){
         avisados[clave]=ahora; cambio=true;
-        if(window.tcNotif) window.tcNotif.agregar({titulo:'Folio vence en '+Math.round(falta)+' min', texto:(f.folioClienteId||f.folioOS||'')+' · '+opsSvTitulo(f), nivel:'urgente', modulo:'Mis servicios', ir:{tipo:'fn',fn:'fmVista',args:['tareas']}});
-        else { try{fmOpsAlarma(10);}catch(e){} toast('Folio '+(f.folioClienteId||f.folioOS||'')+' en '+opsSvTitulo(f)+' vence en '+Math.round(falta)+' min','err'); }
+        try{fmOpsAvisoSonoro({titulo:'Folio vence en '+Math.round(falta)+' min',texto:(f.folioClienteId||f.folioOS||'')+' · '+opsSvTitulo(f)});}catch(e){}
+        if(!window.tcNotif) toast('Folio '+(f.folioClienteId||f.folioOS||'')+' en '+opsSvTitulo(f)+' vence en '+Math.round(falta)+' min','err');
       }
     });
     Object.keys(avisados).forEach(function(k){if(ahora-avisados[k]>2*86400000){delete avisados[k];cambio=true;}});
@@ -7454,6 +7496,32 @@ async function fmEvGuardarVideo(folioId,v,onPct){
   await tc.subirArchivo(tc.BUCKET_VIDEOS,ruta,v.blob,mime,function(e){if(onPct)onPct(e);});
   await opsDb().collection(OPS_COL_FOLIOS).doc(folioId).collection('evidencias').add({tipo:'video',bucket:tc.BUCKET_VIDEOS,ruta:ruta,mime:mime,bytes:v.blob.size,por:opsSvMiNombre(),porCorreo:opsSvMiCorreo(),en:new Date().toISOString(),origen:'app_flotilla',nota:'Video de evidencia',orden:1});
 }
+// ── Cuadrilla (20-oct-2026, Glen): cuando dos o más técnicos van al MISMO servicio
+// (ej. pólizas, que se hacen de dos) y Operaciones les programó un folio a cada uno,
+// al finalizar uno se cierran también los de sus compañeros: se les quita de su
+// programación en la app y en el calendario general queda como terminado.
+// "Mismo servicio" = misma estación, mismo día programado y mismo tipo de servicio.
+// (Si es un solo folio con varios técnicos, ya se cierra para todos al guardarlo.)
+async function fmOpsCerrarCuadrilla(f,id,quien,ahora){
+  if(!f||!f.estacionCatalogoId)return 0;
+  const dia=String(f.fechaProgramada||'').slice(0,10); if(!dia)return 0;
+  const snap=await opsDb().collection(OPS_COL_FOLIOS).where('estacionCatalogoId','==',f.estacionCatalogoId).get();
+  const mismo=function(x){
+    return (x.servicioCatalogoId||'')===(f.servicioCatalogoId||'')&&(x.tipoFolio||'')===(f.tipoFolio||'')&&
+      (x.categoriaServicio||'')===(f.categoriaServicio||'')&&(x.conceptoGeneral||'')===(f.conceptoGeneral||'');
+  };
+  const gemelos=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).filter(function(x){
+    return x.id!==id&&!x.fechaSolucion&&x.cancelado!==true&&String(x.fechaProgramada||'').slice(0,10)===dia&&mismo(x);
+  });
+  for(const x of gemelos){
+    await opsDb().collection(OPS_COL_FOLIOS).doc(x.id).update({
+      fechaSolucion:ahora,completadoPor:quien,finalizadoDesde:'app_flotilla_cuadrilla',evidenciaCompleta:true,
+      iniciadoEn:null,pausaActiva:null,cerradoPorCuadrilla:{folioId:id,por:quien,en:ahora}
+    });
+    try{await opsSvComentario(x.id,'[Finalizado por cuadrilla] '+quien+' terminó este servicio en equipo. Las evidencias, la firma y el detalle están en el servicio que cerró '+quien+'.','finalizado');}catch(e){}
+  }
+  return gemelos.length;
+}
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
@@ -7504,7 +7572,7 @@ window.fmOpsTermRes=function(b){
   ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
   ver('fm-term-extra',r!=='no_realizado');
   const lbl=document.getElementById('fm-term-lbl');
-  if(lbl)lbl.innerHTML=r==='finalizado'?'Descripción rápida del servicio realizado <span style="color:#DC2626">*</span>':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
+  if(lbl)lbl.innerHTML=r==='finalizado'?'Descripción rápida del servicio realizado (opcional)':r==='no_finalizado'?'¿Qué se hizo y qué falta? <span style="color:#DC2626">*</span>':'Detalle <span style="color:#DC2626">*</span>';
 };
 window.fmOpsServGuardarTermino=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
@@ -7518,7 +7586,6 @@ window.fmOpsServGuardarTermino=async function(id){
   if(res==='finalizado'){
     if(!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta la foto de la orden de servicio o lista de inspección.');return;}
     if(!ev.foto.length){err('Falta al menos una foto del trabajo.');return;}
-    if(txt.length<10){err('Escribe una descripción rápida de lo que se hizo (mínimo una frase).');return;}
   }else if(res==='no_finalizado'){
     if(!mb){err('Elige por qué no se finalizó.');return;}
     if(!ev.foto.length){err('Sube al menos una foto de lo que se hizo.');return;}
@@ -7574,6 +7641,8 @@ window.fmOpsServGuardarTermino=async function(id){
       cambios.ultimoNoFinalizado={resultado:res,motivo:visita.motivo,detalle:txt,por:quien,en:ahora};
     }
     await opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios);
+    let nCuadrilla=0;
+    if(res==='finalizado'){try{nCuadrilla=await fmOpsCerrarCuadrilla(f,id,quien,ahora);}catch(ce){console.warn('[OPS cuadrilla]',ce);}}
     const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
     const resumenExtra=(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'');
     await opsSvComentario(id,etiqueta+' '+(txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);
@@ -7584,7 +7653,7 @@ window.fmOpsServGuardarTermino=async function(id){
     window.__fmTermVideo=null; window.__fmTermMat=null;
     document.getElementById('fm-ops-term')?.remove();
     if(videoFallo)toast('El servicio se guardó, pero el video no se pudo subir. Avisa a Operaciones.','err');
-    else toast(res==='finalizado'?'Servicio finalizado con evidencias. Se avisó a Operaciones.':'Registrado. Se avisó a Operaciones.','ok');
+    else toast(res==='finalizado'?('Servicio finalizado con evidencias. Se avisó a Operaciones.'+(nCuadrilla?' También se cerró para tu compañero de cuadrilla.':'')):'Registrado. Se avisó a Operaciones.','ok');
   }catch(e){
     console.error('[OPS cerrar visita]',e);
     err(/bucket|row-level|policy|not found/i.test(String(e&&e.message||''))?'No se pudieron subir las fotos (almacenamiento). Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo (las fotos siguen aquí).');

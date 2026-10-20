@@ -4044,6 +4044,7 @@
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel auditoría</button>` : ""}
                         ${gestion && opsPuedeCrear() ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
+                        ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAlertaSismica()" title="A quién le suena la alarma sísmica de 10 segundos en la app de Flotilla" style="background:#fef2f2;border:none;color:#991b1b;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Alerta sísmica</button>` : ""}
                         ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAccesos()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.key} Accesos a Operaciones</button>` : ""}
                     </div>
                 </div>
@@ -4064,6 +4065,76 @@
 
     window.opsFiltrarTec = function (v) { filtroTec = v || ""; opsRerenderConFoco(opsRenderTecnicos); };
     window.opsTecCambiarVista = function (v) { opsTecVista = v; opsRenderTecnicos(); };
+
+    // ── Alerta sísmica por usuario (20-oct-2026, Glen) ─────────────────────
+    // En la app de Flotilla, por defecto los avisos usan los sonidos nuevos del portal.
+    // Aquí un administrador de Operaciones elige a quién SÍ le suena la alarma sísmica
+    // de 10 segundos. Se guarda en Supabase (ops_alertas_usuario), por correo.
+    let opsSismicaAntes = new Map();
+    window.opsAbrirModalAlertaSismica = async function () {
+        if (!opsPuedeHacer("admin_operaciones")) { alert("Solo los administradores de Operaciones pueden cambiar esto."); return; }
+        const wrap = document.getElementById("ops-modal-wrap");
+        const gente = cacheTec.filter(t => t.estatus === "activo" && String(t.correo || "").trim())
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+        opsSismicaAntes = new Map();
+        try {
+            const sb = await opsSb();
+            const { data, error } = await sb.from("ops_alertas_usuario").select("correo,alerta_sismica");
+            if (error) throw error;
+            (data || []).forEach(r => opsSismicaAntes.set(String(r.correo).toLowerCase().trim(), !!r.alerta_sismica));
+        } catch (e) { alert("No se pudo leer la configuración de alertas: " + (e.message || e)); return; }
+        const sinCorreo = cacheTec.filter(t => t.estatus === "activo" && !String(t.correo || "").trim()).length;
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#fff;border-radius:14px;width:560px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;">
+                <div style="padding:20px 22px 10px;">
+                    <div style="font-weight:700;font-size:15px;color:#1e293b;">Alerta sísmica en la app de Flotilla</div>
+                    <div style="font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.5;">Normalmente, cuando le asignan un servicio a alguien, su teléfono suena con el aviso normal del portal (tres notas). A las personas que marques aquí les sonará, en cambio, la <b>alarma sísmica de 10 segundos</b>, que es mucho más fuerte. Úsala solo con quien no esté atendiendo los avisos.</div>
+                    <input type="text" placeholder="Buscar persona..." oninput="opsSismicaFiltrar(this.value)" style="margin-top:10px;width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;">
+                </div>
+                <div id="ops-sismica-lista" style="overflow-y:auto;padding:0 22px;flex:1;">
+                    ${gente.map(t => {
+                        const c = String(t.correo).toLowerCase().trim();
+                        return `<label class="ops-sismica-fila" data-n="${opsEsc((t.nombre || "").toLowerCase())}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                            <input type="checkbox" class="ops-sismica-check" value="${opsEsc(c)}" ${opsSismicaAntes.get(c) ? "checked" : ""} style="width:16px;height:16px;">
+                            ${opsTecAvatarHTML(t, 26)}
+                            <span style="flex:1;min-width:0;"><span style="font-size:12.5px;font-weight:600;color:#1e293b;">${opsEsc(t.nombre)}</span><br><span style="font-size:10.5px;color:#94a3b8;">${opsEsc(t.puesto || "Sin puesto")} · ${opsEsc(c)}</span></span>
+                        </label>`;
+                    }).join("") || `<div style="padding:18px;color:#94a3b8;font-size:12px;">No hay personas activas con correo.</div>`}
+                </div>
+                ${sinCorreo ? `<div style="padding:8px 22px 0;font-size:10.5px;color:#b45309;">${sinCorreo} persona(s) activa(s) no aparecen porque no tienen correo capturado (la app identifica a cada quien por su correo).</div>` : ""}
+                <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #f1f5f9;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="ops-sismica-guardar" onclick="opsGuardarAlertaSismica()" class="mkt-add-btn" style="background:#1D2E73;">Guardar</button>
+                </div>
+            </div>
+        </div>`;
+    };
+    window.opsSismicaFiltrar = function (v) {
+        const q = String(v || "").toLowerCase().trim();
+        document.querySelectorAll(".ops-sismica-fila").forEach(el => { el.style.display = !q || el.dataset.n.includes(q) ? "flex" : "none"; });
+    };
+    window.opsGuardarAlertaSismica = async function () {
+        if (!opsPuedeHacer("admin_operaciones")) return;
+        const btn = document.getElementById("ops-sismica-guardar");
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        try {
+            const ahora = new Date().toISOString(), yo = opsNombreActual();
+            const filas = Array.from(document.querySelectorAll(".ops-sismica-check"))
+                .filter(c => (opsSismicaAntes.get(c.value) || false) !== c.checked)
+                .map(c => ({ correo: c.value, alerta_sismica: c.checked, actualizado_por: yo, actualizado_en: ahora }));
+            if (filas.length) {
+                const sb = await opsSb();
+                const { error } = await sb.from("ops_alertas_usuario").upsert(filas, { onConflict: "correo" });
+                if (error) throw error;
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Alerta sísmica guardada", texto: filas.length ? filas.length + " cambio(s). En la app se aplica en máximo 5 minutos." : "No hubo cambios.", nivel: "normal", modulo: "Operaciones" });
+        } catch (e) {
+            alert("No se pudo guardar: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+        }
+    };
 
     // Revisión de personal administrativo: una lista con interruptor por persona.
     window.opsAbrirModalPersonalAdmin = function () {
