@@ -5263,7 +5263,7 @@ window.vpSetModulo = function(modulo, btn) {
     if(actEl) {
         if(modulo === 'crm') actEl.innerHTML = `<button onclick="vpNuevaOportunidad()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nueva</button>`;
         else if(modulo === 'cotizaciones') actEl.innerHTML = `<button onclick="vpNuevaCotizacion()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nueva</button>`;
-        else if(modulo === 'mapa') actEl.innerHTML = `<button onclick="vpNuevoCliente()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nuevo</button>`;
+        else if(modulo === 'mapa') actEl.innerHTML = vssBotonHeaderHTML() + `<button onclick="vpNuevoCliente()" style="padding:7px 12px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Space Grotesk',sans-serif;">+ Nuevo</button>`;
         else actEl.innerHTML = '';
     }
 
@@ -7126,3 +7126,19 @@ window.vssEnviar = async function(){
         const m = document.getElementById('vss-msg'); if(m) m.textContent = 'No se pudo enviar: ' + (e.message||e);
     }
 };
+
+/* Botón "Petición / diagnóstico" en el encabezado de Ventas (escritorio), junto a "+ Nuevo".
+ * El encabezado lo arma index.html; aquí solo se asegura que el botón esté siempre ahí. */
+function vssBotonHeaderHTML(){
+    return '<button id="vss-btn-header" onclick="ventasAbrirSolicitudServicio()" title="Pedir a Operaciones que revise algo con un cliente" style="padding:7px 12px;background:#1D2E73;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:\'Space Grotesk\',sans-serif;margin-right:6px;display:inline-flex;align-items:center;gap:5px;">'
+        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
+        + 'Petición / diagnóstico</button>';
+}
+setInterval(function(){
+    const act = document.getElementById('vp-header-actions');
+    if(!act || document.getElementById('vss-btn-header')) return;
+    const tit = document.getElementById('ventas-col-izq-titulo');
+    if(tit && /crm|cotizaci|calendario/i.test(tit.textContent||'')) return;
+    act.insertAdjacentHTML('afterbegin', vssBotonHeaderHTML());
+    if(getComputedStyle(act).display !== 'flex'){ act.style.display='flex'; act.style.alignItems='center'; }
+}, 1200);
