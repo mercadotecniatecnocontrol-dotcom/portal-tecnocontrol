@@ -1420,7 +1420,7 @@
     ];
     const OPS_ACC_ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"], ["dinero", "Ver dinero"]];
     // Pestañas que no son sección propia de la matriz: se rigen por otra sección.
-    const OPS_ACC_ALIAS = { gestionados: "calendario" };
+    const OPS_ACC_ALIAS = { gestionados: "calendario", revision: "folios" };
     const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
@@ -2166,6 +2166,7 @@
         clientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V7l9-4 9 4v14"/><path d="M9 21V12h6v9"/><path d="M9 8h.01M15 8h.01M12 8h.01"/></svg>',
         catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+        revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
         gestionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6l1 14h12l1-14"/><path d="M10 11l2 2 3-4"/></svg>',
     };
 
@@ -2173,10 +2174,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; return opsAccPuedeVer(id === "gestionados" ? "calendario" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; return opsAccPuedeVer(id === "gestionados" ? "calendario" : id === "revision" ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2229,6 +2230,7 @@
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
         else if (tab === "folios") opsRenderFolios();
+        else if (tab === "revision") opsRenderRevision();
         else if (tab === "calendario") opsRenderCalendario();
         else if (tab === "clientes") opsRenderClientes();
         else if (tab === "solicitudes") opsRenderSolicitudes();
@@ -2297,6 +2299,7 @@
                 try { opsAvisosProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos de programación:", e); }
                 try { opsAvisarVentasEstado(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Ventas:", e); }
                 if (tabActual === "folios") opsRenderFolios();
+                if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "vencimientos") opsPintarVencimientos();
                 if (opsFoliosVigilanciaBase) opsVigilarFoliosSeveridad();
@@ -8185,6 +8188,317 @@
                 <div>${opsEsc(c.causaNombre || "")}${c.solicito ? " · pidió " + opsEsc(c.solicito) : ""}${c.detalle ? " · " + opsEsc(c.detalle) : ""}</div>
                 <div style="font-size:10.5px;color:#94a3b8;">${opsEsc(c.por || "")} · ${c.en ? new Date(c.en).toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</div></div>`).join("")}</div>`;
     }
+
+    // ═══════════════ REVISIÓN DE CIERRES (21-oct-2026, Glen / Magali) ═══════════════
+    // Reemplaza el seguimiento que Magali hacía en Connecteam (Forms → Servicio Técnico / Póliza):
+    // buscar por O.S., anotar si se cobró algo, el número de cotización y el ID del folio del
+    // cliente, ponerle estatus (Working on it / Done), descargar el PDF con todo, mandar al
+    // cliente una liga con el reporte completo (con video) y bajar un ZIP ordenado para el Drive.
+    // Todo se guarda en el propio folio: revisionCierre = { estatus, cobro, cotizacion, nota, ... }.
+    const OPS_REV_ESTATUS = { por_revisar: ["Por revisar", "#b45309", "#fef3c7"], en_revision: ["En revisión", "#1d4ed8", "#dbeafe"], revisado: ["Revisado", "#15803d", "#dcfce7"] };
+    let opsRev = null;
+    function opsRevHoyISO(d) { const x = d || new Date(); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
+    function opsRevEstado() {
+        if (!opsRev) { const d = new Date(); d.setDate(d.getDate() - 30); opsRev = { desde: opsRevHoyISO(d), hasta: opsRevHoyISO(), cliente: "todos", tipo: "todos", estatus: "por_revisar", q: "" }; }
+        return opsRev;
+    }
+    function opsRevUltimaVisita(f) { const a = (f.atenciones || []).filter(x => x && x.fin); return a.length ? a[a.length - 1] : null; }
+    function opsRevFechaCierre(f) { const v = opsRevUltimaVisita(f); return String(f.fechaSolucion || (v && v.fin) || ""); }
+    function opsRevEsPoliza(f) {
+        const r = (typeof cacheServiciosCatalogo !== "undefined" ? cacheServiciosCatalogo : []).find(c => c.id === f.servicioCatalogoId);
+        const t = [f.categoriaServicio, f.tipoServicioDemo, f.conceptoGeneral, f.servicioNombre, r && r.nombre, (f.serviciosProgramados || []).map(x => x && x.nombre).join(" ")].filter(Boolean).join(" ");
+        return /p[oó]liza/i.test(t) || !!f.polizaLlenadaEnApp;
+    }
+    function opsRevCliente(f) { return String(f.clienteNombre || f.facturarA || f.estacionRazonSocial || "Sin cliente").trim(); }
+    function opsRevOS(f) { return String(f.osTecnico || f.folioOS || "").trim(); }
+    function opsRevLista() {
+        const s = opsRevEstado(), q = String(s.q || "").toLowerCase().trim();
+        return cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f))
+            .filter(f => { const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
+            .filter(f => s.cliente === "todos" || opsRevCliente(f) === s.cliente)
+            .filter(f => s.tipo === "todos" || (s.tipo === "poliza") === opsRevEsPoliza(f))
+            .filter(f => s.estatus === "todos" || ((f.revisionCierre && f.revisionCierre.estatus) || "por_revisar") === s.estatus)
+            .filter(f => !q || [opsRevOS(f), f.folioOS, f.folioClienteId, f.folioNumero, f.estacion, f.estacionPermiso, opsRevCliente(f), (f.revisionCierre || {}).cotizacion].join(" ").toLowerCase().includes(q))
+            .sort((a, b) => opsRevFechaCierre(b).localeCompare(opsRevFechaCierre(a)));
+    }
+    function opsRenderRevision() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        const s = opsRevEstado(), lista = opsRevLista();
+        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente))].sort((a, b) => a.localeCompare(b, "es"));
+        const sel = (k, ops) => `<select onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
+        const fecha = k => `<input type="date" value="${s[k]}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">`;
+        const porRevisar = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f) && !((f.revisionCierre || {}).estatus === "revisado")).length;
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
+                <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Revisión de cierres</div>
+                <div style="font-size:11.5px;color:#64748b;max-width:620px;line-height:1.45;">Aquí llegan los servicios que los técnicos cerraron en la app. Ábrelos para ver las evidencias, anotar si se cobró algo, el número de cotización y el ID del folio del cliente, y marcarlos como <b>Revisado</b> (lo que en Connecteam era "Done"). Hay <b>${porRevisar}</b> sin revisar.</div></div>
+                <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+                <input type="text" value="${opsEsc(s.q)}" placeholder="Buscar O.S., ID del cliente, cotización, estación…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:250px;">
+                ${sel("estatus", [["por_revisar", "Por revisar"], ["en_revision", "En revisión"], ["revisado", "Revisados"], ["todos", "Todos los estatus"]])}
+                ${sel("tipo", [["todos", "Póliza y servicio técnico"], ["servicio", "Solo servicio técnico"], ["poliza", "Solo pólizas"]])}
+                ${sel("cliente", [["todos", "Todos los clientes"], ...clientes.map(c => [c, c])])}
+                <span style="font-size:12px;color:#64748b;">del</span>${fecha("desde")}<span style="font-size:12px;color:#64748b;">al</span>${fecha("hasta")}
+            </div>
+            <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
+                <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
+                    <th style="padding:8px 10px;">Cerrado</th><th style="padding:8px 10px;">O.S.</th><th style="padding:8px 10px;">Estación</th><th style="padding:8px 10px;">Cliente</th>
+                    <th style="padding:8px 10px;">Técnico</th><th style="padding:8px 10px;">Tipo</th><th style="padding:8px 10px;">Resultado</th><th style="padding:8px 10px;">Estatus</th></tr></thead>
+                <tbody>${lista.length ? lista.map(f => {
+                    const v = opsRevUltimaVisita(f) || {}, est = OPS_REV_ESTATUS[(f.revisionCierre || {}).estatus] || OPS_REV_ESTATUS.por_revisar;
+                    const res = v.resultado === "finalizado" || f.fechaSolucion ? ["Terminado", "#15803d"] : v.resultado === "no_finalizado" ? ["Sin terminar", "#b45309"] : v.resultado === "no_realizado" ? ["No se realizó", "#64748b"] : ["—", "#64748b"];
+                    return `<tr onclick="opsRevAbrir('${f.id}')" style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                        <td style="padding:8px 10px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(opsRevFechaCierre(f)))}</td>
+                        <td style="padding:8px 10px;font-weight:800;color:#1D2E73;">${opsEsc(opsRevOS(f) || "—")}</td>
+                        <td style="padding:8px 10px;">${opsEsc(f.estacion || "")}</td>
+                        <td style="padding:8px 10px;">${opsEsc(opsRevCliente(f))}</td>
+                        <td style="padding:8px 10px;">${opsEsc(v.nombre || f.completadoPor || f.tecnicoResponsableNombre || "")}</td>
+                        <td style="padding:8px 10px;">${opsRevEsPoliza(f) ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#7c3aed;border-radius:6px;padding:2px 7px;">PÓLIZA</span>' : '<span style="font-size:10px;font-weight:800;color:#fff;background:#1D2E73;border-radius:6px;padding:2px 7px;">SERVICIO TÉCNICO</span>'}${f.noProgramado ? ' <span style="font-size:10px;font-weight:800;color:#9a3412;background:#ffedd5;border-radius:6px;padding:2px 7px;">NO PROGRAMADO</span>' : ""}</td>
+                        <td style="padding:8px 10px;color:${res[1]};font-weight:700;">${res[0]}</td>
+                        <td style="padding:8px 10px;"><span style="font-size:10.5px;font-weight:800;color:${est[1]};background:${est[2]};border-radius:6px;padding:3px 8px;">${est[0]}</span></td></tr>`;
+                }).join("") : `<tr><td colspan="8" style="padding:24px;text-align:center;color:#94a3b8;">No hay cierres con esos filtros.</td></tr>`}</tbody>
+            </table></div>
+        </div>`;
+    }
+    window.opsRevSet = function (k, v) { opsRevEstado()[k] = v; opsRenderRevision(); };
+    window.opsRevBuscar = function (v) { opsRevEstado().q = v || ""; opsRerenderConFoco(opsRenderRevision); };
+
+    window.opsRevAbrir = function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const r = f.revisionCierre || {}, c = r.cobro || {}, v = opsRevUltimaVisita(f) || {};
+        const gest = opsPuedeGestionar();
+        const fila = (k, val) => val ? `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12.3px;"><div style="width:150px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#0f172a;font-weight:600;">${opsEsc(val)}</div></div>` : "";
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;";
+        const mat = v.materialAlmacen || f.materialAlmacen;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:1040px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;">
+            <div style="padding:16px 20px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;gap:12px;">
+              <div style="flex:1;"><div style="font-size:16px;font-weight:800;color:#1D2E73;">O.S. ${opsEsc(opsRevOS(f) || "sin número")} · ${opsEsc(f.estacion || "")}</div>
+              <div style="font-size:11.5px;color:#64748b;">${opsRevEsPoliza(f) ? "Póliza" : "Servicio técnico"} · ${opsEsc(opsRevCliente(f))} · cerrado ${opsEsc(opsFmtFechaCorta(opsRevFechaCierre(f)))}</div></div>
+              <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:700;color:#475569;">Cerrar</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:18px;padding:14px 20px;overflow-y:auto;flex:1;">
+              <div>
+                ${fila("Cliente", opsRevCliente(f))}${fila("Fecha del servicio", opsFmtFechaCorta(v.inicio || f.fechaProgramada))}${fila("Razón social", f.estacionRazonSocial)}
+                ${fila("No. folio / O.S.", opsRevOS(f))}${fila("Estación de servicio", [f.estacion, f.estacionPermiso].filter(Boolean).join(" · "))}
+                ${fila("Técnico", v.nombre || f.completadoPor)}${fila("Técnico auxiliar", v.tecnicoAuxiliar || f.tecnicoAuxiliar)}
+                ${fila("¿Se concluyó?", v.resultado === "finalizado" ? "Sí" : v.resultado === "no_finalizado" ? "No: " + (v.motivo || "") : v.resultado === "no_realizado" ? "No se realizó: " + (v.motivo || "") : (f.fechaSolucion ? "Sí" : ""))}
+                ${fila("Descripción", v.detalle)}${fila("Material de almacén", mat ? (mat.usado ? (mat.almacen || "Sí") + (mat.detalle ? " · " + mat.detalle : "") : "No") : "")}
+                ${fila("Firma de conformidad", (f.firmaConformidad || {}).nombre || v.firmante)}
+                ${f.polizaLlenadaEnApp ? fila("Póliza", "Llenada en la app de Pólizas" + (f.polizaApp ? " · folio " + (f.polizaApp.folio || "") : "")) : ""}
+                <div id="ops-panel-evidencias" data-folio="${f.id}" style="margin-top:10px;"><div style="font-size:12px;color:#94a3b8;">Cargando evidencias…</div></div>
+              </div>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;align-self:start;">
+                <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px;">Seguimiento de Operaciones</div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:6px 0 4px;">¿Se cobró algo?</div>
+                <div style="display:flex;gap:14px;font-size:12.5px;"><label><input type="radio" name="opsrev-cobro" value="no" ${c.si ? "" : "checked"} onchange="document.getElementById('opsrev-cobro-si').style.display='none'"> No</label><label><input type="radio" name="opsrev-cobro" value="si" ${c.si ? "checked" : ""} onchange="document.getElementById('opsrev-cobro-si').style.display='block'"> Sí</label></div>
+                <div id="opsrev-cobro-si" style="display:${c.si ? "block" : "none"};margin-top:6px;">
+                  <input id="opsrev-monto" type="number" min="0" step="0.01" value="${opsEsc(c.monto ?? "")}" placeholder="Monto ($)" style="${inp};margin-bottom:6px;">
+                  <input id="opsrev-concepto" type="text" value="${opsEsc(c.concepto || "")}" placeholder="Concepto (qué se cobró)" style="${inp}">
+                </div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de cotización</div>
+                <input id="opsrev-cotizacion" type="text" value="${opsEsc(r.cotizacion || "")}" placeholder="Ej. C*SER 2091" style="${inp}">
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">ID del folio del cliente</div>
+                <input id="opsrev-idcliente" type="text" value="${opsEsc(f.folioClienteId || "")}" placeholder="Ej. MC0537408" style="${inp}">
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Estatus</div>
+                <select id="opsrev-estatus" style="${inp}">${Object.entries(OPS_REV_ESTATUS).map(([k, x]) => `<option value="${k}" ${(r.estatus || "por_revisar") === k ? "selected" : ""}>${x[0]}</option>`).join("")}</select>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Nota</div>
+                <textarea id="opsrev-nota" rows="3" style="${inp};resize:vertical;" placeholder="Observaciones de la revisión">${opsEsc(r.nota || "")}</textarea>
+                ${r.por ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">Última revisión: ${opsEsc(r.por)} · ${opsEsc(opsFmtFechaCorta(r.en))}</div>` : ""}
+                <div id="opsrev-msg" style="font-size:11.5px;color:#b91c1c;margin-top:6px;"></div>
+                ${gest ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+                  <button onclick="opsRevGuardar('${f.id}',false)" style="background:#e2e8f0;border:none;border-radius:8px;padding:9px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12.5px;">Guardar</button>
+                  <button onclick="opsRevGuardar('${f.id}',true)" style="background:#15803d;border:none;border-radius:8px;padding:9px;font-weight:800;color:#fff;cursor:pointer;font-size:12.5px;">Marcar como revisado</button></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
+                <div style="border-top:1px solid #e2e8f0;margin:12px 0 8px;"></div>
+                <button onclick="opsRevPdf('${f.id}')" style="width:100%;background:#1D2E73;border:none;border-radius:8px;padding:9px;font-weight:700;color:#fff;cursor:pointer;font-size:12.5px;margin-bottom:6px;">Descargar PDF completo</button>
+                <button onclick="opsRevLigaCliente('${f.id}')" style="width:100%;background:#fff;border:1.5px solid #1D2E73;border-radius:8px;padding:9px;font-weight:700;color:#1D2E73;cursor:pointer;font-size:12.5px;">Liga para el cliente (PDF con video)</button>
+                <div id="opsrev-liga" style="font-size:11.5px;margin-top:6px;word-break:break-all;">${r.ligaCliente ? `<a href="${opsEsc(r.ligaCliente)}" target="_blank" style="color:#1D2E73;font-weight:700;">Abrir la liga ya generada</a>` : ""}</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+        opsPanelEvidenciasPintar(f);
+    };
+
+    window.opsRevGuardar = async function (id, revisado) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const msg = document.getElementById("opsrev-msg");
+        const cobroSi = (document.querySelector('input[name="opsrev-cobro"]:checked') || {}).value === "si";
+        const monto = document.getElementById("opsrev-monto").value;
+        if (cobroSi && !(Number(monto) > 0)) { if (msg) msg.textContent = "Escribe el monto que se cobró."; return; }
+        const ahora = opsFechaHora(), yo = opsNombreActual();
+        const rc = Object.assign({}, f.revisionCierre || {}, {
+            estatus: revisado ? "revisado" : document.getElementById("opsrev-estatus").value,
+            cobro: cobroSi ? { si: true, monto: Number(monto), concepto: document.getElementById("opsrev-concepto").value.trim() || null } : { si: false },
+            cotizacion: document.getElementById("opsrev-cotizacion").value.trim() || null,
+            nota: document.getElementById("opsrev-nota").value.trim() || null, por: yo, en: ahora,
+        });
+        if (rc.estatus === "revisado") { rc.revisadoPor = yo; rc.revisadoEn = ahora; }
+        const idCli = document.getElementById("opsrev-idcliente").value.trim();
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc, ...(idCli !== String(f.folioClienteId || "") ? { folioClienteId: idCli || null } : {}) });
+            f.revisionCierre = rc; if (idCli) f.folioClienteId = idCli;
+            try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] " + OPS_REV_ESTATUS[rc.estatus][0] + (rc.cobro.si ? " · Se cobró $" + rc.cobro.monto + (rc.cobro.concepto ? " (" + rc.cobro.concepto + ")" : "") : " · No se cobró") + (rc.cotizacion ? " · Cotización " + rc.cotizacion : "") + (rc.nota ? " · " + rc.nota : ""), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {}
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión guardada", texto: "O.S. " + (opsRevOS(f) || f.estacion) + " · " + OPS_REV_ESTATUS[rc.estatus][0], nivel: "normal", modulo: "Operaciones" });
+            if (tabActual === "revision") opsRenderRevision();
+        } catch (e) { if (msg) msg.textContent = "No se pudo guardar: " + (e.message || e); }
+    };
+
+    // ── Evidencias del folio con ligas firmadas (imágenes 1 h; video 1 año para el cliente) ──
+    async function opsRevEvidencias(f, segVideo) {
+        const { db, fs } = await opsGetFB();
+        const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
+        const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.ruta).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")));
+        const sb = await opsSb();
+        for (const e of ev) {
+            const seg = e.tipo === "video" ? (segVideo || 3600) : 3600;
+            try { const { data } = await sb.storage.from(e.bucket || "ops-evidencias").createSignedUrl(e.ruta, seg); if (data && data.signedUrl) e.url = data.signedUrl; } catch (er) {}
+        }
+        return ev;
+    }
+    async function opsRevImagen(url) {
+        const b = await (await fetch(url)).blob();
+        const dataUrl = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(b); });
+        const dim = await new Promise(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => ok({ w: 4, h: 3 }); im.src = dataUrl; });
+        return { dataUrl, ...dim, blob: b };
+    }
+    // Arma el PDF completo del cierre. Regresa { doc, ev }.
+    async function opsRevArmarPdf(f, segVideo) {
+        if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("La librería de PDF no está cargada. Recarga la página.");
+        const ev = await opsRevEvidencias(f, segVideo);
+        const v = opsRevUltimaVisita(f) || {}, r = f.revisionCierre || {};
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "letter" });
+        const W = 215.9, M = 14, AN = W - 2 * M, ALTO = 279.4, KMM = 0.352778;
+        const NAVY = [29, 46, 115], GRIS = [100, 116, 139], TINTA = [30, 41, 59];
+        const limpio = s => String(s ?? "").replace(/[^\x20-\x7E\u00A0-\u00FF\u2014\u2013\u2022\u00B7\n]/g, "");
+        const EMP = opsEmpresaDeFolio(f);
+        const tipo = opsRevEsPoliza(f) ? "PÓLIZA DE MANTENIMIENTO" : "SERVICIO TÉCNICO";
+        let y = 0;
+        const encabezado = () => { y = opsPdfEncabezadoEmpresa(doc, EMP, { W, M, k: KMM, tipo, linea: "O.S. " + (opsRevOS(f) || "—") + "  ·  " + new Date().toLocaleDateString("es-MX") }) + 6; };
+        const salto = h => { if (y + h > ALTO - 14) { doc.addPage(); encabezado(); } };
+        const seccion = t => { salto(14); y += 2; doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text(limpio(t).toUpperCase(), M, y); y += 2; doc.setDrawColor(...NAVY); doc.line(M, y, W - M, y); y += 5; };
+        const kv = (k, val) => {
+            if (!val) return;
+            const ls = doc.splitTextToSize(limpio(val), AN - 52);
+            salto(ls.length * 4.6 + 2);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS); doc.text(limpio(k), M, y);
+            doc.setFont("helvetica", "bold"); doc.setTextColor(...TINTA); doc.text(ls, M + 52, y); y += ls.length * 4.6 + 1.5;
+        };
+        encabezado();
+        doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
+        doc.text(limpio(f.estacion || "Servicio"), M, y + 4); y += 11;
+        seccion("Datos del servicio");
+        kv("Cliente", opsRevCliente(f)); kv("Fecha del servicio", opsFmtFechaCorta(v.inicio || f.fechaProgramada)); kv("Razón social", f.estacionRazonSocial);
+        kv("No. folio / O.S.", opsRevOS(f)); kv("ID folio del cliente", f.folioClienteId); kv("Estación de servicio", [f.estacion, f.estacionPermiso].filter(Boolean).join(" · "));
+        kv("Dirección", f.estacionDireccion); kv("Técnico", v.nombre || f.completadoPor); kv("Técnico auxiliar", v.tecnicoAuxiliar || f.tecnicoAuxiliar);
+        kv("¿Se concluyó?", v.resultado === "no_finalizado" ? "No: " + (v.motivo || "") : v.resultado === "no_realizado" ? "No se realizó: " + (v.motivo || "") : "Sí");
+        kv("Descripción", v.detalle);
+        const mat = v.materialAlmacen || f.materialAlmacen; if (mat) kv("Material de almacén", mat.usado ? (mat.almacen || "Sí") + (mat.detalle ? " · " + mat.detalle : "") : "No se utilizó");
+        if (r.cotizacion) kv("No. de cotización", r.cotizacion);
+        if (v.ubicacion && v.ubicacion.lat) kv("Ubicación al cerrar", v.ubicacion.lat.toFixed(6) + ", " + v.ubicacion.lng.toFixed(6));
+        const fotos = async (lista, titulo, ancho) => {
+            if (!lista.length) return;
+            seccion(titulo);
+            let col = 0, filaAlto = 0;
+            const porFila = ancho >= AN ? 1 : 2, w = ancho >= AN ? AN : (AN - 6) / 2;
+            for (const e of lista) {
+                if (!e.url) continue;
+                let im; try { im = await opsRevImagen(e.url); } catch (er) { continue; }
+                let h = w * im.h / im.w; const maxH = porFila === 1 ? 200 : 105; let ww = w;
+                if (h > maxH) { ww = w * maxH / h; h = maxH; }
+                if (col === 0) salto(h + 6);
+                const x = M + col * (w + 6);
+                try { doc.addImage(im.dataUrl, "JPEG", x, y, ww, h); } catch (er) {}
+                filaAlto = Math.max(filaAlto, h);
+                col++;
+                if (col >= porFila) { y += filaAlto + 5; col = 0; filaAlto = 0; }
+            }
+            if (col) y += filaAlto + 5;
+        };
+        await fotos(ev.filter(e => e.tipo === "orden_servicio"), "Orden de servicio", AN);
+        await fotos(ev.filter(e => e.tipo === "foto"), "Evidencia del servicio realizado", AN / 2);
+        const vids = ev.filter(e => e.tipo === "video" && e.url);
+        if (vids.length) {
+            seccion("Video de evidencia");
+            vids.forEach((e, i) => { salto(8); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(29, 78, 216); doc.textWithLink("Ver video " + (i + 1) + " (toca aquí)", M, y, { url: e.url }); y += 6; });
+        }
+        const firma = ev.filter(e => e.tipo === "firma" && e.url).pop();
+        if (firma) {
+            seccion("Firma de conformidad");
+            try { const im = await opsRevImagen(firma.url); const w = 70, h = Math.min(35, w * im.h / im.w); salto(h + 10); doc.addImage(im.dataUrl, "JPEG", M, y, w, h); y += h + 3; } catch (er) {}
+            doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(...TINTA);
+            doc.text(limpio((f.firmaConformidad || {}).nombre || v.firmante || ""), M, y + 3); y += 8;
+        }
+        return { doc, ev };
+    }
+    function opsRevNombreArchivo(f, ext) { return ("OS-" + (opsRevOS(f) || f.id) + "_" + (f.estacion || "estacion")).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) + "." + ext; }
+    window.opsRevPdf = async function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const msg = document.getElementById("opsrev-msg"); if (msg) { msg.style.color = "#475569"; msg.textContent = "Armando el PDF con las fotos…"; }
+        try { const { doc } = await opsRevArmarPdf(f, 604800); doc.save(opsRevNombreArchivo(f, "pdf")); if (msg) msg.textContent = ""; }
+        catch (e) { if (msg) { msg.style.color = "#b91c1c"; msg.textContent = "No se pudo armar el PDF: " + (e.message || e); } }
+    };
+    // Liga para el cliente: PDF completo en un espacio público con nombre imposible de adivinar.
+    // El video va como liga dentro del PDF, válida por 1 año.
+    window.opsRevLigaCliente = async function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const box = document.getElementById("opsrev-liga"); if (box) box.innerHTML = '<span style="color:#475569;">Generando la liga…</span>';
+        try {
+            const { doc } = await opsRevArmarPdf(f, 31536000);
+            const sb = await opsSb();
+            const rnd = Array.from(crypto.getRandomValues(new Uint8Array(18)), x => x.toString(16).padStart(2, "0")).join("");
+            const ruta = rnd + "/" + opsRevNombreArchivo(f, "pdf");
+            const up = await sb.storage.from("cierres-servicio").upload(ruta, doc.output("blob"), { contentType: "application/pdf", upsert: false });
+            if (up.error) throw up.error;
+            const url = sb.storage.from("cierres-servicio").getPublicUrl(ruta).data.publicUrl;
+            const rc = Object.assign({}, f.revisionCierre || {}, { ligaCliente: url, ligaClienteEn: opsFechaHora(), ligaClientePor: opsNombreActual() });
+            try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc }); f.revisionCierre = rc; } catch (e) {}
+            const texto = "Reporte del servicio " + (opsRevOS(f) ? "O.S. " + opsRevOS(f) + " " : "") + "en " + (f.estacion || "su estación") + ": " + url;
+            if (box) box.innerHTML = `<input readonly value="${opsEsc(url)}" onclick="this.select()" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:6px;padding:6px;font-size:11px;margin-bottom:6px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
+                <button onclick="navigator.clipboard.writeText('${opsEsc(url)}');this.textContent='Copiada'" style="border:none;background:#e2e8f0;border-radius:6px;padding:7px;font-weight:700;cursor:pointer;font-size:11.5px;">Copiar</button>
+                <a href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" style="background:#16a34a;color:#fff;border-radius:6px;padding:7px;font-weight:700;text-align:center;text-decoration:none;font-size:11.5px;">WhatsApp</a>
+                <a href="mailto:?subject=${encodeURIComponent("Reporte de servicio " + (opsRevOS(f) || ""))}&body=${encodeURIComponent(texto)}" style="background:#1D2E73;color:#fff;border-radius:6px;padding:7px;font-weight:700;text-align:center;text-decoration:none;font-size:11.5px;">Correo</a></div>`;
+        } catch (e) { if (box) box.innerHTML = `<span style="color:#b91c1c;">No se pudo generar la liga: ${opsEsc(e.message || String(e))}</span>`; }
+    };
+    // ZIP para el Drive: los cierres REVISADOS de la lista filtrada, en carpetas por cliente.
+    function opsRevCargarZip() {
+        if (window.JSZip) return Promise.resolve(window.JSZip);
+        return new Promise((ok, ko) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"; s.onload = () => ok(window.JSZip); s.onerror = () => ko(new Error("No se pudo cargar la librería ZIP")); document.head.appendChild(s); });
+    }
+    window.opsRevZip = async function () {
+        const s = opsRevEstado();
+        const lista = opsRevLista().filter(f => (f.revisionCierre || {}).estatus === "revisado");
+        if (!lista.length) { alert("No hay cierres REVISADOS con los filtros actuales (" + s.desde + " al " + s.hasta + "). El ZIP solo incluye los que ya marcaste como revisados."); return; }
+        if (!confirm("Se descargarán " + lista.length + " cierre(s) revisado(s), ordenados por cliente:\n\n· Órdenes de servicio (fotos de la O.S.)\n· Servicios técnicos / Pólizas (PDF completo)\n\nPuede tardar un poco si son muchos. ¿Continuar?")) return;
+        const aviso = window.tcNotif ? null : null;
+        try {
+            const JSZip = await opsRevCargarZip();
+            const zip = new JSZip(); let n = 0;
+            for (const f of lista) {
+                n++;
+                const cli = opsRevCliente(f).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 _-]+/g, "").trim() || "Sin cliente";
+                const { doc, ev } = await opsRevArmarPdf(f, 31536000);
+                zip.folder(cli).folder(opsRevEsPoliza(f) ? "Polizas" : "Servicios tecnicos").file(opsRevNombreArchivo(f, "pdf"), doc.output("blob"));
+                let k = 0;
+                for (const e of ev.filter(x => x.tipo === "orden_servicio" && x.url)) {
+                    try { const b = await (await fetch(e.url)).blob(); k++; zip.folder(cli).folder("Ordenes de servicio").file(opsRevNombreArchivo(f, "jpg").replace(/\.jpg$/, (k > 1 ? "_" + k : "") + ".jpg"), b); } catch (er) {}
+                }
+            }
+            const blob = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Cierres_" + s.desde + "_al_" + s.hasta + (s.cliente !== "todos" ? "_" + s.cliente.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".zip"; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        } catch (e) { alert("No se pudo armar el ZIP: " + (e.message || e)); }
+    };
 
     // ═══════════════════ EVIDENCIAS DEL SERVICIO (subidas desde la app) ═══════════════════
     // Registro en ops_docs (Supabase) + imagen en Supabase Storage, bucket privado "ops-evidencias".

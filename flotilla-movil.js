@@ -3656,6 +3656,7 @@ function renderTareas(){
     fmPermisosHTML()+
     fmServicioFlotillaHTML()+
     fmMisFoliosHTML()+
+    fmOpsNoProgBtnHTML()+
     fmOpsServHTML()+
     '<div class="fm-sec-hd"><div><div class="fm-sec-t">'+(misOpsServ.length?'Tareas de Flotilla':'Mis tareas')+'</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
     (!pend.length?
@@ -7531,6 +7532,141 @@ window.fmOpsAbrirPolizas=async function(id){
     try{await opsDb().collection(OPS_COL_FOLIOS).doc(id).update({polizaAbiertaEn:new Date().toISOString(),polizaAbiertaPor:opsSvMiNombre()});}catch(e){}
   }
 };
+// ── Póliza detectada sola (21-oct-2026): la app de Pólizas guarda en el mismo Supabase.
+// Se buscan las pólizas guardadas desde el día del servicio y se compara la estación y el
+// técnico. Si aparece, se marca sola la casilla y se guarda la referencia en el servicio.
+function fmPolNorm(t){return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ');}
+const FM_POL_IGNORAR=new Set(['OXXO','GAS','PETRO','SEVEN','PRONTO','ESTACION','SERVICIO','SERVICIOS','GASOLINERA','GASOLINEROS','MEXICO','DE','DEL','LA','LAS','LOS','EL','CUU','SA','CV','S','A','C','V']);
+function fmPolTokens(t){return fmPolNorm(t).split(/\s+/).filter(function(x){return x.length>=3&&!FM_POL_IGNORAR.has(x);});}
+async function fmOpsBuscarPolizaApp(f){
+  const box=document.getElementById('fm-term-pol-auto');
+  try{
+    const sb=await fmvSb();
+    const base=new Date(String(f.iniciadoEn||f.fechaProgramada||new Date().toISOString()).slice(0,10)+'T00:00:00');
+    base.setDate(base.getDate()-1);
+    const hasta=new Date(Date.now()+86400000);
+    const r=await sb.rpc('flotilla_polizas_recientes',{p_desde:base.toISOString(),p_hasta:hasta.toISOString()});
+    if(r.error)throw r.error;
+    const ni=opsSvNombreInfo(f), e=ni.e||{};
+    const tEst=new Set(fmPolTokens([ni.titulo,e.razonSocial,f.estacion].join(' ')));
+    const yo=fmPolTokens(opsSvMiNombre());
+    let mejor=null, mejorP=0;
+    (r.data||[]).forEach(function(p){
+      const te=fmPolTokens([p.estacion_nombre,p.cliente_razon_social].join(' '));
+      let pts=te.filter(function(x){return tEst.has(x);}).length*3;
+      const tt=fmPolTokens(p.tecnico_nombre); if(yo.length&&tt.filter(function(x){return yo.indexOf(x)>=0;}).length>=2)pts+=2;
+      if(pts>mejorP){mejorP=pts;mejor=p;}
+    });
+    if(mejor&&mejorP>=3){
+      window.__fmTermPolizaApp={id:mejor.id,folio:mejor.folio||null,estacion:mejor.estacion_nombre||null,tecnico:mejor.tecnico_nombre||null,fecha:mejor.fecha,estado:mejor.estado||null,puntos:mejor.total_puntos,hallazgos:mejor.total_hallazgos};
+      const ck=document.getElementById('fm-term-pol-ok'); if(ck)ck.checked=true;
+      if(box)box.innerHTML='<div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:8px;padding:8px 10px;color:#166534;margin-top:8px"><b>Póliza encontrada en la app de Pólizas.</b> '+opsSvEsc([mejor.folio?'Folio '+mejor.folio:'',mejor.estacion_nombre,mejor.tecnico_nombre,opsSvFecha(mejor.fecha)].filter(Boolean).join(' · '))+'. Ya quedó marcada la casilla.</div>';
+    }else if(box)box.innerHTML='<div style="color:#92400E;margin-top:8px;font-size:11.5px">Todavía no aparece una póliza guardada para esta estación. Si ya la terminaste, marca la casilla tú mismo.</div>';
+  }catch(er){console.warn('[pólizas]',er); if(box)box.innerHTML='';}
+}
+
+// ── Servicio NO programado (21-oct-2026): guardias, llamadas y visitas espontáneas.
+// El técnico lo da de alta aquí mismo (como en Connecteam), llena el cierre completo y
+// Operaciones lo ve en "Revisión de cierres" con la etiqueta NO PROGRAMADO.
+let _fmNP=null, _fmNPCat=null;
+function fmOpsNoProgBtnHTML(){
+  if(!window.tcOpsCompat||!_opsServTecId)return '';
+  return '<button onclick="fmOpsNoProgAbrir()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin-bottom:14px;background:#fff;border:1.5px dashed #1D2E73;border-radius:12px;font-family:inherit;font-size:13px;font-weight:800;color:#1D2E73;cursor:pointer">+ Servicio no programado (guardia, llamada o visita)</button>';
+}
+async function fmNPCargarCatalogo(){
+  if(_fmNPCat)return _fmNPCat;
+  const sb=await fmvSb(); let todo=[], desde=0;
+  for(let i=0;i<10;i++){
+    const r=await sb.from('estaciones_servicio').select('id,nombre_comercial,razon_social,permiso,municipio,direccion_normalizada,lat,lng,cliente_id').order('id').range(desde,desde+999);
+    if(r.error)throw r.error; todo=todo.concat(r.data||[]); if(!r.data||r.data.length<1000)break; desde+=1000;
+  }
+  _fmNPCat=todo.filter(function(e){return e.nombre_comercial||e.razon_social;});
+  return _fmNPCat;
+}
+const FM_NP_TIPOS=['Guardia','Llamada de emergencia','Visita espontánea','Servicio correctivo','Otro'];
+window.fmOpsNoProgAbrir=async function(){
+  _fmNP={tipo:null,est:null,libre:false,busca:''};
+  document.getElementById('fm-np')?.remove();
+  const ov=document.createElement('div'); ov.id='fm-np';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px;font-size:13px;color:#475569">Cargando estaciones…</div>';
+  document.body.appendChild(ov);
+  try{await fmNPCargarCatalogo();}catch(e){ov.remove();toast('No se pudo cargar el catálogo de estaciones. Revisa tu conexión.','err');return;}
+  fmNPPintar();
+};
+function fmNPPintar(){
+  const ov=document.getElementById('fm-np'); if(!ov||!_fmNP)return;
+  const n=_fmNP, e=n.est;
+  const chip=function(t){const on=n.tipo===t;return '<button type="button" onclick="fmNPTipo(\''+t+'\')" style="padding:9px 12px;border-radius:20px;border:1.5px solid '+(on?'#1D2E73':'#CBD5E1')+';background:'+(on?'#EEF2FF':'#fff')+';font-family:inherit;font-size:12px;font-weight:800;color:#1D2E73">'+t+'</button>';};
+  ov.innerHTML='<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 22px);max-height:92vh;overflow-y:auto">'+
+    '<div style="font-size:15px;font-weight:900;color:#0A1628">Servicio no programado</div>'+
+    '<div style="font-size:11.5px;color:#64748B;margin:3px 0 12px;line-height:1.45">Para guardias, llamadas o visitas que no te programó Operaciones. Lo das de alta aquí y enseguida llenas el cierre con todas las evidencias, igual que en Connecteam.</div>'+
+    fmTermTit('A','¿Qué tipo de servicio es?',true)+'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+FM_NP_TIPOS.map(chip).join('')+'</div>'+
+    fmTermTit('B','Estación de servicio',true)+
+    (e?'<div style="display:flex;gap:8px;align-items:center;background:#EEF2FF;border-radius:10px;padding:9px 11px;margin-bottom:12px"><div style="flex:1"><div style="font-weight:800;color:#1D2E73">'+opsSvEsc(e.nombre_comercial||e.razon_social)+'</div><div style="font-size:11px;color:#475569">'+opsSvEsc([e.permiso,e.razon_social,e.municipio].filter(Boolean).join(' · '))+'</div></div><button type="button" onclick="fmNPCambiar()" style="border:none;background:#fff;border-radius:8px;padding:6px 10px;font-weight:700;color:#475569">Cambiar</button></div>'
+     :(n.libre?'<input id="fm-np-libre" type="text" placeholder="Nombre de la estación o del lugar" style="'+FM_TERM_INP+'"><input id="fm-np-libre-mun" type="text" placeholder="Ciudad o municipio" style="'+FM_TERM_INP+'"><div style="font-size:11px;color:#92400E;margin:-6px 0 12px">Operaciones la dará de alta en el catálogo con los datos completos.</div>'
+      :'<input type="text" autocomplete="off" placeholder="Busca por nombre, razón social, PL o ciudad" oninput="fmNPBuscar(this.value)" style="'+FM_TERM_INP+';margin-bottom:4px"><div id="fm-np-res" style="border:1px solid #E2E8F0;border-radius:10px;max-height:240px;overflow-y:auto;margin-bottom:12px"></div>'))+
+    fmTermTit('C','¿Qué se fue a hacer?',true)+
+    '<input id="fm-np-motivo" type="text" placeholder="Ej. No despacha el dispensario 3 / alarma de sensor" style="'+FM_TERM_INP+'">'+
+    '<div id="fm-np-msg" style="font-size:12.5px;color:#B91C1C;font-weight:700;min-height:16px;margin-bottom:6px"></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1.6fr;gap:8px">'+
+      '<button onclick="document.getElementById(\'fm-np\').remove()" style="padding:12px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:13px;font-weight:800;color:#334155">Cancelar</button>'+
+      '<button id="fm-np-btn" onclick="fmNPCrear()" style="padding:12px;border-radius:10px;border:none;background:#1D2E73;font-family:inherit;font-size:13px;font-weight:800;color:#fff">Continuar al cierre</button>'+
+    '</div></div>';
+}
+window.fmNPTipo=function(t){const m=document.getElementById('fm-np-motivo');const v=m?m.value:'';_fmNP.tipo=t;fmNPPintar();const m2=document.getElementById('fm-np-motivo');if(m2)m2.value=v;};
+window.fmNPCambiar=function(){_fmNP.est=null;_fmNP.libre=false;fmNPPintar();};
+window.fmNPBuscar=function(q){
+  const box=document.getElementById('fm-np-res'); if(!box)return;
+  const nq=fmPolNorm(q).replace(/\s+/g,'');
+  if(nq.length<2){box.innerHTML='';return;}
+  const res=(_fmNPCat||[]).filter(function(e){return fmPolNorm([e.nombre_comercial,e.razon_social,e.permiso,e.municipio].join(' ')).replace(/\s+/g,'').indexOf(nq)>=0;})
+    .sort(function(a,b){return String(a.nombre_comercial||a.razon_social).localeCompare(String(b.nombre_comercial||b.razon_social),'es');}).slice(0,25);
+  box.innerHTML=res.map(function(e){return '<div onclick="fmNPElegir(\''+opsSvEsc(e.id)+'\')" style="padding:9px 11px;border-bottom:1px solid #F1F5F9;cursor:pointer"><div style="font-weight:800;color:#1D2E73;font-size:13px">'+opsSvEsc(e.nombre_comercial||e.razon_social)+'</div><div style="font-size:11px;color:#64748B">'+opsSvEsc([e.permiso||'sin PL',e.municipio].filter(Boolean).join(' · '))+'</div></div>';}).join('')+
+    '<div onclick="fmNPLibre()" style="padding:10px 11px;cursor:pointer;font-weight:800;color:#B45309;background:#FFFBEB;font-size:12.5px">No está en la lista</div>';
+};
+window.fmNPElegir=function(id){const m=document.getElementById('fm-np-motivo');const v=m?m.value:'';_fmNP.est=(_fmNPCat||[]).find(function(e){return e.id===id;})||null;fmNPPintar();const m2=document.getElementById('fm-np-motivo');if(m2)m2.value=v;};
+window.fmNPLibre=function(){_fmNP.libre=true;_fmNP.est=null;fmNPPintar();};
+window.fmNPCrear=async function(){
+  const n=_fmNP, msg=document.getElementById('fm-np-msg'), btn=document.getElementById('fm-np-btn');
+  const err=function(t){if(msg)msg.textContent=t;};
+  const motivo=(document.getElementById('fm-np-motivo')?.value||'').trim();
+  const libre=(document.getElementById('fm-np-libre')?.value||'').trim(), libreMun=(document.getElementById('fm-np-libre-mun')?.value||'').trim();
+  if(!n.tipo){err('Falta el punto A: tipo de servicio.');return;}
+  if(!n.est&&!(n.libre&&libre)){err('Falta el punto B: estación de servicio.');return;}
+  if(motivo.length<4){err('Falta el punto C: qué se fue a hacer.');return;}
+  if(btn){btn.disabled=true;btn.textContent='Creando…';}
+  try{
+    const e=n.est, ahora=new Date(), quien=opsSvMiNombre(), correo=opsSvMiCorreo();
+    const loc=new Date(ahora.getTime()-ahora.getTimezoneOffset()*60000).toISOString().slice(0,16);
+    let cliente=null;
+    if(e&&e.cliente_id){try{const sb=await fmvSb();const r=await sb.from('clientes_catalogo').select('nombre_comercial,razon_social').eq('id',e.cliente_id).maybeSingle();if(r.data)cliente=r.data.nombre_comercial||r.data.razon_social;}catch(x){}}
+    const datos={
+      folioOS:'', estacion:e?(e.nombre_comercial||e.razon_social):libre, estacionCatalogoId:e?e.id:null,
+      estacionRazonSocial:e?(e.razon_social||null):null, estacionPermiso:e?(e.permiso||null):null,
+      estacionDireccion:e?([e.direccion_normalizada,e.municipio].filter(Boolean).join(', ')||null):(libreMun||null),
+      estacionLat:e&&e.lat?e.lat:null, estacionLng:e&&e.lng?e.lng:null,
+      clienteNombre:cliente||(e?(e.razon_social||null):null), tipoFolio:'servicio', categoriaServicio:n.tipo,
+      comentarios:'Servicio no programado ('+n.tipo+'): '+motivo,
+      fechaSolicitud:ahora.toISOString(), fechaProgramada:loc, fechaSolucion:null, iniciadoEn:ahora.toISOString(), primerArriboEn:ahora.toISOString(),
+      tecnicoResponsableId:_opsServTecId, tecnicoResponsableNombre:quien, tecnicoResponsableCorreo:correo, responsable:quien,
+      tecnicosAsignadosIds:[_opsServTecId], tecnicosAsignadosNombres:[quien],
+      noProgramado:true, origen:'app_no_programado', creadoPor:quien, creadoEn:ahora.toISOString(),
+      revisionCierre:{estatus:'por_revisar'}
+    };
+    const ref=await opsDb().collection(OPS_COL_FOLIOS).add(datos);
+    const fid=ref.id||(ref&&ref.path&&ref.path.split('/').pop());
+    if(!misOpsServ.some(function(x){return x.id===fid;}))misOpsServ.push(Object.assign({id:fid},datos));
+    try{await opsSvAvisarAdmins('ops_no_programado',quien+' registró un servicio NO programado ('+n.tipo+') en '+datos.estacion+': '+motivo,fid);}catch(x){}
+    document.getElementById('fm-np')?.remove();
+    _fmNP=null;
+    fmOpsServTerminar(fid);
+  }catch(x){
+    console.error('[no programado]',x);
+    err('No se pudo crear. Revisa tu conexión e intenta de nuevo.');
+    if(btn){btn.disabled=false;btn.textContent='Continuar al cierre';}
+  }
+};
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
@@ -7551,7 +7687,7 @@ window.fmOpsServTerminar=async function(id){
       '<div style="font-size:15px;font-weight:900;color:#0A1628;margin-bottom:2px">Cerrar servicio · '+(esPol?'PÓLIZA':'SERVICIO TÉCNICO')+'</div>'+
       '<div style="font-size:11.5px;color:#64748B;margin-bottom:8px">'+opsSvEsc(opsSvTitulo(f))+' · '+opsSvEsc(opsSvTipo(f))+'</div>'+
       '<div style="font-size:11.5px;color:#1E3A8A;background:#EFF6FF;border-radius:10px;padding:9px 11px;margin-bottom:14px;line-height:1.45">Son los mismos datos que pedía Connecteam, en el mismo orden. <b>Nada se sube mientras llenas</b>: las fotos, el video y la firma se suben al expediente del servicio cuando tocas <b>«Guardar y cerrar servicio»</b>, al final.</div>'+
-      (esPol?'<div style="font-size:12px;color:#5B21B6;background:#F5F3FF;border:1.5px solid #C4B5FD;border-radius:10px;padding:10px 11px;margin-bottom:14px;line-height:1.45"><b>Este servicio es PÓLIZA.</b> El checklist y las evidencias de la póliza se llenan en la app de Pólizas.<button type="button" onclick="fmOpsAbrirPolizas(\''+id+'\')" style="display:block;width:100%;margin-top:8px;padding:10px;border:none;border-radius:8px;background:#7C3AED;color:#fff;font-family:inherit;font-size:12.5px;font-weight:900">Abrir la app de Pólizas</button><label style="display:flex;gap:8px;align-items:center;margin-top:9px;font-weight:700"><input type="checkbox" id="fm-term-pol-ok" style="width:18px;height:18px"> Ya llené la póliza en la app de Pólizas</label></div>':'')+
+      (esPol?'<div style="font-size:12px;color:#5B21B6;background:#F5F3FF;border:1.5px solid #C4B5FD;border-radius:10px;padding:10px 11px;margin-bottom:14px;line-height:1.45"><b>Este servicio es PÓLIZA.</b> El checklist y las evidencias de la póliza se llenan en la app de Pólizas.<button type="button" onclick="fmOpsAbrirPolizas(\''+id+'\')" style="display:block;width:100%;margin-top:8px;padding:10px;border:none;border-radius:8px;background:#7C3AED;color:#fff;font-family:inherit;font-size:12.5px;font-weight:900">Abrir la app de Pólizas</button><label style="display:flex;gap:8px;align-items:center;margin-top:9px;font-weight:700"><input type="checkbox" id="fm-term-pol-ok" style="width:18px;height:18px"> Ya llené la póliza en la app de Pólizas</label><div id="fm-term-pol-auto"><div style="font-size:11.5px;color:#6D28D9;margin-top:8px">Buscando si ya guardaste la póliza en la app de Pólizas…</div></div></div>':'')+
       ro('1','Cliente',cliente)+
       ro('2','Fecha del servicio',opsSvFecha(fechaServ),f.iniciadoEn?'Hora real en que tocaste «Iniciar servicio».':'Fecha programada por Operaciones.')+
       ro('3','Razón social',e.razonSocial||f.estacionRazonSocial||cliente)+
@@ -7592,6 +7728,8 @@ window.fmOpsServTerminar=async function(id){
   document.body.appendChild(ov);
   initFirmaCanvas('fm-term-firma');
   fmTermCargarAlmacenes();
+  window.__fmTermPolizaApp=null;
+  if(esPol)fmOpsBuscarPolizaApp(f);
 };
 window.fmOpsPausaMotivoSel=function(b,cont){document.querySelectorAll('#'+cont+' button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});b.style.background='#FFF7ED';b.style.borderColor='#EA580C';b.setAttribute('data-on','1');};
 window.fmOpsTermRes=function(b){
@@ -7664,7 +7802,7 @@ window.fmOpsServGuardarTermino=async function(id){
       evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,evidenciasVideos:(Number(f.evidenciasVideos)||0)+nVid,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
     if(extra.firmante)cambios.firmaConformidad={nombre:extra.firmante,en:ahora,por:quien};
     if(osNum){cambios.osTecnico=osNum; if(!f.folioOS)cambios.folioOS=osNum;}
-    if(esPol&&res!=='no_realizado'){cambios.polizaLlenadaEnApp=true;cambios.polizaLlenadaEn=ahora;}
+    if(esPol&&res!=='no_realizado'){cambios.polizaLlenadaEnApp=true;cambios.polizaLlenadaEn=ahora;if(window.__fmTermPolizaApp)cambios.polizaApp=window.__fmTermPolizaApp;}
     if(extra.auxiliar)cambios.tecnicoAuxiliar=extra.auxiliar;
     if(extra.material)cambios.materialAlmacen=extra.material;
     if(res==='finalizado'){
