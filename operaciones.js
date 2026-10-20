@@ -2295,6 +2295,7 @@
             unsubFolios = fs.onSnapshot(fs.collection(db, COL_FOLIOS), snap => {
                 cacheFolios = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
                 try { opsAvisosProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos de programación:", e); }
+                try { opsAvisarVentasEstado(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Ventas:", e); }
                 if (tabActual === "folios") opsRenderFolios();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "vencimientos") opsPintarVencimientos();
@@ -6750,6 +6751,52 @@
     const OPS_EMP_CORTA = { TECNOCONTROL: "Tecnocontrol", JOMAR: "JOMAR", TECNOLAB: "TecnoLab", AKURIS: "Akuris", VH: "VH" };
     let opsPedVentasAbierto = true;
     let opsPedVerGestionados = false; // lista de pedidos ya gestionados / servicios cancelados o eliminados (oct-2026)
+    // ── Avisos a Ventas del estatus de su servicio (20-oct-2026, Glen) ─────────
+    // El vendedor que mandó el pedido o la petición recibe una notificación en su campanita
+    // cada vez que su servicio cambia: programado (fecha y técnicos), reprogramado, en proceso,
+    // atendido sin terminar, terminado o cancelado. El último estatus avisado se guarda en el
+    // folio (ventasAvisoEstado) para no repetir el aviso aunque haya varios portales abiertos.
+    const opsVentasAvisando = new Set();
+    function opsVentasEstadoClave(f) {
+        if (f.cancelado) return { k: "cancelado", t: "se canceló" };
+        if (f.fechaSolucion) return { k: "terminado", t: "ya quedó terminado" };
+        if (f.iniciadoEn) return { k: "en_proceso", t: "está en proceso: el técnico ya está trabajando" };
+        if (f.ultimoNoFinalizado && f.ultimoNoFinalizado.en) return { k: "sin_terminar|" + f.ultimoNoFinalizado.en, t: "se atendió pero no se terminó (" + (f.ultimoNoFinalizado.motivo || "pendiente") + "). Operaciones lo vuelve a programar" };
+        if (f.fechaProgramada) {
+            const tec = (f.tecnicosAsignadosNombres || []).filter(Boolean).join(", ");
+            return { k: "programado|" + f.fechaProgramada + "|" + tec, t: "quedó programado para el " + opsFmtFechaCorta(f.fechaProgramada) + (tec ? " con " + tec : "") };
+        }
+        return null;
+    }
+    async function opsAvisarVentasEstado(folios) {
+        if (!opsPuedeGestionar() || !window.tcNotificar2) return;
+        const limite = Date.now() - 20 * 86400000;
+        for (const f of folios) {
+            const peds = (f.pedidosVentas || []).length ? f.pedidosVentas : (f.pedidoVentasId ? [{ id: f.pedidoVentasId, folio: f.pedidoVentasFolio }] : []);
+            if (!peds.length || opsVentasAvisando.has(f.id)) continue;
+            const est = opsVentasEstadoClave(f); if (!est) continue;
+            if (f.ventasAvisoEstado === est.k) continue;
+            const ref = opsAFechaObj(f.fechaSolucion || f.fechaProgramada || f.creadoEn);
+            if (!f.ventasAvisoEstado && ref && ref.getTime() < limite) continue; // no avisar historial viejo al estrenar esto
+            const correos = [...new Set(peds.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean)
+                .map(p => String(p.solicitanteEmail || "").toLowerCase().trim()).filter(c => c.includes("@")))];
+            if (!correos.length) continue;
+            opsVentasAvisando.add(f.id);
+            try {
+                const { db, fs } = await opsGetFB();
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { ventasAvisoEstado: est.k, ventasAvisoEn: opsFechaHora() });
+                const pedTxt = peds.map(x => x.folio).filter(Boolean).join(", ");
+                for (const para of correos) await window.tcNotificar2(fs, db, {
+                    tipo: "ventas_servicio_estado", para, folioId: f.id, modulo: "Ventas",
+                    mensaje: "Tu servicio " + (pedTxt ? "(" + pedTxt + ") " : "") + "en " + (f.estacion || f.clienteNombre || "la estación") + " " + est.t + ".",
+                    leido: false, creadaEn: opsFechaHora(),
+                }).catch(() => {});
+                f.ventasAvisoEstado = est.k;
+            } catch (e) { console.warn("[avisos a Ventas]", e); }
+            finally { opsVentasAvisando.delete(f.id); }
+        }
+    }
+
     function opsPedidosVentasPendientes() {
         return (cacheSurtidos || []).filter(p => (p.clasificacion === "servicio" || p.clasificacion === "servicio_piezas")
             && !p.opsGestionado && p.estado !== "cancelado" && !p.eliminada)
@@ -6915,11 +6962,12 @@
             const emp = p.empresa ? `<span style="font-size:9.5px;font-weight:800;color:#fff;background:#334155;border-radius:5px;padding:2px 6px;">${opsEsc(OPS_EMP_CORTA[p.empresa] || p.empresa)}</span>` : "";
             return `<div style="background:#fff;border:1px solid #ede9fe;border-left:4px solid #7c3aed;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;min-width:0;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span style="font-weight:800;font-size:12.5px;color:#1e293b;">${opsEsc(p.folio || "—")}</span>${emp}
+                    <span style="font-weight:800;font-size:12.5px;color:#1e293b;">${opsEsc(p.folio || "—")}</span>${emp}${p.tipoSolicitud === "peticion_diagnostico" ? `<span style="font-size:9.5px;font-weight:800;color:#9a3412;background:#ffedd5;border-radius:5px;padding:2px 6px;">PETICIÓN / DIAGNÓSTICO</span>` : ""}
                     <span style="margin-left:auto;font-size:10.5px;color:#94a3b8;font-weight:700;">${opsPedVentasDias(p)}</span>
                 </div>
                 <div style="font-weight:700;font-size:13px;color:#1D2E73;line-height:1.25;">${opsEsc(p.cliente || "Sin cliente")}</div>
                 <div style="font-size:11px;color:#64748b;">Vendedor: ${opsEsc(p.vendedor || "—")}${p.fechaEntrega ? " · Compromiso: " + opsEsc(p.fechaEntrega) : ""}</div>
+                ${p.tipoSolicitud === "peticion_diagnostico" ? `<div style="font-size:11px;color:#334155;background:#fff7ed;border-radius:8px;padding:6px 8px;line-height:1.45;"><b>Lo que pide el cliente:</b> ${opsEsc(p.uso || "")}${p.contacto && p.contacto.nombre ? `<br><b>Contacto:</b> ${opsEsc(p.contacto.nombre)}${p.contacto.telefono ? " · " + opsEsc(p.contacto.telefono) : ""}${p.contacto.correo ? " · " + opsEsc(p.contacto.correo) : ""}` : ""}${p.permiso ? `<br><b>PL:</b> ${opsEsc(p.permiso)}` : ""}${p.direccion ? `<br><b>Dirección:</b> ${opsEsc(p.direccion)}` : ""}<br><b>Viáticos:</b> ${p.aplicaViaticos === false ? "no aplican (Chihuahua ciudad)" : "sí aplican"}</div>` : ""}
                 <div style="display:flex;flex-direction:column;gap:4px;">
                     ${serv.map(x => `<div style="font-size:11.5px;color:#334155;background:#faf5ff;border-radius:8px;padding:6px 8px;">
                         <b>${opsEsc(x.cant || 1)} × ${opsEsc(x.desc || x.clave || "")}</b>${x.espec ? `<div style="color:#6d28d9;font-weight:600;margin-top:2px;">${opsEsc(x.espec)}</div>` : ""}</div>`).join("")}
@@ -7299,6 +7347,19 @@
             ...serv.map(x => `${x.cant || 1} × ${x.desc || x.clave}${x.espec ? " — " + x.espec : ""}`),
             p.clasificacion === "servicio_piezas" ? "Lleva piezas surtidas por Almacén." : ""].filter(Boolean).join("\n");
         opsAS.__surtidoId = p.id;
+        // Petición / diagnóstico desde Ventas (20-oct-2026): ya trae estación del catálogo y contacto.
+        if (p.contacto && p.contacto.nombre && !opsAS.contacto) {
+            opsAS.contacto = p.contacto.nombre; opsAS.telefono = p.contacto.telefono || ""; opsAS.whatsapp = p.contacto.telefono || ""; opsAS.correo = p.contacto.correo || "";
+        }
+        if (p.tipoSolicitud === "peticion_diagnostico") opsAS.comentarios = [opsAS.comentarios, "Petición / diagnóstico: " + (p.uso || "")].filter(Boolean).join("\n");
+        if (p.estacionId) {
+            const elegir = (intento) => {
+                if (!opsAS || opsAS.__surtidoId !== p.id) return;
+                if ((window.__opsAsEstCatalogo || []).some(e => e.id === p.estacionId)) { window.opsAsElegirEstacion(p.estacionId); if (p.aplicaViaticos === false) { opsAS.viaticos = false; opsAsPintar(); } }
+                else if (intento < 20) setTimeout(() => elegir(intento + 1), 400);
+            };
+            setTimeout(() => elegir(0), 150);
+        }
         if (p.opsPlaza) { opsAS.plaza = p.opsPlaza; opsAS.plazaManual = true; }
         if (p.opsGestionLocal) opsAS.comentarios = [opsAS.comentarios, "Gestión local (plaza " + (p.opsPlaza || "") + "): " + p.opsGestionLocal].filter(Boolean).join("\n");
         // Ficha de servicio del vendedor (Etapa C): lo que ya capturó Ventas no se vuelve a escribir.
@@ -11199,6 +11260,7 @@
         <div class="opsas-sec ${lock(listo3)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Viáticos</div></div>
             <div class="opsas-sw ${s.viaticos ? "on" : ""}" onclick="opsAsSet('viaticos',${!s.viaticos})"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Este servicio requiere viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Al guardar se abre la Solicitud de viáticos con estación, personal y horario ya cargados</div></div></div>
+            ${(() => { const ests = opsAsEstacionesElegidas(s); if (ests.length && ests.every(opsEsCuuCiudad)) return `<div class="opsas-note" style="background:#f0fdf4;color:#166534;">La estación está en Chihuahua ciudad: no aplican viáticos.</div>`; const sinDir = ests.filter(e => !String(e.direccionNormalizada || "").trim()); return s.viaticos && sinDir.length ? `<div class="opsas-note" style="background:#fef2f2;color:#991b1b;">${sinDir.length === 1 ? "Esta estación no tiene" : sinDir.length + " estaciones no tienen"} dirección capturada: sin dirección no se pueden calcular bien los viáticos (kilómetros, casetas, gasolina). Pide a Ventas que la complete o captúrala en Clientes.</div>` : ""; })()}
             ${s.viaticos ? `<div class="opsas-note">Es el mismo formulario del botón "Nueva solicitud de viáticos": ruta en mapa, vehículo de Flotilla, gasolina, alimentos por horario, hotel y casetas. Notifica a quien autoriza y a Pagos.</div>` : ""}
         </div>` : "";
 
@@ -11266,6 +11328,10 @@
 
     window.opsAsSet = function (campo, valor) {
         const s = opsAS; if (!s) return;
+        if (campo === "viaticos" && valor) {
+            const ests = opsAsEstacionesElegidas(s);
+            if (ests.length && ests.every(opsEsCuuCiudad)) { alert("En Chihuahua ciudad no aplican viáticos."); return; }
+        }
         s[campo] = valor;
         if (campo === "tipo") {
             s.recetaId = null; s.porRol = {}; s.herrOk = {};
@@ -11761,9 +11827,19 @@
         if (!s.contacto) {
             const c = opsAsDirectorio().find(x => x.ids.has(e.id));
             if (c) { s.contacto = c.nombre; s.telefono = c.tel || s.telefono; s.whatsapp = c.whatsapp || ""; s.correo = c.correo || ""; s.puesto = c.puesto || s.puesto; s.contactoId = c.id || null; }
+            else if (e.encargado) { s.contacto = e.encargado; s.puesto = s.puesto || "Encargado de la estación"; }
         }
+        // Chihuahua ciudad no lleva viáticos (20-oct-2026, Glen)
+        if (opsEsCuuCiudad(e)) s.viaticos = false;
         opsAsPintar();
     };
+    // ¿La estación está en Chihuahua ciudad? (municipio de Chihuahua) → no aplican viáticos.
+    function opsEsCuuCiudad(e) {
+        if (!e) return false;
+        const m = String(e.municipio || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").trim();
+        return m === "CHIHUAHUA" || m === "CHIHUAHUA CHIHUAHUA";
+    }
+    function opsAsEstacionesElegidas(s) { return s ? (s.multiEst ? (s.estaciones || []).map(x => x.est).filter(Boolean) : (s.est ? [s.est] : [])) : []; }
 
     // ═══ Alta de estación / cliente nuevo desde Nuevo servicio (oct-2026) ═══
     // Glen: "si el cliente no está en la lista poderlo dar de alta desde ahí mismo y se comunique

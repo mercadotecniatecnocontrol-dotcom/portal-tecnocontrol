@@ -4935,6 +4935,10 @@ function portalCpGeneral() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span style="font-size:10px;font-weight:700;color:#0891b2;">Cotizar</span>
         </button>
+        <button onclick="ventasAbrirSolicitudServicio('${c.id}')" style="padding:12px 6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D2E73" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#1D2E73;">Servicio</span>
+        </button>
         <button onclick="ventasAbrirModalSolicitud('${c.id}')" style="padding:12px 6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
             <span style="font-size:10px;font-weight:700;color:#c2410c;">Material</span>
@@ -5560,6 +5564,10 @@ function vpCpGeneral(c) {
         <button onclick="vpNuevaCotizacion('${c.id}')" style="padding:10px 4px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
             <span style="font-size:9px;font-weight:700;color:#0891b2;">Cotizar</span>
+        </button>
+        <button onclick="ventasAbrirSolicitudServicio('${c.id}')" style="padding:10px 4px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D2E73" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span style="font-size:9px;font-weight:700;color:#1D2E73;">Servicio</span>
         </button>
         <button onclick="ventasAbrirModalSolicitud('${c.id}')" style="padding:10px 4px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -6798,4 +6806,322 @@ window.ventasToggleCapaLogistica = async function(){
     });
     ventasCapaLogisticaActiva = true;
     if(window.mostrarPush) window.mostrarPush('Rutas de Almacén', puntos.length+' pendientes ubicados en el mapa.', '🚚');
+};
+
+/* ============================================================================
+ * SOLICITUD DE SERVICIO DESDE VENTAS · PETICIÓN / DIAGNÓSTICO (20-oct-2026)
+ * ----------------------------------------------------------------------------
+ * Botón "Servicio" en la ficha del cliente. El vendedor pide que Operaciones
+ * vaya a revisar algo; entra a Operaciones → "Vendidos por programar" con la
+ * etiqueta PETICIÓN / DIAGNÓSTICO (misma colección `surtidos`, clasificación
+ * "servicio", no se duplica nada).
+ *
+ * Reglas de Glen:
+ *  · Al elegir la estación se llena TODO solo, desde el catálogo maestro
+ *    (Supabase: estaciones_servicio + clientes_catalogo, que ya trae SUDI).
+ *  · Si la estación no está, Ventas DEBE completar: PL, razón social,
+ *    dirección correcta, ubicación y contacto (nombre, teléfono y correo).
+ *    Sin dirección no se pueden calcular bien los viáticos.
+ *  · Chihuahua ciudad no lleva viáticos.
+ *  · Todo lo que se captura o corrige aquí alimenta la base de datos.
+ *  · Ventas recibe avisos del estatus (lo manda Operaciones al programar,
+ *    iniciar, terminar o cancelar).
+ * ==========================================================================*/
+const VSS_SB_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
+const VSS_SB_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+let vss = null, vssCatalogo = null, vssClientes = null;
+
+function vssSb(){
+    if(window.tcSupabase) return Promise.resolve(window.tcSupabase);
+    return import('https://esm.sh/@supabase/supabase-js@2').then(m=>{ if(!window.tcSupabase) window.tcSupabase = m.createClient(VSS_SB_URL, VSS_SB_KEY); return window.tcSupabase; });
+}
+function vssNorm(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function vssNormRS(t){ return vssNorm(t).replace(/(SAPIDECV|SADECV|SDERLDECV|SDERL|SPRDERL|SAPI|SA|SC)$/,''); }
+function vssEsCuu(m){ const x = String(m||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z ]/g,' ').trim(); return x==='CHIHUAHUA'; }
+function vssPLValido(p){ return /^(CNE\/)?(PL|LP)\/\d+\/EXP\/(ES|AUT)\/\d{4}$/i.test(String(p||'').replace(/\s+/g,'')); }
+function vssDirCompleta(f){ return [f.direccion, f.colonia ? 'Col. '+f.colonia : '', f.cp ? 'C.P. '+f.cp : '', f.municipio, f.estado].map(x=>String(x||'').trim()).filter(Boolean).join(', '); }
+
+async function vssCargarCatalogo(){
+    const sb = await vssSb();
+    if(!vssCatalogo){
+        const campos = 'id,razon_social,nombre_comercial,permiso,direccion_normalizada,colonia,codigo_postal,municipio,estado,lat,lng,ubicacion_verificada,encargado,cliente_id';
+        let todo = [], desde = 0;
+        for(let i=0;i<10;i++){
+            const { data, error } = await sb.from('estaciones_servicio').select(campos).order('id').range(desde, desde+999);
+            if(error) throw error;
+            todo = todo.concat(data||[]); if(!data || data.length < 1000) break; desde += 1000;
+        }
+        vssCatalogo = todo.filter(e => e.permiso || e.nombre_comercial || e.razon_social);
+    }
+    if(!vssClientes){
+        const { data } = await sb.from('clientes_catalogo').select('id,razon_social,nombre_comercial,rfc,representante,telefono,correo,contactos');
+        vssClientes = data || [];
+    }
+}
+
+window.ventasAbrirSolicitudServicio = async function(clienteId){
+    const c = clienteId ? (window.clientesDB||[]).find(x=>x.id===clienteId) : null;
+    vss = { clienteVentasId: c ? c.id : null, est:null, nueva:false, busca:'', ubiFuente:null, ubiCambio:false, enviando:false, msg:'',
+        f:{ razon:'', nombre:'', permiso:'', direccion:'', colonia:'', cp:'', municipio:'', estado:'Chihuahua', lat:null, lng:null,
+            contactoNombre:'', contactoTel:'', contactoCorreo:'', descripcion:'', prioridad:'normal', fechaSugerida:'' } };
+    let wrap = document.getElementById('ventas-modal-servicio');
+    if(!wrap){ wrap = document.createElement('div'); wrap.id = 'ventas-modal-servicio'; document.body.appendChild(wrap); }
+    wrap.innerHTML = '<div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;"><div style="background:#fff;border-radius:14px;padding:24px 28px;font-size:13px;color:#334155;">Cargando el catálogo de estaciones…</div></div>';
+    try{ await vssCargarCatalogo(); }
+    catch(e){ wrap.innerHTML=''; alert('No se pudo cargar el catálogo de estaciones: '+(e.message||e)); return; }
+    if(c){
+        const e = c.estacionCatalogoId ? vssCatalogo.find(x=>x.id===String(c.estacionCatalogoId)) : null;
+        if(e) vssElegir(e.id, true);
+        else {
+            const pl = String(c.permiso||'').replace(/\s+/g,'');
+            const e2 = pl ? vssCatalogo.find(x=>String(x.permiso||'').replace(/\s+/g,'').toUpperCase()===pl.toUpperCase()) : null;
+            if(e2) vssElegir(e2.id, true);
+            else {
+                vss.nueva = true;
+                Object.assign(vss.f, { razon:(c.nombre||'').split(' — ')[0], permiso:pl, direccion:c.direccion||'', municipio:c.ciudad||'', estado:c.estado||'Chihuahua',
+                    lat:c.lat||null, lng:c.lng||null, contactoNombre:c.contacto||'', contactoTel:c.tel||'' });
+                if(c.lat && c.lng) vss.ubiFuente = 'ventas';
+            }
+        }
+        if(!vss.f.contactoNombre && c.contacto) vss.f.contactoNombre = c.contacto;
+        if(!vss.f.contactoTel && c.tel) vss.f.contactoTel = c.tel;
+    }
+    vssPintar();
+};
+
+function vssElegir(id, sinPintar){
+    const e = vssCatalogo.find(x=>x.id===id); if(!e) return;
+    const cli = e.cliente_id ? (vssClientes||[]).find(x=>String(x.id)===String(e.cliente_id)) : null;
+    const contactos = cli && Array.isArray(cli.contactos) ? cli.contactos : [];
+    const c0 = contactos.find(x=>x && (x.estacionId===e.id)) || contactos[0] || null;
+    vss.est = e; vss.nueva = false; vss.busca = '';
+    vss.ubiFuente = (e.lat && e.lng) ? 'catalogo' : null; vss.ubiCambio = false;
+    const dir = String(e.direccion_normalizada||'');
+    Object.assign(vss.f, {
+        razon: e.razon_social || (cli && cli.razon_social) || '', nombre: e.nombre_comercial || '', permiso: e.permiso || '',
+        direccion: dir, colonia: dir.includes(e.colonia||'§') ? '' : (e.colonia||''), cp: dir.includes(e.codigo_postal||'§') ? '' : (e.codigo_postal||''),
+        municipio: e.municipio || '', estado: e.estado || 'Chihuahua', lat: e.lat || null, lng: e.lng || null,
+        contactoNombre: (c0 && c0.nombre) || e.encargado || (cli && cli.representante) || vss.f.contactoNombre || '',
+        contactoTel: (c0 && (c0.tel||c0.telefono)) || (cli && cli.telefono) || vss.f.contactoTel || '',
+        contactoCorreo: (c0 && c0.correo) || (cli && cli.correo) || vss.f.contactoCorreo || ''
+    });
+    if(!sinPintar) vssPintar();
+}
+window.vssElegir = vssElegir;
+window.vssCambiarEstacion = function(){ if(!vss) return; vss.est=null; vss.nueva=false; vssPintar(); };
+window.vssNoEsta = function(){ vss.est=null; vss.nueva=true; vss.f.razon = vss.f.razon || vss.busca; vss.busca=''; vssPintar(); };
+window.vssCampo = function(k, v){ if(!vss) return; vss.f[k] = v; if(k==='municipio') vssPintarViaticos(); };
+window.vssBuscar = function(q){
+    vss.busca = q;
+    const box = document.getElementById('vss-res'); if(!box) return;
+    const n = vssNorm(q);
+    if(n.length < 2){ box.innerHTML=''; return; }
+    const res = vssCatalogo.filter(e => vssNorm([e.nombre_comercial,e.razon_social,e.permiso,e.municipio].join(' ')).includes(n))
+        .sort((a,b)=>String(a.nombre_comercial||a.razon_social||'').localeCompare(String(b.nombre_comercial||b.razon_social||''),'es')).slice(0,30);
+    box.innerHTML = res.map(e=>`<div onmousedown="vssElegir('${ventasEsc(e.id)}')" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+        <div style="font-size:12.5px;font-weight:700;color:#1D2E73;">${ventasEsc(e.nombre_comercial||e.razon_social||'Sin nombre')}</div>
+        <div style="font-size:11px;color:#64748b;">${ventasEsc([e.permiso||'sin PL', e.razon_social, e.municipio].filter(Boolean).join(' · '))}</div></div>`).join('')
+        + `<div onmousedown="vssNoEsta()" style="padding:9px 10px;cursor:pointer;font-size:12px;font-weight:700;color:#b45309;background:#fffbeb;">No está en la lista: capturar estación nueva</div>`;
+};
+function vssPintarViaticos(){
+    const el = document.getElementById('vss-viat'); if(!el) return;
+    const sinDir = !String(vss.f.direccion||'').trim();
+    el.innerHTML = vssEsCuu(vss.f.municipio)
+        ? '<b>Viáticos:</b> no aplican, la estación está en Chihuahua ciudad.'
+        : (sinDir ? '<b>Viáticos:</b> sí aplican, pero <b>falta la dirección</b>: sin dirección Operaciones no puede calcularlos bien.' : '<b>Viáticos:</b> sí aplican. Operaciones los calcula con la dirección y la ubicación.');
+    el.style.background = vssEsCuu(vss.f.municipio) ? '#f0fdf4' : (sinDir ? '#fef2f2' : '#eff6ff');
+}
+window.vssUbicacionGPS = function(){
+    if(!navigator.geolocation){ alert('Tu navegador no permite leer el GPS.'); return; }
+    const b = document.getElementById('vss-ubi-msg'); if(b) b.textContent = 'Leyendo GPS…';
+    navigator.geolocation.getCurrentPosition(p=>{
+        if(!confirm('¿Estás físicamente en la estación? La ubicación de tu teléfono se guardará como la ubicación de la estación.')){ if(b) b.textContent=''; return; }
+        vss.f.lat = +p.coords.latitude.toFixed(6); vss.f.lng = +p.coords.longitude.toFixed(6); vss.ubiFuente='gps'; vss.ubiCambio=true; vssPintar();
+    }, ()=>{ if(b) b.textContent = 'No se pudo leer el GPS. Activa la ubicación o pega la liga de Google Maps.'; }, { enableHighAccuracy:true, timeout:15000 });
+};
+window.vssUbicacionTexto = function(t){
+    t = String(t||'').trim(); const b = document.getElementById('vss-ubi-msg');
+    const m = t.match(/@(-?\d{1,2}\.\d+),(-?\d{2,3}\.\d+)/) || t.match(/[?&](?:q|query|ll)=(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/) || t.match(/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{2,3}\.\d{3,})/);
+    if(m){ vss.f.lat = +(+m[1]).toFixed(6); vss.f.lng = +(+m[2]).toFixed(6); vss.ubiFuente='maps'; vss.ubiCambio=true; vssPintar(); return; }
+    if(b) b.textContent = /goo\.gl|maps\.app/.test(t) ? 'Esa liga corta no trae las coordenadas. Ábrela, mantén presionado el punto en el mapa y copia los números que aparecen (ej. 28.6353, -106.0889).' : 'No encontré coordenadas en ese texto. Pega algo como 28.6353, -106.0889 o la liga larga de Google Maps.';
+};
+window.vssUbicacionDireccion = async function(){
+    const b = document.getElementById('vss-ubi-msg');
+    if(!window.__logGeocodificarDireccion){ if(b) b.textContent='La búsqueda por dirección no está disponible aquí.'; return; }
+    const d = vssDirCompleta(vss.f); if(!vss.f.direccion){ if(b) b.textContent='Primero escribe la dirección.'; return; }
+    if(b) b.textContent='Buscando la dirección en el mapa…';
+    try{
+        const r = await window.__logGeocodificarDireccion(d);
+        if(r && r.encontrado){ vss.f.lat=+(+r.lat).toFixed(6); vss.f.lng=+(+r.lng).toFixed(6); vss.ubiFuente='direccion'; vss.ubiCambio=true; vssPintar(); }
+        else if(b) b.textContent='No se encontró esa dirección. Pega la liga de Google Maps o usa el GPS en la estación.';
+    }catch(e){ if(b) b.textContent='No se pudo buscar la dirección.'; }
+};
+
+function vssPintar(){
+    const wrap = document.getElementById('ventas-modal-servicio'); if(!wrap || !vss) return;
+    const f = vss.f, e = vss.est;
+    const inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;';
+    const lbl = (t, ob) => `<div style="font-size:11.5px;font-weight:700;color:#334155;margin:9px 0 4px;">${t}${ob?' <span style="color:#dc2626">*</span>':''}</div>`;
+    const campo = (k, t, ob, ph, tipo) => lbl(t, ob) + `<input type="${tipo||'text'}" value="${ventasEsc(f[k]||'')}" placeholder="${ventasEsc(ph||'')}" oninput="vssCampo('${k}',this.value)" style="${inp}">`;
+    const ubi = f.lat && f.lng ? `<div style="font-size:12px;color:#166534;background:#f0fdf4;border-radius:8px;padding:7px 9px;">Ubicación: ${f.lat}, ${f.lng} <span style="color:#64748b;">(${({catalogo:'del catálogo',gps:'GPS en la estación',maps:'Google Maps',direccion:'buscada por dirección',ventas:'de la ficha del cliente'})[vss.ubiFuente]||''})</span> · <a href="https://www.google.com/maps?q=${f.lat},${f.lng}" target="_blank" style="color:#1D2E73;font-weight:700;">ver en el mapa</a></div>`
+        : `<div style="font-size:12px;color:#991b1b;background:#fef2f2;border-radius:8px;padding:7px 9px;">Sin ubicación todavía.</div>`;
+    wrap.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;">
+      <div style="background:#fff;border-radius:14px;width:600px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;">
+        <div style="padding:18px 20px 8px;border-bottom:1px solid #f1f5f9;">
+          <div style="font-size:16px;font-weight:800;color:#1D2E73;">Solicitar servicio · Petición / diagnóstico</div>
+          <div style="font-size:11.5px;color:#64748b;margin-top:3px;line-height:1.45;">Le pides a Operaciones que vaya a revisar algo con el cliente. Elige la estación y todo se llena solo. Te avisaremos en tu campanita cuando se programe, cuando el técnico llegue y cuando se termine.</div>
+        </div>
+        <div style="overflow-y:auto;padding:4px 20px 14px;flex:1;">
+          ${lbl('1. Estación', true)}
+          ${e ? `<div style="display:flex;align-items:center;gap:8px;background:#eef2ff;border-radius:10px;padding:9px 11px;">
+                    <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:800;color:#1D2E73;">${ventasEsc(e.nombre_comercial||e.razon_social)}</div><div style="font-size:11px;color:#475569;">Del catálogo · ${ventasEsc(e.permiso||'sin PL')}</div></div>
+                    <button onclick="vssCambiarEstacion()" style="border:none;background:#fff;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer;">Cambiar</button></div>`
+              : (vss.nueva ? `<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border-radius:10px;padding:9px 11px;font-size:12px;color:#92400e;"><div style="flex:1;"><b>Estación nueva:</b> no está en SUDI ni en el catálogo. Llena todos los datos con asterisco; se dará de alta para todo el portal.</div><button onclick="vssCambiarEstacion()" style="border:none;background:#fff;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer;">Buscar</button></div>`
+              : `<div style="position:relative;"><input id="vss-busca" type="text" autocomplete="off" placeholder="Escribe el nombre, la razón social, el PL o la ciudad…" oninput="vssBuscar(this.value)" style="${inp}"><div id="vss-res" style="border:1px solid #e2e8f0;border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;"></div></div>`)}
+          ${e || vss.nueva ? `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;">
+            <div style="grid-column:1/-1;">${campo('razon','Razón social',true,'Ej. PRONTOGAS, S. A. DE C. V.')}</div>
+            <div>${campo('nombre','Nombre comercial',false,'Como le dicen: Pronto Gas Bahías')}</div>
+            <div>${campo('permiso','PL (permiso de la CRE)',true,'PL/0000/EXP/ES/2015')}</div>
+            <div style="grid-column:1/-1;">${campo('direccion','Dirección (calle y número)',true,'Necesaria para calcular viáticos')}</div>
+            <div>${campo('colonia','Colonia',false,'')}</div><div>${campo('cp','C.P.',false,'')}</div>
+            <div>${campo('municipio','Municipio / ciudad',true,'Chihuahua, Juárez, Delicias…')}</div><div>${campo('estado','Estado',false,'')}</div>
+          </div>
+          ${lbl('Ubicación', true)}${ubi}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+            <button onclick="vssUbicacionGPS()" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;">Usar mi GPS (estoy en la estación)</button>
+            <button onclick="vssUbicacionDireccion()" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;">Buscar por dirección</button>
+          </div>
+          <input type="text" placeholder="…o pega aquí las coordenadas o la liga de Google Maps" onchange="vssUbicacionTexto(this.value)" style="${inp};margin-top:6px;">
+          <div id="vss-ubi-msg" style="font-size:11px;color:#b45309;margin-top:4px;"></div>
+          ${lbl('2. Contacto en la estación', true)}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;">
+            <div style="grid-column:1/-1;">${campo('contactoNombre','Nombre',true,'Nombre de quien recibe al técnico')}</div>
+            <div>${campo('contactoTel','Teléfono (10 dígitos)',true,'6141234567','tel')}</div>
+            <div>${campo('contactoCorreo','Correo',true,'nombre@empresa.com','email')}</div>
+          </div>
+          ${lbl('3. ¿Qué pide el cliente?', true)}
+          <textarea oninput="vssCampo('descripcion',this.value)" rows="3" placeholder="Ej. El dispensario 2 no despacha diésel; quieren que se revise y se cotice la reparación." style="${inp};resize:vertical;">${ventasEsc(f.descripcion)}</textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px;">
+            <div>${lbl('Prioridad')}<select onchange="vssCampo('prioridad',this.value)" style="${inp}">${[['normal','Normal'],['alta','Alta'],['urgente','Urgente']].map(([v,t])=>`<option value="${v}" ${f.prioridad===v?'selected':''}>${t}</option>`).join('')}</select></div>
+            <div>${campo('fechaSugerida','Fecha que pide el cliente',false,'','date')}</div>
+          </div>
+          <div id="vss-viat" style="margin-top:10px;font-size:12px;color:#334155;border-radius:8px;padding:8px 10px;"></div>` : ''}
+          <div id="vss-msg" style="font-size:12px;color:#b91c1c;margin-top:8px;line-height:1.45;">${vss.msg||''}</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #f1f5f9;">
+          <button onclick="document.getElementById('ventas-modal-servicio').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+          ${e || vss.nueva ? `<button id="vss-enviar" onclick="vssEnviar()" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar a Operaciones</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+    vssPintarViaticos();
+    const bi = document.getElementById('vss-busca'); if(bi){ bi.focus(); }
+}
+
+window.vssEnviar = async function(){
+    if(!vss || vss.enviando) return;
+    const f = vss.f, falta = [];
+    const pl = String(f.permiso||'').replace(/\s+/g,'').toUpperCase();
+    if(!String(f.razon||'').trim()) falta.push('razón social');
+    if(!vssPLValido(pl)) falta.push('PL completo (ej. PL/4055/EXP/ES/2015)');
+    if(!String(f.direccion||'').trim()) falta.push('dirección (sin dirección no se calculan los viáticos)');
+    if(!String(f.municipio||'').trim()) falta.push('municipio o ciudad');
+    if(!(f.lat && f.lng)) falta.push('ubicación');
+    if(!String(f.contactoNombre||'').trim()) falta.push('nombre del contacto');
+    if(String(f.contactoTel||'').replace(/\D/g,'').length < 10) falta.push('teléfono del contacto (10 dígitos)');
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.contactoCorreo||'').trim())) falta.push('correo del contacto');
+    if(String(f.descripcion||'').trim().length < 8) falta.push('qué pide el cliente');
+    if(falta.length){ vss.msg = 'Falta: ' + falta.join(', ') + '.'; const m=document.getElementById('vss-msg'); if(m){ m.textContent=vss.msg; m.scrollIntoView({block:'nearest'}); } return; }
+    const yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+    if(!yo){ alert('Tu sesión no está disponible: recarga el portal.'); return; }
+    const solicitante = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo;
+    vss.enviando = true; const btn = document.getElementById('vss-enviar'); if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
+    const ahora = new Date().toISOString(), rs = String(f.razon).trim().toUpperCase(), nc = String(f.nombre||'').trim();
+    const dir = vssDirCompleta({ direccion:f.direccion, colonia:f.colonia, cp:f.cp });
+    const contacto = { nombre:String(f.contactoNombre).trim(), telefono:String(f.contactoTel).replace(/\D/g,'').slice(-10), correo:String(f.contactoCorreo).trim().toLowerCase() };
+    const aplicaViaticos = !vssEsCuu(f.municipio);
+    try{
+        const sb = await vssSb();
+        // 1) Cliente (razón social) en clientes_catalogo: se busca y se completa, o se da de alta
+        let cli = (vssClientes||[]).find(x=>vssNormRS(x.razon_social)===vssNormRS(rs)) || null;
+        if(vss.est && vss.est.cliente_id) cli = (vssClientes||[]).find(x=>String(x.id)===String(vss.est.cliente_id)) || cli;
+        const contactoCat = { nombre:contacto.nombre, tel:contacto.telefono, correo:contacto.correo, puesto:'Encargado de la estación', estacion:nc||rs, origen:'ventas', en:ahora };
+        if(cli){
+            const lista = Array.isArray(cli.contactos) ? cli.contactos.slice() : [];
+            const ya = lista.some(x=>x && ((x.correo||'').toLowerCase()===contacto.correo || String(x.tel||x.telefono||'').replace(/\D/g,'').slice(-10)===contacto.telefono));
+            const cambios = { actualizado_en:ahora, actualizado_por:yo };
+            if(!ya){ lista.push(contactoCat); cambios.contactos = lista; }
+            if(!cli.representante) cambios.representante = contacto.nombre;
+            if(!cli.telefono) cambios.telefono = contacto.telefono;
+            if(!cli.correo) cambios.correo = contacto.correo;
+            const r = await sb.from('clientes_catalogo').update(cambios).eq('id', cli.id); if(r.error) console.warn('[vss] cliente', r.error.message);
+        } else {
+            const r = await sb.from('clientes_catalogo').insert({ razon_social:rs, nombre_comercial:nc||null, representante:contacto.nombre, telefono:contacto.telefono, correo:contacto.correo,
+                contactos:[contactoCat], normas:[], empresas:['Tecnocontrol'], palabras_clave:[], activo:true, origen:'ventas', creado_en:ahora, actualizado_en:ahora, actualizado_por:yo }).select('id').single();
+            if(r.error) console.warn('[vss] alta cliente', r.error.message); else cli = { id:r.data.id, razon_social:rs };
+        }
+        // 2) Estación en el catálogo maestro: se corrige/completa, o se da de alta
+        const verif = vss.ubiFuente==='gps' || vss.ubiFuente==='maps';
+        let estId = vss.est ? vss.est.id : null;
+        if(vss.est){
+            const e = vss.est, cambios = { actualizado_en:ahora };
+            const pon = (col, val, actual) => { if(String(val||'').trim() && String(val).trim() !== String(actual||'').trim()) cambios[col] = String(val).trim(); };
+            pon('razon_social', rs, e.razon_social); pon('nombre_comercial', nc, e.nombre_comercial); pon('permiso', pl, e.permiso);
+            pon('direccion_normalizada', dir, e.direccion_normalizada); pon('municipio', f.municipio, e.municipio); pon('estado', f.estado, e.estado);
+            if(!e.encargado) cambios.encargado = contacto.nombre;
+            if(vss.ubiCambio && !(e.ubicacion_verificada && !verif)){ Object.assign(cambios, { lat:f.lat, lng:f.lng, ubicacion_verificada:verif, ubicacion_fuente:'ventas_'+vss.ubiFuente, ubicacion_por:yo, ubicacion_en:ahora }); }
+            if(!e.cliente_id && cli) cambios.cliente_id = String(cli.id);
+            if(Object.keys(cambios).length > 1){ const r = await sb.from('estaciones_servicio').update(cambios).eq('id', e.id); if(r.error) console.warn('[vss] estación', r.error.message); else Object.assign(e, cambios); }
+        } else {
+            const ABC='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', rnd=new Uint8Array(20); crypto.getRandomValues(rnd);
+            estId = Array.from(rnd, x=>ABC[x%ABC.length]).join('');
+            const fila = { id:estId, razon_social:rs, nombre_comercial:nc||null, permiso:pl, direccion_normalizada:dir, domicilio_raw:dir, colonia:f.colonia||null, codigo_postal:f.cp||null,
+                municipio:String(f.municipio).trim(), estado:String(f.estado||'').trim()||null, lat:f.lat, lng:f.lng, ubicacion_verificada:verif, ubicacion_fuente:'ventas_'+(vss.ubiFuente||'manual'),
+                ubicacion_por:yo, ubicacion_en:ahora, encargado:contacto.nombre, cliente_id:cli?String(cli.id):null, activo:true, fuente_datos:'ventas_solicitud', creado_en:ahora, actualizado_en:ahora };
+            const r = await sb.from('estaciones_servicio').insert(fila); if(r.error) throw new Error('No se pudo dar de alta la estación: '+r.error.message);
+            vssCatalogo.push(fila);
+            await sb.from('ventas_clientes').insert({ nombre: rs+' — '+[dir, f.municipio].filter(Boolean).join(', '), direccion:dir, ciudad:f.municipio, estado:f.estado||null, lat:f.lat, lng:f.lng,
+                contacto:contacto.nombre, tel:contacto.telefono, permiso:pl, estacion_catalogo_id:estId, visitas:0, origen:'ventas', actualizado_por:yo, creado_en:ahora, actualizado_en:ahora,
+                notas:['Estación: '+(nc||rs), 'PL: '+pl, 'Correo: '+contacto.correo, 'Alta desde Solicitud de servicio de Ventas'].join(' · ') }).then(()=>{}, ()=>{});
+        }
+        // 3) La ficha del cliente en Ventas también se completa
+        if(vss.clienteVentasId){
+            try{
+                const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+                const c = (window.clientesDB||[]).find(x=>x.id===vss.clienteVentasId) || {};
+                const cam = { actualizadoEn:ahora, actualizadoPor:yo };
+                if(!c.estacionCatalogoId || String(c.estacionCatalogoId)!==String(estId)) cam.estacionCatalogoId = estId;
+                if(!c.contacto) cam.contacto = contacto.nombre; if(!c.tel) cam.tel = contacto.telefono; if(!c.permiso) cam.permiso = pl;
+                if(!c.direccion) cam.direccion = dir; if(!c.ciudad) cam.ciudad = f.municipio; if(!(c.lat && c.lng)){ cam.lat = f.lat; cam.lng = f.lng; }
+                await updateDoc(doc(window.db,'ventas_clientes',vss.clienteVentasId), cam); Object.assign(c, cam);
+            }catch(e){ console.warn('[vss] ficha de Ventas', e.message); }
+        }
+        // 4) La petición a Operaciones
+        const folioInfo = await ventasSiguienteFolioMaterial();
+        const desc = String(f.descripcion).trim();
+        const data = {
+            tipo:'servicio', clasificacion:'servicio', tipoSolicitud:'peticion_diagnostico',
+            folio:folioInfo.folio, folioNum:folioInfo.folioNum, folioPrefijo:folioInfo.folioPrefijo,
+            cliente: nc || rs, razonSocial: rs, clienteId: vss.clienteVentasId, clienteCatalogoId: cli ? String(cli.id) : null,
+            estacionId: estId, estacionNombre: nc || rs, permiso: pl, direccion: [dir, f.municipio].filter(Boolean).join(', '), municipio: f.municipio,
+            lat: f.lat, lng: f.lng, contacto, aplicaViaticos,
+            solicitante, solicitanteEmail: yo, vendedor: solicitante, area:'Ventas',
+            destino: nc || rs, destinoTipo:'servicio', destinoDireccion: dir,
+            uso: desc, prioridad: f.prioridad, estado:'pendiente', origen:'ventas',
+            productos:[{ tipo:'servicio', clave:'PETICION-DIAGNOSTICO', desc:'Petición / diagnóstico', espec: desc, cant:1 }],
+            fichaServicio:{ estacion: nc || rs, fechaSugerida: f.fechaSugerida || null, requiereViaticos: aplicaViaticos, notas: desc + ' · Contacto: ' + contacto.nombre + ' ' + contacto.telefono + ' ' + contacto.correo },
+            createdAt: ahora,
+        };
+        await window.tcSbCrearSurtido(data);
+        document.getElementById('ventas-modal-servicio').innerHTML = '';
+        if(window.tcNotif) window.tcNotif.agregar({ titulo:'Petición enviada a Operaciones', texto: folioInfo.folio+' · '+(nc||rs)+'. Te avisaremos cuando se programe.', nivel:'normal', modulo:'Ventas' });
+        else alert('Petición '+folioInfo.folio+' enviada a Operaciones.');
+        vss = null;
+    }catch(e){
+        vss.enviando = false;
+        if(btn){ btn.disabled=false; btn.textContent='Enviar a Operaciones'; }
+        const m = document.getElementById('vss-msg'); if(m) m.textContent = 'No se pudo enviar: ' + (e.message||e);
+    }
 };
