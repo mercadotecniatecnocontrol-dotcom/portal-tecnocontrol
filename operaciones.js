@@ -8211,59 +8211,173 @@
     }
     function opsRevCliente(f) { return String(f.clienteNombre || f.facturarA || f.estacionRazonSocial || "Sin cliente").trim(); }
     function opsRevOS(f) { return String(f.osTecnico || f.folioOS || "").trim(); }
-    function opsRevLista() {
-        const s = opsRevEstado(), q = String(s.q || "").toLowerCase().trim();
-        return cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f))
-            .filter(f => { const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
-            .filter(f => s.cliente === "todos" || opsRevCliente(f) === s.cliente)
-            .filter(f => s.tipo === "todos" || (s.tipo === "poliza") === opsRevEsPoliza(f))
-            .filter(f => s.estatus === "todos" || ((f.revisionCierre && f.revisionCierre.estatus) || "por_revisar") === s.estatus)
-            .filter(f => !q || [opsRevOS(f), f.folioOS, f.folioClienteId, f.folioNumero, f.estacion, f.estacionPermiso, opsRevCliente(f), (f.revisionCierre || {}).cotizacion].join(" ").toLowerCase().includes(q))
-            .sort((a, b) => opsRevFechaCierre(b).localeCompare(opsRevFechaCierre(a)));
+    // Pólizas capturadas en la app de Pólizas (j2tecno-app, mismo Supabase): entran a la bandeja
+    // cuando no están ligadas a un servicio de Operaciones. Su seguimiento va en ops_revision_polizas.
+    let opsRevPolizas = [], opsRevPolRev = new Map(), opsRevPolClave = "", opsRevPolCargando = false;
+    async function opsRevCargarPolizas(forzar) {
+        const s = opsRevEstado(), clave = s.desde + "|" + s.hasta;
+        if (opsRevPolCargando || (!forzar && clave === opsRevPolClave)) return;
+        opsRevPolCargando = true;
+        try {
+            const sb = await opsSb();
+            const hasta = new Date(s.hasta + "T00:00:00"); hasta.setDate(hasta.getDate() + 1);
+            const [r1, r2] = await Promise.all([
+                sb.rpc("ops_polizas_para_revision", { p_desde: new Date(s.desde + "T00:00:00").toISOString(), p_hasta: hasta.toISOString() }),
+                sb.from("ops_revision_polizas").select("*")]);
+            opsRevPolizas = (r1 && r1.data) || [];
+            opsRevPolRev = new Map(((r2 && r2.data) || []).map(x => [x.poliza_id, x]));
+            opsRevPolClave = clave;
+        } catch (e) { console.warn("[revisión pólizas]", e); opsRevPolClave = clave; }
+        finally { opsRevPolCargando = false; }
+        if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
     }
+    function opsRevItems() {
+        const s = opsRevEstado(), q = String(s.q || "").toLowerCase().trim();
+        const folios = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f))
+            .filter(f => { const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
+            .map(f => ({ k: "f", id: f.id, f, cierre: opsRevFechaCierre(f), os: opsRevOS(f), estacion: f.estacion || "", cliente: opsRevCliente(f),
+                poliza: opsRevEsPoliza(f), estatus: (f.revisionCierre && f.revisionCierre.estatus) || "por_revisar",
+                buscar: [opsRevOS(f), f.folioOS, f.folioClienteId, f.folioNumero, f.estacion, f.estacionPermiso, opsRevCliente(f), (f.revisionCierre || {}).cotizacion].join(" ") }));
+        const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
+        const pols = opsRevPolizas.filter(p => !ligadas.has(p.id)).map(p => {
+            const r = opsRevPolRev.get(p.id) || {};
+            return { k: "p", id: p.id, p, cierre: String(p.fecha || ""), os: p.folio || "", estacion: p.estacion_nombre || "", cliente: String(p.cliente_razon_social || "Sin cliente").trim(),
+                poliza: true, estatus: r.estatus || "por_revisar", buscar: [p.folio, p.estacion_nombre, p.cliente_razon_social, p.tecnico_nombre, r.cotizacion, r.id_cliente].join(" ") };
+        });
+        return folios.concat(pols)
+            .filter(x => s.cliente === "todos" || x.cliente === s.cliente)
+            .filter(x => s.tipo === "todos" || (s.tipo === "poliza") === x.poliza)
+            .filter(x => s.estatus === "todos" || x.estatus === s.estatus)
+            .filter(x => !q || String(x.buscar).toLowerCase().includes(q))
+            .sort((a, b) => b.cierre.localeCompare(a.cierre));
+    }
+    function opsRevLista() { return opsRevItems().filter(x => x.k === "f").map(x => x.f); }
     function opsRenderRevision() {
         const el = document.getElementById("ops-tab-content"); if (!el) return;
-        const s = opsRevEstado(), lista = opsRevLista();
-        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente))].sort((a, b) => a.localeCompare(b, "es"));
+        const s = opsRevEstado(), items = opsRevItems();
+        opsRevCargarPolizas(false);
+        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente).concat(opsRevPolizas.map(p => String(p.cliente_razon_social || "Sin cliente").trim())))].sort((a, b) => a.localeCompare(b, "es"));
         const sel = (k, ops) => `<select onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
         const fecha = k => `<input type="date" value="${s[k]}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">`;
-        const porRevisar = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f) && !((f.revisionCierre || {}).estatus === "revisado")).length;
+        const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
+        const porRevisar = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f) && !((f.revisionCierre || {}).estatus === "revisado")).length
+            + opsRevPolizas.filter(p => !ligadas.has(p.id) && (opsRevPolRev.get(p.id) || {}).estatus !== "revisado").length;
         el.innerHTML = `
         <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
             <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
                 <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Revisión de cierres</div>
-                <div style="font-size:11.5px;color:#64748b;max-width:620px;line-height:1.45;">Aquí llegan los servicios que los técnicos cerraron en la app. Ábrelos para ver las evidencias, anotar si se cobró algo, el número de cotización y el ID del folio del cliente, y marcarlos como <b>Revisado</b> (lo que en Connecteam era "Done"). Hay <b>${porRevisar}</b> sin revisar.</div></div>
+                <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Aquí llegan los servicios técnicos que se cerraron en la app de Flotilla y las pólizas de la app de Pólizas. Ábrelos para ver lo que se hizo, anotar si se cobró algo, el número de cotización y el ID del folio del cliente, y marcarlos como <b>Revisado</b> (lo que en Connecteam era "Done"). Hay <b>${porRevisar}</b> sin revisar.</div></div>
                 <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-                <input type="text" value="${opsEsc(s.q)}" placeholder="Buscar O.S., ID del cliente, cotización, estación…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:250px;">
+                <input type="text" value="${opsEsc(s.q)}" placeholder="Buscar O.S., folio de póliza, ID del cliente, cotización, estación…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:270px;">
                 ${sel("estatus", [["por_revisar", "Por revisar"], ["en_revision", "En revisión"], ["revisado", "Revisados"], ["todos", "Todos los estatus"]])}
-                ${sel("tipo", [["todos", "Póliza y servicio técnico"], ["servicio", "Solo servicio técnico"], ["poliza", "Solo pólizas"]])}
+                ${sel("tipo", [["todos", "Pólizas y servicios técnicos"], ["servicio", "Solo servicios técnicos"], ["poliza", "Solo pólizas"]])}
                 ${sel("cliente", [["todos", "Todos los clientes"], ...clientes.map(c => [c, c])])}
                 <span style="font-size:12px;color:#64748b;">del</span>${fecha("desde")}<span style="font-size:12px;color:#64748b;">al</span>${fecha("hasta")}
             </div>
             <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
                 <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
-                    <th style="padding:8px 10px;">Cerrado</th><th style="padding:8px 10px;">O.S.</th><th style="padding:8px 10px;">Estación</th><th style="padding:8px 10px;">Cliente</th>
+                    <th style="padding:8px 10px;">Cerrado</th><th style="padding:8px 10px;">O.S. / folio</th><th style="padding:8px 10px;">Estación</th><th style="padding:8px 10px;">Cliente</th>
                     <th style="padding:8px 10px;">Técnico</th><th style="padding:8px 10px;">Tipo</th><th style="padding:8px 10px;">Resultado</th><th style="padding:8px 10px;">Estatus</th></tr></thead>
-                <tbody>${lista.length ? lista.map(f => {
-                    const v = opsRevUltimaVisita(f) || {}, est = OPS_REV_ESTATUS[(f.revisionCierre || {}).estatus] || OPS_REV_ESTATUS.por_revisar;
-                    const res = v.resultado === "finalizado" || f.fechaSolucion ? ["Terminado", "#15803d"] : v.resultado === "no_finalizado" ? ["Sin terminar", "#b45309"] : v.resultado === "no_realizado" ? ["No se realizó", "#64748b"] : ["—", "#64748b"];
-                    return `<tr onclick="opsRevAbrir('${f.id}')" style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-                        <td style="padding:8px 10px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(opsRevFechaCierre(f)))}</td>
-                        <td style="padding:8px 10px;font-weight:800;color:#1D2E73;">${opsEsc(opsRevOS(f) || "—")}</td>
-                        <td style="padding:8px 10px;">${opsEsc(f.estacion || "")}</td>
-                        <td style="padding:8px 10px;">${opsEsc(opsRevCliente(f))}</td>
-                        <td style="padding:8px 10px;">${opsEsc(v.nombre || f.completadoPor || f.tecnicoResponsableNombre || "")}</td>
-                        <td style="padding:8px 10px;">${opsRevEsPoliza(f) ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#7c3aed;border-radius:6px;padding:2px 7px;">PÓLIZA</span>' : '<span style="font-size:10px;font-weight:800;color:#fff;background:#1D2E73;border-radius:6px;padding:2px 7px;">SERVICIO TÉCNICO</span>'}${f.noProgramado ? ' <span style="font-size:10px;font-weight:800;color:#9a3412;background:#ffedd5;border-radius:6px;padding:2px 7px;">NO PROGRAMADO</span>' : ""}</td>
-                        <td style="padding:8px 10px;color:${res[1]};font-weight:700;">${res[0]}</td>
+                <tbody>${items.length ? items.map(x => {
+                    const est = OPS_REV_ESTATUS[x.estatus] || OPS_REV_ESTATUS.por_revisar;
+                    let tec = "", res = ["—", "#64748b"], tipo = "";
+                    if (x.k === "f") {
+                        const f = x.f, v = opsRevUltimaVisita(f) || {};
+                        tec = v.nombre || f.completadoPor || f.tecnicoResponsableNombre || "";
+                        res = v.resultado === "finalizado" || f.fechaSolucion ? ["Terminado", "#15803d"] : v.resultado === "no_finalizado" ? ["Sin terminar", "#b45309"] : v.resultado === "no_realizado" ? ["No se realizó", "#64748b"] : res;
+                        tipo = (x.poliza ? '<span style="font-size:10px;font-weight:800;color:#fff;background:#7c3aed;border-radius:6px;padding:2px 7px;">PÓLIZA</span>' : '<span style="font-size:10px;font-weight:800;color:#fff;background:#1D2E73;border-radius:6px;padding:2px 7px;">SERVICIO TÉCNICO</span>') + (f.noProgramado ? ' <span style="font-size:10px;font-weight:800;color:#9a3412;background:#ffedd5;border-radius:6px;padding:2px 7px;">NO PROGRAMADO</span>' : "");
+                    } else {
+                        const p = x.p; tec = p.tecnico_nombre || "";
+                        res = [(p.total_puntos != null ? p.total_puntos + " puntos" : "") + (p.total_hallazgos ? " · " + p.total_hallazgos + " hallazgo(s)" : ""), p.total_hallazgos ? "#b45309" : "#15803d"];
+                        tipo = '<span style="font-size:10px;font-weight:800;color:#fff;background:#7c3aed;border-radius:6px;padding:2px 7px;">PÓLIZA</span> <span style="font-size:10px;font-weight:800;color:#6d28d9;background:#f3e8ff;border-radius:6px;padding:2px 7px;">APP DE PÓLIZAS</span>';
+                    }
+                    return `<tr onclick="${x.k === "f" ? `opsRevAbrir('${x.id}')` : `opsRevAbrirPoliza('${x.id}')`}" style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+                        <td style="padding:8px 10px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(x.cierre))}</td>
+                        <td style="padding:8px 10px;font-weight:800;color:#1D2E73;">${opsEsc(x.os || "—")}</td>
+                        <td style="padding:8px 10px;">${opsEsc(x.estacion)}</td>
+                        <td style="padding:8px 10px;">${opsEsc(x.cliente)}</td>
+                        <td style="padding:8px 10px;">${opsEsc(tec)}</td>
+                        <td style="padding:8px 10px;">${tipo}</td>
+                        <td style="padding:8px 10px;color:${res[1]};font-weight:700;">${opsEsc(res[0] || "—")}</td>
                         <td style="padding:8px 10px;"><span style="font-size:10.5px;font-weight:800;color:${est[1]};background:${est[2]};border-radius:6px;padding:3px 8px;">${est[0]}</span></td></tr>`;
                 }).join("") : `<tr><td colspan="8" style="padding:24px;text-align:center;color:#94a3b8;">No hay cierres con esos filtros.</td></tr>`}</tbody>
             </table></div>
+            ${opsRevPolCargando ? '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Cargando pólizas de la app de Pólizas…</div>' : ""}
         </div>`;
     }
-    window.opsRevSet = function (k, v) { opsRevEstado()[k] = v; opsRenderRevision(); };
+    // Ficha de una póliza de la app de Pólizas: resumen + seguimiento de Operaciones.
+    window.opsRevAbrirPoliza = function (id) {
+        const p = opsRevPolizas.find(x => x.id === id); if (!p) return;
+        const r = opsRevPolRev.get(id) || {}, c = r.cobro || {}, gest = opsPuedeGestionar();
+        const fila = (k, val) => (val || val === 0) ? `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12.3px;"><div style="width:150px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#0f172a;font-weight:600;">${opsEsc(val)}</div></div>` : "";
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:900px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;">
+            <div style="padding:16px 20px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;gap:12px;">
+              <div style="flex:1;"><div style="font-size:16px;font-weight:800;color:#6d28d9;">Póliza ${opsEsc(p.folio || "")} · ${opsEsc(p.estacion_nombre || "")}</div>
+              <div style="font-size:11.5px;color:#64748b;">Capturada en la app de Pólizas · ${opsEsc(opsFmtFechaCorta(p.fecha))}</div></div>
+              <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:700;color:#475569;">Cerrar</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:18px;padding:14px 20px;overflow-y:auto;flex:1;">
+              <div>
+                ${fila("Cliente", p.cliente_razon_social)}${fila("Estación", p.estacion_nombre)}${fila("Folio de la póliza", p.folio)}
+                ${fila("Técnico", p.tecnico_nombre)}${fila("Fecha", opsFmtFechaCorta(p.fecha))}${fila("Estado en la app", p.estado)}
+                ${fila("Puntos revisados", p.total_puntos)}${fila("Hallazgos", p.total_hallazgos)}
+                ${fila("Revisada por el supervisor en la app", p.revisado_en ? "Sí · " + opsFmtFechaCorta(p.revisado_en) : "")}${fila("Enviada a", p.enviado_a)}
+                <div style="font-size:11.5px;color:#475569;background:#f5f3ff;border-radius:8px;padding:9px 11px;margin-top:10px;line-height:1.45;">Las fotos, el checklist completo, la firma y el PDF/Word de la póliza se ven en la app de Pólizas (pide inicio de sesión porque ahí cada cliente solo ve lo suyo).</div>
+                <a href="https://j2tecno-app.expo.app/" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;background:#7c3aed;color:#fff;border-radius:8px;padding:9px;font-weight:800;text-decoration:none;font-size:12.5px;">Abrir la app de Pólizas (Reportes)</a>
+              </div>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;align-self:start;">
+                <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px;">Seguimiento de Operaciones</div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:6px 0 4px;">¿Se cobró algo?</div>
+                <div style="display:flex;gap:14px;font-size:12.5px;"><label><input type="radio" name="opsrev-cobro" value="no" ${c.si ? "" : "checked"} onchange="document.getElementById('opsrev-cobro-si').style.display='none'"> No</label><label><input type="radio" name="opsrev-cobro" value="si" ${c.si ? "checked" : ""} onchange="document.getElementById('opsrev-cobro-si').style.display='block'"> Sí</label></div>
+                <div id="opsrev-cobro-si" style="display:${c.si ? "block" : "none"};margin-top:6px;">
+                  <input id="opsrev-monto" type="number" min="0" step="0.01" value="${opsEsc(c.monto ?? "")}" placeholder="Monto ($)" style="${inp};margin-bottom:6px;">
+                  <input id="opsrev-concepto" type="text" value="${opsEsc(c.concepto || "")}" placeholder="Concepto (qué se cobró)" style="${inp}">
+                </div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de cotización</div>
+                <input id="opsrev-cotizacion" type="text" value="${opsEsc(r.cotizacion || "")}" placeholder="Ej. C*SER 2091" style="${inp}">
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">ID del folio del cliente</div>
+                <input id="opsrev-idcliente" type="text" value="${opsEsc(r.id_cliente || "")}" placeholder="Ej. MC0537408" style="${inp}">
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Estatus</div>
+                <select id="opsrev-estatus" style="${inp}">${Object.entries(OPS_REV_ESTATUS).map(([k, x]) => `<option value="${k}" ${(r.estatus || "por_revisar") === k ? "selected" : ""}>${x[0]}</option>`).join("")}</select>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Nota</div>
+                <textarea id="opsrev-nota" rows="3" style="${inp};resize:vertical;" placeholder="Observaciones de la revisión">${opsEsc(r.nota || "")}</textarea>
+                ${r.por ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">Última revisión: ${opsEsc(r.por)} · ${opsEsc(opsFmtFechaCorta(r.en))}</div>` : ""}
+                <div id="opsrev-msg" style="font-size:11.5px;color:#b91c1c;margin-top:6px;"></div>
+                ${gest ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+                  <button onclick="opsRevGuardarPoliza('${id}',false)" style="background:#e2e8f0;border:none;border-radius:8px;padding:9px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12.5px;">Guardar</button>
+                  <button onclick="opsRevGuardarPoliza('${id}',true)" style="background:#15803d;border:none;border-radius:8px;padding:9px;font-weight:800;color:#fff;cursor:pointer;font-size:12.5px;">Marcar como revisado</button></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    };
+    window.opsRevGuardarPoliza = async function (id, revisado) {
+        if (!opsPuedeGestionar()) return;
+        const msg = document.getElementById("opsrev-msg");
+        const cobroSi = (document.querySelector('input[name="opsrev-cobro"]:checked') || {}).value === "si";
+        const monto = document.getElementById("opsrev-monto").value;
+        if (cobroSi && !(Number(monto) > 0)) { if (msg) msg.textContent = "Escribe el monto que se cobró."; return; }
+        const fila = { poliza_id: id, estatus: revisado ? "revisado" : document.getElementById("opsrev-estatus").value,
+            cobro: cobroSi ? { si: true, monto: Number(monto), concepto: document.getElementById("opsrev-concepto").value.trim() || null } : { si: false },
+            cotizacion: document.getElementById("opsrev-cotizacion").value.trim() || null, id_cliente: document.getElementById("opsrev-idcliente").value.trim() || null,
+            nota: document.getElementById("opsrev-nota").value.trim() || null, por: opsNombreActual(), en: new Date().toISOString() };
+        try {
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_revision_polizas").upsert(fila, { onConflict: "poliza_id" });
+            if (error) throw error;
+            opsRevPolRev.set(id, fila);
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión de póliza guardada", texto: OPS_REV_ESTATUS[fila.estatus][0], nivel: "normal", modulo: "Operaciones" });
+            if (tabActual === "revision") opsRenderRevision();
+        } catch (e) { if (msg) msg.textContent = "No se pudo guardar: " + (e.message || e); }
+    };
+    window.opsRevSet = function (k, v) { opsRevEstado()[k] = v; if (k === "desde" || k === "hasta") opsRevPolClave = ""; opsRenderRevision(); };
     window.opsRevBuscar = function (v) { opsRevEstado().q = v || ""; opsRerenderConFoco(opsRenderRevision); };
 
     window.opsRevAbrir = function (id) {

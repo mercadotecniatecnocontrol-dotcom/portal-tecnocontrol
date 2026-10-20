@@ -267,53 +267,51 @@ window.guardarCliente = async () => {
         // espejo en estaciones_servicio (p.ej. capturado antes de este fix).
         // Se detecta comparando contra la copia en memoria (clientesDB).
         const clienteActual = editId ? (window.clientesDB||[]).find(c=>c.id===editId) : null;
-        const necesitaEstacion = !editId || (clienteActual && !clienteActual.estacionCatalogoId);
-        if (necesitaEstacion) {
-            // Cliente nuevo, o cliente existente huérfano de catálogo: además de
-            // ventas_clientes, se crea (o completa) un doc espejo en
-            // estaciones_servicio (catálogo maestro que leen almacen-pdf.js y
-            // logistica.js) y se enlaza con estacionCatalogoId. Sin esto, un
-            // cliente capturado aquí a mano nunca aparecía en el buscador de
-            // "Subir pedido · formato CHH" porque esa colección nunca se tocaba.
-            const estacionDoc = {
-                razonSocial: nombre,
-                direccionNormalizada: data.direccion,
-                domicilioRaw: data.direccion,
-                municipio: data.ciudad,
-                codigoPostal: '',
-                permiso: '',
-                lat: data.lat, lng: data.lng,
-                ubicacionVerificada: !!(data.lat && data.lng),
-                origen: 'ventas_manual',
-                creadoPor: data.actualizadoPor,
-                creadoEn: data.actualizadoEn
-            };
-            const refEstacion = await addDoc(collection(window.db,'estaciones_servicio'), estacionDoc);
-            data.estacionCatalogoId = refEstacion.id;
-            // Invalida el caché en memoria de almacen-pdf.js (si ese módulo está
-            // cargado en esta página) para que la estación aparezca sin
-            // necesitar un hard-reload.
-            if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
-            // Si no se capturó GPS a mano, geocodifica la dirección en automático
-            // (misma función de logistica.js que ya usa el resto del portal para
-            // esto — no se duplica lógica). Es best-effort y NO bloquea el guardado:
-            // si Nominatim no encuentra nada, la estación queda igual que antes,
-            // pendiente de "📍 Asignar ubicación" a mano. Sin esto, cada estación
-            // nueva se quedaba invisible en los 4 mapas del portal hasta que
-            // alguien le pusiera el pin manualmente.
-            if (!data.lat && !data.lng && window.__logGeocodificarDireccion && estacionDoc.direccionNormalizada) {
-                var direccionParaGeocodificar = [estacionDoc.direccionNormalizada, estacionDoc.municipio].filter(Boolean).join(', ');
-                window.__logGeocodificarDireccion(direccionParaGeocodificar).then(function(resultado){
-                    if (!resultado || !resultado.encontrado) return;
-                    return updateDoc(doc(window.db,'estaciones_servicio',refEstacion.id), {
-                        lat: resultado.lat, lng: resultado.lng,
-                        ubicacionVerificada: false,
-                        ubicacionGeocodificadaEn: new Date().toISOString()
-                    }).then(function(){
-                        if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
-                    });
-                }).catch(function(err){ console.warn('[ventas] no se pudo geocodificar la estación automáticamente:', err); });
+        // Regla oct-2026: el catálogo maestro de estaciones vive en SUPABASE (estaciones_servicio),
+        // el mismo que usan Operaciones, la app de Flotilla, Almacén y el catálogo de SUDI.
+        // Antes este botón lo guardaba en Firebase y el cliente no aparecía en ningún otro lado.
+        // Cliente nuevo → se da de alta en el catálogo; cliente que ya existe → se completan los
+        // datos que le falten (sin pisar una ubicación confirmada en sitio).
+        try {
+            const sb = await vssSb();
+            const ahoraC = data.actualizadoEn;
+            let estId = clienteActual && clienteActual.estacionCatalogoId ? String(clienteActual.estacionCatalogoId) : null;
+            let existe = null;
+            if (estId) { const r0 = await sb.from('estaciones_servicio').select('id,lat,lng,ubicacion_verificada,direccion_normalizada,municipio,encargado').eq('id', estId).maybeSingle(); existe = r0.data || null; }
+            if (!existe) {
+                // Si traía un id viejo de Firebase se conserva ese mismo id, así no se rompe ninguna liga.
+                if (!estId) { const ABC='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', rnd=new Uint8Array(20); crypto.getRandomValues(rnd); estId = Array.from(rnd, x=>ABC[x%ABC.length]).join(''); }
+                const fila = { id: estId, razon_social: nombre.split(' — ')[0].toUpperCase(), direccion_normalizada: data.direccion || null, domicilio_raw: data.direccion || null,
+                    municipio: data.ciudad || null, estado: data.estado || null, lat: data.lat, lng: data.lng,
+                    ubicacion_verificada: !!(data.lat && data.lng), ubicacion_fuente: data.lat ? 'ventas_cliente' : null, ubicacion_por: data.actualizadoPor, ubicacion_en: ahoraC,
+                    encargado: data.contacto || null, activo: true, fuente_datos: 'ventas', creado_en: ahoraC, actualizado_en: ahoraC };
+                const r1 = await sb.from('estaciones_servicio').insert(fila);
+                if (r1.error) throw r1.error;
+                data.estacionCatalogoId = estId;
+                sb.from('ventas_clientes').insert({ nombre, direccion: data.direccion || null, ciudad: data.ciudad || null, estado: data.estado || null, lat: data.lat, lng: data.lng,
+                    contacto: data.contacto || null, tel: data.tel || null, sector: data.sector || null, visitas: data.visitas || 0, estacion_catalogo_id: estId,
+                    origen: 'ventas', actualizado_por: data.actualizadoPor, creado_en: ahoraC, actualizado_en: ahoraC, notas: data.notas || null }).then(()=>{}, ()=>{});
+                if (window.vssOlvidarCatalogo) window.vssOlvidarCatalogo();
+            } else {
+                const cam = { actualizado_en: ahoraC };
+                if (!existe.direccion_normalizada && data.direccion) cam.direccion_normalizada = data.direccion;
+                if (!existe.municipio && data.ciudad) cam.municipio = data.ciudad;
+                if (!existe.encargado && data.contacto) cam.encargado = data.contacto;
+                if (data.lat && data.lng && !existe.ubicacion_verificada) Object.assign(cam, { lat: data.lat, lng: data.lng, ubicacion_verificada: true, ubicacion_fuente: 'ventas_cliente', ubicacion_por: data.actualizadoPor, ubicacion_en: ahoraC });
+                if (Object.keys(cam).length > 1) await sb.from('estaciones_servicio').update(cam).eq('id', estId);
             }
+            if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones();
+            // Sin GPS capturado: se busca la dirección en el mapa (best-effort, no bloquea el guardado).
+            if (!data.lat && !data.lng && window.__logGeocodificarDireccion && data.direccion && !(existe && existe.lat)) {
+                const idGeo = estId;
+                window.__logGeocodificarDireccion([data.direccion, data.ciudad].filter(Boolean).join(', ')).then(function(res){
+                    if (!res || !res.encontrado) return;
+                    return sb.from('estaciones_servicio').update({ lat: res.lat, lng: res.lng, ubicacion_verificada: false, ubicacion_fuente: 'ventas_direccion', actualizado_en: new Date().toISOString() }).eq('id', idGeo);
+                }).catch(function(err){ console.warn('[ventas] no se pudo geocodificar la estación:', err); });
+            }
+        } catch (eCat) {
+            console.warn('[ventas] catálogo de estaciones (Supabase):', eCat);
+            alert('El cliente se guardará, pero no se pudo registrar en el catálogo de estaciones: ' + (eCat.message || eCat) + '. Avisa a Sistemas.');
         }
         if(editId){ await updateDoc(doc(window.db,'ventas_clientes',editId), data); }
         else { await addDoc(collection(window.db,'ventas_clientes'), data); }
@@ -775,6 +773,7 @@ function renderVentasMobile(email){
         </div>
         <div id="ventas-panel-inferior">
             <div class="ventas-panel-handle"></div>
+            <button onclick="ventasAbrirSolicitudServicio()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin:2px 0 10px;background:#1D2E73;color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:800;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Solicitar servicio · Petición / diagnóstico</button>
             <div class="ventas-acciones-grid">
                 <div class="ventas-accion-btn" onclick="abrirModalCheckin()">
                     <span class="ventas-accion-icon">📍</span>
@@ -4338,7 +4337,8 @@ const VENTAS_MODULOS = {
                 <input id="ventas-buscador" type="text" placeholder="🔍 Buscar cliente..."
                     style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;width:220px;outline:none;"
                     oninput="filtrarClientesMapa()">
-                <button onclick="abrirModalCliente()" style="padding:7px 14px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:auto;">+ Nuevo</button>
+                <button onclick="ventasAbrirSolicitudServicio()" style="padding:7px 14px;background:#1D2E73;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;margin-left:auto;display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> Solicitar servicio</button>
+                <button onclick="abrirModalCliente()" style="padding:7px 14px;background:#2563eb;color:white;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">+ Nuevo</button>
             </div>`,
         cargar: () => {
             const mapa = document.getElementById('ventas-mapa-desktop');
@@ -6830,6 +6830,7 @@ window.ventasToggleCapaLogistica = async function(){
 const VSS_SB_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
 const VSS_SB_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
 let vss = null, vssCatalogo = null, vssClientes = null;
+window.vssOlvidarCatalogo = function(){ vssCatalogo = null; };
 
 function vssSb(){
     if(window.tcSupabase) return Promise.resolve(window.tcSupabase);
