@@ -2170,6 +2170,7 @@
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
         derivados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
         comparativa: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
+        gestoria: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
         extras: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>',
         pendientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M4 4l3 3"/></svg>',
         herrsol: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
@@ -2182,10 +2183,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "comparativa:ServiceNow / Fractal", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2233,13 +2234,13 @@
         const activo = document.getElementById("ops-tab-" + tab);
         if (activo) { activo.style.color = "#1D2E73"; activo.style.background = "#E9ECF5"; activo.style.borderLeftColor = "#1D2E73"; }
         if (tab === "resumen") opsRenderResumen();
-        else if (tab === "dashboard") opsRenderDashboard();
+        else if (tab === "dashboard") { opsRenderDashboard(); try { opsHerrBannerVencidas(); } catch (e) { console.warn("[herramienta vencida]", e); } }
         else if (tab === "guardias") opsRenderGuardias();
         else if (tab === "tecnicos") opsRenderTecnicos();
         else if (tab === "servicios") opsRenderServicios();
         else if (tab === "folios") opsRenderFolios();
         else if (tab === "revision") opsRenderRevision();
-        else if (tab === "calendario") opsRenderCalendario();
+        else if (tab === "calendario") { opsRenderCalendario(); opsGestAsegurarRenglon().then(n => { if (n && tabActual === "calendario") opsRenderCalendario(); }); }
         else if (tab === "clientes") opsRenderClientes();
         else if (tab === "solicitudes") opsRenderSolicitudes();
         else if (tab === "alertas") opsRenderAlertas();
@@ -2249,6 +2250,7 @@
         else if (tab === "comisiones") opsRenderComisiones();
         else if (tab === "derivados") opsRenderDerivados();
         else if (tab === "extras") opsRenderExtras();
+        else if (tab === "gestoria") { opsGestAsegurarRenglon(); opsRenderGestoria(); }
         else if (tab === "comparativa") opsRenderComparativa();
         else if (tab === "pendientes") opsRenderPendientes();
         else if (tab === "herrsol") opsRenderSolHerr();
@@ -3131,6 +3133,7 @@
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
+                ${opsHerrFichaExtraHTML(h, gestion)}
                 <div style="margin-top:22px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Historial de movimientos</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
                     ${historial.length ? historial.map(m => opsTimelineItem(m)).join("") : '<div style="color:#94a3b8;font-size:12px;padding:6px 0;">Sin movimientos registrados.</div>'}
@@ -3166,7 +3169,7 @@
             reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación",
             perdida: "Reportada como pérdida", danio: "Reportada con daño",
             baja: "Baja", transferencia: "Transferencia",
-            traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación",
+            traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento (servicio / factura)",
         }[m.tipo] || m.tipo;
         return `<div style="margin-bottom:14px;position:relative;">
             <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1f2937;"></div>
@@ -3668,8 +3671,9 @@
                     <option value="retorno_reparacion">Regresa de reparación</option>
                     <option value="perdida">Reportar pérdida</option>
                     <option value="danio">Reportar daño</option>
-                    <option value="cambio_ubicacion">Cambio de ubicación</option>
+                    <option value="cambio_ubicacion">Cambio de ubicación (temporal)</option>
                 </select>
+                <div id="ops-ayuda-mov" style="font-size:11.5px;color:#1e3a8a;background:#eff6ff;border-radius:8px;padding:8px 10px;margin:-4px 0 12px;line-height:1.45;"></div>
 
                 <div id="ops-campo-tecnico" style="display:none;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnico</label>
@@ -3786,6 +3790,19 @@
         const tipo = document.getElementById("ops-in-tipomov").value;
         document.getElementById("ops-campo-tecnico").style.display = (tipo === "asignacion" || tipo === "transferencia") ? "block" : "none";
         document.getElementById("ops-campo-ubicacion").style.display = (tipo === "cambio_ubicacion") ? "block" : "none";
+        // Explicación sencilla de cada movimiento (22-oct-2026: "traspaso entre almacenes todavía no se sabe qué es").
+        const ayuda = {
+            asignacion: "<b>Asignar a técnico:</b> la pieza pasa a ser responsabilidad de un técnico (firma responsiva). Sale del almacén.",
+            devolucion: "<b>Devolución:</b> el técnico regresa la pieza. Elige a qué almacén entra.",
+            transferencia: "<b>Reasignar:</b> la pieza pasa directo de un técnico a otro, sin regresar al almacén.",
+            traspaso_almacen: "<b>Traspaso entre almacenes:</b> mover la pieza de un almacén a otro <u>sin dársela a nadie</u>. Ej.: del Almacén General al de Transformación Digital, o a TecnoLab. La pieza queda contando en el almacén destino.",
+            reparacion: "<b>Enviar a reparación:</b> la pieza sale al taller o proveedor y no está disponible.",
+            retorno_reparacion: "<b>Regresa de reparación:</b> vuelve a estar disponible.",
+            perdida: "<b>Pérdida:</b> no se encuentra. Queda marcada como extraviada.",
+            danio: "<b>Daño:</b> se reporta dañada (después se repara o se da de baja).",
+            cambio_ubicacion: "<b>Cambio de ubicación (temporal):</b> la pieza está un tiempo en otro lugar (una estación, un vehículo, el taller) pero <u>sigue perteneciendo al mismo almacén</u>. Si cambia de almacén, usa Traspaso.",
+        }[tipo] || "";
+        const ay = document.getElementById("ops-ayuda-mov"); if (ay) { ay.innerHTML = ayuda; ay.style.display = ayuda ? "block" : "none"; }
         const ca = document.getElementById("ops-campo-almacen"); if (ca) ca.style.display = (tipo === "traspaso_almacen" || tipo === "devolucion") ? "block" : "none";
         document.getElementById("ops-campo-transferencia-info").style.display = (tipo === "transferencia") ? "block" : "none";
         document.getElementById("ops-campo-evidencia-transferencia").style.display = (tipo === "transferencia") ? "block" : "none";
@@ -7009,6 +7026,7 @@
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
                     ${opsPuedeCrear() && !opsAccFiltroEmpresa() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
+                    ${opsPuedeGestionar() ? `<button onclick="opsTareaExtraAbrir('${opsCalFechaISO(opsCalFecha)}')" title="Un favor o pendiente que solo necesita programarse (ej. llevar un sobre a una estación)" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Tarea extra</button>` : ""}
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
                 </div>
@@ -7269,11 +7287,14 @@
                 <span style="align-self:flex-start;font-size:10.5px;font-weight:800;color:${est.c};background:${est.bg};border-radius:6px;padding:3px 8px;">${est.t}</span>
                 ${p.opsPlaza ? `<div style="font-size:11px;color:#1D2E73;background:#eef2ff;border-radius:8px;padding:5px 8px;"><b>Lo atiende plaza ${opsEsc(p.opsPlaza)}</b>${p.opsGestionLocal ? " · Gestión local: " + opsEsc(p.opsGestionLocal) : ""}</div>` : ""}
                 ${p.fichaServicio ? `<div style="font-size:11px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:5px 8px;"><b>Ficha de Ventas:</b> ${opsEsc(p.fichaServicio.cantidad || "")} ${opsEsc(p.fichaServicio.unidad || "")}${p.fichaServicio.fechaSugerida ? " · sugerido " + opsEsc(p.fichaServicio.fechaSugerida) : ""}${p.fichaServicio.requiereViaticos ? " · con viáticos" : ""}${p.fichaServicio.notas ? `<div style="color:#475569;margin-top:2px;">${opsEsc(p.fichaServicio.notas)}</div>` : ""}</div>` : `<div style="font-size:10.5px;color:#b45309;">Sin ficha de servicio de Ventas (pedido subido antes del cambio).</div>`}
+                ${opsPedEvidenciasHTML(p)}
+                ${p.vehiculoTamano ? `<div style="font-size:11px;color:#0369a1;font-weight:700;">Pide vehículo ${opsEsc(OPS_VEH_TAM[p.vehiculoTamano] || p.vehiculoTamano)}</div>` : ""}
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
                     ${gestiona ? `<button onclick="opsCalProgramarPedido('${p.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Programar</button>` : ""}
                     ${p.tienePdfOriginal ? `<button onclick="opsCalVerPdfPedido('${p.id}')" style="background:#f8fafc;color:#334155;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalPlazaPedidoAbrir('${p.id}')" title="Que lo atienda otra plaza (Juárez, Parral, Monterrey) y avisar a su responsable" style="background:#eef2ff;color:#1D2E73;border:1px solid #c7d2fe;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Asignar a plaza</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalLigarPedidoAbrir('${p.id}')" title="Ya existe el servicio en el calendario: ligarlo a este pedido" style="background:#f3e8ff;color:#6d28d9;border:1px solid #ddd6fe;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ligar a programado</button>` : ""}
+                    ${gestiona ? `<button onclick="opsCalPedidoCancelar('${p.id}')" title="El cliente o Ventas canceló el servicio: se quita de la lista y se avisa al vendedor con la razón" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer;">Servicio cancelado</button>` : ""}
                     ${gestiona ? `<button onclick="opsCalPedidoGestionado('${p.id}')" title="Quitar de la lista sin crear servicio (ya se programó por otro lado)" style="background:#fff;color:#64748b;border:1px dashed #cbd5e1;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;">Ya gestionado</button>` : ""}
                 </div>
             </div>`;
@@ -7640,6 +7661,8 @@
             ...serv.map(x => `${x.cant || 1} × ${x.desc || x.clave}${x.espec ? " — " + x.espec : ""}`),
             p.clasificacion === "servicio_piezas" ? "Lleva piezas surtidas por Almacén." : ""].filter(Boolean).join("\n");
         opsAS.__surtidoId = p.id;
+        opsAS.vehiculoTamano = p.vehiculoTamano || null;
+        opsAS.evidenciasCliente = p.evidenciasCliente || null;
         // Petición / diagnóstico desde Ventas (20-oct-2026): ya trae estación del catálogo y contacto.
         if (p.contacto && p.contacto.nombre && !opsAS.contacto) {
             opsAS.contacto = p.contacto.nombre; opsAS.telefono = p.contacto.telefono || ""; opsAS.whatsapp = p.contacto.telefono || ""; opsAS.correo = p.contacto.correo || "";
@@ -8522,7 +8545,8 @@
         if (!opsRev) { const d = new Date(); d.setDate(d.getDate() - 30); opsRev = { desde: opsRevHoyISO(d), hasta: opsRevHoyISO(), cliente: "todos", tipo: "todos", estatus: "por_revisar", q: "" }; }
         return opsRev;
     }
-    function opsRevUltimaVisita(f) { const a = (f.atenciones || []).filter(x => x && x.fin); return a.length ? a[a.length - 1] : null; }
+    // Los avances de un día (servicios de varios días) no cuentan como cierre (22-oct-2026).
+    function opsRevUltimaVisita(f) { const a = (f.atenciones || []).filter(x => x && x.fin && x.resultado !== "avance_dia"); return a.length ? a[a.length - 1] : null; }
     function opsRevFechaCierre(f) { const v = opsRevUltimaVisita(f); return String(f.fechaSolucion || (v && v.fin) || ""); }
     function opsRevEsPoliza(f) {
         const r = (typeof cacheServiciosCatalogo !== "undefined" ? cacheServiciosCatalogo : []).find(c => c.id === f.servicioCatalogoId);
@@ -8558,7 +8582,7 @@
         const s = opsRevEstado(), qn = opsNormalizaTexto(s.q || ""), q = qn;
         const partes = qn.split(" ").filter(Boolean);
         const coincide = txt => { const t = opsNormalizaTexto(txt); return partes.every(p => t.includes(p)); };
-        const folios = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f))
+        const folios = cacheFolios.filter(f => !f.cancelado && !f.esTareaExtra && f.tipoAlta !== "gestoria" && opsRevFechaCierre(f))
             .filter(f => { if (q) return true; const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
             .map(f => ({ k: "f", id: f.id, f, cierre: opsRevFechaCierre(f), os: opsRevOS(f), estacion: f.estacion || "", cliente: opsRevCliente(f),
                 poliza: opsRevEsPoliza(f), estatus: (f.revisionCierre && f.revisionCierre.estatus) || "por_revisar",
@@ -12843,7 +12867,7 @@
         const s = opsPendEstado(), ev = [];
         cacheFolios.filter(f => !f.cancelado).forEach(f => {
             const g = opsGrupoClienteFolio(f);
-            (f.atenciones || []).forEach(v => { if (!v || !v.resultado || v.resultado === "finalizado") return; const d = String(v.fin || "").slice(0, 10); if (d < s.desde || d > s.hasta) return;
+            (f.atenciones || []).forEach(v => { if (!v || !v.resultado || v.resultado === "finalizado" || v.resultado === "avance_dia") return; const d = String(v.fin || "").slice(0, 10); if (d < s.desde || d > s.hasta) return;
                 ev.push({ f, g, fecha: v.fin, tipo: v.resultado === "no_realizado" ? "No se realizó" : "Atendido sin terminar", quien: v.nombre || "", causa: v.motivo || "Sin motivo", detalle: v.detalle || "", categ: opsPendCategoria(v.motivo) }); });
             (f.cambiosProgramacion || []).forEach(c => { if (!c) return; const d = String(c.en || "").slice(0, 10); if (d < s.desde || d > s.hasta) return;
                 ev.push({ f, g, fecha: c.en, tipo: c.tipo === "cambio_tecnico" ? "Cambio de técnico" : "Reprogramado", quien: c.por || "", causa: c.causaNombre || opsCausaNombre(c.causa), detalle: [c.detalle, c.solicito ? "pidió: " + c.solicito : ""].filter(Boolean).join(" · "), categ: c.causa === "material" ? "material" : c.causa === "cliente" ? "cliente" : c.causa === "vehiculo" ? "vehiculo" : c.causa === "personal" ? "personal" : c.causa === "clima" ? "clima" : c.causa === "otro" ? "otro" : "programacion" }); });
@@ -13277,6 +13301,343 @@
         } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
     };
 
+
+    // ═══════════════════ HERRAMIENTA LIGADA A UN SERVICIO + FACTURA (22-oct-2026, nota de Glen) ═══════════════════
+    // "Al dar de alta una herramienta (o si ya está dada de alta) poder ligarla a un servicio, que
+    // pueda regresar con vencimiento y seguimiento; meter factura". La pieza se presta para un
+    // servicio con fecha de regreso; si no regresa a tiempo sale en alerta hasta que se marque de
+    // regreso. La factura (número, proveedor, fecha, monto y archivo) queda en la ficha.
+    function opsHerrServicioActivo(h) { const s = h && h.servicioLigado; return s && s.estatus === "fuera" ? s : null; }
+    function opsHerrVencidas() { const hoy = opsHoy(); return cacheHerr.filter(h => { const s = opsHerrServicioActivo(h); return s && s.regresoEsperado && s.regresoEsperado < hoy; }); }
+    function opsHerrFichaExtraHTML(h, gestion) {
+        const s = opsHerrServicioActivo(h), f = s && s.folioId ? cacheFolios.find(x => x.id === s.folioId) : null, hoy = opsHoy();
+        const vencida = s && s.regresoEsperado && s.regresoEsperado < hoy;
+        const fact = h.facturas || [];
+        return `<div style="margin-top:16px;border:1px solid ${vencida ? "#fca5a5" : "#e2e8f0"};background:${vencida ? "#fef2f2" : "#f8fafc"};border-radius:12px;padding:12px 14px;">
+            <div style="font-size:12.5px;font-weight:800;color:#1e293b;margin-bottom:6px;">Servicio ligado</div>
+            ${s ? `<div style="font-size:12.5px;color:#334155;line-height:1.6;">Salió para <b>${opsEsc(s.estacion || (f && f.estacion) || "servicio")}</b>${f ? ` · <a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="color:#1D2E73;font-weight:700;">ver servicio</a>` : ""}<br>
+                Lo lleva: <b>${opsEsc(s.entregadoA || "—")}</b> · salió ${opsEsc(opsFmtFechaCorta(s.salida))}<br>
+                Debe regresar: <b style="color:${vencida ? "#b91c1c" : "#15803d"};">${opsEsc(opsFmtFechaCorta(s.regresoEsperado))}${vencida ? " · VENCIDA" : ""}</b>${s.nota ? "<br>Nota: " + opsEsc(s.nota) : ""}</div>
+                ${gestion ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><button onclick="opsHerrRegreso('${h.id}')" class="mkt-add-btn" style="background:#15803d;">Ya regresó</button><button onclick="opsHerrLigarServicio('${h.id}', true)" class="mkt-add-btn" style="background:#475569;">Cambiar fecha de regreso</button></div>` : ""}`
+            : `<div style="font-size:12px;color:#94a3b8;">No está ligada a ningún servicio.</div>${gestion && h.estado !== "baja" ? `<button onclick="opsHerrLigarServicio('${h.id}')" class="mkt-add-btn" style="background:#1D2E73;margin-top:8px;">Ligar a un servicio</button>` : ""}`}
+            ${(h.historialServicios || []).length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;">Antes: ${(h.historialServicios || []).slice(-4).reverse().map(x => opsEsc((x.estacion || "servicio") + " (" + opsFmtFechaCorta(x.salida) + " → " + (x.regresoReal ? opsFmtFechaCorta(x.regresoReal) : "—") + ")")).join(" · ")}</div>` : ""}
+          </div>
+          <div style="margin-top:12px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:12px 14px;">
+            <div style="font-size:12.5px;font-weight:800;color:#1e293b;margin-bottom:6px;">Factura</div>
+            ${fact.length ? fact.map((x, i) => `<div style="font-size:12px;color:#334155;margin-bottom:4px;"><b>${opsEsc(x.numero || "s/n")}</b> · ${opsEsc(x.proveedor || "")} · ${opsEsc(opsFmtFechaCorta(x.fecha))}${x.monto ? " · " + opsDinero(x.monto) : ""}${x.archivo ? ` · <a href="#" onclick="event.preventDefault();opsHerrVerFactura('${h.id}',${i})" style="color:#1D2E73;font-weight:700;">ver archivo</a>` : ""}</div>`).join("") : `<div style="font-size:12px;color:#94a3b8;">Sin factura capturada.</div>`}
+            ${gestion && h.estado !== "baja" ? `<button onclick="opsHerrFactura('${h.id}')" class="mkt-add-btn" style="background:#475569;margin-top:8px;">${fact.length ? "Agregar otra factura" : "Meter factura"}</button>` : ""}
+          </div>`;
+    }
+    async function opsHerrGuardarExtra(h, cambios, nota) {
+        await opsSbHerrActualizar(h.id, cambios);
+        Object.assign(h, cambios);
+        try { await opsRegistrarMovimiento({ herramientaId: h.id, tipo: "seguimiento", motivo: nota, observaciones: null, ubicacionAnterior: h.ubicacionActual || null, ubicacionNueva: h.ubicacionActual || null }); } catch (e) { console.warn("[herramienta] historial:", e.message || e); }
+        window.opsAbrirFichaHerramienta(h.id);
+    }
+    window.opsHerrLigarServicio = function (id, soloFecha) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const s = opsHerrServicioActivo(h) || {};
+        const prox = cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && String(f.fechaProgramada).slice(0, 10) >= opsDiaISOmas(opsHoy(), -3))
+            .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada))).slice(0, 120);
+        const tecs = opsTecOperativos().slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es"));
+        opsMiniModal(soloFecha ? "Cambiar fecha de regreso" : "Ligar a un servicio · " + opsEsc(h.descripcion || ""), `
+            ${soloFecha ? "" : `<label style="font-size:11.5px;font-weight:700;color:#334155;">Servicio *</label><select id="hs-folio" style="${OPS_MINI_IN}"><option value="">Elige el servicio…</option>${prox.map(f => `<option value="${f.id}">${opsEsc(opsFmtFechaCorta(f.fechaProgramada) + " · " + (f.estacion || "") + " · " + ((f.tecnicosAsignadosNombres || []).join(", ") || ""))}</option>`).join("")}</select>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Quién la lleva? *</label><select id="hs-tec" style="${OPS_MINI_IN}"><option value="">Elige…</option>${tecs.map(t => `<option value="${t.id}">${opsEsc(t.nombre)}</option>`).join("")}</select>`}
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Cuándo debe regresar? *</label><input id="hs-regreso" type="date" value="${opsEsc(s.regresoEsperado || "")}" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Nota</label><input id="hs-nota" value="${opsEsc(s.nota || "")}" style="${OPS_MINI_IN}">`,
+            async err => {
+                const reg = document.getElementById("hs-regreso").value, nota = document.getElementById("hs-nota").value.trim();
+                if (!reg) { err.textContent = "Indica cuándo debe regresar."; return false; }
+                if (soloFecha) { await opsHerrGuardarExtra(h, { servicioLigado: { ...s, regresoEsperado: reg, nota: nota || s.nota || null } }, `Cambió la fecha de regreso a ${reg}${nota ? " · " + nota : ""}`); return; }
+                const fid = document.getElementById("hs-folio").value, tid = document.getElementById("hs-tec").value;
+                if (!fid || !tid) { err.textContent = "Elige el servicio y quién la lleva."; return false; }
+                if (reg < opsHoy()) { err.textContent = "La fecha de regreso ya pasó."; return false; }
+                const f = cacheFolios.find(x => x.id === fid), t = opsTecPorId(tid);
+                const lig = { folioId: fid, estacion: f ? f.estacion : null, fechaServicio: f ? f.fechaProgramada : null, entregadoA: t ? t.nombre : null, entregadoAId: tid, salida: opsHoy(), regresoEsperado: reg, nota: nota || null, estatus: "fuera", por: opsNombreActual(), en: new Date().toISOString() };
+                await opsHerrGuardarExtra(h, { servicioLigado: lig }, `Ligada al servicio ${lig.estacion || ""} (${opsFmtFechaCorta(lig.fechaServicio)}) · la lleva ${lig.entregadoA} · regresa ${reg}`);
+                try { const { db, fs } = await opsGetFB(); fs.addDoc(fs.collection(db, COL_FOLIOS, fid, "comentarios"), { texto: `[Herramienta] ${h.folio || ""} ${h.descripcion || ""} va a este servicio con ${lig.entregadoA}; debe regresar el ${reg}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "herramienta", createdAt: opsFechaHora() }).catch(() => {}); } catch (e) {}
+            });
+    };
+    window.opsHerrRegreso = async function (id) {
+        const h = cacheHerr.find(x => x.id === id); const s = h && opsHerrServicioActivo(h); if (!s) return;
+        const cond = prompt("¿Cómo regresó? (ej. bien, con detalle, incompleta)", "bien"); if (cond === null) return;
+        const hist = (h.historialServicios || []).concat([{ ...s, estatus: "regresada", regresoReal: opsHoy(), condicionRegreso: cond.trim() || null, recibio: opsNombreActual() }]);
+        await opsHerrGuardarExtra(h, { servicioLigado: null, historialServicios: hist.slice(-30) }, `Regresó del servicio ${s.estacion || ""} · ${cond.trim() || ""}${s.regresoEsperado && opsHoy() > s.regresoEsperado ? " · regresó TARDE (debía " + s.regresoEsperado + ")" : ""}`);
+    };
+    window.opsHerrFactura = function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        opsMiniModal("Factura · " + opsEsc(h.descripcion || ""), `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">No. de factura *</label><input id="hf-num" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha</label><input id="hf-fecha" type="date" value="${opsHoy()}" style="${OPS_MINI_IN}"></div></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Proveedor</label><input id="hf-prov" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto ($)</label><input id="hf-monto" type="number" min="0" step="0.01" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Archivo (PDF, XML o foto)</label><input id="hf-file" type="file" accept="application/pdf,.xml,image/*" style="${OPS_MINI_IN}">`,
+            async err => {
+                const num = document.getElementById("hf-num").value.trim(); if (!num) { err.textContent = "Escribe el número de factura."; return false; }
+                const file = document.getElementById("hf-file").files[0];
+                const x = { numero: num, fecha: document.getElementById("hf-fecha").value || null, proveedor: document.getElementById("hf-prov").value.trim() || null, monto: Number(document.getElementById("hf-monto").value) || null, por: opsNombreActual(), en: new Date().toISOString() };
+                if (file) x.archivo = await opsSubirArchivo("herramientas/" + id + "/facturas", file);
+                await opsHerrGuardarExtra(h, { facturas: (h.facturas || []).concat([x]) }, `Factura ${num}${x.proveedor ? " de " + x.proveedor : ""}${x.monto ? " por " + opsDinero(x.monto) : ""}`);
+            });
+    };
+    window.opsHerrVerFactura = async function (id, i) { const h = cacheHerr.find(x => x.id === id); const x = h && (h.facturas || [])[i]; if (!x || !x.archivo) return; try { window.open(await opsUrlFirmada(x.archivo.bucket, x.archivo.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
+    // Aviso una vez al día de herramienta que no regresó a tiempo.
+    function opsHerrAvisarVencidas() {
+        if (!opsPuedeGestionar()) return;
+        const v = opsHerrVencidas(); if (!v.length) return;
+        const k = "ops_herr_venc_" + opsHoy(); try { if (localStorage.getItem(k)) return; localStorage.setItem(k, "1"); } catch (e) {}
+        if (window.tcNotif) window.tcNotif.agregar({ titulo: "Herramienta sin regresar", texto: v.length + " pieza(s) ligadas a un servicio ya debían haber regresado: " + v.slice(0, 4).map(h => (h.folio || "") + " " + (h.descripcion || "") + " (" + ((h.servicioLigado || {}).entregadoA || "") + ")").join(", "), nivel: "urgente", modulo: "Operaciones" });
+    }
+    function opsHerrBannerVencidas() {
+        opsHerrAvisarVencidas();
+        const v = opsHerrVencidas(), el = document.getElementById("ops-tab-content"); if (!v.length || !el) return;
+        const d = document.createElement("div");
+        d.style.cssText = "background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:10px 14px;margin-bottom:12px;";
+        d.innerHTML = `<div style="font-size:13px;font-weight:900;color:#b91c1c;margin-bottom:4px;">${v.length} herramienta(s) ligadas a un servicio no han regresado</div>` + v.map(h => `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="font-size:12px;color:#7f1d1d;cursor:pointer;padding:2px 0;"><b>${opsEsc(h.folio || "")}</b> ${opsEsc(h.descripcion || "")} · la lleva ${opsEsc((h.servicioLigado || {}).entregadoA || "")} · debía regresar el ${opsEsc(opsFmtFechaCorta((h.servicioLigado || {}).regresoEsperado))}</div>`).join("");
+        el.prepend(d);
+    }
+
+
+    // ═══════════════════ DIAGNÓSTICO: EVIDENCIAS, VEHÍCULO POR TAMAÑO Y CANCELACIÓN (22-oct-2026) ═══════════════════
+    // · Ventas puede subir fotos y video en la Petición/diagnóstico; Operaciones los ve en la tarjeta y,
+    //   al programar, pasan al servicio para que el técnico los vea en su app.
+    // · Ventas pide un vehículo Chico / Mediano / Grande; al programar, el alta sugiere unidades de
+    //   ese tamaño libres en esas fechas (y si no hay, de otro tamaño).
+    // · Operaciones puede marcar el pedido como CANCELADO con su razón (Idaly, 22-oct-2026).
+    const OPS_VEH_TAM = { chico: "Chico", mediano: "Mediano", grande: "Grande" };
+    function opsVehTamano(v) {
+        const t = opsAsNorm([v.Unidad, v.Tipo].join(" "));
+        if (/camion|3\.?5|redilas|plataforma|torton|rabon|f.?350|f.?450|f.?550|nlr|npr|elf|hino|crafter|sprinter|canter|grua|tracto/.test(t)) return "grande";
+        if (/aveo|versa|march|sentra|tsuru|sedan|spark|beat|vento|attitude|hatch|moto|onix|virtus|yaris|rio\b|city|mirage|swift|figo|ikon/.test(t)) return "chico";
+        return "mediano";
+    }
+    function opsAsVehTamanoHTML() {
+        const s = opsAS; if (!s || !s.vehiculoTamano) return "";
+        const flota = ((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja" && !v.EnTaller);
+        const libres = flota.filter(v => !opsAsVehiculoOcupado(`ECO ${v.Eco} · ${v.Unidad || ""}`).length);
+        const delTam = libres.filter(v => opsVehTamano(v) === s.vehiculoTamano);
+        const otros = delTam.length ? [] : libres.filter(v => opsVehTamano(v) !== "chico" || s.vehiculoTamano === "chico").slice(0, 6);
+        const btn = v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; return `<button type="button" onclick="opsAS.vehiculo=${opsEsc(JSON.stringify(val))};opsAsPintar()" class="opsas-ghost" style="margin:3px 4px 0 0;padding:4px 9px;font-size:11.5px;${s.vehiculo === val ? "background:#1D2E73;color:#fff;" : ""}">${opsEsc(val)}${v.QuienLaTrae ? " · " + opsEsc(v.QuienLaTrae) : ""}</button>`; };
+        return `<div class="opsas-note" style="margin-top:8px;"><b>Ventas pidió vehículo ${OPS_VEH_TAM[s.vehiculoTamano]}.</b> ${delTam.length ? "Libres en esas fechas:" : `<span style="color:#b45309;">No hay de ese tamaño libre en esas fechas.</span> Otras unidades libres:`}<div>${(delTam.length ? delTam : otros).slice(0, 8).map(btn).join("") || "<i>Ninguna libre: confírmalo con Flotilla.</i>"}</div>${s.vehiculo ? `<div style="margin-top:4px;">Elegido: <b>${opsEsc(s.vehiculo)}</b> (se le avisa a Flotilla al guardar).</div>` : ""}</div>`;
+    }
+    window.opsAsVehTamanoHTML = opsAsVehTamanoHTML;
+    function opsPedEvidenciasHTML(p) {
+        const ev = p.evidenciasCliente || []; if (!ev.length) return "";
+        return `<div style="font-size:11px;color:#334155;"><b>Evidencias de Ventas (${ev.length}):</b> ${ev.map((x, i) => `<a href="#" onclick="event.preventDefault();opsPedVerEvidencia('${p.id}',${i})" style="color:#1D2E73;font-weight:700;">${x.tipo === "video" ? "video" : "foto"} ${i + 1}</a>`).join(" · ")}</div>`;
+    }
+    window.opsPedVerEvidencia = async function (id, i) { const p = (cacheSurtidos || []).find(x => x.id === id); const x = p && (p.evidenciasCliente || [])[i]; if (!x) return; try { window.open(await opsUrlFirmada(x.bucket, x.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
+    window.opsCalPedidoCancelar = async function (id) {
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        const motivo = prompt(`Cancelar ${p.folio || "el pedido"} de ${p.cliente || ""}.\n\n¿Cuál es la razón? (le llega al vendedor)`, ""); if (!motivo || !motivo.trim()) return;
+        try {
+            await window.tcSbActualizarSurtido(id, { estado: "cancelado", motivoCancelacion: motivo.trim(), canceladoPor: opsNombreActual(), canceladoEn: new Date().toISOString(), opsGestionado: true, opsCancelado: true, opsGestionadoPor: opsNombreActual(), opsGestionadoEn: new Date().toISOString() });
+            if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { de: p.estado || null, a: "cancelado", por: opsNombreActual(), nota: "Servicio cancelado por Operaciones: " + motivo.trim() }).catch(() => {});
+            const para = p.solicitanteEmail || null;
+            if (para && window.tcNotificar) window.tcNotificar({ tipo: "ventas_pedido_cancelado", para, mensaje: `Operaciones canceló ${p.folio || "tu pedido"} (${p.cliente || ""}). Razón: ${motivo.trim()}`, modulo: "Ventas" }).catch(() => {});
+            p.estado = "cancelado"; p.opsGestionado = true; p.opsCancelado = true; p.motivoCancelacion = motivo.trim();
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Servicio cancelado", texto: (p.folio || "") + " · " + motivo.trim(), nivel: "normal", modulo: "Operaciones" });
+            opsRenderCalendario();
+        } catch (e) { alert("No se pudo cancelar: " + (e.message || e)); }
+    };
+
+
+    // ═══════════════════ GESTORÍA: VENTAS, AVANCE Y PROGRAMACIÓN (22-oct-2026) ═══════════════════
+    // Venta de gestoría: se da de alta con el número de PEDIDO de Aspel (se jala cliente, fecha, total y
+    // cotización de aspel_documentos) y sus partidas del catálogo de Gestoría. Le llega a Gestoría
+    // (Denisse) y a Operaciones. Cada partida lleva estatus, fecha compromiso y QUÉ DOCUMENTO está
+    // atrasando la entrega. "Gestoría" sale como un renglón más en el calendario de Operaciones:
+    // al programar una partida se aparta su periodo de trabajo en ese renglón.
+    const COL_GEST_VENTAS = "ops_gestoria_ventas";
+    const OPS_GEST_TEC_ID = "GESTORIA-AREA";
+    const OPS_GEST_AVISO = ["d.gutierrez@tecnocontrol.com.mx"];
+    const OPS_GEST_CATALOGO = ["Pre registro ante portal OPE CNE y solicitud de permiso", "Pre registro ante portal OPE 2.0 ASEA", "Evaluación de impacto social (EVIS)", "Análisis de riesgo sector hidrocarburos",
+        "Dictamen de diseño NOM-005-ASEA-2016", "Manual de procedimientos y bitácora NOM-005-ASEA-2016", "Dictaminación SASISOPA", "SASISOPA (manuales, procedimientos, formatos e ingreso ASEA)",
+        "Registro como generador de residuos peligrosos", "Número de registro ambiental (NRA)", "Licencia de funcionamiento", "Registro como generador de residuos de manejo especial",
+        "Dictamen de construcción NOM-005-ASEA-2016", "Informe de laboratorio calidad de petrolíferos (por tanque)", "Dictamen NOM-016-CRE-2016", "Dictamen NOM-005-ASEA-2016 operación y mantenimiento"];
+    const OPS_GEST_EST = { pendiente: ["Pendiente", "#64748b", "#f1f5f9"], proceso: ["En proceso", "#1d4ed8", "#dbeafe"], docs_cliente: ["Esperando documentos del cliente", "#b45309", "#fef3c7"],
+        dependencia: ["En la dependencia", "#7c3aed", "#ede9fe"], entregado: ["Entregado", "#15803d", "#dcfce7"], cancelado: ["Cancelado", "#b91c1c", "#fee2e2"] };
+    let cacheGestVentas = [], opsGestSub = false, opsGestFiltro = "abiertas", opsGV = null;
+    function opsGestPuede() { return opsPuedeGestionar() || OPS_GEST_AVISO.includes(String(opsUsuarioActual() || "").toLowerCase()); }
+    async function opsGestSuscribir() {
+        if (opsGestSub) return; opsGestSub = true;
+        const { db, fs } = await opsGetFB();
+        fs.onSnapshot(fs.collection(db, COL_GEST_VENTAS), snap => { cacheGestVentas = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "gestoria") opsRenderGestoria(); }, e => console.warn("[gestoría]", e));
+    }
+    function opsGestAbierta(v) { return (v.partidas || []).some(p => !["entregado", "cancelado"].includes(p.estatus)); }
+    function opsRenderGestoria() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return; opsGestSuscribir();
+        const hoy = opsHoy(), puede = opsGestPuede();
+        const lista = cacheGestVentas.filter(v => opsGestFiltro === "todas" || (opsGestFiltro === "abiertas" ? opsGestAbierta(v) : !opsGestAbierta(v))).sort((a, b) => String(b.creadoEn || "").localeCompare(String(a.creadoEn || "")));
+        const todasP = cacheGestVentas.flatMap(v => (v.partidas || []).map(p => ({ v, p })));
+        const abiertasP = todasP.filter(x => !["entregado", "cancelado"].includes(x.p.estatus));
+        const atrasadas = abiertasP.filter(x => x.p.fechaCompromiso && x.p.fechaCompromiso < hoy);
+        const porDoc = abiertasP.filter(x => x.p.estatus === "docs_cliente");
+        const vendido = cacheGestVentas.filter(opsGestAbierta).reduce((a, v) => a + (Number(v.total) || 0), 0);
+        const kpi = (t, n, c) => `<div style="background:#fff;border:1px solid #e2e8f0;border-top:3px solid ${c};border-radius:12px;padding:10px 12px;"><div style="font-size:18px;font-weight:800;color:#1e293b;">${n}</div><div style="font-size:10.5px;color:#64748b;">${t}</div></div>`;
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:12px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
+              <div><div style="font-size:16px;font-weight:800;color:#0e7490;">Gestoría</div>
+              <div style="font-size:11.5px;color:#64748b;max-width:660px;line-height:1.45;">Ventas de gestoría con su pedido de Aspel. Cada trámite lleva su estatus, fecha compromiso y qué documento está atrasando la entrega. "Gestoría" aparece como un renglón más en el calendario de Operaciones.</div></div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <select onchange="opsGestFiltroSet(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${[["abiertas", "Con trámites pendientes"], ["cerradas", "Terminadas"], ["todas", "Todas"]].map(([k, t]) => `<option value="${k}" ${opsGestFiltro === k ? "selected" : ""}>${t}</option>`).join("")}</select>
+                ${puede ? `<button onclick="opsGestNueva()" class="mkt-add-btn" style="background:#0e7490;">${ICON.plus} Venta de gestoría</button>` : ""}
+              </div></div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px;">${kpi("Vendido con trámites pendientes", opsDinero(vendido), "#0e7490")}${kpi("Trámites abiertos", abiertasP.length, "#1d4ed8")}${kpi("Atrasados (pasó la fecha compromiso)", atrasadas.length, "#b91c1c")}${kpi("Detenidos por documentos del cliente", porDoc.length, "#b45309")}</div>
+          </div>
+          ${lista.map(v => `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:6px solid #0e7490;padding:12px 16px;margin-bottom:10px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;"><div><b style="font-size:13.5px;">${opsEsc(v.cliente || "")}</b> · Pedido <b>${opsEsc(v.pedido || "—")}</b>${v.cotizacion ? " · Cot. " + opsEsc(v.cotizacion) : ""}<div style="font-size:11px;color:#64748b;">${opsEsc(opsFmtFechaCorta(v.fechaPedido))} · ${opsDinero(v.total)} · vendió ${opsEsc(v.vendedor || "—")} · alta ${opsEsc(v.creadoPor || "")}</div></div>
+              ${puede ? `<button onclick="opsGestPartidaNueva('${v.id}')" style="border:none;background:#ecfeff;color:#0e7490;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;height:30px;">+ Trámite</button>` : ""}</div>
+            <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px 8px;">Trámite</th><th style="padding:6px 8px;">Estatus</th><th style="padding:6px 8px;">Compromiso</th><th style="padding:6px 8px;">¿Qué lo atrasa?</th><th style="padding:6px 8px;">Programado</th><th></th></tr></thead><tbody>
+            ${(v.partidas || []).map((p, i) => { const e = OPS_GEST_EST[p.estatus] || OPS_GEST_EST.pendiente, atr = p.fechaCompromiso && p.fechaCompromiso < hoy && !["entregado", "cancelado"].includes(p.estatus); const fo = p.folioId && cacheFolios.find(x => x.id === p.folioId);
+              return `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;${atr ? "background:#fef2f2;" : ""}"><td style="padding:6px 8px;"><b>${opsEsc(p.nombre)}</b>${p.cantidad > 1 ? " × " + p.cantidad : ""}${p.importe ? `<div style="font-size:10.5px;color:#64748b;">${opsDinero(p.importe)}</div>` : ""}</td>
+                <td style="padding:6px 8px;"><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 7px;white-space:nowrap;">${e[0]}</span></td>
+                <td style="padding:6px 8px;white-space:nowrap;${atr ? "color:#b91c1c;font-weight:800;" : ""}">${opsEsc(p.fechaCompromiso ? opsFmtFechaCorta(p.fechaCompromiso) : "—")}${atr ? " · ATRASADO" : ""}</td>
+                <td style="padding:6px 8px;color:#b45309;">${opsEsc(p.documentoAtrasa || "")}${p.nota ? `<div style="color:#64748b;">${opsEsc(p.nota)}</div>` : ""}</td>
+                <td style="padding:6px 8px;">${fo ? `<a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${fo.id}')" style="color:#0e7490;font-weight:700;">${opsEsc(opsFmtFechaCorta(fo.fechaProgramada))}</a>` : "—"}</td>
+                <td style="padding:6px 8px;white-space:nowrap;">${puede ? `<button onclick="opsGestPartidaEditar('${v.id}',${i})" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Actualizar</button>${!p.folioId && !["entregado", "cancelado"].includes(p.estatus) ? ` <button onclick="opsGestProgramar('${v.id}',${i})" style="border:none;background:#0e7490;color:#fff;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;">Programar</button>` : ""}` : ""}</td></tr>`; }).join("") || `<tr><td colspan="6" style="padding:10px;color:#94a3b8;">Sin trámites: agrégalos con "+ Trámite".</td></tr>`}
+            </tbody></table></div></div>`).join("") || `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:24px;text-align:center;color:#94a3b8;">Sin ventas de gestoría con este filtro.</div>`}`;
+    }
+    window.opsRenderGestoria = opsRenderGestoria;
+    window.opsGestFiltroSet = function (v) { opsGestFiltro = v; opsRenderGestoria(); };
+    window.opsGestNueva = function () {
+        opsMiniModal("Venta de gestoría", `
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">Escribe el número de PEDIDO de Aspel y toca "Jalar de Aspel": se llenan cliente, fecha, total y cotización.</div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Pedido Aspel *</label><input id="gv-ped" placeholder="Ej. CHH0000006732 o 6732" style="${OPS_MINI_IN}"></div><button type="button" onclick="opsGestJalarAspel()" style="border:none;background:#0e7490;color:#fff;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer;margin-bottom:10px;">Jalar de Aspel</button></div>
+            <div id="gv-aspel" style="font-size:11.5px;color:#0e7490;margin:-4px 0 8px;"></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Cliente *</label><input id="gv-cli" style="${OPS_MINI_IN}">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha</label><input id="gv-fecha" type="date" value="${opsHoy()}" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Total ($)</label><input id="gv-total" type="number" step="0.01" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Cotización</label><input id="gv-cot" style="${OPS_MINI_IN}"></div></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Vendedor</label><input id="gv-vend" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Trámites vendidos (marca los del pedido)</label>
+            <div style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;margin:4px 0 10px;">${OPS_GEST_CATALOGO.map((n, i) => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;"><input type="checkbox" class="gv-part" value="${i}"> ${opsEsc(n)}</label>`).join("")}</div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Otro trámite (opcional)</label><input id="gv-otro" style="${OPS_MINI_IN}">`,
+            async err => {
+                const g = id => document.getElementById(id).value.trim();
+                const parts = Array.from(document.querySelectorAll(".gv-part:checked")).map(c => OPS_GEST_CATALOGO[Number(c.value)]);
+                if (g("gv-otro")) parts.push(g("gv-otro"));
+                if (!g("gv-ped") || !g("gv-cli")) { err.textContent = "Faltan el pedido y el cliente."; return false; }
+                if (!parts.length) { err.textContent = "Marca al menos un trámite."; return false; }
+                if (cacheGestVentas.some(v => opsNormalizaTexto(v.pedido) === opsNormalizaTexto(g("gv-ped")))) { err.textContent = "Ese pedido ya está dado de alta."; return false; }
+                const datos = { pedido: g("gv-ped"), cliente: g("gv-cli"), fechaPedido: g("gv-fecha") || null, total: Number(g("gv-total")) || 0, cotizacion: g("gv-cot") || null, vendedor: g("gv-vend") || null,
+                    partidas: parts.map(n => ({ nombre: n, cantidad: 1, estatus: "pendiente", fechaCompromiso: null, documentoAtrasa: null, nota: null })),
+                    aspel: window.__gvAspel || null, creadoPor: opsNombreActual(), creadoPorCorreo: opsUsuarioActual(), creadoEn: new Date().toISOString(), historial: [{ accion: "alta", por: opsNombreActual(), en: new Date().toISOString() }] };
+                const { db, fs } = await opsGetFB();
+                await fs.addDoc(fs.collection(db, COL_GEST_VENTAS), datos);
+                const msg = `Venta de gestoría: ${datos.cliente} · pedido ${datos.pedido} · ${opsDinero(datos.total)} · ${parts.length} trámite(s): ${parts.join(", ")}.`;
+                for (const para of OPS_GEST_AVISO) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "gestoria_venta", para, mensaje: msg, modulo: "Operaciones" }); } catch (e) {} }
+                if (window.tcNotif) window.tcNotif.agregar({ titulo: "Venta de gestoría registrada", texto: msg, nivel: "normal", modulo: "Operaciones" });
+                window.__gvAspel = null;
+            });
+    };
+    window.opsGestJalarAspel = async function () {
+        const raw = (document.getElementById("gv-ped").value || "").trim().toUpperCase(), box = document.getElementById("gv-aspel");
+        if (!raw) { box.textContent = "Escribe el pedido."; return; }
+        const num = raw.replace(/\D/g, "");
+        box.textContent = "Buscando en Aspel…";
+        try {
+            const sb = await opsSb();
+            let q = sb.from("aspel_documentos").select("cve_doc,cve_clpv,empresa,fecha_doc,total,doc_ant,cve_vend,status").eq("tip_doc", "P");
+            q = /^[A-Z]/.test(raw) ? q.eq("cve_doc", raw) : q.eq("folio", Number(num));
+            const { data, error } = await q.order("fecha_doc", { ascending: false }).limit(5);
+            if (error) throw error;
+            if (!data || !data.length) { box.innerHTML = '<span style="color:#b45309;">No está en Aspel (o aún no se sincroniza). Captúralo a mano.</span>'; return; }
+            const d = data[0];
+            const c = await sb.from("aspel_clientes").select("nombre,nombre_comercial,rfc").eq("clave", d.cve_clpv).eq("empresa", d.empresa).maybeSingle();
+            const set = (id, v) => { const e = document.getElementById(id); if (e && v != null) e.value = v; };
+            set("gv-ped", d.cve_doc); set("gv-cli", (c.data && (c.data.nombre_comercial || c.data.nombre)) || ""); set("gv-fecha", d.fecha_doc); set("gv-total", d.total); set("gv-cot", d.doc_ant || ""); set("gv-vend", d.cve_vend ? "Vendedor " + d.cve_vend : "");
+            window.__gvAspel = { cveDoc: d.cve_doc, cliente: d.cve_clpv, rfc: c.data && c.data.rfc, status: d.status };
+            box.innerHTML = `Encontrado: <b>${opsEsc(d.cve_doc)}</b> · ${opsEsc((c.data && c.data.nombre) || "")} · ${opsDinero(d.total)}${data.length > 1 ? ` (hay ${data.length} pedidos con ese número; se tomó el más reciente)` : ""}. Las partidas no vienen de Aspel: márcalas abajo.`;
+        } catch (e) { box.innerHTML = '<span style="color:#b91c1c;">No se pudo consultar Aspel: ' + opsEsc(e.message || e) + "</span>"; }
+    };
+    async function opsGestGuardarPartidas(v, partidas, accion, nota) {
+        const { db, fs } = await opsGetFB();
+        const hist = (v.historial || []).concat([{ accion, nota: nota || null, por: opsNombreActual(), en: new Date().toISOString() }]);
+        await fs.updateDoc(fs.doc(db, COL_GEST_VENTAS, v.id), { partidas, historial: hist.slice(-60) });
+        v.partidas = partidas; v.historial = hist; opsRenderGestoria();
+    }
+    window.opsGestPartidaNueva = function (id) {
+        const v = cacheGestVentas.find(x => x.id === id); if (!v) return;
+        opsMiniModal("Agregar trámite", `<label style="font-size:11.5px;font-weight:700;color:#334155;">Trámite</label><select id="gp-n" style="${OPS_MINI_IN}">${OPS_GEST_CATALOGO.map(n => `<option>${opsEsc(n)}</option>`).join("")}<option value="__otro">Otro…</option></select><input id="gp-o" placeholder="Si es otro, escríbelo" style="${OPS_MINI_IN}">`,
+            async err => { let n = document.getElementById("gp-n").value; if (n === "__otro") n = document.getElementById("gp-o").value.trim(); if (!n) { err.textContent = "Escribe el trámite."; return false; }
+                await opsGestGuardarPartidas(v, (v.partidas || []).concat([{ nombre: n, cantidad: 1, estatus: "pendiente" }]), "trámite agregado", n); });
+    };
+    window.opsGestPartidaEditar = function (id, i) {
+        const v = cacheGestVentas.find(x => x.id === id); const p = v && (v.partidas || [])[i]; if (!p) return;
+        opsMiniModal("Actualizar · " + opsEsc(p.nombre), `
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Estatus</label><select id="gp-est" style="${OPS_MINI_IN}">${Object.entries(OPS_GEST_EST).map(([k, e]) => `<option value="${k}" ${p.estatus === k ? "selected" : ""}>${e[0]}</option>`).join("")}</select>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha compromiso de entrega</label><input id="gp-fc" type="date" value="${opsEsc(p.fechaCompromiso || "")}" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Qué documento o qué está atrasando la entrega?</label><input id="gp-doc" value="${opsEsc(p.documentoAtrasa || "")}" placeholder="Ej. el cliente no ha mandado el plano arquitectónico firmado" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Nota</label><input id="gp-nota" value="${opsEsc(p.nota || "")}" style="${OPS_MINI_IN}">`,
+            async err => {
+                const est = document.getElementById("gp-est").value, doc = document.getElementById("gp-doc").value.trim();
+                if (est === "docs_cliente" && !doc) { err.textContent = "Escribe qué documento falta del cliente."; return false; }
+                const nuevo = { ...p, estatus: est, fechaCompromiso: document.getElementById("gp-fc").value || null, documentoAtrasa: doc || null, nota: document.getElementById("gp-nota").value.trim() || null, actualizadoPor: opsNombreActual(), actualizadoEn: new Date().toISOString() };
+                if (est === "entregado") nuevo.entregadoEn = opsHoy();
+                const partidas = (v.partidas || []).slice(); partidas[i] = nuevo;
+                await opsGestGuardarPartidas(v, partidas, "trámite actualizado", `${p.nombre}: ${OPS_GEST_EST[est][0]}${doc ? " · atrasa: " + doc : ""}`);
+                if (nuevo.folioId && est === "entregado") { try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, nuevo.folioId), { fechaSolucion: opsFechaHora(), completadoPor: opsNombreActual(), finalizadoDesde: "gestoria" }); } catch (e) {} }
+            });
+    };
+    // Programar = apartar en el renglón "Gestoría" del calendario el periodo de trabajo del trámite.
+    window.opsGestProgramar = function (id, i) {
+        const v = cacheGestVentas.find(x => x.id === id); const p = v && (v.partidas || [])[i]; if (!p) return;
+        if (!opsTecPorId(OPS_GEST_TEC_ID)) { alert('Falta el renglón "Gestoría" en el calendario. Recarga el portal.'); return; }
+        opsMiniModal("Programar · " + opsEsc(p.nombre), `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Empieza</label><input id="gq-ini" type="date" value="${opsHoy()}" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Entrega (compromiso)</label><input id="gq-fin" type="date" value="${opsEsc(p.fechaCompromiso || "")}" style="${OPS_MINI_IN}"></div></div>`,
+            async err => {
+                const ini = document.getElementById("gq-ini").value, fin = document.getElementById("gq-fin").value;
+                if (!ini || !fin || fin < ini) { err.textContent = "Revisa las fechas."; return false; }
+                const dias = Math.round((new Date(fin + "T12:00") - new Date(ini + "T12:00")) / 86400000) + 1;
+                const datos = { estacion: v.cliente, clienteNombre: v.cliente, conceptoGeneral: "Gestoría", categoriaServicio: "Gestoría · " + p.nombre, tipoFolio: "servicio", tipoAlta: "gestoria",
+                    fechaProgramada: ini + "T09:00", fechaFinProgramada: fin, duracionValor: dias, duracionUnidad: "dias", tiempoEjecucionHrs: dias * 8,
+                    comentarios: `Pedido ${v.pedido}${v.cotizacion ? " · cot. " + v.cotizacion : ""}. Trámite: ${p.nombre}.`, gestoriaVentaId: v.id, gestoriaPartida: i,
+                    ...opsCamposEquipo({}, [OPS_GEST_TEC_ID], null), folioNumero: opsSiguienteNumeroServicio(), origen: "gestoria", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(), fechaSolucion: null };
+                const { db, fs } = await opsGetFB();
+                const ref = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                const partidas = (v.partidas || []).slice(); partidas[i] = { ...p, folioId: ref.id, fechaCompromiso: fin, estatus: p.estatus === "pendiente" ? "proceso" : p.estatus };
+                await opsGestGuardarPartidas(v, partidas, "programado", `${p.nombre}: ${ini} → ${fin}`);
+            });
+    };
+    // Renglón "Gestoría" en el calendario: se crea una sola vez como si fuera un técnico más.
+    async function opsGestAsegurarRenglon() {
+        if (!cacheTec.length || cacheTec.some(t => t.id === OPS_GEST_TEC_ID)) return false;
+        if (!opsPuedeGestionar()) return false;
+        try {
+            const { db, fs } = await opsGetFB();
+            const datos = { nombre: "Gestoría", puesto: "Técnico de Gestoría (área)", departamento: "Operaciones", estatus: "activo", habilidades: ["gestoria"], esArea: true, numeroOperativo: "GEST", observaciones: "Renglón del área de Gestoría en el calendario (no es una persona)." };
+            await fs.setDoc(fs.doc(db, "ops_tecnicos", OPS_GEST_TEC_ID), datos);
+            if (!cacheTec.some(t => t.id === OPS_GEST_TEC_ID)) cacheTec.push({ id: OPS_GEST_TEC_ID, ...datos });
+            return true;
+        } catch (e) { console.warn("[gestoría] renglón:", e); return false; }
+    }
+
+    // ═══════════════════ TAREA EXTRA / FAVOR PARA UN TÉCNICO (22-oct-2026) ═══════════════════
+    // Ej. "llevar sobre con documentación a estación Vaquero". Solo programación: quién, cuándo, qué
+    // y dónde. Sale en el calendario y en la app del técnico, que la cierra con "Listo, ya lo hice"
+    // (sin O.S., firma ni fotos obligatorias). No cuenta para comisiones ni para revisión de cierres.
+    window.opsTareaExtraAbrir = function (fechaISO) {
+        const tecs = opsTecOperativos().filter(t => !t.esArea).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es"));
+        const f0 = fechaISO || opsHoy();
+        opsMiniModal("Tarea extra para un técnico", `
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">Un favor o pendiente que solo necesita programarse (ej. llevar un sobre con documentación a una estación).</div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Qué hay que hacer? *</label><input id="tx-que" placeholder="Ej. Llevar sobre con documentación" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿A dónde? *</label><input id="tx-donde" placeholder="Ej. Estación Vaquero" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Quién? *</label><select id="tx-tec" style="${OPS_MINI_IN}"><option value="">Elige…</option>${tecs.map(t => `<option value="${t.id}">${opsEsc(t.nombre)}</option>`).join("")}</select>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Día *</label><input id="tx-dia" type="date" value="${opsEsc(f0)}" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Hora</label><input id="tx-hora" type="time" value="09:00" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Tiempo (min)</label><input id="tx-min" type="number" min="5" step="5" value="30" style="${OPS_MINI_IN}"></div></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Indicaciones</label><input id="tx-nota" placeholder="Ej. Entregar a la encargada Laura, pedir firma de recibido" style="${OPS_MINI_IN}">`,
+            async err => {
+                const g = id => document.getElementById(id).value.trim();
+                if (!g("tx-que") || !g("tx-donde") || !g("tx-tec") || !g("tx-dia")) { err.textContent = "Faltan qué, a dónde, quién o el día."; return false; }
+                const t = opsTecPorId(g("tx-tec")), min = Math.max(5, Number(g("tx-min")) || 30);
+                const datos = { estacion: g("tx-donde"), conceptoGeneral: "Tarea extra", categoriaServicio: "Tarea extra · " + g("tx-que"), tareaFolio: g("tx-que"), esTareaExtra: true, sinCobro: true,
+                    tipoFolio: "servicio", tipoAlta: "tarea_extra", fechaProgramada: g("tx-dia") + "T" + (g("tx-hora") || "09:00"), tiempoEjecucionHrs: Math.round(min / 60 * 100) / 100, duracionValor: min, duracionUnidad: "min",
+                    comentarios: [g("tx-que") + " — " + g("tx-donde"), g("tx-nota")].filter(Boolean).join("\n"), ...opsCamposEquipo({}, [t.id], null),
+                    folioNumero: opsSiguienteNumeroServicio(), origen: "tarea_extra", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(), fechaSolucion: null };
+                const { db, fs } = await opsGetFB();
+                const ref = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+                try { await opsAvisarTecnicosAsignados({ id: ref.id, ...datos }, [t], "Tarea extra"); } catch (e) {}
+                if (window.tcNotif) window.tcNotif.agregar({ titulo: "Tarea extra programada", texto: `${t.nombre}: ${g("tx-que")} (${g("tx-donde")}) · ${g("tx-dia")}`, nivel: "normal", modulo: "Operaciones" });
+            });
+    };
+
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
     // Glen: "cada tipo de servicio requiere cierta información, cierta herramienta, ciertos
     // vehículos, ciertos técnicos — esas necesidades son lo que debe capturarse al dar de alta".
@@ -13676,6 +14037,9 @@
         <div class="opsas-sec ${lock(listo3)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Comentarios</div><div class="opsas-hint">Opcional</div></div>
             <textarea class="opsas-in" style="min-height:60px;resize:vertical;" oninput="opsAS.comentarios=this.value" placeholder="Indicaciones para el técnico, accesos, horarios de la estación…">${opsEsc(s.comentarios)}</textarea>
+            ${s.evidenciasCliente && s.evidenciasCliente.length ? `<div class="opsas-note" style="margin-top:8px;">Ventas mandó ${s.evidenciasCliente.length} foto(s)/video del cliente: pasan al servicio y el técnico las ve en su app.</div>` : ""}
+            ${s.tipo === "programacion" && s.vehiculoTamano ? `<div style="margin-top:8px;"><label class="opsas-lb">Vehículo</label><select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()"><option value="">— Por definir —</option>${((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja").map(v => { const val = "ECO " + v.Eco + " · " + (v.Unidad || ""); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${opsEsc(val)} (${OPS_VEH_TAM[opsVehTamano(v)]})</option>`; }).join("")}</select></div>` : ""}
+            ${opsAsVehTamanoHTML()}
             ${s.tipo !== "programacion" ? (s.masFac ? `
             <div class="opsas-grid" style="margin-top:10px;">
                 <div><label class="opsas-lb">A quién se factura</label><input class="opsas-in" value="${opsEsc(s.facturarA || e?.razonSocial || "")}" oninput="opsAS.facturarA=this.value"></div>
@@ -14819,6 +15183,8 @@
             tecnicoResponsableId: lider?.id || null, tecnicoResponsableNombre: lider?.nombre || null, tecnicoResponsableCorreo: lider?.correo || null,
             responsable: lider?.nombre || null,
             vehiculoPlaneado: s.vehiculo || null,
+            vehiculoTamanoPedido: s.vehiculoTamano || null,
+            evidenciasCliente: s.evidenciasCliente || null,
             herramientaChecklist: herrLista,
             clienteId: cliente?.id || null, clienteNombre: cliente?.nombre || null, prioridad: s.tipo === "poliza" ? s.prioridad : null,
             fechaSolicitud: s.tipo === "poliza" ? s.fechaSolicitud : null, vencimiento,

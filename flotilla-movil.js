@@ -7118,6 +7118,7 @@ function fmOpsServHTML(){
         '</div>'+
         (function(){const ni=opsSvNombreInfo(f);return '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:2px">'+opsSvEsc(ni.titulo)+(ni.sinNombre?' <span style="font-size:10px;font-weight:800;color:#92400E;background:#FEF3C7;border-radius:6px;padding:1px 6px;vertical-align:middle">Sin nombre comercial</span>':'')+'</div>'+
           ((ni.e.razonSocial||ni.e.permiso)&&ni.e.razonSocial!==ni.titulo?'<div style="font-size:11px;color:#64748B;margin-bottom:4px">'+opsSvEsc([ni.e.razonSocial,ni.e.permiso].filter(Boolean).join(' · '))+'</div>':'');})()+
+        ((f.evidenciasCliente||[]).length?'<div style="margin-bottom:6px">'+(f.evidenciasCliente||[]).map(function(x,i){return '<button onclick="fmVerEvidCliente(\''+f.id+'\','+i+')" style="margin:0 6px 4px 0;padding:6px 10px;border-radius:8px;border:1.5px solid #BFDBFE;background:#EFF6FF;font-family:inherit;font-size:11.5px;font-weight:800;color:#1D4ED8">'+(x.tipo==='video'?'▶ Video del cliente':'Foto del cliente '+(i+1))+'</button>';}).join('')+'</div>':'')+
         (f.tareaFolio||f.folioClienteId?'<div style="font-size:12px;color:#334155;margin-bottom:6px">'+(f.folioClienteId?'<b>Folio '+opsSvEsc(f.folioClienteId)+'</b>':'')+(f.tareaFolio?(f.folioClienteId?' · ':'')+opsSvEsc(f.tareaFolio):'')+(f.prioridad?' · '+opsSvEsc(f.prioridad):'')+'</div>':'')+
         (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
         ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
@@ -7131,7 +7132,9 @@ function fmOpsServHTML(){
         (fmOpsEsPoliza(f)?'<button onclick="fmOpsAbrirPolizas(\''+f.id+'\')" style="width:100%;padding:12px;margin-bottom:7px;background:#7C3AED;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:900;color:#fff;cursor:pointer">Llenar la póliza en la app de Pólizas</button>'+(f.polizaAbiertaEn?'<div style="font-size:10.5px;color:#6D28D9;margin:-3px 0 7px;text-align:center">Abriste la app de Pólizas el '+opsSvEsc(opsSvFecha(f.polizaAbiertaEn))+'. Al terminar allá, regresa y toca «Cerrar servicio».</div>':''):'')+
         '<button onclick="fmOpsServDetalle(\''+f.id+'\')" style="width:100%;padding:10px;margin-bottom:7px;background:#1D2E73;border:none;border-radius:8px;font-family:inherit;font-size:12px;font-weight:800;color:#fff;cursor:pointer">Ver todo: herramienta, material y datos</button>'+
         '<div style="display:grid;grid-template-columns:'+(mapa?'1fr 1fr 1fr':'1fr 1fr')+';gap:7px">'+
-          (enProc
+          (f.esTareaExtra
+            ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Listo, ya lo hice</button>'
+          :enProc
             ?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#1E40AF;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Cerrar servicio</button>'
             :(atrasado?'<button onclick="fmOpsServTerminar(\''+f.id+'\')" style="padding:9px;background:#B91C1C;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Cerrar servicio</button>'
               :'<button onclick="fmOpsServIniciar(\''+f.id+'\',this)" style="padding:9px;background:#15803D;border:none;border-radius:8px;font-family:inherit;font-size:11px;font-weight:800;color:#fff;cursor:pointer">Iniciar servicio</button>'))+
@@ -7787,8 +7790,34 @@ window.fmNPCrear=async function(){
     if(btn){btn.disabled=false;btn.textContent='Continuar al cierre';}
   }
 };
+// Servicio de VARIOS DÍAS (22-oct-2026, Glen): antes, al terminar el primer día de una
+// programación de una semana, el servicio se cerraba completo y los días que faltaban se daban
+// por terminados aunque no se hicieron. Ahora, si quedan días programados, el técnico elige
+// «Terminé lo de HOY (sigue otro día)»: se guarda el avance y el servicio sigue abierto.
+function fmDiaISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmOpsDiaFin(f){
+  const dia=String(f.fechaProgramada||'').slice(0,10); if(!dia)return '';
+  if(f.fechaFinProgramada&&String(f.fechaFinProgramada).slice(0,10)>dia)return String(f.fechaFinProgramada).slice(0,10);
+  if(f.duracionUnidad==='dias'&&Number(f.duracionValor)>1){const dd=new Date(dia+'T12:00:00');dd.setDate(dd.getDate()+Math.ceil(Number(f.duracionValor))-1);return fmDiaISO(dd);}
+  return dia;
+}
+function fmOpsQuedanDias(f){const fin=fmOpsDiaFin(f);return !!fin&&fin>fmDiaISO(new Date());}
+// Tarea extra / favor (22-oct-2026): se cierra con "Listo, ya lo hice" y una nota opcional.
+async function fmTareaExtraHecha(f){
+  const nota=prompt('Tarea: '+(f.tareaFolio||f.categoriaServicio||'')+' · '+(f.estacion||'')+'\n\n¿Ya la hiciste? Escribe una nota si quieres (ej. lo recibió Laura).','');
+  if(nota===null)return;
+  const ahora=new Date().toISOString(), quien=opsSvMiNombre();
+  try{
+    await opsDb().collection(OPS_COL_FOLIOS).doc(f.id).update({fechaSolucion:ahora,completadoPor:quien,finalizadoDesde:'app_flotilla_tarea',iniciadoEn:null,pausaActiva:null,
+      atenciones:(f.atenciones||[]).concat([{tecnicoId:_opsServTecId||null,nombre:quien,correo:opsSvMiCorreo(),inicio:f.iniciadoEn||null,fin:ahora,resultado:'finalizado',detalle:nota.trim()||'Tarea realizada',tareaExtra:true}])});
+    try{await opsSvComentario(f.id,'[Tarea hecha] '+(nota.trim()||'Realizada')+'.','finalizado');}catch(e){}
+    try{await opsSvAvisarAdmins('ops_tecnico_finalizado',quien+' terminó la tarea extra: '+(f.tareaFolio||'')+' ('+(f.estacion||'')+')'+(nota.trim()?' · '+nota.trim():''),f.id);}catch(e){}
+    if(typeof toast==='function')toast('Tarea marcada como hecha','ok');
+  }catch(e){alert('No se pudo guardar: '+(e.message||e)+'. Revisa tu señal.');}
+}
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
+  if(f.esTareaExtra)return fmTareaExtraHecha(f);
   window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
   window.__fmTermVideo=null; window.__fmTermMat=null;
   let sinOrden=false; try{sinOrden=await fmEvSinOrden(f);}catch(e){}
@@ -7828,7 +7857,10 @@ window.fmOpsServTerminar=async function(id){
       '<textarea id="fm-term-txt" rows="3" placeholder="Qué se hizo (ej. se cambió la tarjeta del dispensario 2 y se probó el despacho)." style="'+FM_TERM_INP+'"></textarea>'+
       fmTermMaterialHTML()+
       fmTermTit('10','¿Se concluyó satisfactoriamente el servicio?',true)+
+      (fmOpsQuedanDias(f)?'<div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:#1E3A8A;line-height:1.45"><b>Este servicio está programado hasta el '+opsSvEsc(fmOpsDiaFin(f).split('-').reverse().join('/'))+'.</b> Si solo terminaste el trabajo de hoy, elige <b>«Terminé lo de HOY»</b>: el servicio sigue abierto para los días que faltan.</div>'+
+        '':'')+
       '<div id="fm-term-res" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">'+
+        (fmOpsQuedanDias(f)?'<button type="button" data-r="avance_dia" onclick="fmOpsTermRes(this)" style="grid-column:1/-1;padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12.5px;font-weight:900;color:#1D4ED8">Terminé lo de HOY (sigue otro día)</button>':'')+
         '<button type="button" data-r="finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#15803D">Sí</button>'+
         '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#B45309">No: se atendió, falta terminar</button>'+
         '<button type="button" data-r="no_realizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#64748B">No: no se pudo realizar</button>'+
@@ -7860,7 +7892,8 @@ window.fmOpsPausaMotivoSel=function(b,cont){document.querySelectorAll('#'+cont+'
 window.fmOpsTermRes=function(b){
   document.querySelectorAll('#fm-term-res button').forEach(function(x){x.style.background='#fff';x.style.borderColor='#CBD5E1';x.removeAttribute('data-on');});
   const r=b.getAttribute('data-r');
-  b.style.background=r==='finalizado'?'#F0FDF4':r==='no_finalizado'?'#FFF7ED':'#F1F5F9'; b.style.borderColor=r==='finalizado'?'#15803D':r==='no_finalizado'?'#EA580C':'#64748B'; b.setAttribute('data-on','1');
+  b.style.background=r==='finalizado'?'#F0FDF4':r==='no_finalizado'?'#FFF7ED':r==='avance_dia'?'#EFF6FF':'#F1F5F9'; b.style.borderColor=r==='finalizado'?'#15803D':r==='no_finalizado'?'#EA580C':r==='avance_dia'?'#1D4ED8':'#64748B'; b.setAttribute('data-on','1');
+  const bt=document.getElementById('fm-term-btn'); if(bt)bt.textContent=r==='avance_dia'?'Guardar avance de hoy':'Guardar y cerrar servicio';
   const ver=function(idx,on){const e=document.getElementById(idx);if(e)e.style.display=on?'block':'none';};
   ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
 };
@@ -7874,20 +7907,24 @@ window.fmOpsServGuardarTermino=async function(id){
   const esPol=!!window.__fmTermPoliza;
   if(!rb){err('Falta el punto 10: ¿Se concluyó satisfactoriamente el servicio?');return;}
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
-  if(res!=='no_realizado'&&!osNum){err('Falta el punto 4: No. folio / O.S.');return;}
+  if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){err('Falta el punto 4: No. folio / O.S.');return;}
   // Candado del ID del folio (22-oct-2026, junta Operaciones): en folios de OXXO y Petro Seven el técnico
   // captura el ID de ServiceNow / Fractal que se publicó en WhatsApp y debe coincidir con el programado.
   let idFolio=null, idExc=false;
-  if(res!=='no_realizado'&&fmPideIdFolio(f)){
+  if(res!=='no_realizado'&&res!=='avance_dia'&&fmPideIdFolio(f)){
     idFolio=(document.getElementById('fm-term-idfolio')?.value||'').trim().toUpperCase();
     idExc=!!document.getElementById('fm-term-idexc')?.checked;
     if(!idFolio){err('Falta el ID del folio (el de WhatsApp: ServiceNow / Fractal).');return;}
     const norm=function(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');};
     if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){err('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');return;}
   }
-  if(esPol&&res!=='no_realizado'&&!document.getElementById('fm-term-pol-ok')?.checked){err('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');return;}
+  if(esPol&&res!=='no_realizado'&&res!=='avance_dia'&&!document.getElementById('fm-term-pol-ok')?.checked){err('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');return;}
   const mb=document.querySelector(res==='no_realizado'?'#fm-term-motivos2 button[data-on]':'#fm-term-motivos button[data-on]');
-  if(res==='finalizado'){
+  if(res==='finalizado'&&fmOpsQuedanDias(f)&&!confirm('Este servicio está programado hasta el '+fmOpsDiaFin(f).split('-').reverse().join('/')+'.\n\n¿Ya se terminó TODO el servicio?\n\nSi solo terminaste lo de hoy, cancela y elige «Terminé lo de HOY».'))return;
+  if(res==='avance_dia'){
+    if(!ev.foto.length){err('Sube al menos una foto del avance de hoy.');return;}
+    if(txt.length<10){err('En el punto 7 explica qué se avanzó hoy y qué falta.');return;}
+  }else if(res==='finalizado'){
     if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta el punto 6: foto de la Orden de servicio.');return;}
     if(!esPol&&!ev.foto.length){err('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');return;}
   }else if(res==='no_finalizado'){
@@ -7900,7 +7937,7 @@ window.fmOpsServGuardarTermino=async function(id){
   }
   // Datos de SERVICIO TECNICO (antes en Connecteam): auxiliar, material, video y firma de conformidad
   let extra={auxiliar:null,material:null,firmante:null,firma:null};
-  if(res!=='no_realizado'){
+  if(res!=='no_realizado'&&res!=='avance_dia'){
     const aux=(document.getElementById('fm-term-aux')?.value||'').trim();
     const mat=window.__fmTermMat;
     if(!esPol&&mat!=='si'&&mat!=='no'){err('Falta el punto 8: ¿Se utilizó material de almacén?');return;}
@@ -7990,6 +8027,11 @@ async function fmCierreSubir(P,prog){
   if(res==='finalizado'){
     cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde=P.enCola?'app_flotilla_sin_senal':'app_flotilla'; cambios.evidenciaCompleta=true;
     if(!f.primerArriboEn)cambios.primerArriboEn=f.iniciadoEn||ahora;
+  }else if(res==='avance_dia'){
+    // Avance de un día: el servicio sigue abierto para los días que faltan.
+    cambios.iniciadoEn=null;
+    cambios.avancesDia=(f.avancesDia||[]).concat([{dia:String(ahora).slice(0,10),por:quien,detalle:P.txt,fotos:nFoto,en:ahora}]);
+    cambios.ultimoAvance={por:quien,detalle:P.txt,en:ahora};
   }else{
     cambios.iniciadoEn=null;
     cambios.ultimoNoFinalizado={resultado:res,motivo:visita.motivo,detalle:P.txt,por:quien,en:ahora};
@@ -8000,11 +8042,11 @@ async function fmCierreSubir(P,prog){
   if(res==='finalizado'){try{nCuadrilla=await fmOpsCerrarCuadrilla(f,id,quien,ahora);}catch(ce){console.warn('[OPS cuadrilla]',ce);}}
   if(res==='finalizado'){try{await fmComisionesAlTerminar(id,f,quien);}catch(ce){console.warn('[comisiones]',ce);}}
   if(res==='no_finalizado'&&/falla mayor/i.test(String(visita.motivo||''))){try{await fmDerivadoPorCierre(f,id,P);}catch(ce){console.warn('[trabajo derivado]',ce);}}
-  const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
+  const etiqueta=res==='avance_dia'?'[Avance del día]':res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
   const resumenExtra=(P.osNum?' · O.S. '+P.osNum:'')+(P.esPol&&res!=='no_realizado'?' · Póliza llenada en la app de Pólizas':'')+(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'')+(P.enCola?' · Cerrado sin señal a las '+new Date(ahora).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+' y subido después':'');
   try{await opsSvComentario(id,etiqueta+' '+(P.txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);}catch(e){}
-  const verbo=res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
-  try{await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+(P.titulo||opsSvTitulo(f))+(res==='finalizado'?'.':': '+visita.motivo+' · '+(String(P.txt||'').slice(0,100))),id);}catch(e){}
+  const verbo=res==='avance_dia'?' registró el avance del día en ':res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
+  try{await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+(P.titulo||opsSvTitulo(f))+(res==='finalizado'?'.':res==='avance_dia'?': '+String(P.txt||'').slice(0,120):': '+visita.motivo+' · '+(String(P.txt||'').slice(0,100))),id);}catch(e){}
   return {nCuadrilla:nCuadrilla,videoFallo:videoFallo};
 }
 
@@ -8026,6 +8068,13 @@ function fmPideIdFolio(f){
   const grupo=/petro\s*(seven|siete|7)\b|petro\s*-?\s*max/.test(t)||/oxxo|servicios gasolineros de mexico/.test(t);
   return grupo&&(fmEsFolioCliente(f)||f.origen==='programar_folio'||!!f.folioClienteId);
 }
+
+// Fotos/video que mandó Ventas con la petición de diagnóstico (22-oct-2026).
+window.fmVerEvidCliente=async function(id,i){
+  const f=misOpsServ.find(function(x){return x.id===id;}); const x=f&&(f.evidenciasCliente||[])[i]; if(!x)return;
+  try{const sb=await fmvSb(); const r=await sb.storage.from(x.bucket).createSignedUrl(x.ruta,3600); if(r.error)throw r.error; window.open(r.data.signedUrl,'_blank');}
+  catch(e){alert('No se pudo abrir: '+(e.message||e));}
+};
 
 // ══ Mis comisiones (22-oct-2026, Paloma): el técnico ve lo que lleva acumulado, lo autorizado,
 // lo pagado y los descuentos por garantía, con la calificación de cada servicio. Solo las suyas.

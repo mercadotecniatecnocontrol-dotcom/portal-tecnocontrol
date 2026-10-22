@@ -7008,6 +7008,11 @@ function vssPintar(){
             <div>${lbl('Prioridad')}<select onchange="vssCampo('prioridad',this.value)" style="${inp}">${[['normal','Normal'],['alta','Alta'],['urgente','Urgente']].map(([v,t])=>`<option value="${v}" ${f.prioridad===v?'selected':''}>${t}</option>`).join('')}</select></div>
             <div>${campo('fechaSugerida','Fecha que pide el cliente',false,'','date')}</div>
           </div>
+          ${lbl('4. Fotos o video de la falla (opcional)')}
+          <input type="file" accept="image/*,video/*" multiple onchange="vssArchivos(this.files)" style="${inp}">
+          <div id="vss-arch" style="font-size:11.5px;color:#475569;margin:-4px 0 8px;">${(vss.archivos||[]).length ? (vss.archivos.length+' archivo(s) listos: '+vss.archivos.map(a=>a.name).join(', ')) : 'Se mandan a Operaciones y el técnico los ve en su app.'}</div>
+          ${lbl('5. ¿Se necesita vehículo?')}
+          <select onchange="vssCampo('vehiculoTamano',this.value)" style="${inp}">${[['','No sé / lo decide Operaciones'],['chico','Chico (auto)'],['mediano','Mediano (pickup / camioneta)'],['grande','Grande (camión / 3.5 ton)']].map(([v,t])=>`<option value="${v}" ${(f.vehiculoTamano||'')===v?'selected':''}>${t}</option>`).join('')}</select>
           <div id="vss-viat" style="margin-top:10px;font-size:12px;color:#334155;border-radius:8px;padding:8px 10px;"></div>` : ''}
           <div id="vss-msg" style="font-size:12px;color:#b91c1c;margin-top:8px;line-height:1.45;">${vss.msg||''}</div>
         </div>
@@ -7021,6 +7026,15 @@ function vssPintar(){
     const bi = document.getElementById('vss-busca'); if(bi){ bi.focus(); }
 }
 
+// Fotos/video que manda Ventas con la petición (22-oct-2026). Máximo 6 archivos, video hasta 60 MB.
+window.vssArchivos = function(lista){
+    if(!vss) return;
+    const arr = Array.from(lista||[]).slice(0,6).filter(f=>/^(image|video)\//.test(f.type||''));
+    const grande = arr.find(f=>f.size > 60*1024*1024);
+    if(grande){ alert('El archivo '+grande.name+' pesa más de 60 MB. Recorta el video o manda otro.'); return; }
+    vss.archivos = arr;
+    const d = document.getElementById('vss-arch'); if(d) d.textContent = arr.length ? (arr.length+' archivo(s) listos: '+arr.map(a=>a.name).join(', ')) : '';
+};
 window.vssEnviar = async function(){
     if(!vss || vss.enviando) return;
     const f = vss.f, falta = [];
@@ -7115,6 +7129,19 @@ window.vssEnviar = async function(){
             fichaServicio:{ estacion: nc || rs, fechaSugerida: f.fechaSugerida || null, requiereViaticos: aplicaViaticos, notas: desc + ' · Contacto: ' + contacto.nombre + ' ' + contacto.telefono + ' ' + contacto.correo },
             createdAt: ahora,
         };
+        if(f.vehiculoTamano) data.vehiculoTamano = f.vehiculoTamano;
+        if((vss.archivos||[]).length){
+            if(btn) btn.textContent = 'Subiendo fotos/video…';
+            const ev = [];
+            for(const [i, a] of vss.archivos.entries()){
+                const ext = (String(a.name).split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+                const ruta = 'diagnosticos/'+String(folioInfo.folio).replace(/[^\w-]+/g,'_')+'/'+Date.now()+'_'+(i+1)+'.'+ext;
+                const up = await sb.storage.from('ops-evidencias').upload(ruta, a, { contentType:a.type||undefined, upsert:false });
+                if(up.error){ console.warn('[vss] evidencia', up.error.message); continue; }
+                ev.push({ bucket:'ops-evidencias', ruta, tipo: /^video/.test(a.type||'') ? 'video' : 'foto', nombre:a.name });
+            }
+            if(ev.length) data.evidenciasCliente = ev;
+        }
         await window.tcSbCrearSurtido(data);
         document.getElementById('ventas-modal-servicio').innerHTML = '';
         if(window.tcNotif) window.tcNotif.agregar({ titulo:'Petición enviada a Operaciones', texto: folioInfo.folio+' · '+(nc||rs)+'. Te avisaremos cuando se programe.', nivel:'normal', modulo:'Ventas' });
