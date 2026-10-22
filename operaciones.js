@@ -22151,7 +22151,7 @@
     const OPS_GTEL_ACC = { resuelto_telefono: "Se resolvió por teléfono", se_genero_folio: "Se generó folio", se_envio_tecnico: "Se envió técnico", pendiente: "Queda pendiente",
         plataforma: "Se atendió en plataforma (ServiceNow / Fractal)", publico_folio: "Se publicó / asignó el folio", gestion_admin: "Gestión administrativa" };
     const OPS_GTEL_EST = { Generado: ["#b45309", "#fef3c7"], Entregado: ["#1d4ed8", "#dbeafe"], Pagado: ["#15803d", "#dcfce7"], Cancelado: ["#64748b", "#f1f5f9"] };
-    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "MIGUEL MONTELLANO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
+    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "MIGUEL MONTELLANO", autorizaAdm: "PALOMA PINEDO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
     let opsGtelSemana = null;
     async function opsGtelCargar() {
         const sb = await opsSb();
@@ -22282,7 +22282,7 @@
             <div style="background:#fff;border-radius:14px;width:440px;max-width:96vw;padding:22px;">
                 <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Generar vale de guardia</div>
                 <div style="font-size:11.5px;color:#64748b;margin-bottom:12px;">Un vale "NO DEDUCIBLE" por cada día de guardia. Si ya existe uno para esa persona y fecha, no se duplica.</div>
-                ${lbl("Guardia")}<select id="gtel-v-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">${Object.entries(OPS_GUARDIA_TIPOS).map(([k, T]) => `<option value="${k}">${T.n}</option>`).join("")}</select>
+                ${lbl("Guardia")}<select id="gtel-v-tipo" onchange="document.getElementById('gtel-v-aut').value = this.value === 'administrativa' ? (window.__opsGtelAutAdm || '') : (window.__opsGtelAut || '')" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">${Object.entries(OPS_GUARDIA_TIPOS).map(([k, T]) => `<option value="${k}">${T.n}</option>`).join("")}</select>
                 ${lbl("Persona")}${opsGtelSelTecnico("gtel-v-tec", quien && quien.id)}
                 ${lbl("Días de guardia (marca uno o varios)")}
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px;">${[0, 1, 2, 3, 4, 5, 6].map(i => { const d = opsSumarDias(lunes, i); return `<label style="display:flex;align-items:center;gap:5px;border:1px solid #e2e8f0;border-radius:8px;padding:5px 8px;font-size:12px;cursor:pointer;"><input type="checkbox" class="gtel-v-dia" value="${d}" ${d === sab || d === dom ? "checked" : ""}> ${opsEsc(opsFechaCorta(d))}</label>`; }).join("")}</div>
@@ -22295,6 +22295,9 @@
             </div>
         </div>`;
     };
+    // Vales: la guardia técnica la autoriza Miguel y la administrativa Paloma (22-oct-2026, Glen).
+    Object.defineProperty(window, "__opsGtelAut", { get() { return opsGtelCfg.autoriza || ""; }, configurable: true });
+    Object.defineProperty(window, "__opsGtelAutAdm", { get() { return opsGtelCfg.autorizaAdm || "PALOMA PINEDO"; }, configurable: true });
     window.opsGtelGuardarVales = async function () {
         const tid = document.getElementById("gtel-v-tec").value;
         const dias = Array.from(document.querySelectorAll(".gtel-v-dia:checked")).map(c => c.value);
@@ -22330,8 +22333,9 @@
     };
     window.opsGtelConfig = function () {
         const v = prompt("Monto por día de guardia ($):", opsGtelCfg.montoDia); if (v === null) return;
-        const a = prompt("¿Quién autoriza los vales? (jefe inmediato)", opsGtelCfg.autoriza || ""); if (a === null) return;
-        const datos = { ...opsGtelCfg, montoDia: Number(v) || opsGtelCfg.montoDia, autoriza: a.trim() };
+        const a = prompt("¿Quién autoriza los vales de la GUARDIA TÉCNICA?", opsGtelCfg.autoriza || ""); if (a === null) return;
+        const aa = prompt("¿Quién autoriza los vales de la GUARDIA ADMINISTRATIVA?", opsGtelCfg.autorizaAdm || "PALOMA PINEDO"); if (aa === null) return;
+        const datos = { ...opsGtelCfg, montoDia: Number(v) || opsGtelCfg.montoDia, autoriza: a.trim(), autorizaAdm: aa.trim() };
         opsSb().then(sb => sb.from("ops_config_guardia_tel").upsert({ id: "general", datos, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }))
             .then(r => { if (r && r.error) throw r.error; opsGtelCfg = datos; opsGtelPintar(); }).catch(e => alert("No se pudo guardar: " + (e.message || e)));
     };
