@@ -2169,6 +2169,7 @@
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
         derivados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+        extras: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>',
         pendientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M4 4l3 3"/></svg>',
         herrsol: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
         comisiones: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5"/><path d="M12 6.5v11"/></svg>',
@@ -2180,10 +2181,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2246,6 +2247,7 @@
         else if (tab === "viaticos") opsRenderViaticos();
         else if (tab === "comisiones") opsRenderComisiones();
         else if (tab === "derivados") opsRenderDerivados();
+        else if (tab === "extras") opsRenderExtras();
         else if (tab === "pendientes") opsRenderPendientes();
         else if (tab === "herrsol") opsRenderSolHerr();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
@@ -8706,6 +8708,7 @@
                 <input id="opsrev-cotizacion" type="text" value="${opsEsc(r.cotizacion || "")}" placeholder="Ej. C*SER 2091" style="${inp}">
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">ID del folio del cliente</div>
                 <input id="opsrev-idcliente" type="text" value="${opsEsc(f.folioClienteId || "")}" placeholder="Ej. MC0537408" style="${inp}">
+                ${f.folioClienteCapturado ? `<div style="font-size:11px;color:${f.excepcionFolioId ? "#b91c1c" : "#15803d"};font-weight:700;margin:-6px 0 8px;">${f.excepcionFolioId ? `El técnico capturó ${opsEsc(f.folioClienteCapturado)} y el programado era ${opsEsc(f.excepcionFolioId.programado)}${f.excepcionFolioId.autorizadoSegunTecnico ? " (dice que Operaciones lo autorizó)" : ""}. Confírmalo contra la hoja.` : "El técnico capturó el mismo ID en la app: " + opsEsc(f.folioClienteCapturado)}</div>` : ""}
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Estatus</div>
                 <select id="opsrev-estatus" style="${inp}">${Object.entries(OPS_REV_ESTATUS).map(([k, x]) => `<option value="${k}" ${(r.estatus || "por_revisar") === k ? "selected" : ""}>${x[0]}</option>`).join("")}</select>
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Nota</div>
@@ -12624,7 +12627,9 @@
         const d = cacheDerivados.find(x => x.id === id); if (!d) return;
         const t = prompt("Diagnóstico y trabajo que se requiere:", d.diagnostico || ""); if (t === null || !t.trim()) return;
         const fp = confirm("¿Va FUERA de póliza (se le cobra al cliente)?\nAceptar = sí, fuera de póliza · Cancelar = dentro de póliza / no aplica");
-        try { await opsTDActualizar(COL_DERIVADOS, id, { diagnostico: t.trim(), fueraPoliza: fp, estatus: fp ? "cotizando" : "diagnostico" }, "diagnostico", t.trim()); opsRenderDerivados(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+        let monto = null;
+        if (fp) { const m = prompt("Monto estimado a cobrar al cliente ($, opcional; entra a la bandeja semanal de extraordinarios):", d.montoEstimado || ""); monto = Number(String(m || "").replace(/[$,\s]/g, "")) || null; }
+        try { await opsTDActualizar(COL_DERIVADOS, id, { diagnostico: t.trim(), fueraPoliza: fp, estatus: fp ? "cotizando" : "diagnostico", ...(monto ? { montoEstimado: monto } : {}) }, "diagnostico", t.trim()); opsRenderDerivados(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
     };
     window.opsTDCotizacion = async function (id) {
         const d = cacheDerivados.find(x => x.id === id); if (!d) return;
@@ -12833,6 +12838,130 @@
             fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: `[Siguiente acción] ${sa.texto}${sa.responsable ? " · lo hace " + sa.responsable : ""}${sa.fecha ? " · para " + sa.fecha : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "seguimiento", createdAt: opsFechaHora() }).catch(() => {});
             f.siguienteAccion = sa; opsRenderPendientes();
         } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+
+    // ═══════════════════ BANDEJA SEMANAL DE TRABAJOS FUERA DE PÓLIZA (22-oct-2026, junta Operaciones) ═══════════════════
+    // Todo lo que salió fuera de póliza en la semana (refacciones o servicios que se cobran al cliente)
+    // se junta para hacer UNA cotización: OXXO dos, Petro Seven una y cada cliente externo la suya.
+    // Fuentes: la Revisión de cierre ("¿se cobró algo?" con monto y concepto) y los trabajos derivados
+    // marcados fuera de póliza. Se anota el número de cotización de Aspel en cada concepto y se da
+    // seguimiento hasta el traspaso del material al almacén interno del cliente en Aspel.
+    // El portal NO hace movimientos en Aspel: solo registra lo que se hizo allá.
+    const COL_COT_SEM = "ops_cotizaciones_semanales";
+    const OPS_EX_EST = { por_cotizar: ["Por cotizar", "#b45309", "#fef3c7"], cotizada: ["Cotizada en Aspel", "#1d4ed8", "#dbeafe"], enviada: ["Enviada al cliente", "#7c3aed", "#ede9fe"], traspaso: ["Traspaso hecho en Aspel", "#15803d", "#dcfce7"] };
+    let cacheCotSem = [], opsExSub = false, opsEx = null;
+    function opsExLunes(d) { const x = new Date(d); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return opsCalFechaISO(x); }
+    function opsExEstado() { if (!opsEx) opsEx = { semana: opsExLunes(new Date()) }; return opsEx; }
+    async function opsExSuscribir() {
+        if (opsExSub) return; opsExSub = true;
+        const { db, fs } = await opsGetFB();
+        fs.onSnapshot(fs.collection(db, COL_COT_SEM), snap => { cacheCotSem = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "extras") opsRenderExtras(); }, e => console.warn("[extraordinarios]", e));
+        try { opsTDSuscribir(); } catch (e) {}
+    }
+    // Conceptos fuera de póliza de la semana elegida.
+    function opsExConceptos(semana) {
+        const fin = opsDiaISOmas(semana, 6), out = [];
+        cacheFolios.forEach(f => {
+            const c = (f.revisionCierre || {}).cobro; if (!c || !c.si || f.cancelado) return;
+            const d = String(f.fechaSolucion || (f.revisionCierre || {}).en || "").slice(0, 10); if (d < semana || d > fin) return;
+            out.push({ key: "f:" + f.id, origen: "cierre", folioId: f.id, fecha: d, estacion: f.estacion || "", os: opsRevOS(f) || "", idCliente: f.folioClienteId || "",
+                grupo: opsGrupoClienteFolio(f), cliente: f.estacionRazonSocial || f.clienteNombre || f.estacion || "Sin cliente",
+                concepto: c.concepto || "Concepto fuera de póliza", monto: Number(c.monto) || 0, cotizacion: (f.revisionCierre || {}).cotizacion || "", grupoOxxo: c.grupoOxxo || "A" });
+        });
+        cacheDerivados.forEach(t => {
+            if (!t.fueraPoliza || t.estatus === "descartado") return;
+            const d = String(t.reportadoEn || "").slice(0, 10); if (d < semana || d > fin) return;
+            const f = t.folioOrigenId && cacheFolios.find(x => x.id === t.folioOrigenId);
+            out.push({ key: "d:" + t.id, origen: "derivado", derivadoId: t.id, folioId: t.folioOrigenId || null, fecha: d, estacion: t.estacion || "", os: f ? (opsRevOS(f) || "") : "", idCliente: f ? (f.folioClienteId || "") : "",
+                grupo: f ? opsGrupoClienteFolio(f) : opsGrupoClienteFolio({ clienteNombre: t.clienteNombre, estacion: t.estacion }), cliente: t.clienteNombre || t.estacion || "Sin cliente",
+                concepto: "Trabajo derivado: " + (t.diagnostico || t.descripcion || ""), monto: Number(t.montoEstimado) || 0, cotizacion: t.cotizacion || "", grupoOxxo: t.grupoOxxo || "A" });
+        });
+        return out.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    }
+    // Paquetes: OXXO A y OXXO B, Petro Seven, y un paquete por cliente externo.
+    function opsExPaquetes(semana) {
+        const m = new Map();
+        opsExConceptos(semana).forEach(c => {
+            const k = c.grupo === "oxxo" ? "oxxo-" + c.grupoOxxo : c.grupo === "petro" ? "petro" : "ext-" + opsNormalizaTexto(c.cliente).slice(0, 60);
+            const nombre = c.grupo === "oxxo" ? "OXXO · Cotización " + c.grupoOxxo : c.grupo === "petro" ? "Petro Seven" : c.cliente;
+            if (!m.has(k)) m.set(k, { k, nombre, grupo: c.grupo, conceptos: [] });
+            m.get(k).conceptos.push(c);
+        });
+        return [...m.values()].sort((a, b) => ({ oxxo: 0, petro: 1, externos: 2 }[a.grupo] - { oxxo: 0, petro: 1, externos: 2 }[b.grupo]) || a.nombre.localeCompare(b.nombre, "es"));
+    }
+    function opsExDoc(semana, k) { return cacheCotSem.find(x => x.id === semana + "_" + k) || null; }
+    function opsRenderExtras() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return; opsExSuscribir();
+        const s = opsExEstado(), paq = opsExPaquetes(s.semana), gest = opsPuedeGestionar();
+        const finTxt = opsFmtFechaCorta(opsDiaISOmas(s.semana, 6));
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:14px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
+              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Extraordinarios de la semana (fuera de póliza)</div>
+              <div style="font-size:11.5px;color:#64748b;max-width:680px;line-height:1.45;">Todo lo que se cobra al cliente: refacciones o servicios que no están en el checklist de la póliza. Sale de la Revisión de cierre (cuando se marca que se cobró algo) y de los trabajos derivados fuera de póliza. Pasos: <b>1)</b> hacer la cotización en Aspel con estos conceptos; <b>2)</b> anotar aquí su número (se escribe en cada servicio); <b>3)</b> enviarla; <b>4)</b> hacer el traspaso del material al almacén interno del cliente en Aspel y registrarlo. Petro Seven: además se descargan las evidencias (Revisión de cierres → ZIP). OXXO: solo cambio de estatus.</div></div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <button onclick="opsExSemana(-7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">‹</button>
+                <div style="font-size:13px;font-weight:800;color:#1e293b;">Semana del ${opsEsc(opsFmtFechaCorta(s.semana))} al ${opsEsc(finTxt)}</div>
+                <button onclick="opsExSemana(7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">›</button>
+              </div>
+            </div></div>
+            ${paq.map(p => { const d = opsExDoc(s.semana, p.k) || {}, est = OPS_EX_EST[d.estatus || "por_cotizar"], tot = p.conceptos.reduce((a, c) => a + c.monto, 0), G = OPS_GRUPOS_FOLIO[p.grupo];
+              return `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:6px solid ${G.color};padding:14px 16px;margin-bottom:12px;">
+                <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center;">
+                  <div><div style="font-size:14.5px;font-weight:900;color:${G.color};">${opsEsc(p.nombre)}</div><div style="font-size:11.5px;color:#64748b;">${p.conceptos.length} concepto(s) · ${opsDinero(tot)}${d.cotizacion ? " · Cotización Aspel <b>" + opsEsc(d.cotizacion) + "</b>" : ""}${d.traspaso ? " · Traspaso " + opsEsc(d.traspaso) : ""}</div></div>
+                  <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;"><span style="font-size:11px;font-weight:800;color:${est[1]};background:${est[2]};border-radius:6px;padding:3px 9px;">${est[0]}</span>
+                    <button onclick="opsExExcel('${p.k}')" style="border:none;background:#eef2f7;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Excel para Aspel</button>
+                    ${gest ? `<button onclick="opsExPaso('${p.k}','cotizada')" style="border:none;background:#1d4ed8;color:#fff;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">No. de cotización</button>
+                    <button onclick="opsExPaso('${p.k}','enviada')" style="border:none;background:#7c3aed;color:#fff;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Enviada</button>
+                    <button onclick="opsExPaso('${p.k}','traspaso')" style="border:none;background:#15803d;color:#fff;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Traspaso hecho</button>` : ""}</div>
+                </div>
+                <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+                  <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px 8px;">Fecha</th><th style="padding:6px 8px;">Estación</th><th style="padding:6px 8px;">O.S. / ID folio</th><th style="padding:6px 8px;">Concepto</th><th style="padding:6px 8px;text-align:right;">Monto</th><th style="padding:6px 8px;">Cotización</th>${p.grupo === "oxxo" && gest ? `<th style="padding:6px 8px;">Va en</th>` : ""}<th></th></tr></thead>
+                  <tbody>${p.conceptos.map(c => `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;"><td style="padding:6px 8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(c.fecha))}</td><td style="padding:6px 8px;">${opsEsc(c.estacion)}</td><td style="padding:6px 8px;">${opsEsc([c.os ? "O.S. " + c.os : "", c.idCliente].filter(Boolean).join(" · ") || "—")}</td><td style="padding:6px 8px;">${opsEsc(c.concepto)}${c.origen === "derivado" ? ' <span style="font-size:10px;color:#7c3aed;font-weight:800;">DERIVADO</span>' : ""}</td><td style="padding:6px 8px;text-align:right;font-weight:800;">${c.monto ? opsDinero(c.monto) : '<span style="color:#b45309;">sin monto</span>'}</td><td style="padding:6px 8px;">${opsEsc(c.cotizacion || "—")}</td>${p.grupo === "oxxo" && gest ? `<td style="padding:6px 8px;"><select onchange="opsExGrupoOxxo('${c.key}',this.value)" style="border:1px solid #cbd5e1;border-radius:6px;padding:3px 6px;font-size:11.5px;"><option ${c.grupoOxxo === "A" ? "selected" : ""}>A</option><option ${c.grupoOxxo === "B" ? "selected" : ""}>B</option></select></td>` : ""}<td style="padding:6px 8px;">${c.folioId ? `<a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${c.folioId}')" style="color:#1D2E73;font-weight:700;font-size:11px;">Ver evidencia</a>` : ""}</td></tr>`).join("")}</tbody>
+                </table></div>
+                ${(d.historial || []).length ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">${(d.historial || []).slice(-3).map(h => opsEsc(h.accion + " · " + h.por + " · " + new Date(h.en).toLocaleString("es-MX") + (h.nota ? " · " + h.nota : ""))).join("<br>")}</div>` : ""}
+              </div>`; }).join("") || `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:24px;text-align:center;color:#94a3b8;font-size:13px;">No hubo conceptos fuera de póliza en esta semana. Se agregan desde Revisión de cierres ("¿Se cobró algo?") o marcando un trabajo derivado como fuera de póliza.</div>`}`;
+    }
+    window.opsRenderExtras = opsRenderExtras;
+    window.opsExSemana = function (n) { const s = opsExEstado(); s.semana = opsDiaISOmas(s.semana, n); opsRenderExtras(); };
+    window.opsExGrupoOxxo = async function (key, v) {
+        try {
+            const { db, fs } = await opsGetFB();
+            if (key.startsWith("f:")) { const f = cacheFolios.find(x => x.id === key.slice(2)); if (!f) return; const rc = { ...(f.revisionCierre || {}) }; rc.cobro = { ...(rc.cobro || {}), grupoOxxo: v }; await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { revisionCierre: rc }); f.revisionCierre = rc; }
+            else { const t = cacheDerivados.find(x => x.id === key.slice(2)); if (!t) return; await fs.updateDoc(fs.doc(db, COL_DERIVADOS, t.id), { grupoOxxo: v }); t.grupoOxxo = v; }
+            opsRenderExtras();
+        } catch (e) { alert("No se pudo cambiar: " + (e.message || e)); }
+    };
+    window.opsExPaso = async function (k, paso) {
+        const s = opsExEstado(), p = opsExPaquetes(s.semana).find(x => x.k === k); if (!p) return;
+        const d = opsExDoc(s.semana, k) || {};
+        let cambios = { estatus: paso }, nota = null;
+        if (paso === "cotizada") { const n = prompt(`Número de cotización de Aspel para ${p.nombre}:`, d.cotizacion || ""); if (!n || !n.trim()) return; cambios.cotizacion = n.trim(); nota = n.trim(); }
+        if (paso === "enviada") { if (!d.cotizacion) { alert("Primero anota el número de cotización de Aspel."); return; } nota = prompt("¿A quién y por qué medio se envió? (opcional)", "") || null; }
+        if (paso === "traspaso") { if (!d.cotizacion) { alert("Primero anota el número de cotización de Aspel."); return; } const t = prompt("Folio del traspaso al almacén interno del cliente en Aspel:", d.traspaso || ""); if (!t || !t.trim()) return; cambios.traspaso = t.trim(); nota = t.trim(); }
+        try {
+            const { db, fs } = await opsGetFB();
+            const datos = { semana: s.semana, paquete: k, nombre: p.nombre, grupo: p.grupo, conceptos: p.conceptos.map(c => c.key), total: p.conceptos.reduce((a, c) => a + c.monto, 0),
+                ...d, ...cambios, historial: (d.historial || []).concat([{ accion: OPS_EX_EST[paso][0], nota, por: opsNombreActual(), en: new Date().toISOString() }]), actualizadoEn: new Date().toISOString() };
+            delete datos.id;
+            await fs.setDoc(fs.doc(db, COL_COT_SEM, s.semana + "_" + k), datos);
+            // El número de cotización queda escrito en cada servicio y en cada trabajo derivado.
+            if (cambios.cotizacion) for (const c of p.conceptos) {
+                try {
+                    if (c.origen === "cierre") { const f = cacheFolios.find(x => x.id === c.folioId); if (f) { const rc = { ...(f.revisionCierre || {}), cotizacion: cambios.cotizacion }; await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { revisionCierre: rc }); f.revisionCierre = rc; } }
+                    else { await fs.updateDoc(fs.doc(db, COL_DERIVADOS, c.derivadoId), { cotizacion: cambios.cotizacion, estatus: "cotizando" }); }
+                } catch (e) { console.warn("[extraordinarios] no se pudo anotar en", c.key, e); }
+            }
+            const iFil = cacheCotSem.findIndex(x => x.id === s.semana + "_" + k); const nuevo = { id: s.semana + "_" + k, ...datos }; if (iFil >= 0) cacheCotSem[iFil] = nuevo; else cacheCotSem.push(nuevo);
+            opsRenderExtras();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsExExcel = function (k) {
+        if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
+        const s = opsExEstado(), p = opsExPaquetes(s.semana).find(x => x.k === k); if (!p) return;
+        const filas = p.conceptos.map(c => ({ "Fecha": c.fecha, "Estación": c.estacion, "O.S.": c.os, "ID folio cliente": c.idCliente, "Concepto": c.concepto, "Monto": c.monto, "Origen": c.origen === "derivado" ? "Trabajo derivado" : "Revisión de cierre" }));
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), "Conceptos");
+        XLSX.writeFile(wb, `Extraordinarios_${p.nombre.replace(/[^\w]+/g, "_")}_${s.semana}.xlsx`);
     };
 
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════

@@ -7814,6 +7814,11 @@ window.fmOpsServTerminar=async function(id){
       fmTermTit('4','No. folio / O.S.',true)+
       '<input id="fm-term-os" type="text" inputmode="numeric" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Número de la orden de servicio en papel (ej. 4362)" style="'+FM_TERM_INP+'">'+
       ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
+      (fmPideIdFolio(f)?'<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
+        '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO (el que se publicó en WhatsApp) *</div>'+
+        '<div style="font-size:11px;color:#92400E;margin-bottom:6px">Es el folio de ServiceNow o Fractal. Escríbelo aquí y también en la hoja de la orden de servicio.</div>'+
+        '<input id="fm-term-idfolio" type="text" autocapitalize="characters" value="" placeholder="Ej. INC0012345" style="'+FM_TERM_INP+';margin-bottom:6px">'+
+        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#92400E"><input type="checkbox" id="fm-term-idexc" style="margin-top:2px"> Operaciones me autorizó un ID distinto al programado (queda registrado)</label></div>':'')+
       ro('5','Estación de servicio',ni.titulo,'La ubicación GPS se toma sola cuando guardas, desde donde estás.')+
       '<div id="fm-term-bloq-fin">'+
         (sinOrden?fmTermTit('6','Orden de servicio',false)+'<div style="font-size:11.5px;color:#0E7490;background:#ECFEFF;border-radius:8px;padding:7px 10px;margin-bottom:12px">Este servicio no lleva orden de servicio: solo evidencia fotográfica.</div>'
@@ -7870,6 +7875,16 @@ window.fmOpsServGuardarTermino=async function(id){
   if(!rb){err('Falta el punto 10: ¿Se concluyó satisfactoriamente el servicio?');return;}
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
   if(res!=='no_realizado'&&!osNum){err('Falta el punto 4: No. folio / O.S.');return;}
+  // Candado del ID del folio (22-oct-2026, junta Operaciones): en folios de OXXO y Petro Seven el técnico
+  // captura el ID de ServiceNow / Fractal que se publicó en WhatsApp y debe coincidir con el programado.
+  let idFolio=null, idExc=false;
+  if(res!=='no_realizado'&&fmPideIdFolio(f)){
+    idFolio=(document.getElementById('fm-term-idfolio')?.value||'').trim().toUpperCase();
+    idExc=!!document.getElementById('fm-term-idexc')?.checked;
+    if(!idFolio){err('Falta el ID del folio (el de WhatsApp: ServiceNow / Fractal).');return;}
+    const norm=function(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');};
+    if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){err('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');return;}
+  }
   if(esPol&&res!=='no_realizado'&&!document.getElementById('fm-term-pol-ok')?.checked){err('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');return;}
   const mb=document.querySelector(res==='no_realizado'?'#fm-term-motivos2 button[data-on]':'#fm-term-motivos button[data-on]');
   if(res==='finalizado'){
@@ -7902,7 +7917,7 @@ window.fmOpsServGuardarTermino=async function(id){
     if(!esPol&&!hayFirma){err('Falta el punto 15: Firma de conformidad.');return;}
     extra={auxiliar:aux||null,material:(mat==='si'||mat==='no')?{usado:mat==='si',almacen:almNom,detalle:matDet||null}:null,firmante:firmante||null,firma:hayFirma?firmaExportar('fm-term-firma'):null};
   }
-  const P={id:id,res:res,motivo:mb?mb.getAttribute('data-m'):null,txt:txt,osNum:osNum,esPol:esPol,extra:extra,
+  const P={id:id,res:res,motivo:mb?mb.getAttribute('data-m'):null,txt:txt,osNum:osNum,esPol:esPol,extra:extra,idFolio:idFolio,idExc:idExc,
     ev:{orden_servicio:(ev.orden_servicio||[]).slice(),foto:(ev.foto||[]).slice()},
     video:window.__fmTermVideo?{blob:window.__fmTermVideo.blob,nombre:window.__fmTermVideo.nombre,mime:window.__fmTermVideo.mime}:null,
     polizaApp:window.__fmTermPolizaApp||null,titulo:opsSvTitulo(f),capturadoEn:new Date().toISOString(),hecho:{},ub:null};
@@ -7964,6 +7979,11 @@ async function fmCierreSubir(P,prog){
     evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,evidenciasVideos:(Number(f.evidenciasVideos)||0)+nVid,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
   if(extra.firmante)cambios.firmaConformidad={nombre:extra.firmante,en:ahora,por:quien};
   if(P.osNum){cambios.osTecnico=P.osNum; if(!f.folioOS)cambios.folioOS=P.osNum;}
+  if(P.idFolio){
+    cambios.folioClienteCapturado=P.idFolio;
+    if(!f.folioClienteId)cambios.folioClienteId=P.idFolio;
+    else if(String(f.folioClienteId).toUpperCase().replace(/[^A-Z0-9]/g,'')!==P.idFolio.replace(/[^A-Z0-9]/g,''))cambios.excepcionFolioId={capturado:P.idFolio,programado:f.folioClienteId,autorizadoSegunTecnico:!!P.idExc,por:quien,en:ahora};
+  }
   if(P.esPol&&res!=='no_realizado'){cambios.polizaLlenadaEnApp=true;cambios.polizaLlenadaEn=ahora;if(P.polizaApp)cambios.polizaApp=P.polizaApp;}
   if(extra.auxiliar)cambios.tecnicoAuxiliar=extra.auxiliar;
   if(extra.material)cambios.materialAlmacen=extra.material;
@@ -7997,6 +8017,14 @@ async function fmComisionesAlTerminar(id,f,quien){
   const filas=(r&&r.data)||[]; if(!filas.length)return;
   const txt='Comisiones por autorizar · '+(f.estacion||'servicio')+' (cerrado por '+quien+' en la app): '+filas.map(function(x){return x.tecnico_nombre+' $'+Number(x.monto||0).toLocaleString('es-MX');}).join(', ')+'. Revísalas en Operaciones → Comisiones.';
   try{await sb.from('portal_notificaciones').insert({tipo:'ops_comisiones_por_pagar',para:'p.pinedo@tecnocontrol.com.mx',mensaje:txt,datos:{folioId:id,modulo:'Operaciones'}});}catch(e){}
+}
+
+// ¿Este servicio es un folio de OXXO o Petro Seven? (mismas reglas que el portal)
+function fmPideIdFolio(f){
+  if(!f||f.tipoFolio==='inspeccion')return false;
+  const t=[f.clienteNombre,f.estacionRazonSocial,f.facturarA,f.estacion,f.estacionNombreComercial].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const grupo=/petro\s*(seven|siete|7)\b|petro\s*-?\s*max/.test(t)||/oxxo|servicios gasolineros de mexico/.test(t);
+  return grupo&&(fmEsFolioCliente(f)||f.origen==='programar_folio'||!!f.folioClienteId);
 }
 
 // ══ Mis comisiones (22-oct-2026, Paloma): el técnico ve lo que lleva acumulado, lo autorizado,
