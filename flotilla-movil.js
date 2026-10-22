@@ -8847,12 +8847,16 @@ async function fmGtelCargar(){
   const correo=opsSvMiCorreo(); if(!correo) return;
   try{
     const sb=await fmvSb();
-    const t=await sb.from('ops_tecnicos').select('id,nombre,estatus').ilike('correo',correo).limit(3);
-    const tec=(t.data||[]).find(function(x){return x.estatus!=='baja';})||(t.data||[])[0];
+    // El portal guarda técnicos y rotación de guardias en ops_docs (puente de Operaciones), no en
+    // las tablas viejas: antes esta consulta nunca encontraba la guardia (22-oct-2026).
+    const t=await sb.from('ops_docs').select('doc_id,datos').eq('coleccion','ops_tecnicos').ilike('datos->>correo',correo).limit(3);
+    const filas=(t.data||[]).map(function(x){return {id:x.doc_id,nombre:(x.datos||{}).nombre,estatus:(x.datos||{}).estatus};});
+    const tec=filas.find(function(x){return x.estatus!=='baja';})||filas[0];
     if(!tec) return;
     const lunes=_gtelLunes();
-    const g=await sb.from('ops_guardias_programadas').select('semana_inicio').eq('tecnico_id',tec.id).eq('semana_inicio',lunes).limit(1);
-    fmGtel={deGuardia:!!(g.data&&g.data.length),semana:lunes,tecId:tec.id,nombre:tec.nombre,lista:fmGtel.lista};
+    const g=await sb.from('ops_docs').select('datos').eq('coleccion','ops_guardias_programadas').eq('datos->>tecnicoId',tec.id).eq('datos->>semanaInicio',lunes).limit(2);
+    const reg=(g.data||[])[0];
+    fmGtel={deGuardia:!!reg,tipo:reg&&reg.datos&&reg.datos.tipo==='administrativa'?'administrativa':'tecnica',semana:lunes,tecId:tec.id,nombre:tec.nombre,lista:fmGtel.lista};
     if(vistaAct==='tareas')renderTareas();
   }catch(e){console.warn('[Guardia app]',e);}
 }
@@ -8860,12 +8864,12 @@ window.fmGuardiaHTML=function(){
   if(!fmGtel.deGuardia) return '';
   return '<div style="border:1.5px solid #FDE68A;background:#FFFBEB;border-radius:14px;padding:12px 13px;margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
-      '<div><div style="font-size:14px;font-weight:900;color:#92400E">Estás de guardia telefónica</div>'+
+      '<div><div style="font-size:14px;font-weight:900;color:#92400E">'+(fmGtel.tipo==='administrativa'?'Estás de guardia administrativa':'Estás de guardia telefónica')+'</div>'+
       '<div style="font-size:11.5px;color:#92400E">Semana del '+esc(opsSvFecha(fmGtel.semana))+'. Anota cada llamada o mensaje que atiendas.</div></div>'+
       '<button onclick="fmAbrirFlotante(\'guardia\')" style="padding:9px 12px;background:#B45309;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0">Anotar</button>'+
     '</div></div>';
 };
-const _GTEL_ACC={resuelto_telefono:'Se resolvió por teléfono',se_genero_folio:'Se generó folio',se_envio_tecnico:'Se envió técnico',pendiente:'Queda pendiente'};
+const _GTEL_ACC={resuelto_telefono:'Se resolvió por teléfono',se_genero_folio:'Se generó folio',se_envio_tecnico:'Se envió técnico',pendiente:'Queda pendiente',plataforma:'Se atendió en plataforma (ServiceNow / Fractal)',publico_folio:'Se publicó / asignó el folio',gestion_admin:'Gestión administrativa'};
 window.renderFlotGuardia=async function(){
   const body=document.getElementById('fm-flot-body'); if(!body) return;
   body.innerHTML='<p style="text-align:center;color:#94A3B8;font-size:13px;padding:24px">Cargando…</p>';
@@ -8901,7 +8905,7 @@ window.fmGtelGuardar=async function(){
     const sb=await fmvSb();
     const r=await sb.from('ops_guardia_tel_bitacora').insert({fecha:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'),hora:d.toTimeString().slice(0,5),
       tecnico_id:fmGtel.tecId,tecnico_nombre:fmGtel.nombre||opsSvMiNombre(),tecnico_email:opsSvMiCorreo(),canal:g('gt-canal'),estacion:g('gt-est')||null,cliente:g('gt-cli')||null,
-      descripcion:g('gt-desc'),accion:g('gt-acc'),folio_ref:g('gt-fol')||null,origen:'app'});
+      descripcion:g('gt-desc'),accion:g('gt-acc'),folio_ref:g('gt-fol')||null,origen:'app',tipo_guardia:fmGtel.tipo||'tecnica'});
     if(r.error) throw r.error;
     toast('Atención guardada','ok');
     window.renderFlotGuardia();
