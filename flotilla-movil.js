@@ -7689,6 +7689,8 @@ function fmOpsNoProgBtnHTML(){
     '<button onclick="fmAgendaAbrir()" style="padding:11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#1D2E73">Mi agenda (semana / mes)</button>'+
     '<button onclick="fmCerradosAbrir()" style="padding:11px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#166534">Mis servicios cerrados</button></div>'+
     '<button onclick="fmComisionesAbrir()" style="width:100%;padding:11px;margin-bottom:10px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#92400E">Mis comisiones</button>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px"><button onclick="fmDanoAbrir()" style="padding:11px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#B91C1C">Reportar daño adicional</button>'+
+    '<button onclick="fmHerrAbrir()" style="padding:11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#3730A3">Pedir o reemplazar herramienta</button></div>'+
     '<button onclick="fmOpsNoProgAbrir()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin-bottom:14px;background:#fff;border:1.5px dashed #1D2E73;border-radius:12px;font-family:inherit;font-size:13px;font-weight:800;color:#1D2E73;cursor:pointer">+ Servicio no programado (guardia, llamada o visita)</button>';
 }
 async function fmNPCargarCatalogo(){
@@ -7977,6 +7979,7 @@ async function fmCierreSubir(P,prog){
   let nCuadrilla=0;
   if(res==='finalizado'){try{nCuadrilla=await fmOpsCerrarCuadrilla(f,id,quien,ahora);}catch(ce){console.warn('[OPS cuadrilla]',ce);}}
   if(res==='finalizado'){try{await fmComisionesAlTerminar(id,f,quien);}catch(ce){console.warn('[comisiones]',ce);}}
+  if(res==='no_finalizado'&&/falla mayor/i.test(String(visita.motivo||''))){try{await fmDerivadoPorCierre(f,id,P);}catch(ce){console.warn('[trabajo derivado]',ce);}}
   const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
   const resumenExtra=(P.osNum?' · O.S. '+P.osNum:'')+(P.esPol&&res!=='no_realizado'?' · Póliza llenada en la app de Pólizas':'')+(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'')+(P.enCola?' · Cerrado sin señal a las '+new Date(ahora).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+' y subido después':'');
   try{await opsSvComentario(id,etiqueta+' '+(P.txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);}catch(e){}
@@ -8031,6 +8034,124 @@ window.fmComisionesAbrir=async function(){
         '</div>';}).join(''):'<div style="font-size:12.5px;color:#94A3B8;padding:12px 0">Todavía no tienes comisiones registradas en los últimos 4 meses.</div>'));
   }catch(e){console.warn('[mis comisiones]',e);ov.innerHTML=marco('<div style="font-size:12.5px;color:#B91C1C;padding:12px 0">No se pudo cargar. Revisa tu conexión.</div>');}
 };
+
+// ══ Daño adicional (trabajo derivado) y pedido de herramienta desde la app (22-oct-2026, junta Operaciones) ══
+// El técnico reporta un daño mayor que encontró (queda ligado al servicio y Operaciones lo cotiza y
+// programa aparte) o pide herramienta que le falta / reemplazo por daño o desgaste, con foto.
+// Operaciones lo ve en el portal: Operaciones → Trabajos derivados / Pedidos de herramienta.
+const OPS_COL_DERIVADOS='ops_trabajos_derivados', OPS_COL_SOL_HERR='ops_solicitudes_herramienta';
+async function fmSubirFotosA(carpeta,lista){
+  const sb=await fmvSb(), out=[];
+  for(let i=0;i<lista.length;i++){
+    const blob=await (await fetch(lista[i])).blob();
+    const ruta=carpeta+'/'+Date.now()+'_'+(i+1)+'.jpg';
+    const up=await sb.storage.from(OPS_EV_BUCKET).upload(ruta,blob,{contentType:'image/jpeg',upsert:false});
+    if(up.error)throw up.error;
+    out.push({bucket:OPS_EV_BUCKET,ruta:ruta});
+  }
+  return out;
+}
+function fmServOpcionesHTML(){
+  return '<option value="">Ninguno / no es para un servicio</option>'+misOpsServ.map(function(f){return '<option value="'+f.id+'">'+opsSvEsc((f.estacion||'Servicio')+' · '+opsSvFecha(f.fechaProgramada))+'</option>';}).join('');
+}
+function fmHojaModal(id,titulo,cuerpo){
+  document.getElementById(id)?.remove();
+  const ov=document.createElement('div'); ov.id=id;
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99998;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 18px);max-height:94vh;overflow-y:auto">'+
+    '<div style="display:flex;align-items:center;margin-bottom:8px"><div style="flex:1;font-size:15px;font-weight:900;color:#0A1628">'+titulo+'</div><button onclick="document.getElementById(\''+id+'\').remove()" style="border:none;background:#F1F5F9;border-radius:8px;padding:7px 11px;font-family:inherit;font-weight:800;color:#475569">Cerrar</button></div>'+cuerpo+'</div>';
+  document.body.appendChild(ov);
+}
+const FM_IN='width:100%;box-sizing:border-box;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;margin:4px 0 10px';
+window.fmDanoAbrir=function(folioId){
+  window.__fmEv=window.__fmEv||{}; window.__fmEv.derivado=[];
+  fmHojaModal('fm-dano','Reportar daño adicional',
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Úsalo cuando al atender un servicio encuentras <b>otro daño más grande</b> que hay que cotizar o programar aparte. El servicio que estás atendiendo lo cierras normal.</div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿En qué servicio lo encontraste?</label><select id="fm-dano-folio" style="'+FM_IN+'">'+fmServOpcionesHTML()+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué encontraste? *</label><textarea id="fm-dano-desc" rows="3" style="'+FM_IN+'" placeholder="Ej. El dispensario 3 tiene la tubería primaria fisurada, gotea en la unión."></textarea>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué tan urgente es?</label><select id="fm-dano-prio" style="'+FM_IN+'"><option value="urgente">Urgente: hay riesgo o la estación no puede vender</option><option value="alta">Alta: hay que atenderlo esta semana</option><option value="normal" selected>Normal: se puede programar</option></select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">Material o herramienta que crees que se necesita</label><input id="fm-dano-mat" style="'+FM_IN+'" placeholder="Ej. 3 m de tubería 2&quot;, conector flexible">'+
+    fmEvPickerHTML('derivado','Fotos del daño *','Al menos una foto donde se vea el daño.')+
+    '<div id="fm-dano-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
+    '<button id="fm-dano-btn" onclick="fmDanoEnviar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#1D2E73;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar a Operaciones</button>');
+  if(folioId){const s=document.getElementById('fm-dano-folio'); if(s)s.value=folioId;}
+};
+window.fmDanoEnviar=async function(){
+  const msg=document.getElementById('fm-dano-msg'), btn=document.getElementById('fm-dano-btn');
+  const folioId=document.getElementById('fm-dano-folio').value, desc=document.getElementById('fm-dano-desc').value.trim();
+  const fotos=(window.__fmEv&&window.__fmEv.derivado)||[];
+  if(desc.length<8){msg.textContent='Describe el daño (qué, dónde).';return;}
+  if(!fotos.length){msg.textContent='Agrega al menos una foto del daño.';return;}
+  btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const f=misOpsServ.find(function(x){return x.id===folioId;})||{};
+    const id='TD'+Date.now().toString(36);
+    const subidas=await fmSubirFotosA('derivados/'+id,fotos);
+    const prio=document.getElementById('fm-dano-prio').value;
+    await opsDb().collection(OPS_COL_DERIVADOS).doc(id).set({
+      folioOrigenId:folioId||null, folioOrigenTxt:[f.estacion,f.osTecnico||f.folioOS,f.folioClienteId].filter(Boolean).join(' · ')||null,
+      estacion:f.estacion||null, estacionCatalogoId:f.estacionCatalogoId||null, clienteNombre:f.clienteNombre||f.estacionRazonSocial||null,
+      descripcion:desc, prioridad:prio, materialProbable:document.getElementById('fm-dano-mat').value.trim()||null, fotos:subidas,
+      estatus:'reportado', origen:'app_flotilla', reportadoPor:opsSvMiNombre(), reportadoCorreo:opsSvMiCorreo(), reportadoTecnicoId:_opsServTecId||null, reportadoEn:new Date().toISOString(),
+      historial:[{accion:'reportado',nota:desc,por:opsSvMiNombre(),correo:opsSvMiCorreo(),en:new Date().toISOString()}]
+    });
+    if(folioId){try{await opsSvComentario(folioId,'[Daño adicional] '+desc+' ('+prio+'). Se reportó como trabajo derivado; este servicio se cierra por su lado.','comentario');}catch(e){}}
+    try{await opsSvAvisarAdmins('ops_trabajo_derivado',opsSvMiNombre()+' reportó un daño adicional'+(f.estacion?' en '+f.estacion:'')+' ('+prio+'): '+desc.slice(0,120),folioId||null);}catch(e){}
+    document.getElementById('fm-dano')?.remove(); window.__fmEv.derivado=[];
+    if(typeof toast==='function')toast('Daño reportado a Operaciones','ok');
+  }catch(e){console.warn('[daño adicional]',e); msg.textContent='No se pudo enviar ('+(e.message||e)+'). Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar a Operaciones';}
+};
+window.fmHerrAbrir=function(folioId){
+  window.__fmEv=window.__fmEv||{}; window.__fmEv.herr=[];
+  fmHojaModal('fm-herr','Pedir o reemplazar herramienta',
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué necesitas?</label><select id="fm-herr-tipo" style="'+FM_IN+'"><option value="faltante">Me falta una herramienta</option><option value="reemplazo">Reemplazo: se dañó o se desgastó</option></select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">Herramienta *</label><input id="fm-herr-desc" style="'+FM_IN+'" placeholder="Ej. Llave de cadena 18&quot;">'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">Características (marca, medida, modelo)</label><input id="fm-herr-car" style="'+FM_IN+'" placeholder="Ej. Truper, 18 pulgadas">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:12px;font-weight:800;color:#334155">Cantidad</label><input id="fm-herr-cant" type="number" min="1" value="1" style="'+FM_IN+'"></div><div><label style="font-size:12px;font-weight:800;color:#334155">¿Para cuándo?</label><input id="fm-herr-fecha" type="date" style="'+FM_IN+'"></div></div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Para qué servicio?</label><select id="fm-herr-folio" style="'+FM_IN+'">'+fmServOpcionesHTML()+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Por qué? *</label><input id="fm-herr-motivo" style="'+FM_IN+'" placeholder="Ej. Se rompió la mordaza / el servicio la pide y no la traigo">'+
+    fmEvPickerHTML('herr','Foto','En un reemplazo es obligatoria: foto de la herramienta dañada. Si es nueva, foto de referencia (opcional).')+
+    '<div id="fm-herr-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
+    '<button id="fm-herr-btn" onclick="fmHerrEnviar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#1D2E73;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar a Operaciones</button>');
+  if(folioId){const s=document.getElementById('fm-herr-folio'); if(s)s.value=folioId;}
+};
+window.fmHerrEnviar=async function(){
+  const g=function(id){return (document.getElementById(id)||{}).value||'';};
+  const msg=document.getElementById('fm-herr-msg'), btn=document.getElementById('fm-herr-btn');
+  const tipo=g('fm-herr-tipo'), desc=g('fm-herr-desc').trim(), motivo=g('fm-herr-motivo').trim(), fotos=(window.__fmEv&&window.__fmEv.herr)||[];
+  if(desc.length<3){msg.textContent='Escribe qué herramienta necesitas.';return;}
+  if(motivo.length<4){msg.textContent='Escribe por qué la necesitas.';return;}
+  if(tipo==='reemplazo'&&!fotos.length){msg.textContent='En un reemplazo agrega la foto de la herramienta dañada.';return;}
+  btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const folioId=g('fm-herr-folio'), f=misOpsServ.find(function(x){return x.id===folioId;})||{};
+    const id='SH'+Date.now().toString(36);
+    const subidas=fotos.length?await fmSubirFotosA('herramienta/'+id,fotos):[];
+    await opsDb().collection(OPS_COL_SOL_HERR).doc(id).set({
+      tipo:tipo, descripcion:desc, caracteristicas:g('fm-herr-car').trim()||null, cantidad:Math.max(1,Number(g('fm-herr-cant'))||1),
+      fechaRequerida:g('fm-herr-fecha')||(f.fechaProgramada?String(f.fechaProgramada).slice(0,10):null), motivo:motivo, fotos:subidas,
+      folioId:folioId||null, servicioTxt:f.estacion?(f.estacion+' · '+opsSvFecha(f.fechaProgramada)):null,
+      tecnicoId:_opsServTecId||null, tecnicoNombre:opsSvMiNombre(), tecnicoCorreo:opsSvMiCorreo(),
+      estatus:'solicitada', creadoEn:new Date().toISOString(), origen:'app_flotilla',
+      historial:[{accion:'solicitada',nota:motivo,por:opsSvMiNombre(),correo:opsSvMiCorreo(),en:new Date().toISOString()}]
+    });
+    try{await opsSvAvisarAdmins('ops_pedido_herramienta',opsSvMiNombre()+' pide '+(tipo==='reemplazo'?'REEMPLAZO de ':'')+desc+(f.estacion?' para '+f.estacion:'')+': '+motivo,folioId||null);}catch(e){}
+    document.getElementById('fm-herr')?.remove(); window.__fmEv.herr=[];
+    if(typeof toast==='function')toast('Pedido de herramienta enviado','ok');
+  }catch(e){console.warn('[pedido herramienta]',e); msg.textContent='No se pudo enviar ('+(e.message||e)+'). Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar a Operaciones';}
+};
+// Al cerrar "sin terminar" por falla mayor, se crea solo el trabajo derivado (sin fotos nuevas:
+// las evidencias quedaron en el servicio).
+async function fmDerivadoPorCierre(f,id,P){
+  const nid='TD'+Date.now().toString(36);
+  await opsDb().collection(OPS_COL_DERIVADOS).doc(nid).set({
+    folioOrigenId:id, folioOrigenTxt:[f.estacion,P.osNum||f.osTecnico||f.folioOS,f.folioClienteId].filter(Boolean).join(' · ')||null,
+    estacion:f.estacion||null, estacionCatalogoId:f.estacionCatalogoId||null, clienteNombre:f.clienteNombre||f.estacionRazonSocial||null,
+    descripcion:P.txt||'Falla mayor: requiere cotización', prioridad:'alta', fotos:[], estatus:'reportado', origen:'cierre_falla_mayor',
+    reportadoPor:opsSvMiNombre(), reportadoCorreo:opsSvMiCorreo(), reportadoTecnicoId:_opsServTecId||null, reportadoEn:new Date().toISOString(),
+    historial:[{accion:'reportado',nota:'Cerró el servicio como Falla mayor / requiere cotización',por:opsSvMiNombre(),en:new Date().toISOString()}]
+  });
+}
 
 // ══ Cola de cierres guardados en el teléfono (IndexedDB) ══
 let _fmColaIds=new Set(), _fmColaN=0, _fmColaSubiendo=false;

@@ -2168,6 +2168,9 @@
         catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
+        derivados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+        pendientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M4 4l3 3"/></svg>',
+        herrsol: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
         comisiones: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5"/><path d="M12 6.5v11"/></svg>',
         vehiculos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="14" height="10" rx="1"/><path d="M15 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
         gestionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6l1 14h12l1-14"/><path d="M10 11l2 2 3-4"/></svg>',
@@ -2177,10 +2180,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "revision" ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2242,6 +2245,9 @@
         else if (tab === "gestionados") opsRenderGestionados();
         else if (tab === "viaticos") opsRenderViaticos();
         else if (tab === "comisiones") opsRenderComisiones();
+        else if (tab === "derivados") opsRenderDerivados();
+        else if (tab === "pendientes") opsRenderPendientes();
+        else if (tab === "herrsol") opsRenderSolHerr();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
@@ -2277,6 +2283,7 @@
             unsubSurt = window.tcSbSuscribirSurtidos(lista => {
                 cacheSurtidos = lista || [];
                 opsAvisarServiciosNuevos();
+                try { opsNecRefrescar(); } catch (e) { console.warn("[material] refrescar:", e); }
                 if (tabActual === "calendario") opsCalPintarPedidosVentas();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
@@ -6534,7 +6541,12 @@
         filtrados.sort(opsOrdenFolios);
 
         const tabGrupo = (g, txt, color, n) => { const on = filtroFolioGrupo === g; return `<button onclick="opsFiltrarFolioGrupo('${g}')" style="border:2px solid ${color};background:${on ? color : "#fff"};color:${on ? "#fff" : color};padding:9px 16px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;">${txt}${n != null ? `<span style="background:${on ? "rgba(255,255,255,.25)" : color};color:#fff;border-radius:20px;padding:1px 8px;font-size:11px;">${n}</span>` : ""}</button>`; };
+        const enRiesgo = opsNecServiciosEnRiesgo();
         el.innerHTML = `
+            ${enRiesgo.length ? `<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:10px 14px;margin-bottom:12px;">
+                <div style="font-size:13px;font-weight:900;color:#b91c1c;margin-bottom:4px;">${enRiesgo.length} servicio(s) de los próximos 7 días con material que no llegará a tiempo</div>
+                ${enRiesgo.map(({ f, peds }) => `<div onclick="opsAbrirPanelFolio('${f.id}')" style="font-size:12px;color:#7f1d1d;cursor:pointer;padding:2px 0;"><b>${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</b> · ${opsEsc(f.estacion || "")} — ${peds.map(x => opsEsc(x.p.folio + ": " + x.e.t)).join(" · ")}</div>`).join("")}
+            </div>` : ""}
             ${filtroFolioTipo !== "inspeccion" ? opsMesaFoliosHTML() : ""}
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                 ${tabGrupo("todos", "Todos", "#334155", null)}
@@ -9505,6 +9517,7 @@
                         ${f.gastoEstimado ? `<b>Total estimado: $${f.gastoEstimado.toLocaleString("es-MX")}</b>` : ""}
                     </div>` : ""}`, ico.ruta)}
 
+                <div id="ops-panel-material" data-folio="${f.id}"></div>
                 <div id="ops-panel-viaticos" data-folio="${f.id}" ${opsAccPuedeVer("viaticos") ? "" : 'style="display:none;"'}><div class="opf-sec"><div class="opf-sec-tit">Viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Cargando…</div></div></div>
 
                 ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? sec("Precio y comisiones", `
@@ -9527,6 +9540,7 @@
 
         opsGarPintarEnPanel(f).catch(e => console.warn("[operaciones.js] garantías en panel:", e.message));
         opsPanelViaticosPintar(f);
+        try { opsPanelMaterialPintar(f); } catch (e) { console.warn("[material] panel:", e); }
         opsPanelEvidenciasPintar(f);
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
@@ -12312,6 +12326,515 @@
     // API pública para otros módulos (Flotilla): pinta el calendario dentro del elemento indicado.
     window.tcCalVehiculos = function (elId) { const s = opsCVEstado(); s.el = elId || "ops-tab-content"; opsCVPintar(); };
 
+
+    // ═══════════════════ MATERIAL Y HERRAMIENTA DEL SERVICIO (22-oct-2026, junta Operaciones) ═══════════════════
+    // "Operaciones selecciona del catálogo un cambio de tubería primaria y a Almacén le debe llegar:
+    // el viernes a las 9 deben estar en la estación". Al programar un servicio del catálogo se manda
+    // solo a Almacén un pedido de material (tablero de Almacén, folio OPERACIONES ####) con la lista de
+    // la receta y la FECHA en que se necesita. Si Almacén no tiene, lo pasa a "Sobre stock" y Compras
+    // pone la fecha estimada de llegada (eso ya existe en Almacén/Compras). Operaciones ve aquí el
+    // estado y recibe alerta si el material no llegará a tiempo, para reprogramar con tiempo.
+    // No se inventan existencias: el portal no tiene inventario de Aspel; Almacén confirma.
+    const OPS_NEC_HORAS_ANTES = 24; // el material se pide listo 24 h antes del servicio
+    function opsNecFechaRequerida(f) {
+        const ini = f && f.fechaProgramada ? new Date(f.fechaProgramada) : null;
+        if (!ini || isNaN(ini)) return null;
+        let req = new Date(ini.getTime() - OPS_NEC_HORAS_ANTES * 3600000);
+        const minimo = new Date(Date.now() + 2 * 3600000);
+        if (req < minimo) req = ini > minimo ? minimo : ini; // si ya no da tiempo, lo antes posible
+        return req;
+    }
+    function opsNecPrioridad(req) {
+        const h = (req - Date.now()) / 3600000;
+        return h <= 24 ? "urgente" : h <= 72 ? "alta" : "normal";
+    }
+    // Lista de la receta para el pedido: materiales × cantidad de unidades y herramienta que NO se confirmó.
+    function opsNecItemsReceta(receta, cantidad, herrLista) {
+        const cant = Math.max(1, Number(cantidad) || 1), items = [];
+        (receta && receta.materiales || []).forEach(m => {
+            const q = (Number(m.cantidadBase) || 0) * cant; if (!(q > 0)) return;
+            items.push({ clave: m.clave || "", desc: m.nombre || m.descripcion || "Material", cant: m.unidad === "pza" || m.unidad === "lata" ? Math.ceil(q) : Math.round(q * 100) / 100, unidad: m.unidad || "pza", tipo: "material" });
+        });
+        (herrLista || []).filter(h => !h.confirmada).forEach(h => items.push({ clave: "", desc: "HERRAMIENTA (préstamo): " + h.descripcion, cant: Number(h.cantidad) || 1, unidad: "pza", tipo: "herramienta" }));
+        return items;
+    }
+    let opsNecUltAviso = 0;
+    function opsNecRefrescar() {
+        const el = document.getElementById("ops-panel-material");
+        if (el && el.dataset.folio) { const f = cacheFolios.find(x => x.id === el.dataset.folio); if (f) opsPanelMaterialPintar(f); }
+        if (Date.now() - opsNecUltAviso > 60000) { opsNecUltAviso = Date.now(); opsNecAvisarRiesgos(); }
+        if (tabActual === "folios" && !document.querySelector("#ops-modal-wrap > *")) opsRenderFolios();
+    }
+    function opsNecPedidosFolio(f) {
+        return (cacheSurtidos || []).filter(p => !p.eliminada && (p.opsFolioId === f.id || (p.origen === "operaciones" && p.folioServicio === f.id)))
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    }
+    // Estado de un pedido visto desde Operaciones. riesgo = el material no estará a tiempo.
+    function opsNecEstadoPedido(p, f) {
+        const req = p.fechaEntrega ? new Date(p.fechaEntrega) : opsNecFechaRequerida(f);
+        const reqTxt = req && !isNaN(req) ? req.toLocaleString("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "sin fecha";
+        const ahora = Date.now(), cl = p.clasificacion || "";
+        if (p.estado === "cancelado") return { t: "Cancelado por Almacén" + (p.motivoCancelacion ? ": " + p.motivoCancelacion : ""), col: "#64748b", riesgo: !f.fechaSolucion && !f.cancelado, reqTxt };
+        if (p.estado === "entregado" || p.estado === "finalizado") return { t: "Listo / entregado", col: "#15803d", riesgo: false, reqTxt };
+        if ((cl === "sobre_stock" || cl === "pro" || cl === "pro_mixto") && p.compraEstado !== "recibido") {
+            const est = p.compraFechaEstimada ? new Date(p.compraFechaEstimada) : null;
+            const tarde = !est || (req && est > req);
+            return { t: "Almacén no tiene: lo está consiguiendo Compras" + (est ? " · llega aprox. " + est.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : " · sin fecha de llegada"), col: tarde ? "#b91c1c" : "#b45309", riesgo: tarde, reqTxt, compra: true };
+        }
+        const vencido = req && ahora > req.getTime();
+        const t = p.estado === "en_preparacion" ? "Almacén lo está preparando" : p.estado === "parcial" ? "Entregado en parte" : p.estado === "esperando_autorizacion" ? "Esperando autorización" : "Pendiente en Almacén";
+        return { t: t + (vencido ? " · YA DEBERÍA ESTAR LISTO" : ""), col: vencido ? "#b91c1c" : "#1d4ed8", riesgo: !!vencido, reqTxt };
+    }
+    // Servicios próximos con material en riesgo (para alertas y para la pestaña Folios/Calendario).
+    function opsNecServiciosEnRiesgo() {
+        const lim = Date.now() + 7 * 86400000;
+        return cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && new Date(f.fechaProgramada).getTime() <= lim)
+            .map(f => ({ f, peds: opsNecPedidosFolio(f).map(p => ({ p, e: opsNecEstadoPedido(p, f) })).filter(x => x.e.riesgo) }))
+            .filter(x => x.peds.length);
+    }
+    // Aviso una sola vez por pedido y estado a quien programó y a la matriz (evento servicio_material_riesgo).
+    function opsNecAvisarRiesgos() {
+        if (!opsPuedeGestionar()) return;
+        let vistos = {}; try { vistos = JSON.parse(localStorage.getItem("ops_nec_avisos") || "{}"); } catch (e) {}
+        opsNecServiciosEnRiesgo().forEach(({ f, peds }) => peds.forEach(({ p, e }) => {
+            const k = p.id + "|" + e.t; if (vistos[k]) return; vistos[k] = Date.now();
+            const msg = `Material en riesgo · ${f.estacion || "servicio"} (${opsFmtFechaCorta(f.fechaProgramada)}): pedido ${p.folio} — ${e.t}. Se necesitaba para ${e.reqTxt}. Revisa si hay que reprogramar.`;
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Material en riesgo", texto: msg, nivel: "urgente", modulo: "Operaciones", grupo: "ops_material", ir: { tipo: "fn", fn: "opsAbrirPanelFolio", args: [f.id] } });
+            if (window.tcNotificarEvento) window.tcNotificarEvento("servicio_material_riesgo", { mensaje: msg, modulo: "Operaciones", folioId: f.id }).catch(() => {});
+        }));
+        try { const lim = Date.now() - 30 * 86400000; Object.keys(vistos).forEach(k => { if (vistos[k] < lim) delete vistos[k]; }); localStorage.setItem("ops_nec_avisos", JSON.stringify(vistos)); } catch (e) {}
+    }
+    async function opsNecCrearPedido(f, items, op) {
+        op = op || {};
+        if (!items || !items.length) return null;
+        if (typeof window.tcSbCrearSurtido !== "function") throw new Error("El módulo de Almacén no está cargado en esta página");
+        let folio, folioNum = null;
+        try { const n = await window.tcSbSiguienteFolioMaterial("OPERACIONES"); folioNum = n; folio = "OPERACIONES " + String(n).padStart(4, "0"); }
+        catch (e) { folio = "OPERACIONES " + String(Date.now() % 10000).padStart(4, "0") + "-R"; }
+        const req = op.fechaRequerida || opsNecFechaRequerida(f) || new Date(Date.now() + 24 * 3600000);
+        const lider = (f.tecnicoResponsableId && opsTecPorId(f.tecnicoResponsableId)) || opsTecPorId((f.tecnicosAsignadosIds || [])[0]) || null;
+        const servicio = op.servicioNombre || f.categoriaServicio || f.servicioNombre || "Servicio";
+        const datos = {
+            tipo: "material", folio, folioNum, folioPrefijo: "OPERACIONES",
+            cliente: f.estacionRazonSocial || f.clienteNombre || f.estacion || "", razonSocial: f.estacionRazonSocial || f.clienteNombre || f.estacion || "",
+            estacionId: f.estacionCatalogoId || null, estacionNombre: f.estacion || null, direccion: f.estacionDireccion || null,
+            lat: f.estacionLat ?? null, lng: f.estacionLng ?? null,
+            solicitante: opsNombreActual(), vendedor: opsNombreActual(), solicitanteEmail: opsUsuarioActual(),
+            tecnicoId: lider ? lider.id : null, tecnicoNombre: lider ? lider.nombre : null, tecnicoCorreo: lider && lider.correo ? String(lider.correo).toLowerCase() : null,
+            area: "Operaciones", destino: f.estacion || "",
+            uso: `${servicio} en ${f.estacion || ""} el ${opsFmtFechaCorta(f.fechaProgramada)}. Se necesita listo a más tardar el ${req.toLocaleString("es-MX", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.${op.nota ? " " + op.nota : ""}`,
+            prioridad: opsNecPrioridad(req), estado: "pendiente",
+            productos: items.map(i => ({ clave: i.clave || "", cant: Number(i.cant) || 1, unidad: i.unidad || "pza", desc: i.desc })),
+            firma: "", origen: "operaciones", folioServicio: f.id, opsFolioId: f.id, opsGestionado: true, clasificacion: "servicio_piezas",
+            fechaEntrega: req.toISOString(), fechaServicio: f.fechaProgramada || null, servicioNombre: servicio, createdAt: new Date().toISOString(),
+        };
+        const id = await window.tcSbCrearSurtido(datos);
+        const lineas = items.map(i => "• " + i.desc + " × " + i.cant + " " + (i.unidad || "")).join("\n");
+        try { if (window.tcSbAgregarHistorial) await window.tcSbAgregarHistorial(id, { de: null, a: "pendiente", por: opsNombreActual(), nota: "Pedido generado desde Operaciones para el servicio de " + (f.estacion || "") }); } catch (e) {}
+        if (window.tcNotificarEvento) {
+            window.tcNotificarEvento("servicio_material_almacen", { mensaje: `Operaciones pide material para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`, modulo: "Almacén", folioId: f.id }).catch(() => {});
+            window.tcNotificarEvento("servicio_material_compras", { mensaje: `Para tu planeación: el ${opsFmtFechaCorta(f.fechaProgramada)} hay ${servicio} en ${f.estacion || ""} y se pidió a Almacén (${folio}). Si Almacén lo pasa a Sobre stock, se necesita antes de ${req.toLocaleString("es-MX")}.\n${lineas}`, modulo: "Compras", folioId: f.id }).catch(() => {});
+        }
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { pedidosMaterial: (f.pedidosMaterial || []).concat([{ surtidoId: id, folio, en: new Date().toISOString(), por: opsNombreActual(), fechaRequerida: req.toISOString(), items: items.length }]) });
+            await fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[Material] Pedido ${folio} enviado a Almacén (${items.length} artículo(s)), listo para ${req.toLocaleString("es-MX")}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "material", createdAt: opsFechaHora() });
+        } catch (e) { console.warn("[material] no se pudo anotar en el servicio:", e.message || e); }
+        return { id, folio, req };
+    }
+    // Llamado al guardar un servicio del catálogo.
+    async function opsNecAlGuardarAlta(folio, receta, cantidad, herrLista, pedir) {
+        if (!pedir || !receta) return null;
+        const items = opsNecItemsReceta(receta, cantidad, herrLista);
+        if (!items.length) return null;
+        return opsNecCrearPedido(folio, items, { servicioNombre: receta.nombre });
+    }
+    // Sección del panel del servicio.
+    function opsPanelMaterialPintar(f) {
+        const el = document.getElementById("ops-panel-material"); if (!el || el.dataset.folio !== f.id) return;
+        const peds = opsNecPedidosFolio(f), receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(r => r.id === f.servicioCatalogoId) : null;
+        const gest = opsPuedeGestionar();
+        const filas = peds.map(p => { const e = opsNecEstadoPedido(p, f); return `<div style="border:1px solid ${e.riesgo ? "#fecaca" : "#e2e8f0"};background:${e.riesgo ? "#fef2f2" : "#f8fafc"};border-radius:9px;padding:8px 10px;margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;gap:8px;"><b style="font-size:12.5px;">${opsEsc(p.folio || "")}</b><span style="font-size:11px;font-weight:800;color:${e.col};text-align:right;">${opsEsc(e.t)}</span></div>
+            <div style="font-size:11px;color:#64748b;">Se necesita para: <b>${opsEsc(e.reqTxt)}</b> · ${(p.productos || []).length} artículo(s)</div>
+            <div style="font-size:11px;color:#334155;margin-top:3px;">${(p.productos || []).slice(0, 8).map(x => opsEsc((x.desc || x.descripcion || x.clave || "") + " × " + (x.cant ?? x.cantidad ?? ""))).join(" · ")}${(p.productos || []).length > 8 ? " …" : ""}</div>
+            ${p.comentariosAlmacen ? `<div style="font-size:11px;color:#7c3aed;margin-top:3px;">Almacén: ${opsEsc(p.comentariosAlmacen)}</div>` : ""}
+            ${p.compraNotas ? `<div style="font-size:11px;color:#b45309;margin-top:3px;">Compras: ${opsEsc(p.compraNotas)}</div>` : ""}
+            ${e.riesgo && gest ? `<button onclick="opsNecReprogramar('${f.id}')" style="margin-top:6px;border:none;background:#b91c1c;color:#fff;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">No llegará a tiempo: reprogramar</button>` : ""}
+        </div>`; }).join("");
+        el.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Material y herramienta</div>
+            ${filas || `<div style="font-size:11.5px;color:#94a3b8;margin-bottom:6px;">No se ha pedido material a Almacén para este servicio.</div>`}
+            ${gest ? `<button onclick="opsNecAbrirPedido('${f.id}')" style="border:1px solid #1D2E73;background:#fff;color:#1D2E73;border-radius:8px;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;">${receta && !peds.length ? "Pedir a Almacén lo de la receta" : "Pedir material o herramienta a Almacén"}</button>` : ""}
+        </div>`;
+    }
+    window.opsNecReprogramar = function (id) {
+        const box = document.getElementById("ops-folio-reprog-" + id);
+        if (box) { box.style.display = "block"; box.scrollIntoView({ behavior: "smooth", block: "center" }); const m = document.getElementById("ops-folio-reprog-motivo-" + id); if (m && !m.value) m.value = "El material no llega a tiempo"; }
+        else alert("Abre el servicio y usa Reprogramar.");
+    };
+    // Formulario para pedir material/herramienta no contemplada (desde el panel del servicio).
+    let opsNecForm = null;
+    window.opsNecAbrirPedido = function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const receta = f.servicioCatalogoId ? cacheServiciosCatalogo.find(r => r.id === f.servicioCatalogoId) : null;
+        const yaPedido = opsNecPedidosFolio(f).length > 0;
+        const items = !yaPedido && receta ? opsNecItemsReceta(receta, f.cantidadUnidades, f.herramientaChecklist || []) : [];
+        const req = opsNecFechaRequerida(f) || new Date(Date.now() + 24 * 3600000);
+        const loc = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+        opsNecForm = { id, items: items.length ? items : [{ desc: "", cant: 1, unidad: "pza", tipo: "material" }], req: loc(req), nota: "", msg: "" };
+        opsNecPintarForm();
+    };
+    function opsNecPintarForm() {
+        const n = opsNecForm; if (!n) return; const f = cacheFolios.find(x => x.id === n.id); if (!f) return;
+        const inp = "border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:inherit;box-sizing:border-box;";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:640px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#1D2E73;">Pedir a Almacén · ${opsEsc(f.estacion || "")}</div>
+            <div style="font-size:11.5px;color:#64748b;margin:3px 0 12px;line-height:1.45;">Llega al tablero de Almacén como pedido de Operaciones con la fecha en que se necesita. Si Almacén no lo tiene, lo pasa a Compras y aquí verás cuándo llega. Para herramienta que solo se presta, empieza la descripción con "HERRAMIENTA".</div>
+            ${n.items.map((it, i) => `<div style="display:grid;grid-template-columns:1fr 80px 80px 30px;gap:6px;margin-bottom:6px;">
+                <input value="${opsEsc(it.desc)}" placeholder="Descripción (ej. Tubería primaria 2&quot;)" onchange="opsNecItem(${i},'desc',this.value)" style="${inp}">
+                <input type="number" min="0" step="0.01" value="${opsEsc(it.cant)}" onchange="opsNecItem(${i},'cant',this.value)" style="${inp}">
+                <input value="${opsEsc(it.unidad)}" onchange="opsNecItem(${i},'unidad',this.value)" style="${inp}">
+                <button onclick="opsNecQuitar(${i})" style="border:none;background:#fef2f2;color:#E7402B;border-radius:7px;cursor:pointer;font-weight:800;">×</button></div>`).join("")}
+            <button onclick="opsNecAgregar()" style="border:none;background:#eef2f7;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">+ Agregar artículo</button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Para cuándo se necesita listo?<br><input type="datetime-local" value="${opsEsc(n.req)}" onchange="opsNecSet('req',this.value)" style="${inp}width:100%;"></label>
+                <label style="font-size:11.5px;font-weight:700;color:#334155;">Nota para Almacén<br><input value="${opsEsc(n.nota)}" onchange="opsNecSet('nota',this.value)" placeholder="Ej. lo recoge el técnico en la estación" style="${inp}width:100%;"></label>
+            </div>
+            <div style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;margin-top:8px;">${opsEsc(n.msg || "")}</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+                <button onclick="opsNecCerrar()" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+                <button id="ops-nec-btn" onclick="opsNecEnviar()" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Enviar a Almacén</button>
+            </div>
+          </div></div>`;
+    }
+    window.opsNecItem = function (i, k, v) { if (opsNecForm && opsNecForm.items[i]) opsNecForm.items[i][k] = k === "cant" ? Number(v) : v; };
+    window.opsNecQuitar = function (i) { opsNecForm.items.splice(i, 1); if (!opsNecForm.items.length) opsNecForm.items.push({ desc: "", cant: 1, unidad: "pza" }); opsNecPintarForm(); };
+    window.opsNecAgregar = function () { opsNecForm.items.push({ desc: "", cant: 1, unidad: "pza" }); opsNecPintarForm(); };
+    window.opsNecSet = function (k, v) { opsNecForm[k] = v; };
+    window.opsNecCerrar = function () { const id = opsNecForm && opsNecForm.id; opsNecForm = null; document.getElementById("ops-modal-wrap").innerHTML = ""; if (id) window.opsAbrirPanelFolio(id); };
+    window.opsNecEnviar = async function () {
+        const n = opsNecForm; if (!n) return; const f = cacheFolios.find(x => x.id === n.id); if (!f) return;
+        const items = n.items.filter(i => String(i.desc || "").trim() && Number(i.cant) > 0).map(i => ({ ...i, desc: String(i.desc).trim(), tipo: /^herramienta/i.test(String(i.desc).trim()) ? "herramienta" : "material" }));
+        if (!items.length) { n.msg = "Escribe al menos un artículo con cantidad."; opsNecPintarForm(); return; }
+        const req = new Date(n.req); if (!n.req || isNaN(req)) { n.msg = "Indica para cuándo se necesita."; opsNecPintarForm(); return; }
+        const btn = document.getElementById("ops-nec-btn"); if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
+        try {
+            const r = await opsNecCrearPedido(f, items, { fechaRequerida: req, nota: n.nota });
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Pedido enviado a Almacén", texto: r.folio + " · " + (f.estacion || ""), nivel: "normal", modulo: "Operaciones" });
+            window.opsNecCerrar();
+        } catch (e) { n.msg = "No se pudo enviar: " + (e.message || e); opsNecPintarForm(); }
+    };
+
+
+    // ═══════════════════ TRABAJOS DERIVADOS · PEDIDOS DE HERRAMIENTA · PENDIENTES Y CAUSAS (22-oct-2026) ═══════════════════
+    // Junta Operaciones: (1) cuando un técnico atiende un folio y encuentra un daño mayor, eso se
+    // reporta como TRABAJO DERIVADO ligado al folio original y se gestiona (diagnóstico, cotización,
+    // programación) sin confundirlo con el cierre del original; (2) el técnico pide herramienta que le
+    // falta o un REEMPLAZO por daño/desgaste con foto, Operaciones aprueba y lo manda a Almacén o a
+    // Compras (requisición con características e imagen); (3) historial de quién deja folios
+    // pendientes y por qué, para ver fallas recurrentes de personal, clientes, material o programación.
+    const COL_DERIVADOS = "ops_trabajos_derivados";
+    const COL_SOL_HERR = "ops_solicitudes_herramienta";
+    const OPS_TD_EST = {
+        reportado: ["Reportado por el técnico", "#b45309", "#fef3c7"], diagnostico: ["En diagnóstico", "#1d4ed8", "#dbeafe"],
+        cotizando: ["Por cotizar / cotizado", "#7c3aed", "#ede9fe"], programado: ["Programado", "#0e7490", "#cffafe"],
+        resuelto: ["Resuelto", "#15803d", "#dcfce7"], descartado: ["Descartado", "#64748b", "#f1f5f9"],
+    };
+    const OPS_SH_EST = {
+        solicitada: ["Solicitada", "#b45309", "#fef3c7"], aprobada_almacen: ["Aprobada · la entrega Almacén", "#1d4ed8", "#dbeafe"],
+        aprobada_compras: ["Aprobada · en Compras", "#7c3aed", "#ede9fe"], entregada: ["Entregada", "#15803d", "#dcfce7"],
+        rechazada: ["Rechazada", "#b91c1c", "#fee2e2"],
+    };
+    let cacheDerivados = [], cacheSolHerr = [], opsTDCargado = false, unsubTD = null, unsubSH = null;
+    const opsUrlCache = {};
+    async function opsUrlFirmada(bucket, ruta) {
+        const k = bucket + "/" + ruta; const c = opsUrlCache[k];
+        if (c && c.hasta > Date.now()) return c.url;
+        const sb = await opsSb(); const r = await sb.storage.from(bucket).createSignedUrl(ruta, 3600);
+        if (r.error) throw r.error; opsUrlCache[k] = { url: r.data.signedUrl, hasta: Date.now() + 50 * 60000 }; return r.data.signedUrl;
+    }
+    async function opsTDSuscribir() {
+        if (opsTDCargado) return; opsTDCargado = true;
+        const { db, fs } = await opsGetFB();
+        unsubTD = fs.onSnapshot(fs.collection(db, COL_DERIVADOS), snap => { cacheDerivados = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "derivados") opsRenderDerivados(); }, e => console.warn("[derivados]", e));
+        unsubSH = fs.onSnapshot(fs.collection(db, COL_SOL_HERR), snap => { cacheSolHerr = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "herrsol") opsRenderSolHerr(); }, e => console.warn("[sol. herramienta]", e));
+    }
+    function opsTDFotosHTML(fotos, idPref) {
+        if (!(fotos || []).length) return "";
+        const id = idPref + Math.random().toString(36).slice(2, 7);
+        setTimeout(async () => { const box = document.getElementById(id); if (!box) return; for (const [i, x] of fotos.entries()) { try { const u = await opsUrlFirmada(x.bucket, x.ruta); const img = box.querySelector(`[data-i="${i}"]`); if (img) { img.src = u; img.parentNode.href = u; } } catch (e) {} } }, 0);
+        return `<div id="${id}" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${fotos.map((x, i) => `<a target="_blank" rel="noopener"><img data-i="${i}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;background:#f1f5f9;border:1px solid #e2e8f0;"></a>`).join("")}</div>`;
+    }
+    async function opsTDActualizar(col, id, cambios, accion, nota) {
+        const lista = col === COL_DERIVADOS ? cacheDerivados : cacheSolHerr, x = lista.find(y => y.id === id) || {};
+        const hist = (x.historial || []).concat([{ accion, nota: nota || null, por: opsNombreActual(), correo: opsUsuarioActual(), en: new Date().toISOString() }]);
+        const { db, fs } = await opsGetFB();
+        await fs.updateDoc(fs.doc(db, col, id), { ...cambios, historial: hist, actualizadoEn: new Date().toISOString(), actualizadoPor: opsNombreActual() });
+        Object.assign(x, cambios, { historial: hist });
+    }
+    function opsTDAvisarTecnico(correo, msg, extra) {
+        if (!correo || !window.tcNotificar) return;
+        window.tcNotificar({ tipo: "ops_aviso_tecnico", para: correo, mensaje: msg, modulo: "Operaciones", ...(extra || {}) }).catch(() => {});
+    }
+
+    // ───────────── 1) TRABAJOS DERIVADOS ─────────────
+    let opsTDFiltro = { est: "abiertos", q: "" };
+    function opsRenderDerivados() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return; opsTDSuscribir();
+        const gest = opsPuedeGestionar(), partes = opsNormalizaTexto(opsTDFiltro.q).split(" ").filter(Boolean);
+        const lista = cacheDerivados.filter(d => opsTDFiltro.est === "todos" ? true : opsTDFiltro.est === "abiertos" ? !["resuelto", "descartado"].includes(d.estatus) : d.estatus === opsTDFiltro.est)
+            .filter(d => !partes.length || partes.every(p => opsNormalizaTexto([d.estacion, d.descripcion, d.reportadoPor, d.folioOrigenTxt, d.cotizacion].join(" ")).includes(p)))
+            .sort((a, b) => ({ urgente: 0, alta: 1, normal: 2 }[a.prioridad] ?? 3) - ({ urgente: 0, alta: 1, normal: 2 }[b.prioridad] ?? 3) || String(b.reportadoEn || "").localeCompare(String(a.reportadoEn || "")));
+        const n = k => cacheDerivados.filter(d => d.estatus === k).length;
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
+              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Trabajos derivados</div>
+              <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Daños que encontró el técnico al atender un servicio (o al cerrarlo como "Falla mayor / requiere cotización"). Cada uno queda ligado al servicio original: se diagnostica, se cotiza si va fuera de póliza y se programa como servicio nuevo. El servicio original se cierra por su lado.</div></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <select onchange="opsTDFiltro.est=this.value;opsRenderDerivados()" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${[["abiertos", "Abiertos"], ...Object.entries(OPS_TD_EST).map(([k, v]) => [k, v[0] + " (" + n(k) + ")"]), ["todos", "Todos"]].map(([k, t]) => `<option value="${k}" ${opsTDFiltro.est === k ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>
+                <input id="ops-td-q" type="search" value="${opsEsc(opsTDFiltro.q)}" oninput="opsTDBuscar(this.value)" placeholder="Buscar estación, daño, técnico…" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;width:220px;">
+              </div>
+            </div>
+            <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;">
+            ${lista.map(d => { const e = OPS_TD_EST[d.estatus] || OPS_TD_EST.reportado, orig = cacheFolios.find(f => f.id === d.folioOrigenId), nuevo = d.folioNuevoId && cacheFolios.find(f => f.id === d.folioNuevoId);
+                return `<div style="border:1px solid #e2e8f0;border-left:5px solid ${d.prioridad === "urgente" ? "#b91c1c" : d.prioridad === "alta" ? "#ea580c" : "#1D2E73"};border-radius:12px;padding:12px;">
+                  <div style="display:flex;justify-content:space-between;gap:8px;"><b style="font-size:13px;color:#1e293b;">${opsEsc(d.estacion || "")}</b><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 8px;white-space:nowrap;">${opsEsc(e[0])}</span></div>
+                  <div style="font-size:11px;color:#64748b;">${opsEsc((d.prioridad || "normal").toUpperCase())} · reportó ${opsEsc(d.reportadoPor || "")} · ${opsEsc(opsFmtFechaCorta(d.reportadoEn))}</div>
+                  <div style="font-size:12.5px;color:#334155;margin-top:6px;">${opsEsc(d.descripcion || "")}</div>
+                  ${d.materialProbable ? `<div style="font-size:11.5px;color:#475569;margin-top:4px;"><b>Material/herramienta probable:</b> ${opsEsc(d.materialProbable)}</div>` : ""}
+                  ${d.diagnostico ? `<div style="font-size:11.5px;color:#1d4ed8;margin-top:4px;"><b>Diagnóstico:</b> ${opsEsc(d.diagnostico)}</div>` : ""}
+                  ${d.cotizacion ? `<div style="font-size:11.5px;color:#7c3aed;margin-top:2px;"><b>Cotización Aspel:</b> ${opsEsc(d.cotizacion)}${d.fueraPoliza ? " · fuera de póliza" : ""}</div>` : ""}
+                  ${opsTDFotosHTML(d.fotos, "td")}
+                  <div style="font-size:11px;margin-top:6px;">${orig ? `<a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${orig.id}')" style="color:#1D2E73;font-weight:700;">Servicio original</a>` : `<span style="color:#94a3b8;">${opsEsc(d.folioOrigenTxt || "")}</span>`}${nuevo ? ` · <a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${nuevo.id}')" style="color:#0e7490;font-weight:700;">Servicio programado ${opsEsc(opsFmtFechaCorta(nuevo.fechaProgramada))}</a>` : ""}</div>
+                  ${gest && !["resuelto", "descartado"].includes(d.estatus) ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">
+                    <button onclick="opsTDDiagnostico('${d.id}')" style="border:none;background:#dbeafe;color:#1d4ed8;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Diagnóstico</button>
+                    <button onclick="opsTDCotizacion('${d.id}')" style="border:none;background:#ede9fe;color:#7c3aed;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Cotización</button>
+                    ${!d.folioNuevoId ? `<button onclick="opsTDProgramar('${d.id}')" style="border:none;background:#0e7490;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Programar servicio</button>` : ""}
+                    <button onclick="opsTDCerrar('${d.id}','resuelto')" style="border:none;background:#dcfce7;color:#15803d;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Resuelto</button>
+                    <button onclick="opsTDCerrar('${d.id}','descartado')" style="border:none;background:#f1f5f9;color:#64748b;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Descartar</button></div>` : ""}
+                </div>`; }).join("") || `<div style="color:#94a3b8;font-size:12.5px;padding:20px;">Sin trabajos derivados con este filtro.</div>`}
+            </div></div>`;
+    }
+    window.opsRenderDerivados = opsRenderDerivados;
+    if (!Object.getOwnPropertyDescriptor(window, "opsTDFiltro")) Object.defineProperty(window, "opsTDFiltro", { get() { return opsTDFiltro; }, configurable: true });
+    window.opsTDBuscar = function (v) { opsTDFiltro.q = v || ""; opsRerenderConFoco(opsRenderDerivados); };
+    window.opsTDDiagnostico = async function (id) {
+        const d = cacheDerivados.find(x => x.id === id); if (!d) return;
+        const t = prompt("Diagnóstico y trabajo que se requiere:", d.diagnostico || ""); if (t === null || !t.trim()) return;
+        const fp = confirm("¿Va FUERA de póliza (se le cobra al cliente)?\nAceptar = sí, fuera de póliza · Cancelar = dentro de póliza / no aplica");
+        try { await opsTDActualizar(COL_DERIVADOS, id, { diagnostico: t.trim(), fueraPoliza: fp, estatus: fp ? "cotizando" : "diagnostico" }, "diagnostico", t.trim()); opsRenderDerivados(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsTDCotizacion = async function (id) {
+        const d = cacheDerivados.find(x => x.id === id); if (!d) return;
+        const t = prompt("Número de cotización de Aspel:", d.cotizacion || ""); if (t === null || !t.trim()) return;
+        try { await opsTDActualizar(COL_DERIVADOS, id, { cotizacion: t.trim(), fueraPoliza: true, estatus: "cotizando" }, "cotizacion", t.trim()); opsRenderDerivados(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsTDCerrar = async function (id, est) {
+        const d = cacheDerivados.find(x => x.id === id); if (!d) return;
+        const t = prompt(est === "resuelto" ? "¿Cómo se resolvió?" : "¿Por qué se descarta?", ""); if (t === null || !t.trim()) return;
+        try { await opsTDActualizar(COL_DERIVADOS, id, { estatus: est, cierreNota: t.trim() }, est, t.trim()); opsTDAvisarTecnico(d.reportadoCorreo, `El daño que reportaste en ${d.estacion || ""} quedó ${est === "resuelto" ? "RESUELTO" : "descartado"}: ${t.trim()}`); opsRenderDerivados(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsTDProgramar = function (id) {
+        const d = cacheDerivados.find(x => x.id === id); if (!d) return;
+        window.opsAbrirAltaServicio(opsCalFechaISO(new Date()));
+        if (!opsAS) return;
+        opsAS.__derivadoId = id;
+        opsAS.estTexto = d.estacion || "";
+        opsAS.comentarios = [`Trabajo derivado del servicio ${d.folioOrigenTxt || ""}: ${d.descripcion || ""}`, d.diagnostico ? "Diagnóstico: " + d.diagnostico : "", d.cotizacion ? "Cotización Aspel: " + d.cotizacion : "", d.materialProbable ? "Material/herramienta probable: " + d.materialProbable : ""].filter(Boolean).join("\n");
+        if (d.estacionCatalogoId) { const elegir = i => { if (!opsAS || opsAS.__derivadoId !== id) return; if ((window.__opsAsEstCatalogo || []).some(e => e.id === d.estacionCatalogoId)) window.opsAsElegirEstacion(d.estacionCatalogoId); else if (i < 20) setTimeout(() => elegir(i + 1), 400); }; setTimeout(() => elegir(0), 150); }
+        opsAsPintar();
+    };
+    // Al guardar el alta que vino de un trabajo derivado, se ligan los dos.
+    async function opsTDLigarAlta(derivadoId, folioId, fecha) {
+        try { await opsTDActualizar(COL_DERIVADOS, derivadoId, { estatus: "programado", folioNuevoId: folioId }, "programado", "Servicio programado para " + fecha); const d = cacheDerivados.find(x => x.id === derivadoId); if (d) opsTDAvisarTecnico(d.reportadoCorreo, `El daño que reportaste en ${d.estacion || ""} ya se programó para ${fecha}.`); }
+        catch (e) { console.warn("[derivados] no se pudo ligar:", e); }
+    }
+
+    // ───────────── 2) PEDIDOS DE HERRAMIENTA (nueva / faltante / reemplazo) ─────────────
+    let opsSHFiltro = { est: "abiertos" };
+    function opsRenderSolHerr() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return; opsTDSuscribir();
+        const gest = opsPuedeGestionar();
+        const lista = cacheSolHerr.filter(s => opsSHFiltro.est === "todos" ? true : opsSHFiltro.est === "abiertos" ? !["entregada", "rechazada"].includes(s.estatus) : s.estatus === opsSHFiltro.est)
+            .sort((a, b) => String(a.fechaRequerida || "9").localeCompare(String(b.fechaRequerida || "9")) || String(b.creadoEn || "").localeCompare(String(a.creadoEn || "")));
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
+            <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pedidos de herramienta</div>
+            <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Lo que piden los técnicos desde la app: herramienta que les falta o reemplazo por daño o desgaste, con foto. Operaciones aprueba y decide: <b>Almacén</b> la entrega (si hay) o <b>Compras</b> la compra (se genera la requisición con características y foto). En un reemplazo se liga la herramienta vieja para conservar su historial.</div></div>
+            <select onchange="opsSHFiltro.est=this.value;opsRenderSolHerr()" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;height:36px;">${[["abiertos", "Abiertos"], ...Object.entries(OPS_SH_EST).map(([k, v]) => [k, v[0]]), ["todos", "Todos"]].map(([k, t]) => `<option value="${k}" ${opsSHFiltro.est === k ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>
+          </div>
+          <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;">
+          ${lista.map(s => { const e = OPS_SH_EST[s.estatus] || OPS_SH_EST.solicitada, f = s.folioId && cacheFolios.find(x => x.id === s.folioId), vieja = s.herramientaAnteriorId && cacheHerr.find(h => h.id === s.herramientaAnteriorId);
+            return `<div style="border:1px solid #e2e8f0;border-left:5px solid ${s.tipo === "reemplazo" ? "#ea580c" : "#1D2E73"};border-radius:12px;padding:12px;">
+              <div style="display:flex;justify-content:space-between;gap:8px;"><b style="font-size:13px;color:#1e293b;">${opsEsc(s.descripcion || "")}</b><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 8px;white-space:nowrap;">${opsEsc(e[0])}</span></div>
+              <div style="font-size:11px;color:#64748b;">${s.tipo === "reemplazo" ? "REEMPLAZO" : "LE FALTA"} · ${opsEsc(s.tecnicoNombre || "")} · ${s.cantidad || 1} pza · para ${opsEsc(s.fechaRequerida ? opsFmtFechaCorta(s.fechaRequerida) : "sin fecha")}</div>
+              ${s.caracteristicas ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;"><b>Características:</b> ${opsEsc(s.caracteristicas)}</div>` : ""}
+              <div style="font-size:11.5px;color:#334155;margin-top:2px;"><b>Motivo:</b> ${opsEsc(s.motivo || "")}</div>
+              ${f ? `<div style="font-size:11px;margin-top:3px;"><a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="color:#1D2E73;font-weight:700;">Para el servicio: ${opsEsc(f.estacion || "")} · ${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</a></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${opsEsc(s.servicioTxt || "Para el almacén general / uso diario")}</div>`}
+              ${vieja ? `<div style="font-size:11px;color:#ea580c;margin-top:3px;">Reemplaza a: ${opsEsc(vieja.descripcion || vieja.nombre || vieja.id)}${vieja.folio ? " (" + opsEsc(vieja.folio) + ")" : ""}</div>` : s.herramientaAnteriorTxt ? `<div style="font-size:11px;color:#ea580c;margin-top:3px;">Reemplaza a: ${opsEsc(s.herramientaAnteriorTxt)}</div>` : ""}
+              ${s.surtidoFolio ? `<div style="font-size:11px;color:#1d4ed8;margin-top:3px;">Pedido a Almacén: ${opsEsc(s.surtidoFolio)}</div>` : ""}${s.requisicionFolio ? `<div style="font-size:11px;color:#7c3aed;margin-top:3px;">Requisición de compra: ${opsEsc(s.requisicionFolio)}</div>` : ""}
+              ${s.decisionNota ? `<div style="font-size:11px;color:#475569;margin-top:3px;">Nota: ${opsEsc(s.decisionNota)}</div>` : ""}
+              ${opsTDFotosHTML(s.fotos, "sh")}
+              ${gest ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${s.estatus === "solicitada" ? `
+                <button onclick="opsSHAprobar('${s.id}','almacen')" style="border:none;background:#1d4ed8;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Almacén</button>
+                <button onclick="opsSHAprobar('${s.id}','compras')" style="border:none;background:#7c3aed;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Comprar</button>
+                <button onclick="opsSHRechazar('${s.id}')" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Rechazar</button>` : ""}
+                ${["aprobada_almacen", "aprobada_compras"].includes(s.estatus) ? `<button onclick="opsSHEntregada('${s.id}')" style="border:none;background:#dcfce7;color:#15803d;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Ya se entregó al técnico</button>` : ""}</div>` : ""}
+            </div>`; }).join("") || `<div style="color:#94a3b8;font-size:12.5px;padding:20px;">Sin pedidos de herramienta con este filtro.</div>`}
+          </div></div>`;
+    }
+    window.opsRenderSolHerr = opsRenderSolHerr;
+    if (!Object.getOwnPropertyDescriptor(window, "opsSHFiltro")) Object.defineProperty(window, "opsSHFiltro", { get() { return opsSHFiltro; }, configurable: true });
+    function opsSHElegirVieja(s) {
+        if (s.tipo !== "reemplazo") return Promise.resolve(null);
+        const mias = cacheHerr.filter(h => s.tecnicoId && (h.tecnicoActualId || h.tecnico_actual_id) === s.tecnicoId);
+        if (!mias.length) return Promise.resolve(null);
+        const txt = mias.slice(0, 30).map((h, i) => (i + 1) + ") " + (h.descripcion || h.nombre || h.id) + (h.marca ? " " + h.marca : "") + (h.folio ? " · " + h.folio : "")).join("\n");
+        const r = prompt(`¿Cuál herramienta de ${s.tecnicoNombre} se reemplaza? Escribe el número (vacío si no está en la lista):\n${txt}`, "");
+        const i = Number(r) - 1; return Promise.resolve(mias[i] || null);
+    }
+    async function opsFotoADataUrl(x) {
+        const u = await opsUrlFirmada(x.bucket, x.ruta); const b = await (await fetch(u)).blob();
+        return await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(b); });
+    }
+    async function opsCargarPuenteCompras() {
+        if (!window.tcComprasFS) await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "compras-supabase.js?v=sb1"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar compras-supabase.js")); document.head.appendChild(sc); });
+        return window.tcComprasFS(null);
+    }
+    window.opsSHAprobar = async function (id, destino) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
+        const vieja = await opsSHElegirVieja(s);
+        const nota = prompt(destino === "almacen" ? "Nota para Almacén (opcional):" : "Nota para Compras (proveedor sugerido, urgencia…):", ""); if (nota === null) return;
+        const f = s.folioId && cacheFolios.find(x => x.id === s.folioId);
+        const req = s.fechaRequerida ? new Date(s.fechaRequerida + (String(s.fechaRequerida).length <= 10 ? "T09:00" : "")) : (f ? opsNecFechaRequerida(f) : new Date(Date.now() + 48 * 3600000));
+        const desc = (s.tipo === "reemplazo" ? "HERRAMIENTA (reemplazo): " : "HERRAMIENTA: ") + s.descripcion + (s.caracteristicas ? " — " + s.caracteristicas : "");
+        try {
+            const cambios = { estatus: destino === "almacen" ? "aprobada_almacen" : "aprobada_compras", decisionNota: nota || null, aprobadoPor: opsNombreActual(), aprobadoEn: new Date().toISOString() };
+            if (vieja) { cambios.herramientaAnteriorId = vieja.id; cambios.herramientaAnteriorTxt = (vieja.descripcion || vieja.nombre || vieja.id) + (vieja.folio ? " · " + vieja.folio : ""); }
+            if (destino === "almacen") {
+                const base = f || { id: "general-" + id, estacion: "Almacén general (uso del técnico)", fechaProgramada: null };
+                const r = await opsNecCrearPedido(base, [{ desc, cant: s.cantidad || 1, unidad: "pza", tipo: "herramienta" }], { fechaRequerida: req, nota: `Pedido de herramienta de ${s.tecnicoNombre}. ${nota || ""}`, servicioNombre: "Herramienta para " + (s.tecnicoNombre || "técnico") });
+                cambios.surtidoId = r.id; cambios.surtidoFolio = r.folio;
+            } else {
+                const SF = await opsCargarPuenteCompras();
+                let folio = null; try { folio = await window.tcCpSiguienteFolio("RC"); } catch (e) { folio = "RC-" + String(Date.now() % 10000).padStart(4, "0") + "-R"; }
+                const ahora = new Date().toISOString();
+                const data = { folio, folioNum: parseInt(String(folio).split("-")[1], 10) || null, folioPrefijo: "RC", empresa: "TECNOCONTROL",
+                    urgencia: (req - Date.now()) < 72 * 3600000 ? "alta" : "media", tipoCompra: "insumo",
+                    motivo: `${s.tipo === "reemplazo" ? "Reemplazo de herramienta por " + (s.motivo || "daño o desgaste") : "Herramienta que le falta al técnico"} — ${s.tecnicoNombre || ""}${f ? " · para el servicio de " + (f.estacion || "") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")" : ""}. Se necesita para ${req.toLocaleDateString("es-MX")}.${vieja ? " Reemplaza a: " + cambios.herramientaAnteriorTxt + "." : ""}`,
+                    cliente: f ? (f.estacionRazonSocial || f.clienteNombre || f.estacion || "") : "TECNOCONTROL", razonSocial: f ? (f.estacionRazonSocial || f.clienteNombre || "") : "TECNOCONTROL", ciudad: f ? (f.estacionMunicipio || f.plaza || "") : "Chihuahua",
+                    estacionId: f ? f.estacionCatalogoId || null : null, estacionNombre: f ? f.estacion || null : null,
+                    items: [{ cant: String(s.cantidad || 1), unidad: "pza", parte: "", desc: s.descripcion + (s.caracteristicas ? " — " + s.caracteristicas : ""), proveedor: "" }],
+                    firma: null, solicitante: opsNombreActual(), solicitanteEmail: opsUsuarioActual(),
+                    comentarios: [{ texto: `Pedida por ${s.tecnicoNombre} desde la app (${s.motivo || ""}). Aprobada por Operaciones. ${nota || ""}`.trim(), autor: opsNombreActual(), autorEmail: opsUsuarioActual(), fecha: ahora }],
+                    flujoAutorizacion: [{ orden: 1, rol: "solicitante", label: "Solicitante", estatus: "aprobado", uid: null, fecha: ahora }, { orden: 2, rol: "jefe_area", label: "Jefe de área", estatus: "aprobado", uid: null, fecha: ahora, nota: "Aprobado en Operaciones → Pedidos de herramienta" }, { orden: 3, rol: "compras", label: "Compras", estatus: "pendiente", uid: null, fecha: null }],
+                    estatus: "pendiente", origen: "operaciones_herramienta", createdAt: ahora, solicitudHerramientaId: id };
+                const ref = await SF.addDoc(SF.collection(null, "requisiciones_compra"), data);
+                for (const x of (s.fotos || [])) { try { await SF.addDoc(SF.collection(null, "requisiciones_compra", ref.id, "fotos"), { src: await opsFotoADataUrl(x), origen: "tecnico", autor: s.tecnicoNombre || "", autorEmail: s.tecnicoCorreo || "", creadoEn: ahora }); } catch (e) { console.warn("[requisición] foto:", e); } }
+                try { if (window.tcCpNotificar) window.tcCpNotificar({ tipo: "requisicion_nueva", mensaje: `Requisición ${folio}: herramienta para ${s.tecnicoNombre} (${s.descripcion}). Aprobada por Operaciones.`, requisicionId: ref.id }); } catch (e) {}
+                cambios.requisicionId = ref.id; cambios.requisicionFolio = folio;
+            }
+            await opsTDActualizar(COL_SOL_HERR, id, cambios, destino === "almacen" ? "aprobada_almacen" : "aprobada_compras", nota);
+            opsTDAvisarTecnico(s.tecnicoCorreo, `Tu pedido de herramienta (${s.descripcion}) fue APROBADO: ${destino === "almacen" ? "te la entrega Almacén" + (cambios.surtidoFolio ? " (" + cambios.surtidoFolio + ")" : "") : "se compra (" + cambios.requisicionFolio + ")"}.`);
+            opsRenderSolHerr();
+        } catch (e) { alert("No se pudo aprobar: " + (e.message || e)); }
+    };
+    window.opsSHRechazar = async function (id) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
+        const t = prompt("¿Por qué se rechaza? (le llega al técnico)", ""); if (!t || !t.trim()) return;
+        try { await opsTDActualizar(COL_SOL_HERR, id, { estatus: "rechazada", decisionNota: t.trim() }, "rechazada", t.trim()); opsTDAvisarTecnico(s.tecnicoCorreo, `Tu pedido de herramienta (${s.descripcion}) no se aprobó: ${t.trim()}`); opsRenderSolHerr(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsSHEntregada = async function (id) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
+        if (!confirm(`¿Confirmas que ${s.tecnicoNombre} ya recibió: ${s.descripcion}?${s.herramientaAnteriorTxt ? "\nRecuerda recoger la herramienta anterior: " + s.herramientaAnteriorTxt + "." : ""}`)) return;
+        try { await opsTDActualizar(COL_SOL_HERR, id, { estatus: "entregada", entregadaEn: new Date().toISOString() }, "entregada", null); opsRenderSolHerr(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+    // ───────────── 3) PENDIENTES Y CAUSAS ─────────────
+    const OPS_PEND_CATEG = [
+        ["material", "Material / herramienta / refacción", /material|refacci|herramienta/i],
+        ["cliente", "Cliente o estación", /cliente|estaci[oó]n ocupada|sin acceso|no permiti/i],
+        ["falla_mayor", "Falla mayor (requiere cotizar)", /falla mayor|cotizaci/i],
+        ["vehiculo", "Vehículo", /veh[ií]culo/i],
+        ["personal", "Personal (tiempo, ausencias, especialidad)", /otro t[eé]cnico|especialidad|no me dio tiempo|jornada|ausente|permiso/i],
+        ["programacion", "Programación / Dirección / urgencias", /mandaron a otro|urgencia|reprogram|agenda|paloma|mart[ií]n|proyecto|otro departamento/i],
+        ["clima", "Clima", /clima/i],
+        ["otro", "Otro", /.*/],
+    ];
+    function opsPendCategoria(txt) { const c = OPS_PEND_CATEG.find(([, , rx]) => rx.test(String(txt || ""))); return c ? c[0] : "otro"; }
+    let opsPend = null;
+    function opsPendEstado() { if (!opsPend) { const h = new Date(); opsPend = { desde: opsCalFechaISO(new Date(h.getFullYear(), h.getMonth(), h.getDate() - 30)), hasta: opsCalFechaISO(h), categ: "todas", tec: "todos" }; } return opsPend; }
+    function opsPendEventos() {
+        const s = opsPendEstado(), ev = [];
+        cacheFolios.filter(f => !f.cancelado).forEach(f => {
+            const g = opsGrupoClienteFolio(f);
+            (f.atenciones || []).forEach(v => { if (!v || !v.resultado || v.resultado === "finalizado") return; const d = String(v.fin || "").slice(0, 10); if (d < s.desde || d > s.hasta) return;
+                ev.push({ f, g, fecha: v.fin, tipo: v.resultado === "no_realizado" ? "No se realizó" : "Atendido sin terminar", quien: v.nombre || "", causa: v.motivo || "Sin motivo", detalle: v.detalle || "", categ: opsPendCategoria(v.motivo) }); });
+            (f.cambiosProgramacion || []).forEach(c => { if (!c) return; const d = String(c.en || "").slice(0, 10); if (d < s.desde || d > s.hasta) return;
+                ev.push({ f, g, fecha: c.en, tipo: c.tipo === "cambio_tecnico" ? "Cambio de técnico" : "Reprogramado", quien: c.por || "", causa: c.causaNombre || opsCausaNombre(c.causa), detalle: [c.detalle, c.solicito ? "pidió: " + c.solicito : ""].filter(Boolean).join(" · "), categ: c.causa === "material" ? "material" : c.causa === "cliente" ? "cliente" : c.causa === "vehiculo" ? "vehiculo" : c.causa === "personal" ? "personal" : c.causa === "clima" ? "clima" : c.causa === "otro" ? "otro" : "programacion" }); });
+        });
+        return ev.sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+    }
+    function opsRenderPendientes() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        const s = opsPendEstado(), todos = opsPendEventos();
+        const ev = todos.filter(x => (s.categ === "todas" || x.categ === s.categ) && (s.tec === "todos" || x.quien === s.tec));
+        const hoy = opsCalFechaISO(new Date());
+        const abiertos = cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && String(opsFolioFechaFin(f) || f.fechaProgramada).slice(0, 10) < hoy)
+            .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada)));
+        const cuenta = (lista, key) => { const m = new Map(); lista.forEach(x => { const k = key(x); m.set(k, (m.get(k) || 0) + 1); }); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+        const barras = (pares, total, nombre) => pares.map(([k, n]) => `<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:12px;"><span>${opsEsc(nombre(k))}</span><b>${n}</b></div><div style="height:7px;background:#f1f5f9;border-radius:4px;"><div style="height:7px;width:${Math.round(n / Math.max(1, total) * 100)}%;background:#1D2E73;border-radius:4px;"></div></div></div>`).join("") || `<div style="font-size:12px;color:#94a3b8;">Sin datos.</div>`;
+        const nomCat = k => (OPS_PEND_CATEG.find(c => c[0] === k) || [k, k])[1];
+        const tecs = [...new Set(todos.map(x => x.quien).filter(Boolean))].sort();
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:14px;">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
+            <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pendientes y causas</div>
+            <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Quién deja servicios sin terminar, cuáles se reprograman y por qué. Sale de lo que capturan los técnicos al cerrar ("no se terminó", "no se realizó") y de la causa que pide el portal al reprogramar. Sirve para ver si las fallas son de personal, del cliente, de material o de programación.</div></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span style="font-size:12px;color:#64748b;">del</span><input type="date" value="${s.desde}" onchange="opsPendSet('desde',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">
+              <span style="font-size:12px;color:#64748b;">al</span><input type="date" value="${s.hasta}" onchange="opsPendSet('hasta',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">
+              <select onchange="opsPendSet('categ',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;"><option value="todas">Todas las causas</option>${OPS_PEND_CATEG.map(c => `<option value="${c[0]}" ${s.categ === c[0] ? "selected" : ""}>${opsEsc(c[1])}</option>`).join("")}</select>
+              <select onchange="opsPendSet('tec',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;max-width:200px;"><option value="todos">Todas las personas</option>${tecs.map(t => `<option ${s.tec === t ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px;"><div style="font-size:13px;font-weight:800;margin-bottom:8px;">Por tipo de causa</div>${barras(cuenta(ev, x => x.categ), ev.length, nomCat)}</div>
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px;"><div style="font-size:13px;font-weight:800;margin-bottom:8px;">Por persona (técnico o quien reprogramó)</div>${barras(cuenta(ev, x => x.quien || "Sin nombre").slice(0, 10), ev.length, k => k)}</div>
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px;"><div style="font-size:13px;font-weight:800;margin-bottom:8px;">Por cliente</div>${barras(cuenta(ev, x => x.g), ev.length, k => (OPS_GRUPOS_FOLIO[k] || { nombre: k }).nombre)}<div style="font-size:13px;font-weight:800;margin:12px 0 8px;">Estaciones que más se repiten</div>${barras(cuenta(ev, x => x.f.estacion || "—").slice(0, 5), ev.length, k => k)}</div>
+        </div>
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px 16px;margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:800;color:#b91c1c;margin-bottom:8px;">Servicios atrasados sin cerrar hoy (${abiertos.length})</div>
+          <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px 8px;">Programado</th><th style="padding:6px 8px;">Estación</th><th style="padding:6px 8px;">Lo tiene</th><th style="padding:6px 8px;">Última razón</th><th style="padding:6px 8px;">Siguiente acción</th><th></th></tr></thead><tbody>
+          ${abiertos.slice(0, 80).map(f => { const u = f.ultimoNoFinalizado || (f.atenciones || []).slice(-1)[0] || null, sa = f.siguienteAccion; return `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;"><td style="padding:6px 8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</td><td style="padding:6px 8px;"><a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="color:#1D2E73;font-weight:700;">${opsEsc(f.estacion || "")}</a></td><td style="padding:6px 8px;">${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "Sin técnico")}</td><td style="padding:6px 8px;">${u ? opsEsc((u.motivo || u.resultado || "") + (u.detalle ? ": " + String(u.detalle).slice(0, 80) : "")) : `<span style="color:#b45309;">Nadie ha reportado nada</span>`}</td><td style="padding:6px 8px;">${sa ? opsEsc(sa.texto + (sa.responsable ? " · " + sa.responsable : "") + (sa.fecha ? " · " + sa.fecha : "")) : `<span style="color:#94a3b8;">—</span>`}</td><td style="padding:6px 8px;">${opsPuedeGestionar() ? `<button onclick="opsPendSiguiente('${f.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Anotar</button>` : ""}</td></tr>`; }).join("") || `<tr><td colspan="6" style="padding:14px;text-align:center;color:#15803d;">No hay servicios atrasados.</td></tr>`}
+          </tbody></table></div>
+        </div>
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px 16px;">
+          <div style="font-size:13px;font-weight:800;margin-bottom:8px;">Historial (${ev.length})</div>
+          <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#1f2937;color:#fff;text-align:left;"><th style="padding:6px 8px;">Fecha</th><th style="padding:6px 8px;">Qué pasó</th><th style="padding:6px 8px;">Estación</th><th style="padding:6px 8px;">Quién</th><th style="padding:6px 8px;">Causa</th><th style="padding:6px 8px;">Detalle</th></tr></thead><tbody>
+          ${ev.slice(0, 300).map(x => `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;cursor:pointer;" onclick="opsAbrirPanelFolio('${x.f.id}')"><td style="padding:6px 8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(x.fecha))}</td><td style="padding:6px 8px;">${opsEsc(x.tipo)}</td><td style="padding:6px 8px;">${opsEsc(x.f.estacion || "")}</td><td style="padding:6px 8px;">${opsEsc(x.quien)}</td><td style="padding:6px 8px;"><b>${opsEsc(x.causa)}</b><div style="font-size:10.5px;color:#64748b;">${opsEsc(nomCat(x.categ))}</div></td><td style="padding:6px 8px;color:#475569;">${opsEsc(String(x.detalle || "").slice(0, 160))}</td></tr>`).join("") || `<tr><td colspan="6" style="padding:14px;text-align:center;color:#94a3b8;">Sin registros en este periodo.</td></tr>`}
+          </tbody></table></div>
+        </div>`;
+    }
+    window.opsRenderPendientes = opsRenderPendientes;
+    window.opsPendSet = function (k, v) { opsPendEstado()[k] = v; opsRenderPendientes(); };
+    window.opsPendSiguiente = async function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const t = prompt("¿Cuál es la siguiente acción para cerrar este servicio?", (f.siguienteAccion || {}).texto || ""); if (!t || !t.trim()) return;
+        const resp = prompt("¿Quién la tiene que hacer?", (f.siguienteAccion || {}).responsable || "") || "";
+        const fecha = prompt("¿Para cuándo? (ej. 2026-10-25)", (f.siguienteAccion || {}).fecha || "") || "";
+        try {
+            const { db, fs } = await opsGetFB();
+            const sa = { texto: t.trim(), responsable: resp.trim() || null, fecha: fecha.trim() || null, por: opsNombreActual(), en: new Date().toISOString() };
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { siguienteAccion: sa });
+            fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: `[Siguiente acción] ${sa.texto}${sa.responsable ? " · lo hace " + sa.responsable : ""}${sa.fecha ? " · para " + sa.fecha : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "seguimiento", createdAt: opsFechaHora() }).catch(() => {});
+            f.siguienteAccion = sa; opsRenderPendientes();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
     // Glen: "cada tipo de servicio requiere cierta información, cierta herramienta, ciertos
     // vehículos, ciertos técnicos — esas necesidades son lo que debe capturarse al dar de alta".
@@ -12787,10 +13310,81 @@
     function opsAsRecetasHTML() {
         const s = opsAS;
         const lista = cacheServiciosCatalogo.filter(r => r.activo !== false && opsAsNorm([r.nombre, r.categoria].join(" ")).includes(opsAsNorm(s.recetaBusca))).sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
-        if (!lista.length) return `<div class="opsas-note">No hay servicios con ese nombre. Se dan de alta en la pestaña Servicios.</div>`;
-        return `<div style="display:flex;flex-wrap:wrap;gap:7px;">${lista.map(r => `<button type="button" onclick="opsAsSet('recetaId','${r.id}')" style="border:1.5px solid ${s.recetaId === r.id ? "#1D2E73" : "#e2e8f0"};background:${s.recetaId === r.id ? "#1D2E73" : "#fff"};color:${s.recetaId === r.id ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${opsEsc(r.nombre)}</button>`).join("")}</div>`;
+        const btnNuevo = opsPuedeCrear("servicios") || opsPuedeGestionar() ? `<button type="button" onclick="opsRecRapidaAbrir()" style="border:1.5px dashed #1D2E73;background:#fff;color:#1D2E73;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">+ Dar de alta un servicio nuevo</button>` : "";
+        if (!lista.length) return `<div class="opsas-note">No hay servicios con ese nombre.</div>${btnNuevo}`;
+        return `<div style="display:flex;flex-wrap:wrap;gap:7px;">${btnNuevo}${lista.map(r => `<button type="button" onclick="opsAsSet('recetaId','${r.id}')" style="border:1.5px solid ${s.recetaId === r.id ? "#1D2E73" : "#e2e8f0"};background:${s.recetaId === r.id ? "#1D2E73" : "#fff"};color:${s.recetaId === r.id ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${opsEsc(r.nombre)}</button>`).join("")}</div>`;
     }
     window.opsAsRecetasHTML = opsAsRecetasHTML;
+    // ── Alta rápida de un servicio en el catálogo SIN salir de la programación (22-oct-2026) ──
+    // Operaciones lo da de alta una vez y queda para todos. Lo esencial: técnicos, duración,
+    // materiales y herramienta; el resto (costos, vehículo, seguridad) se completa en Servicios.
+    let opsRecR = null;
+    window.opsRecRapidaAbrir = function () {
+        opsRecR = { nombre: (opsAS && opsAS.recetaBusca) || "", categoria: "", tecnicos: 1, horas: 2, mat: [{ nombre: "", cant: 1, unidad: "pza" }], herr: [{ descripcion: "", cant: 1 }], nota: "", msg: "" };
+        opsRecRapidaPintar();
+    };
+    function opsRecRapidaPintar() {
+        const r = opsRecR; if (!r) return;
+        let w = document.getElementById("ops-modal-wrap2"); if (!w) { w = document.createElement("div"); w.id = "ops-modal-wrap2"; document.body.appendChild(w); }
+        const inp = "border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;font-size:12.5px;font-family:inherit;box-sizing:border-box;";
+        const filas = (lista, tipo) => lista.map((x, i) => `<div style="display:grid;grid-template-columns:1fr 80px ${tipo === "mat" ? "80px " : ""}30px;gap:6px;margin-bottom:6px;">
+            <input value="${opsEsc(tipo === "mat" ? x.nombre : x.descripcion)}" onchange="opsRecRSet('${tipo}',${i},'${tipo === "mat" ? "nombre" : "descripcion"}',this.value)" placeholder="${tipo === "mat" ? "Material (ej. Tubería primaria 2&quot;)" : "Herramienta (ej. Llave de cadena)"}" style="${inp}">
+            <input type="number" min="0" step="0.01" value="${opsEsc(x.cant)}" onchange="opsRecRSet('${tipo}',${i},'cant',this.value)" style="${inp}">
+            ${tipo === "mat" ? `<input value="${opsEsc(x.unidad)}" onchange="opsRecRSet('mat',${i},'unidad',this.value)" style="${inp}">` : ""}
+            <button onclick="opsRecRQuitar('${tipo}',${i})" style="border:none;background:#fef2f2;color:#E7402B;border-radius:7px;cursor:pointer;font-weight:800;">×</button></div>`).join("");
+        w.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:640px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#1D2E73;">Nuevo servicio en el catálogo</div>
+            <div style="font-size:11.5px;color:#64748b;margin:3px 0 12px;">Se da de alta una sola vez y queda disponible para todos. Costos, vehículo y equipo de seguridad se completan después en Servicios.</div>
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">Nombre del servicio<br><input value="${opsEsc(r.nombre)}" onchange="opsRecR.nombre=this.value" style="${inp}width:100%;"></label>
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">Categoría<br><input value="${opsEsc(r.categoria)}" onchange="opsRecR.categoria=this.value" placeholder="Ej. Dispensarios" style="${inp}width:100%;"></label>
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">Técnicos que se necesitan<br><input type="number" min="1" value="${opsEsc(r.tecnicos)}" onchange="opsRecR.tecnicos=Number(this.value)" style="${inp}width:100%;"></label>
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">Duración del trabajo (horas)<br><input type="number" min="0" step="0.5" value="${opsEsc(r.horas)}" onchange="opsRecR.horas=Number(this.value)" style="${inp}width:100%;"></label>
+            </div>
+            <div style="font-size:12px;font-weight:800;color:#1D2E73;margin:12px 0 6px;">Materiales (por cada unidad del servicio)</div>${filas(r.mat, "mat")}
+            <button onclick="opsRecRAgregar('mat')" style="border:none;background:#eef2f7;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">+ Material</button>
+            <div style="font-size:12px;font-weight:800;color:#1D2E73;margin:12px 0 6px;">Herramienta</div>${filas(r.herr, "herr")}
+            <button onclick="opsRecRAgregar('herr')" style="border:none;background:#eef2f7;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">+ Herramienta</button>
+            <label style="display:block;font-size:11.5px;font-weight:700;color:#334155;margin-top:12px;">Requisitos o datos técnicos que se deben pedir (ej. marca del dispensario, número de mangueras)<br><textarea rows="2" onchange="opsRecR.nota=this.value" style="${inp}width:100%;resize:vertical;">${opsEsc(r.nota)}</textarea></label>
+            <div style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;margin-top:6px;">${opsEsc(r.msg)}</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+              <button onclick="opsRecRCerrar()" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+              <button id="ops-recr-btn" onclick="opsRecRGuardar()" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Guardar y usarlo</button>
+            </div></div></div>`;
+    }
+    if (!Object.getOwnPropertyDescriptor(window, "opsRecR")) Object.defineProperty(window, "opsRecR", { get() { return opsRecR; }, configurable: true });
+    window.opsRecRSet = function (t, i, k, v) { const l = t === "mat" ? opsRecR.mat : opsRecR.herr; if (l[i]) l[i][k] = k === "cant" ? Number(v) : v; };
+    window.opsRecRAgregar = function (t) { (t === "mat" ? opsRecR.mat : opsRecR.herr).push(t === "mat" ? { nombre: "", cant: 1, unidad: "pza" } : { descripcion: "", cant: 1 }); opsRecRapidaPintar(); };
+    window.opsRecRQuitar = function (t, i) { (t === "mat" ? opsRecR.mat : opsRecR.herr).splice(i, 1); opsRecRapidaPintar(); };
+    window.opsRecRCerrar = function () { opsRecR = null; const w = document.getElementById("ops-modal-wrap2"); if (w) w.innerHTML = ""; };
+    window.opsRecRGuardar = async function () {
+        const r = opsRecR; if (!r) return;
+        const nombre = String(r.nombre || "").trim();
+        if (!nombre) { r.msg = "Escribe el nombre del servicio."; opsRecRapidaPintar(); return; }
+        if (cacheServiciosCatalogo.some(x => opsAsNorm(x.nombre) === opsAsNorm(nombre))) { r.msg = "Ya existe un servicio con ese nombre en el catálogo: búscalo en la lista."; opsRecRapidaPintar(); return; }
+        const btn = document.getElementById("ops-recr-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const id = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-" + Date.now().toString(36);
+        const datos = {
+            nombre, categoria: String(r.categoria || "").trim(), tipoServicio: "ambos", activo: true,
+            requiereObraCivil: false, requiereVehiculo: true, requiereRemolque: false,
+            personal: [{ rol: "tecnico", cantidad: Math.max(1, Number(r.tecnicos) || 1) }],
+            duracionHoras: Number(r.horas) || null,
+            materiales: r.mat.filter(x => String(x.nombre || "").trim() && Number(x.cant) > 0).map(x => ({ nombre: String(x.nombre).trim(), cantidadBase: Number(x.cant), unidad: String(x.unidad || "pza").trim() || "pza", costoUnitario: 0 })),
+            herramientaRequerida: r.herr.filter(x => String(x.descripcion || "").trim()).map(x => ({ descripcion: String(x.descripcion).trim(), cantidad: Number(x.cant) || 1 })),
+            equipoSeguridad: [], requisitosTecnicos: String(r.nota || "").trim() || null,
+            vehiculos: { sugerido: { nombre: "", razon: "" }, alternos: [] },
+            origenImportacion: "Alta rápida desde la programación", fechaAlta: opsHoy(), creadoPor: opsNombreActual(),
+        };
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), datos);
+            fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO, id, "historial"), { usuario: opsNombreActual(), usuarioEmail: opsUsuarioActual(), fecha: opsFechaHora(), resumen: "Servicio creado desde la programación" }).catch(() => {});
+            if (!cacheServiciosCatalogo.some(x => x.id === id)) cacheServiciosCatalogo.push({ id, ...datos });
+            window.opsRecRCerrar();
+            if (opsAS) { opsAS.recetaBusca = ""; window.opsAsSet("recetaId", id); if (datos.duracionHoras && !opsAS.dur) { opsAS.dur = datos.duracionHoras; opsAS.durU = "h"; opsAsPintar(); } }
+        } catch (e) { r.msg = "No se pudo guardar: " + (e.message || e); if (btn) { btn.disabled = false; btn.textContent = "Guardar y usarlo"; } opsRecRapidaPintar(); }
+    };
 
     // ── Visita de inspección con VARIAS normas (oct-2026) ──
     // Glen: al dar de alta una inspección (ej. ASEA) poder programarle en la misma visita otras
@@ -13728,6 +14322,7 @@
             ${mat.length ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Materiales para ${cant} ${cant === 1 ? "unidad" : "unidades"}</div>
             <div class="opsas-list" style="padding:0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">${mat.map(m => `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 10px;color:#334155;">${opsEsc(m.nombre)}${m.nota ? ` <small style="color:#94a3b8;">· ${opsEsc(m.nota)}</small>` : ""}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:700;">${fmtCant(m)} ${opsEsc(m.unidad || "")}</td></tr>`).join("")}</table></div>
             ${matTotal > 0 ? `<div class="opsas-note">Costo estimado de materiales: <strong>$${matTotal.toLocaleString("es-MX", { maximumFractionDigits: 0 })}</strong></div>` : ""}` : ""}
+            ${(mat.length || herr.length > nOk) ? `<label class="opsas-chk" style="margin-top:12px;background:#eef2ff;border-radius:10px;padding:10px 12px;align-items:flex-start;"><input type="checkbox" ${s.pedirAlmacen !== false ? "checked" : ""} onchange="opsAS.pedirAlmacen=this.checked"><span><b>Al guardar, pedir a Almacén</b> ${mat.length ? "los materiales" : ""}${mat.length && herr.length > nOk ? " y " : ""}${herr.length > nOk ? "la herramienta no confirmada" : ""}, listos ${OPS_NEC_HORAS_ANTES} h antes del servicio. Si Almacén no tiene, lo pasa a Compras y te avisa si no llega a tiempo.</span></label>` : ""}
         </div>`;
     }
     window.opsAsTodaHerr = function (on) {
@@ -13874,7 +14469,13 @@
             const avisos = await opsAvisarTecnicosAsignados({ id: nuevo.id, ...datos }, tecs, s.tipo === "programacion" && s.servicios.length ? tipoTxt + " (" + opsProgServiciosTxt(s.servicios) + ")" : tipoTxt);
             const conViaticos = s.viaticos;
             if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
+            if (s.__derivadoId) opsTDLigarAlta(s.__derivadoId, nuevo.id, opsFmtFechaCorta(datos.fechaProgramada));
             opsAvisarVehiculoRequerido(s, nuevo.id);
+            // Material y herramienta de la receta → pedido a Almacén con la fecha en que se necesita (22-oct-2026)
+            if (s.tipo === "receta" && receta && s.pedirAlmacen !== false) {
+                try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
+                catch (err) { console.warn("[Alta servicio] pedido a Almacén:", err); alert("El servicio se guardó, pero no se pudo mandar el pedido de material a Almacén: " + (err.message || err) + "\nPídelo desde el servicio → Material y herramienta."); }
+            }
             // Servicio programado en una plaza foránea: aviso a su responsable (Etapa plazas, oct-2026)
             if (s.plaza && s.plaza !== "Chihuahua" && window.tcNotificarEvento) {
                 const quien = opsAsTecsElegidos().map(id => (cacheTec.find(t => t.id === id) || {}).nombre).filter(Boolean).join(", ");
