@@ -8749,6 +8749,7 @@
             const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
             if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
             if (cobroSi && !document.getElementById("opsrev-cotizacion").value.trim()) falta.push("número de cotización de Aspel (se cobró algo)");
+            if (opsDictAplica(f) && !((f.dictamen || {}).folio && (f.dictamen || {}).pdf && (f.dictamen || {}).firmadoPor)) falta.push("dictamen ASEA / Anexo 21 y 22 (folio, firma del cliente y PDF) — se captura en el servicio");
             try {
                 const { db, fs } = await opsGetFB();
                 const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, id, "evidencias"));
@@ -9521,6 +9522,7 @@
                     </div>` : ""}`, ico.ruta)}
 
                 <div id="ops-panel-material" data-folio="${f.id}"></div>
+                <div id="ops-panel-extra" data-folio="${f.id}"></div>
                 <div id="ops-panel-viaticos" data-folio="${f.id}" ${opsAccPuedeVer("viaticos") ? "" : 'style="display:none;"'}><div class="opf-sec"><div class="opf-sec-tit">Viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Cargando…</div></div></div>
 
                 ${opsAccVerDinero() && (f.precioServicio || (f.comisiones || []).length) ? sec("Precio y comisiones", `
@@ -9544,6 +9546,7 @@
         opsGarPintarEnPanel(f).catch(e => console.warn("[operaciones.js] garantías en panel:", e.message));
         opsPanelViaticosPintar(f);
         try { opsPanelMaterialPintar(f); } catch (e) { console.warn("[material] panel:", e); }
+        try { opsPanelExtraPintar(f); } catch (e) { console.warn("[dictamen/avión] panel:", e); }
         opsPanelEvidenciasPintar(f);
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
@@ -12964,6 +12967,145 @@
         XLSX.writeFile(wb, `Extraordinarios_${p.nombre.replace(/[^\w]+/g, "_")}_${s.semana}.xlsx`);
     };
 
+
+    // ═══════════════════ REGLAS Y DATOS EXTRA DEL SERVICIO (22-oct-2026, junta Operaciones) ═══════════════════
+    // · Calibración de sonda y termistor SIEMPRE va junta (regla de la junta).
+    // · Servicios ASEA y Anexo 21 y 22: folio del informe/dictamen, firma del cliente y PDF.
+    // · Traslado en avión: se registra el boleto (técnico, fecha, ruta, costo, comprobante) para
+    //   cobrarlo al cliente y para que Pagos/Contabilidad lo vean; no aparta vehículo.
+    function opsSondaReceta() { return cacheServiciosCatalogo.find(r => r.activo !== false && /sonda/i.test(r.nombre || "") && /termistor/i.test(r.nombre || "")) || null; }
+    function opsSondaIncompleta(nombres) {
+        const t = (nombres || []).join(" | ");
+        const sonda = /calibraci[oó]n[^|]*sonda/i.test(t) || /sonda[^|]*calibraci/i.test(t), term = /termistor/i.test(t);
+        return (sonda && !term) || (term && !sonda);
+    }
+    window.opsAsAvisoSondaHTML = function (modo) {
+        const s = opsAS; if (!s) return "";
+        const nombres = modo === "prog" ? (s.servicios || []).map(x => x.nombre) : [(opsAsReceta() || {}).nombre];
+        if (!opsSondaIncompleta(nombres)) return "";
+        const comb = opsSondaReceta();
+        return `<div class="opsas-note opsas-warn" style="margin-top:8px;"><b>La calibración de sonda y termistor siempre va junta.</b> ${comb ? `<button type="button" onclick="opsAsUsarSondaTermistor('${modo}')" class="opsas-ghost" style="margin-left:6px;padding:3px 9px;font-size:11.5px;">Usar «${opsEsc(comb.nombre)}»</button>` : "Agrega también la del termistor (o la de sonda)."}</div>`;
+    };
+    window.opsAsUsarSondaTermistor = function (modo) {
+        const s = opsAS, comb = opsSondaReceta(); if (!s || !comb) return;
+        if (modo === "prog") {
+            s.servicios = (s.servicios || []).filter(x => !(/sonda|termistor/i.test(x.nombre || "")));
+            s.servicios.push({ clave: "rec:" + comb.id, tipo: "receta", id: comb.id, nombre: comb.nombre, horas: Number(comb.horasEjecucion) || 0, grupo: comb.categoria || "Catálogo", cantidad: 1 });
+            opsAsPintar();
+        } else window.opsAsSet("recetaId", comb.id);
+    };
+
+    // ── Dictamen ASEA / Anexo 21 y 22 ──
+    const OPS_DICT_EDITAN = ["d.gutierrez@tecnocontrol.com.mx"]; // Gestoría también lo captura
+    function opsDictAplica(f) {
+        if (!f) return false;
+        const r = f.servicioCatalogoId ? cacheServiciosCatalogo.find(x => x.id === f.servicioCatalogoId) : null;
+        const t = [f.normaInspeccion, (f.normasInspeccion || f.normasVisita || []).join(" "), f.categoriaServicio, r && r.nombre, (f.serviciosProgramados || []).map(x => x && x.nombre).join(" "), f.tipoServicioDemo].filter(Boolean).join(" ");
+        return /\bASEA\b|anexo\s*21|anexo\s*22/i.test(t);
+    }
+    function opsDictEdita() { return opsPuedeGestionar() || OPS_DICT_EDITAN.includes(String(opsUsuarioActual() || "").toLowerCase()); }
+    function opsPanelExtraPintar(f) {
+        const el = document.getElementById("ops-panel-extra"); if (!el || el.dataset.folio !== f.id) return;
+        let html = "";
+        if (opsDictAplica(f)) {
+            const d = f.dictamen || {};
+            html += `<div class="opf-sec"><div class="opf-sec-tit">Dictamen / informe (ASEA · Anexo 21 y 22)</div>
+                <div style="font-size:12px;color:#334155;line-height:1.6;">Folio del informe: <b>${opsEsc(d.folio || "—")}</b>${d.fecha ? " · " + opsEsc(opsFmtFechaCorta(d.fecha)) : ""}<br>
+                Firma del cliente: ${d.firmadoPor ? "<b>" + opsEsc(d.firmadoPor) + "</b>" + (d.firmaRuta ? " · firma en archivo" : "") : '<span style="color:#b45309;font-weight:700;">pendiente</span>'}<br>
+                PDF del dictamen: ${d.pdf ? `<a href="#" onclick="event.preventDefault();opsDictVerPdf('${f.id}')" style="color:#1D2E73;font-weight:700;">Ver PDF</a>` : '<span style="color:#b45309;font-weight:700;">pendiente</span>'}</div>
+                ${opsDictEdita() ? `<button onclick="opsDictAbrir('${f.id}')" style="margin-top:6px;border:1px solid #1D2E73;background:#fff;color:#1D2E73;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer;">${d.folio ? "Editar" : "Capturar"} dictamen</button>` : ""}</div>`;
+        }
+        const bol = f.boletosAvion || [];
+        if (bol.length || f.requiereAvion || opsPuedeGestionar()) {
+            html += `<div class="opf-sec"><div class="opf-sec-tit">Traslado en avión</div>
+                ${f.requiereAvion && !bol.length ? `<div style="font-size:11.5px;color:#b45309;font-weight:700;margin-bottom:6px;">Este servicio requiere avión y aún no se registra el boleto.</div>` : ""}
+                ${bol.map((b, i) => `<div style="border:1px solid #e2e8f0;border-radius:9px;padding:7px 10px;margin-bottom:6px;font-size:12px;color:#334155;"><b>${opsEsc(b.tecnico || "")}</b> · ${opsEsc(opsFmtFechaCorta(b.fecha))} · ${opsEsc(b.ruta || "")} · <b>${opsDinero(b.costo)}</b>${b.cobrarCliente ? ' · <span style="color:#15803d;font-weight:700;">se cobra al cliente</span>' : ""}${b.reservacion ? "<br>Reservación: " + opsEsc(b.reservacion) : ""}${b.comprobante ? ` · <a href="#" onclick="event.preventDefault();opsBoletoVer('${f.id}',${i})" style="color:#1D2E73;font-weight:700;">comprobante</a>` : ""}</div>`).join("")}
+                ${opsPuedeGestionar() ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${!f.requiereAvion && !bol.length ? `<button onclick="opsAvionRequiere('${f.id}')" style="border:1px solid #0369a1;background:#fff;color:#0369a1;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer;">Este servicio requiere avión</button>` : ""}<button onclick="opsBoletoAbrir('${f.id}')" style="border:none;background:#0369a1;color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer;">Registrar boleto comprado</button></div>` : ""}</div>`;
+        }
+        el.innerHTML = html;
+    }
+    async function opsSubirArchivo(carpeta, file) {
+        const sb = await opsSb();
+        const ext = (String(file.name || "").split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const ruta = carpeta + "/" + Date.now() + "." + ext;
+        const r = await sb.storage.from("ops-evidencias").upload(ruta, file, { contentType: file.type || undefined, upsert: false });
+        if (r.error) throw r.error;
+        return { bucket: "ops-evidencias", ruta, nombre: file.name || null, tipo: file.type || null };
+    }
+    window.opsDictVerPdf = async function (id) { const f = cacheFolios.find(x => x.id === id); if (!f || !f.dictamen || !f.dictamen.pdf) return; try { window.open(await opsUrlFirmada(f.dictamen.pdf.bucket, f.dictamen.pdf.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
+    window.opsBoletoVer = async function (id, i) { const f = cacheFolios.find(x => x.id === id); const b = f && (f.boletosAvion || [])[i]; if (!b || !b.comprobante) return; try { window.open(await opsUrlFirmada(b.comprobante.bucket, b.comprobante.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
+    function opsMiniModal(titulo, cuerpo, onGuardar) {
+        let w = document.getElementById("ops-modal-wrap2"); if (!w) { w = document.createElement("div"); w.id = "ops-modal-wrap2"; document.body.appendChild(w); }
+        w.innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:100002;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#1D2E73;margin-bottom:10px;">${titulo}</div>${cuerpo}
+            <div id="ops-mini-err" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;margin-top:6px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;"><button onclick="document.getElementById('ops-modal-wrap2').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+            <button id="ops-mini-ok" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Guardar</button></div></div></div>`;
+        const btn = document.getElementById("ops-mini-ok");
+        btn.onclick = async () => { const err = document.getElementById("ops-mini-err"); err.textContent = ""; btn.disabled = true; btn.textContent = "Guardando…"; try { const ok = await onGuardar(err); if (ok !== false) w.innerHTML = ""; else { btn.disabled = false; btn.textContent = "Guardar"; } } catch (e) { err.textContent = "No se pudo guardar: " + (e.message || e); btn.disabled = false; btn.textContent = "Guardar"; } };
+    }
+    const OPS_MINI_IN = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin:3px 0 10px;font-family:inherit;";
+    window.opsDictAbrir = function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return; const d = f.dictamen || {};
+        opsMiniModal("Dictamen / informe · " + opsEsc(f.estacion || ""), `
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Folio del informe o dictamen *</label><input id="dict-folio" value="${opsEsc(d.folio || "")}" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha del dictamen</label><input id="dict-fecha" type="date" value="${opsEsc(d.fecha || opsCalFechaISO(new Date()))}" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Nombre de quien firmó por el cliente *</label><input id="dict-firma" value="${opsEsc(d.firmadoPor || "")}" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Hoja firmada por el cliente (foto o PDF, opcional)</label><input id="dict-firmafile" type="file" accept="image/*,application/pdf" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">PDF del dictamen ${d.pdf ? "(ya hay uno; sube otro solo para reemplazarlo)" : "*"}</label><input id="dict-pdf" type="file" accept="application/pdf" style="${OPS_MINI_IN}">`,
+            async err => {
+                const folio = document.getElementById("dict-folio").value.trim(), firm = document.getElementById("dict-firma").value.trim();
+                const pdfF = document.getElementById("dict-pdf").files[0], firmaF = document.getElementById("dict-firmafile").files[0];
+                if (!folio) { err.textContent = "Escribe el folio del informe."; return false; }
+                if (!firm) { err.textContent = "Escribe quién firmó por el cliente."; return false; }
+                if (!pdfF && !d.pdf) { err.textContent = "Adjunta el PDF del dictamen."; return false; }
+                const nuevo = { ...d, folio, fecha: document.getElementById("dict-fecha").value || null, firmadoPor: firm, por: opsNombreActual(), en: new Date().toISOString() };
+                if (pdfF) nuevo.pdf = await opsSubirArchivo("dictamenes/" + id, pdfF);
+                if (firmaF) { const a = await opsSubirArchivo("dictamenes/" + id + "/firma", firmaF); nuevo.firmaRuta = a.ruta; nuevo.firmaArchivo = a; }
+                const { db, fs } = await opsGetFB();
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { dictamen: nuevo });
+                fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: `[Dictamen] Folio ${folio} · firmó ${firm}${pdfF ? " · PDF adjunto" : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "dictamen", createdAt: opsFechaHora() }).catch(() => {});
+                f.dictamen = nuevo; opsPanelExtraPintar(f);
+            });
+    };
+    window.opsAvionRequiere = async function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        if (!confirm("¿Marcar que este servicio requiere viaje en avión? Se avisa para comprar el boleto.")) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { requiereAvion: true, requiereAvionPor: opsNombreActual(), requiereAvionEn: new Date().toISOString() });
+            f.requiereAvion = true;
+            if (window.tcNotificarEvento) window.tcNotificarEvento("avion_requerido", { mensaje: `Comprar boleto de avión: ${f.estacion || ""} el ${opsFmtFechaCorta(f.fechaProgramada)} · ${(f.tecnicosAsignadosNombres || []).join(", ") || "técnico por definir"}.`, modulo: "Operaciones", folioId: id }).catch(() => {});
+            opsPanelExtraPintar(f);
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsBoletoAbrir = function (id) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const tecs = (f.tecnicosAsignadosNombres || []).length ? f.tecnicosAsignadosNombres : cacheTec.map(t => t.nombre).filter(Boolean).sort();
+        opsMiniModal("Boleto de avión · " + opsEsc(f.estacion || ""), `
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Técnico *</label><select id="bol-tec" style="${OPS_MINI_IN}">${tecs.map(t => `<option>${opsEsc(t)}</option>`).join("")}</select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha del vuelo *</label><input id="bol-fecha" type="date" value="${opsEsc(String(f.fechaProgramada || "").slice(0, 10))}" style="${OPS_MINI_IN}"></div>
+            <div><label style="font-size:11.5px;font-weight:700;color:#334155;">Costo ($) *</label><input id="bol-costo" type="number" min="0" step="0.01" style="${OPS_MINI_IN}"></div></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Ruta (origen → destino) *</label><input id="bol-ruta" placeholder="Ej. Chihuahua → Mexicali (redondo)" style="${OPS_MINI_IN}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Aerolínea / clave de reservación</label><input id="bol-res" style="${OPS_MINI_IN}">
+            <label style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin-bottom:10px;"><input id="bol-cobrar" type="checkbox" checked> Se le cobra al cliente</label>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Comprobante (PDF o foto)</label><input id="bol-comp" type="file" accept="image/*,application/pdf" style="${OPS_MINI_IN}">`,
+            async err => {
+                const costo = Number(document.getElementById("bol-costo").value), ruta = document.getElementById("bol-ruta").value.trim(), fecha = document.getElementById("bol-fecha").value;
+                if (!fecha || !ruta || !(costo > 0)) { err.textContent = "Faltan fecha, ruta o costo."; return false; }
+                const comp = document.getElementById("bol-comp").files[0];
+                const b = { tecnico: document.getElementById("bol-tec").value, fecha, ruta, costo, reservacion: document.getElementById("bol-res").value.trim() || null, cobrarCliente: document.getElementById("bol-cobrar").checked, por: opsNombreActual(), en: new Date().toISOString() };
+                if (comp) b.comprobante = await opsSubirArchivo("boletos/" + id, comp);
+                const lista = (f.boletosAvion || []).concat([b]);
+                const { db, fs } = await opsGetFB();
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { boletosAvion: lista, requiereAvion: true, trasladoAereo: true });
+                fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: `[Avión] Boleto de ${b.tecnico} · ${ruta} · ${opsFmtFechaCorta(fecha)} · ${opsDinero(costo)}${b.cobrarCliente ? " · se cobra al cliente" : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "viaticos", createdAt: opsFechaHora() }).catch(() => {});
+                if (window.tcNotificarEvento) window.tcNotificarEvento("boleto_avion", { mensaje: `Boleto de avión comprado: ${b.tecnico} · ${ruta} · ${opsFmtFechaCorta(fecha)} · ${opsDinero(costo)} · servicio ${f.estacion || ""}${b.cobrarCliente ? " (se cobra al cliente)" : ""}.`, modulo: "Operaciones", folioId: id }).catch(() => {});
+                f.boletosAvion = lista; f.requiereAvion = true; opsPanelExtraPintar(f);
+            });
+    };
+
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
     // Glen: "cada tipo de servicio requiere cierta información, cierta herramienta, ciertos
     // vehículos, ciertos técnicos — esas necesidades son lo que debe capturarse al dar de alta".
@@ -13441,7 +13583,7 @@
         const lista = cacheServiciosCatalogo.filter(r => r.activo !== false && opsAsNorm([r.nombre, r.categoria].join(" ")).includes(opsAsNorm(s.recetaBusca))).sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
         const btnNuevo = opsPuedeCrear("servicios") || opsPuedeGestionar() ? `<button type="button" onclick="opsRecRapidaAbrir()" style="border:1.5px dashed #1D2E73;background:#fff;color:#1D2E73;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">+ Dar de alta un servicio nuevo</button>` : "";
         if (!lista.length) return `<div class="opsas-note">No hay servicios con ese nombre.</div>${btnNuevo}`;
-        return `<div style="display:flex;flex-wrap:wrap;gap:7px;">${btnNuevo}${lista.map(r => `<button type="button" onclick="opsAsSet('recetaId','${r.id}')" style="border:1.5px solid ${s.recetaId === r.id ? "#1D2E73" : "#e2e8f0"};background:${s.recetaId === r.id ? "#1D2E73" : "#fff"};color:${s.recetaId === r.id ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${opsEsc(r.nombre)}</button>`).join("")}</div>`;
+        return window.opsAsAvisoSondaHTML("receta") + `<div style="display:flex;flex-wrap:wrap;gap:7px;">${btnNuevo}${lista.map(r => `<button type="button" onclick="opsAsSet('recetaId','${r.id}')" style="border:1.5px solid ${s.recetaId === r.id ? "#1D2E73" : "#e2e8f0"};background:${s.recetaId === r.id ? "#1D2E73" : "#fff"};color:${s.recetaId === r.id ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">${opsEsc(r.nombre)}</button>`).join("")}</div>`;
     }
     window.opsAsRecetasHTML = opsAsRecetasHTML;
     // ── Alta rápida de un servicio en el catálogo SIN salir de la programación (22-oct-2026) ──
@@ -13835,7 +13977,7 @@
                 <div class="opsas-note">En Solo programación no se captura precio ni se le cobran materiales o gastos al cliente.</div>
             </div>`;
     }
-    window.opsAsProgChipsHTML = function () { return opsAS ? opsProgChipsHTML(opsAS.servicios, opsAS.servBusca, "opsAsProgToggle") : ""; };
+    window.opsAsProgChipsHTML = function () { return opsAS ? opsProgChipsHTML(opsAS.servicios, opsAS.servBusca, "opsAsProgToggle") + window.opsAsAvisoSondaHTML("prog") : ""; };
     function opsAsProgAutoDur() {
         const s = opsAS; if (!s || s.durManual) return;
         const h = opsProgHoras(s.servicios);
