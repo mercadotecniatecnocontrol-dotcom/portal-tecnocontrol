@@ -2168,17 +2168,19 @@
         catalogo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
+        comisiones: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5"/><path d="M12 6.5v11"/></svg>',
+        vehiculos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="14" height="10" rx="1"/><path d="M15 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
         gestionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6l1 14h12l1-14"/><path d="M10 11l2 2 3-4"/></svg>',
     };
 
     function opsRenderShell() {
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
-        const items = ["calendario:Calendario", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
+        const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "revision:Revisión de cierres", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; return opsAccPuedeVer(id === "gestionados" ? "calendario" : id === "revision" ? "folios" : id); })
+            "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "revision" ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2239,6 +2241,8 @@
         else if (tab === "movimientos") opsRenderMovimientos();
         else if (tab === "gestionados") opsRenderGestionados();
         else if (tab === "viaticos") opsRenderViaticos();
+        else if (tab === "comisiones") opsRenderComisiones();
+        else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
         else if (tab === "vencimientos") opsRenderVencimientos();
@@ -11632,6 +11636,585 @@
                 `Servicio FINALIZADO · ${f.estacion}: comisiones listas para pago — ${f.comisiones.map(c => c.nombre + " " + opsDinero(c.monto)).join(", ")}. Total ${opsDinero(total)}.`, f.id);
         } catch (e) { console.warn("[Comisiones] al finalizar:", e.message || e); }
     }
+
+
+    // ═══════════════════ PANEL DE COMISIONES (22-oct-2026, Glen: urge para fin de mes) ═══════════════════
+    // Todo lo que se hizo en el periodo, por técnico, con su justificación (servicio terminado,
+    // O.S., revisión de cierre, evidencias). Flujo acordado: se calcula → Paloma autoriza →
+    // pasa a Pagos con copia a Cristy → Pagos marca pagada. Nada se borra: cada cambio queda
+    // en el historial de la fila. Los trabajos atrasados de Connecteam se importan desde su
+    // Excel exportado, sin duplicar. Los montos NO se inventan: los captura quien importa o
+    // vienen de lo que se registró al dar de alta el servicio.
+    const OPS_COM_AUTORIZAN = ["p.pinedo@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx"];
+    const OPS_COM_PAGAN = ["pagos@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx"];
+    const OPS_COM_AVISO_AUTORIZADAS = ["pagos@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx"];
+    const OPS_COM_AVISO_POR_AUTORIZAR = ["p.pinedo@tecnocontrol.com.mx"];
+    const OPS_COM_EST = {
+        pendiente: ["Servicio sin terminar", "#64748b", "#f1f5f9"],
+        por_pagar: ["Por autorizar", "#b45309", "#fef3c7"],
+        autorizada: ["Autorizada · en Pagos", "#1d4ed8", "#dbeafe"],
+        pagada: ["Pagada", "#15803d", "#dcfce7"],
+        rechazada: ["Rechazada", "#b91c1c", "#fee2e2"],
+    };
+    function opsComCorreo() { return String(opsUsuarioActual() || "").toLowerCase().trim(); }
+    function opsComVer() { const c = opsComCorreo(); return opsAccEsAdminPortal() || opsAccVerDinero("comisiones") || OPS_COM_PAGAN.includes(c) || OPS_COM_AUTORIZAN.includes(c) || c === MIGUEL_EMAIL; }
+    function opsComEdita() { const c = opsComCorreo(); return opsAccEsAdminPortal() || c === MIGUEL_EMAIL || (opsPuedeHacer("admin_operaciones") && opsAccVerDinero("comisiones")); }
+    function opsComAutoriza() { return opsAccEsAdminPortal() || OPS_COM_AUTORIZAN.includes(opsComCorreo()); }
+    function opsComPaga() { return opsAccEsAdminPortal() || OPS_COM_PAGAN.includes(opsComCorreo()); }
+    let opsCom = null;
+    function opsComEstado() {
+        if (!opsCom) {
+            const h = new Date(), ini = new Date(h.getFullYear(), h.getMonth(), 1), fin = new Date(h.getFullYear(), h.getMonth() + 1, 0);
+            opsCom = { desde: opsCalFechaISO(ini), hasta: opsCalFechaISO(fin), tecnico: "todos", estatus: "activas", plaza: "todas", q: "", sel: new Set(), lista: [], cargando: false, error: "", clave: "" };
+        }
+        return opsCom;
+    }
+    async function opsComCargar(forzar) {
+        const s = opsComEstado(), clave = s.desde + "|" + s.hasta;
+        if (s.cargando || (!forzar && clave === s.clave)) return;
+        s.cargando = true; s.error = "";
+        try {
+            const sb = await opsSb();
+            let todo = [], desde = 0;
+            for (let i = 0; i < 20; i++) {
+                const { data, error } = await sb.from("ops_comisiones").select("*").gte("fecha_servicio", s.desde).lte("fecha_servicio", s.hasta).order("fecha_servicio").range(desde, desde + 999);
+                if (error) throw error;
+                todo = todo.concat(data || []); if (!data || data.length < 1000) break; desde += 1000;
+            }
+            s.lista = todo; s.clave = clave; s.sel = new Set();
+        } catch (e) { s.error = e.message || String(e); console.warn("[comisiones]", e); }
+        finally { s.cargando = false; }
+        if (tabActual === "comisiones") opsRenderComisiones();
+    }
+    // Justificación de cada comisión: lo que respalda que se pague.
+    function opsComJustif(c) {
+        const k = c.checklist || {};
+        if (k.origen === "connecteam") {
+            const ok = k.concluyo == null ? null : /^(s[ií]|yes|true|1)/i.test(String(k.concluyo));
+            return { ok: ok !== false, chips: [["Connecteam" + (k.ref ? " #" + k.ref : ""), "#0369a1"], k.os ? ["O.S. " + k.os, "#334155"] : null, ok === null ? ["Sin dato de conclusión", "#b45309"] : ok ? ["Concluido", "#15803d"] : ["NO concluido", "#b91c1c"]].filter(Boolean), texto: k.descripcion || "" };
+        }
+        if (k.origen === "manual") return { ok: !!k.justificacion, chips: [["Captura manual", "#7c3aed"]], texto: k.justificacion || "" };
+        const f = cacheFolios.find(x => x.id === c.folio_id);
+        if (!f) return { ok: false, chips: [["Servicio no encontrado", "#b91c1c"]], texto: "" };
+        const v = (typeof opsRevUltimaVisita === "function" ? opsRevUltimaVisita(f) : null) || {}, ev = v.evidencias || {};
+        const rev = (f.revisionCierre || {}).estatus;
+        const chips = [
+            f.fechaSolucion ? ["Terminado " + opsFmtFechaCorta(f.fechaSolucion), "#15803d"] : f.cancelado ? ["Servicio CANCELADO", "#b91c1c"] : ["Sin terminar", "#b45309"],
+            opsRevOS(f) ? ["O.S. " + opsRevOS(f), "#334155"] : ["Sin O.S.", "#b45309"],
+            rev === "revisado" ? ["Cierre DONE", "#15803d"] : rev === "en_revision" ? ["Cierre WORKING ON IT", "#1d4ed8"] : ["Cierre sin revisar", "#b45309"],
+            (ev.fotos || ev.documentos) ? [(ev.documentos || 0) + " O.S. · " + (ev.fotos || 0) + " fotos" + (ev.videos ? " · video" : ""), "#334155"] : null,
+        ].filter(Boolean);
+        return { ok: !!f.fechaSolucion && !f.cancelado, chips, texto: v.detalle || f.comentarios || "", folio: f };
+    }
+    function opsComFiltradas() {
+        const s = opsComEstado(), partes = opsNormalizaTexto(s.q).split(" ").filter(Boolean);
+        return s.lista.filter(c => s.tecnico === "todos" || (c.tecnico_nombre || "") === s.tecnico)
+            .filter(c => s.plaza === "todas" || (c.plaza || "Sin plaza") === s.plaza)
+            .filter(c => s.estatus === "todas" ? true : s.estatus === "activas" ? c.estatus !== "rechazada" : c.estatus === s.estatus)
+            .filter(c => !partes.length || partes.every(p => opsNormalizaTexto([c.tecnico_nombre, c.estacion, c.servicio_nombre, c.concepto, (c.checklist || {}).os, (c.checklist || {}).ref, c.notas].join(" ")).includes(p)))
+            .sort((a, b) => String(a.tecnico_nombre || "").localeCompare(String(b.tecnico_nombre || ""), "es") || String(a.fecha_servicio || "").localeCompare(String(b.fecha_servicio || "")));
+    }
+    function opsRenderComisiones() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsComVer()) { el.innerHTML = `<div style="padding:30px;color:#64748b;">Tu usuario no tiene acceso a comisiones.</div>`; return; }
+        const s = opsComEstado(); opsComCargar(false);
+        const lista = opsComFiltradas(), sum = l => l.reduce((a, c) => a + (Number(c.monto) || 0), 0);
+        const tecs = [...new Set(s.lista.map(c => c.tecnico_nombre || "Sin nombre"))].sort((a, b) => a.localeCompare(b, "es"));
+        const plazas = [...new Set(s.lista.map(c => c.plaza || "Sin plaza"))].sort();
+        const porEst = k => lista.filter(c => c.estatus === k);
+        const pendTerminados = s.lista.filter(c => c.estatus === "pendiente" && (cacheFolios.find(f => f.id === c.folio_id) || {}).fechaSolucion);
+        const sel = (k, ops, w) => `<select id="ops-com-${k}" onchange="opsComSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;${w ? "max-width:" + w : ""}">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
+        const kpi = (t, n, m, col) => `<div style="background:#fff;border:1px solid #e2e8f0;border-top:3px solid ${col};border-radius:12px;padding:11px 13px;"><div style="font-size:18px;font-weight:800;color:#1e293b;">${opsDinero(m)}</div><div style="font-size:10.5px;color:#64748b;">${t} · ${n}</div></div>`;
+        // Resumen por técnico
+        const porTec = new Map();
+        lista.forEach(c => { const k = c.tecnico_nombre || "Sin nombre"; const r = porTec.get(k) || { n: 0, pend: 0, porAut: 0, aut: 0, pag: 0, total: 0 }; const m = Number(c.monto) || 0; r.n++; r.total += c.estatus === "rechazada" ? 0 : m; if (c.estatus === "pendiente") r.pend += m; if (c.estatus === "por_pagar") r.porAut += m; if (c.estatus === "autorizada") r.aut += m; if (c.estatus === "pagada") r.pag += m; porTec.set(k, r); });
+        const btn = (txt, fn, bg, col, dis) => `<button ${dis ? "disabled" : ""} onclick="${fn}" style="border:none;background:${dis ? "#e2e8f0" : bg};color:${dis ? "#94a3b8" : col || "#fff"};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:800;cursor:${dis ? "not-allowed" : "pointer"};">${txt}</button>`;
+        const nSel = s.sel.size;
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:14px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start;">
+                <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Comisiones</div>
+                <div style="font-size:11.5px;color:#64748b;max-width:680px;line-height:1.45;">Todo lo que se hizo en el periodo, por técnico y con su justificación. Paso a paso: <b>1)</b> el servicio se termina → queda <b>Por autorizar</b>; <b>2)</b> Paloma revisa y <b>autoriza</b> → le llega a Pagos con copia a Cristy; <b>3)</b> Pagos deposita y lo marca <b>Pagada</b>.</div></div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    ${opsComEdita() ? btn("Importar de Connecteam", "opsComAbrirImport()", "#0369a1") + btn("Agregar comisión", "opsComAbrirManual()", "#7c3aed") : ""}
+                    ${btn("Excel", "opsComExcel()", "#eef2f7", "#1f2937")}${btn("PDF del periodo", "opsComPdf()", "#1D2E73")}
+                </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;">
+                <span style="font-size:12px;color:#64748b;">Periodo del</span><input type="date" value="${s.desde}" onchange="opsComSet('desde',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">
+                <span style="font-size:12px;color:#64748b;">al</span><input type="date" value="${s.hasta}" onchange="opsComSet('hasta',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">
+                ${sel("tecnico", [["todos", "Todos los técnicos"], ...tecs.map(t => [t, t])], "220px")}
+                ${sel("estatus", [["activas", "Todas (sin rechazadas)"], ...Object.entries(OPS_COM_EST).map(([k, v]) => [k, v[0]]), ["todas", "Todas, con rechazadas"]])}
+                ${sel("plaza", [["todas", "Todas las plazas"], ...plazas.map(p => [p, p])])}
+                <input id="ops-com-q" type="search" autocomplete="off" value="${opsEsc(s.q)}" oninput="opsComBuscar(this.value)" placeholder="Buscar estación, O.S., concepto…" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:220px;">
+                <button onclick="opsComCargar(true)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:12px;font-weight:700;">Actualizar</button>
+            </div>
+            ${s.error ? `<div style="color:#b91c1c;font-size:12px;margin-top:8px;">No se pudieron cargar: ${opsEsc(s.error)}</div>` : ""}
+            ${s.cargando ? `<div style="color:#94a3b8;font-size:12px;margin-top:8px;">Cargando…</div>` : ""}
+            ${pendTerminados.length && opsComEdita() ? `<div style="display:flex;gap:10px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin-top:10px;font-size:12px;color:#92400e;"><div style="flex:1;"><b>${pendTerminados.length}</b> comisión(es) siguen como "Servicio sin terminar" aunque su servicio ya se terminó.</div>${btn("Pasarlas a Por autorizar", "opsComSincronizar()", "#b45309")}</div>` : ""}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
+            ${kpi("Sin terminar", porEst("pendiente").length, sum(porEst("pendiente")), "#64748b")}
+            ${kpi("Por autorizar", porEst("por_pagar").length, sum(porEst("por_pagar")), "#b45309")}
+            ${kpi("Autorizadas (en Pagos)", porEst("autorizada").length, sum(porEst("autorizada")), "#1d4ed8")}
+            ${kpi("Pagadas", porEst("pagada").length, sum(porEst("pagada")), "#15803d")}
+            ${kpi("Total del periodo", lista.filter(c => c.estatus !== "rechazada").length, sum(lista.filter(c => c.estatus !== "rechazada")), "#1D2E73")}
+        </div>
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px 16px;margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:800;color:#1e293b;margin-bottom:8px;">Resumen por técnico</div>
+            <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.3px;">
+                <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:7px 9px;">Técnico</th><th style="padding:7px 9px;text-align:right;">Trabajos</th><th style="padding:7px 9px;text-align:right;">Sin terminar</th><th style="padding:7px 9px;text-align:right;">Por autorizar</th><th style="padding:7px 9px;text-align:right;">Autorizado</th><th style="padding:7px 9px;text-align:right;">Pagado</th><th style="padding:7px 9px;text-align:right;">Total</th></tr></thead>
+                <tbody>${(window.__opsComTecs = [...porTec.keys()], [...porTec.entries()]).map(([t, r], i) => `<tr title="Ver solo a este técnico" style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="opsComSet('tecnico', window.__opsComTecs[${i}])"><td style="padding:7px 9px;font-weight:700;">${opsEsc(t)}</td><td style="padding:7px 9px;text-align:right;">${r.n}</td><td style="padding:7px 9px;text-align:right;color:#64748b;">${opsDinero(r.pend)}</td><td style="padding:7px 9px;text-align:right;color:#b45309;">${opsDinero(r.porAut)}</td><td style="padding:7px 9px;text-align:right;color:#1d4ed8;">${opsDinero(r.aut)}</td><td style="padding:7px 9px;text-align:right;color:#15803d;">${opsDinero(r.pag)}</td><td style="padding:7px 9px;text-align:right;font-weight:800;">${opsDinero(r.total)}</td></tr>`).join("") || `<tr><td colspan="7" style="padding:16px;text-align:center;color:#94a3b8;">Sin comisiones en este periodo.</td></tr>`}</tbody>
+            </table></div>
+        </div>
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:14px 16px;">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:800;color:#1e293b;flex:1;">Detalle (${lista.length})${nSel ? ` · <span style="color:#1D2E73;">${nSel} seleccionada(s) · ${opsDinero(sum(lista.filter(c => s.sel.has(c.id))))}</span>` : ""}</div>
+                ${opsComAutoriza() ? btn("Autorizar seleccionadas", "opsComAccionLote('autorizar')", "#1d4ed8", "#fff", !nSel) : ""}
+                ${opsComPaga() ? btn("Marcar pagadas", "opsComAccionLote('pagar')", "#15803d", "#fff", !nSel) : ""}
+                ${opsComAutoriza() ? btn("Rechazar", "opsComAccionLote('rechazar')", "#fee2e2", "#b91c1c", !nSel) : ""}
+            </div>
+            <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.2px;">
+                <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
+                    <th style="padding:8px;"><input type="checkbox" onchange="opsComSelTodas(this.checked)" ${lista.length && lista.every(c => s.sel.has(c.id)) ? "checked" : ""}></th>
+                    <th style="padding:8px;">Fecha</th><th style="padding:8px;">Técnico</th><th style="padding:8px;">Servicio / estación</th><th style="padding:8px;">Concepto</th><th style="padding:8px;">Justificación</th><th style="padding:8px;text-align:right;">Monto</th><th style="padding:8px;">Estatus</th><th style="padding:8px;"></th></tr></thead>
+                <tbody>${lista.map(c => {
+                    const j = opsComJustif(c), e = OPS_COM_EST[c.estatus] || [c.estatus, "#334155", "#f1f5f9"];
+                    const f = j.folio;
+                    return `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;${j.ok ? "" : "background:#fffbeb;"}">
+                        <td style="padding:8px;"><input type="checkbox" ${s.sel.has(c.id) ? "checked" : ""} onchange="opsComSel('${c.id}',this.checked)"></td>
+                        <td style="padding:8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(c.fecha_servicio))}</td>
+                        <td style="padding:8px;font-weight:700;">${opsEsc(c.tecnico_nombre || "")}${c.tecnico_id ? "" : '<div style="font-size:10px;color:#b45309;font-weight:700;">No ligado a su ficha</div>'}</td>
+                        <td style="padding:8px;">${opsEsc(c.servicio_nombre || "Servicio")}<div style="font-size:11px;color:#64748b;">${opsEsc(c.estacion || "")}${c.plaza ? " · " + opsEsc(c.plaza) : ""}</div>${f ? `<a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="font-size:11px;color:#1D2E73;font-weight:700;">Ver servicio</a>` : ""}</td>
+                        <td style="padding:8px;">${opsEsc(c.concepto || "—")}${c.tipo === "porcentaje" ? `<div style="font-size:10.5px;color:#64748b;">${opsEsc(c.valor)} %</div>` : ""}</td>
+                        <td style="padding:8px;max-width:300px;"><div style="display:flex;flex-wrap:wrap;gap:4px;">${j.chips.map(([t, col]) => `<span style="font-size:10px;font-weight:800;color:${col};background:${col}14;border:1px solid ${col}44;border-radius:6px;padding:1px 6px;">${opsEsc(t)}</span>`).join("")}</div>${j.texto ? `<div style="font-size:11px;color:#475569;margin-top:3px;">${opsEsc(String(j.texto).slice(0, 140))}</div>` : ""}${c.notas ? `<div style="font-size:11px;color:#7c3aed;margin-top:3px;">Nota: ${opsEsc(c.notas)}</div>` : ""}</td>
+                        <td style="padding:8px;text-align:right;font-weight:800;white-space:nowrap;">${opsDinero(c.monto)}</td>
+                        <td style="padding:8px;"><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:3px 8px;white-space:nowrap;">${opsEsc(e[0])}</span>${c.pagado_en ? `<div style="font-size:10px;color:#64748b;margin-top:3px;">${opsEsc(opsFmtFechaCorta(c.pagado_en))}</div>` : ""}</td>
+                        <td style="padding:8px;white-space:nowrap;"><button onclick="opsComVerHistorial('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Historial</button>${opsComEdita() && c.estatus !== "pagada" ? ` <button onclick="opsComEditarMonto('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Editar</button>` : ""}</td>
+                    </tr>`;
+                }).join("") || `<tr><td colspan="9" style="padding:20px;text-align:center;color:#94a3b8;">Sin comisiones con estos filtros.</td></tr>`}</tbody>
+            </table></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Las filas en amarillo no tienen justificación completa (servicio sin terminar, cancelado o no concluido). Revísalas antes de autorizar.</div>
+        </div>`;
+    }
+    window.opsRenderComisiones = opsRenderComisiones;
+    window.opsComCargar = opsComCargar;
+    window.opsComSet = function (k, v) { const s = opsComEstado(); s[k] = v; s.sel = new Set(); if (k === "desde" || k === "hasta") opsComCargar(true); else opsRenderComisiones(); };
+    window.opsComBuscar = function (v) { opsComEstado().q = v || ""; opsRerenderConFoco(opsRenderComisiones); };
+    window.opsComSel = function (id, on) { const s = opsComEstado(); if (on) s.sel.add(id); else s.sel.delete(id); opsRenderComisiones(); };
+    window.opsComSelTodas = function (on) { const s = opsComEstado(); s.sel = new Set(on ? opsComFiltradas().map(c => c.id) : []); opsRenderComisiones(); };
+    async function opsComActualizar(c, cambios, accion, nota) {
+        const sb = await opsSb();
+        const hist = (Array.isArray(c.historial) ? c.historial : []).concat([{ accion, nota: nota || null, de: c.estatus, a: cambios.estatus || c.estatus, monto: cambios.monto != null ? cambios.monto : undefined, montoAntes: cambios.monto != null ? c.monto : undefined, por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }]);
+        const fila = { ...cambios, historial: hist, actualizado_en: new Date().toISOString(), actualizado_por: opsComCorreo() };
+        const { error } = await sb.from("ops_comisiones").update(fila).eq("id", c.id);
+        if (error) throw error;
+        Object.assign(c, fila);
+    }
+    window.opsComAccionLote = async function (accion) {
+        const s = opsComEstado(), elegidas = s.lista.filter(c => s.sel.has(c.id));
+        if (!elegidas.length) return;
+        let validas = [], nota = null, extra = {};
+        if (accion === "autorizar") {
+            if (!opsComAutoriza()) return;
+            validas = elegidas.filter(c => c.estatus === "por_pagar");
+            const sinJ = validas.filter(c => !opsComJustif(c).ok);
+            const otras = elegidas.length - validas.length;
+            if (!validas.length) { alert("Solo se autorizan las que están \"Por autorizar\"."); return; }
+            if (!confirm(`Autorizar ${validas.length} comisión(es) por ${opsDinero(validas.reduce((a, c) => a + Number(c.monto || 0), 0))}.${otras ? `\n${otras} seleccionada(s) no están "Por autorizar" y se dejan igual.` : ""}${sinJ.length ? `\n\nOJO: ${sinJ.length} no tienen justificación completa (amarillas).` : ""}\n\nSe avisa a Pagos con copia a Cristy. ¿Continuar?`)) return;
+            extra = { estatus: "autorizada" };
+        } else if (accion === "pagar") {
+            if (!opsComPaga()) return;
+            validas = elegidas.filter(c => c.estatus === "autorizada");
+            if (!validas.length) { alert("Solo se marcan pagadas las que ya están autorizadas por Paloma."); return; }
+            nota = prompt(`Marcar ${validas.length} como PAGADA(S) por ${opsDinero(validas.reduce((a, c) => a + Number(c.monto || 0), 0))}.\nReferencia o comentario del depósito (opcional):`, "");
+            if (nota === null) return;
+            extra = { estatus: "pagada", pagado_en: new Date().toISOString(), pagado_por: opsNombreActual() };
+        } else if (accion === "rechazar") {
+            if (!opsComAutoriza()) return;
+            validas = elegidas.filter(c => c.estatus !== "pagada");
+            nota = prompt(`¿Por qué se rechazan ${validas.length} comisión(es)? (obligatorio)`, "");
+            if (!nota || !nota.trim()) return;
+            extra = { estatus: "rechazada" };
+        }
+        let ok = 0, fallas = [];
+        for (const c of validas) { try { await opsComActualizar(c, { ...extra, ...(nota && accion !== "pagar" ? { notas: nota } : {}) }, accion, nota); ok++; } catch (e) { fallas.push(c.tecnico_nombre + ": " + (e.message || e)); } }
+        if (ok && accion === "autorizar") {
+            const porTec = {}; validas.filter(c => c.estatus === "autorizada").forEach(c => { porTec[c.tecnico_nombre] = (porTec[c.tecnico_nombre] || 0) + Number(c.monto || 0); });
+            const txt = `${opsNombreActual()} autorizó comisiones (${s.desde} al ${s.hasta}): ` + Object.entries(porTec).map(([t, m]) => t + " " + opsDinero(m)).join(", ") + `. Total ${opsDinero(Object.values(porTec).reduce((a, b) => a + b, 0))}. Ya están en Operaciones → Comisiones para depositar.`;
+            for (const para of OPS_COM_AVISO_AUTORIZADAS) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comisiones_autorizadas", para, mensaje: txt, modulo: "Operaciones" }); } catch (e) {} }
+        }
+        s.sel = new Set();
+        if (window.tcNotif) window.tcNotif.agregar({ titulo: "Comisiones", texto: `${ok} actualizada(s)${fallas.length ? " · " + fallas.length + " con error" : ""}.`, nivel: fallas.length ? "urgente" : "normal", modulo: "Operaciones" });
+        if (fallas.length) alert("Algunas no se pudieron guardar:\n" + fallas.join("\n"));
+        opsRenderComisiones();
+    };
+    window.opsComSincronizar = async function () {
+        if (!opsComEdita()) return;
+        const s = opsComEstado();
+        const l = s.lista.filter(c => c.estatus === "pendiente" && (cacheFolios.find(f => f.id === c.folio_id) || {}).fechaSolucion);
+        let ok = 0;
+        for (const c of l) { try { await opsComActualizar(c, { estatus: "por_pagar" }, "servicio_terminado", "El servicio ya estaba terminado"); ok++; } catch (e) {} }
+        if (ok) for (const para of OPS_COM_AVISO_POR_AUTORIZAR) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comisiones_por_pagar", para, mensaje: `${ok} comisión(es) quedaron "Por autorizar" en Operaciones → Comisiones.`, modulo: "Operaciones" }); } catch (e) {} }
+        opsRenderComisiones();
+    };
+    window.opsComEditarMonto = async function (id) {
+        if (!opsComEdita()) return;
+        const c = opsComEstado().lista.find(x => x.id === id); if (!c) return;
+        const nuevo = prompt(`Monto de la comisión de ${c.tecnico_nombre} (${c.concepto || ""}). Actual: ${opsDinero(c.monto)}`, c.monto);
+        if (nuevo === null) return;
+        const m = Number(String(nuevo).replace(/[$,\s]/g, ""));
+        if (!(m >= 0)) { alert("Escribe un monto válido."); return; }
+        const motivo = prompt("¿Por qué cambia? (obligatorio, queda en el historial)", "");
+        if (!motivo || !motivo.trim()) return;
+        const cambios = { monto: m, valor: c.tipo === "monto" ? m : c.valor, notas: motivo.trim() };
+        if (c.estatus === "autorizada" && m !== Number(c.monto)) cambios.estatus = "por_pagar"; // si cambia el monto, Paloma lo vuelve a autorizar
+        try { await opsComActualizar(c, cambios, "editar_monto", motivo.trim()); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+        opsRenderComisiones();
+    };
+    window.opsComVerHistorial = function (id) {
+        const c = opsComEstado().lista.find(x => x.id === id); if (!c) return;
+        const h = (Array.isArray(c.historial) ? c.historial : []).slice().reverse();
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.parentNode.innerHTML=''">
+          <div style="background:#fff;border-radius:14px;width:560px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#1D2E73;">${opsEsc(c.tecnico_nombre || "")} · ${opsDinero(c.monto)}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:10px;">${opsEsc(c.servicio_nombre || "")} · ${opsEsc(c.estacion || "")} · ${opsEsc(opsFmtFechaCorta(c.fecha_servicio))} · registrada por ${opsEsc(c.creado_por || "")}</div>
+            ${h.length ? h.map(x => `<div style="border-left:3px solid #1D2E73;padding:5px 10px;margin-bottom:8px;font-size:12px;"><b>${opsEsc(x.accion || "")}</b>${x.de || x.a ? ` · ${opsEsc((OPS_COM_EST[x.de] || [x.de || ""])[0])} → ${opsEsc((OPS_COM_EST[x.a] || [x.a || ""])[0])}` : ""}${x.montoAntes != null ? ` · ${opsDinero(x.montoAntes)} → ${opsDinero(x.monto)}` : ""}<div style="color:#64748b;">${opsEsc(x.por || "")} · ${opsEsc(new Date(x.en).toLocaleString("es-MX"))}</div>${x.nota ? `<div>${opsEsc(x.nota)}</div>` : ""}</div>`).join("") : `<div style="font-size:12px;color:#94a3b8;">Sin movimientos desde que se registró.</div>`}
+            <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="margin-top:6px;border:none;background:#f1f5f9;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700;">Cerrar</button>
+          </div></div>`;
+    };
+    // ── Comisión capturada a mano (trabajos que no pasaron por el portal) ──
+    window.opsComAbrirManual = function () {
+        if (!opsComEdita()) return;
+        const tecs = cacheTec.filter(t => (t.estatus || "activo") !== "baja").sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin:3px 0 10px;font-family:inherit;";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#7c3aed;margin-bottom:4px;">Agregar comisión</div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Para trabajos que no se registraron en el portal. La justificación es obligatoria y queda Por autorizar.</div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Técnico</label><select id="com-m-tec" style="${inp}"><option value="">Elige…</option>${tecs.map(t => `<option value="${opsEsc(t.id)}">${opsEsc(t.nombre || "")}</option>`).join("")}</select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha del trabajo</label><input id="com-m-fecha" type="date" value="${opsCalFechaISO(new Date())}" style="${inp}"></div>
+            <div><label style="font-size:11.5px;font-weight:700;color:#334155;">Monto ($)</label><input id="com-m-monto" type="number" min="0" step="0.01" style="${inp}"></div></div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Servicio</label><input id="com-m-serv" placeholder="Ej. Póliza de mantenimiento / Calibración" style="${inp}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Estación y O.S.</label><input id="com-m-est" placeholder="Ej. Petro Seven Cumbres · O.S. 4362" style="${inp}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Concepto</label><input id="com-m-con" placeholder="Ej. Técnico / Ayudante / Líder" style="${inp}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Justificación (obligatoria)</label><textarea id="com-m-just" rows="3" style="${inp};resize:vertical;" placeholder="Qué se hizo, dónde está la evidencia"></textarea>
+            <div id="com-m-err" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;"><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+            <button onclick="opsComGuardarManual()" style="border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Guardar</button></div>
+          </div></div>`;
+    };
+    window.opsComGuardarManual = async function () {
+        const v = id => (document.getElementById(id) || {}).value || "", err = document.getElementById("com-m-err");
+        const t = opsTecPorId(v("com-m-tec")), monto = Number(v("com-m-monto")), just = v("com-m-just").trim();
+        if (!t) { err.textContent = "Elige al técnico."; return; } if (!(monto > 0)) { err.textContent = "Escribe el monto."; return; } if (!just) { err.textContent = "Escribe la justificación."; return; }
+        const est = v("com-m-est").trim();
+        const fila = { folio_id: "manual:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), tecnico_id: t.id, tecnico_nombre: t.nombre, tecnico_correo: t.correo || null,
+            concepto: v("com-m-con").trim() || null, tipo: "monto", valor: monto, monto, estatus: "por_pagar", servicio_nombre: v("com-m-serv").trim() || null,
+            estacion: est || null, plaza: t.plaza || null, fecha_servicio: v("com-m-fecha"), creado_por: opsComCorreo(),
+            checklist: { origen: "manual", justificacion: just }, historial: [{ accion: "captura_manual", nota: just, a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }] };
+        try {
+            const sb = await opsSb(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
+            document.getElementById("ops-modal-wrap").innerHTML = ""; opsComCargar(true);
+        } catch (e) { err.textContent = "No se pudo guardar: " + (e.message || e); }
+    };
+    // ── Exportar ──
+    window.opsComExcel = function () {
+        if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
+        const s = opsComEstado();
+        const filas = opsComFiltradas().map(c => { const j = opsComJustif(c); return { "Fecha": c.fecha_servicio, "Técnico": c.tecnico_nombre, "Servicio": c.servicio_nombre || "", "Estación": c.estacion || "", "Plaza": c.plaza || "", "Concepto": c.concepto || "", "Monto": Number(c.monto) || 0, "Estatus": (OPS_COM_EST[c.estatus] || [c.estatus])[0], "Justificación": j.chips.map(x => x[0]).join(" · "), "Detalle": j.texto || "", "Pagada el": c.pagado_en ? String(c.pagado_en).slice(0, 10) : "", "Origen": (c.checklist || {}).origen || "portal" }; });
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), "Comisiones");
+        XLSX.writeFile(wb, `Comisiones_${s.desde}_al_${s.hasta}.xlsx`);
+    };
+    window.opsComPdf = function () {
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("La librería de PDF no está cargada. Recarga la página."); return; }
+        const s = opsComEstado(), lista = opsComFiltradas().filter(c => c.estatus !== "rechazada");
+        const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: "mm", format: "letter" });
+        const W = 215.9, M = 14, H = 279.4; let y = 0;
+        const EMP = opsEmpresaDoc("Tecnocontrol");
+        const enc = () => { y = opsPdfEncabezadoEmpresa(doc, EMP, { W, M, k: 0.352778, tipo: "COMISIONES DEL PERIODO", linea: `Del ${opsFmtFechaCorta(s.desde)} al ${opsFmtFechaCorta(s.hasta)}` }) + 6; };
+        const salto = h => { if (y + h > H - 18) { doc.addPage(); enc(); } };
+        enc();
+        const grupos = new Map(); lista.forEach(c => { const k = c.tecnico_nombre || "Sin nombre"; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); });
+        let gran = 0;
+        for (const [tec, l] of [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], "es"))) {
+            salto(20); const tot = l.reduce((a, c) => a + Number(c.monto || 0), 0); gran += tot;
+            doc.setFillColor(29, 46, 115); doc.rect(M, y - 4.5, W - 2 * M, 7, "F"); doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+            doc.text(tec, M + 2, y); doc.text(opsDinero(tot), W - M - 2, y, { align: "right" }); y += 7;
+            doc.setFontSize(8.3); doc.setTextColor(30, 41, 59);
+            l.forEach(c => {
+                const j = opsComJustif(c);
+                const linea = doc.splitTextToSize(`${c.servicio_nombre || "Servicio"} · ${c.estacion || ""}${c.concepto ? " · " + c.concepto : ""} — ${j.chips.map(x => x[0]).join(", ")}`, W - 2 * M - 70);
+                salto(linea.length * 3.8 + 2);
+                doc.setFont("helvetica", "normal"); doc.text(String(c.fecha_servicio || ""), M + 2, y); doc.text(linea, M + 24, y);
+                doc.text((OPS_COM_EST[c.estatus] || [c.estatus])[0], W - M - 30, y, { align: "right" });
+                doc.setFont("helvetica", "bold"); doc.text(opsDinero(c.monto), W - M - 2, y, { align: "right" });
+                y += linea.length * 3.8 + 1.5;
+            });
+            y += 3;
+        }
+        salto(40);
+        doc.setDrawColor(29, 46, 115); doc.line(M, y, W - M, y); y += 6; doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(29, 46, 115);
+        doc.text("TOTAL DEL PERIODO", M, y); doc.text(opsDinero(gran), W - M, y, { align: "right" }); y += 22;
+        doc.setFontSize(9); doc.setTextColor(30, 41, 59);
+        [["Elabora", opsNombreActual()], ["Autoriza", "Paloma Pinedo"], ["Paga", "Departamento de Pagos"]].forEach((x, i) => { const w = (W - 2 * M - 20) / 3, xx = M + i * (w + 10); doc.line(xx, y, xx + w, y); doc.setFont("helvetica", "bold"); doc.text(x[0], xx + w / 2, y + 5, { align: "center" }); doc.setFont("helvetica", "normal"); doc.text(x[1] || "", xx + w / 2, y + 10, { align: "center" }); });
+        doc.save(`Comisiones_${s.desde}_al_${s.hasta}.pdf`);
+    };
+
+    // ── Importar trabajos atrasados de Connecteam (Excel exportado de Forms) ──
+    // Se sube el Excel tal cual lo exporta Connecteam (Servicio Técnico o Póliza). El portal
+    // reconoce las columnas por su título; si alguna no la reconoce, se elige a mano. Antes de
+    // guardar se ve una vista previa: técnico (ligado a su ficha), auxiliar, fecha, O.S., estación,
+    // si se concluyó y el monto. No se duplica: cada envío de Connecteam entra una sola vez.
+    let opsComImp = null;
+    const OPS_COM_IMP_CAMPOS = [
+        ["ref", "No. de envío (#)", /^#$|^no\.?\s*$|submission|env[ií]o|entry\s*id|^id$/i],
+        ["tecnico", "Técnico (quien llenó)", /^(user|usuario|empleado|enviado por|submitted by|nombre del t[eé]cnico|t[eé]cnico)$|first name|full name|nombre completo/i],
+        ["auxiliar", "Técnico auxiliar", /auxiliar|ayudante/i],
+        ["fecha", "Fecha del servicio", /fecha del servicio|fecha de servicio/i],
+        ["fechaEnvio", "Fecha de envío", /submission date|fecha de env|date submitted|^fecha$|^date$/i],
+        ["os", "No. folio / O.S.", /folio|o\.?\s*s\.?\b|orden/i],
+        ["cliente", "Cliente", /^cliente/i],
+        ["razon", "Razón social", /raz[oó]n social/i],
+        ["estacion", "Estación", /estaci[oó]n/i],
+        ["concluyo", "¿Se concluyó?", /conclu/i],
+        ["descripcion", "Descripción", /descripci/i],
+    ];
+    function opsComImpFecha(v) {
+        if (v == null || v === "") return "";
+        if (typeof v === "number" && v > 20000) { const d = new Date(Math.round((v - 25569) * 86400000)); return d.toISOString().slice(0, 10); }
+        const s = String(v).trim();
+        let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+        m = s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/);
+        if (m) { const a = m[3].length === 2 ? "20" + m[3] : m[3]; return `${a}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; } // México: día/mes/año
+        const d = new Date(s); return isNaN(d) ? "" : opsCalFechaISO(d);
+    }
+    function opsComImpTecnico(nombre) {
+        const n = opsNormalizaTexto(nombre); if (!n) return null;
+        const pn = n.split(" ").filter(x => x.length > 2);
+        let mejor = null, pts = 0;
+        cacheTec.forEach(t => { const tn = opsNormalizaTexto(t.nombre); const c = pn.filter(p => tn.split(" ").includes(p)).length; if (c > pts || (c === pts && tn === n)) { pts = c; mejor = t; } });
+        return pts >= Math.min(2, pn.length) ? mejor : null;
+    }
+    window.opsComAbrirImport = function () {
+        if (!opsComEdita()) return;
+        if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
+        const s = opsComEstado();
+        opsComImp = { filas: [], cab: [], map: {}, tipo: "Servicio técnico", montoTec: "", montoAux: "", soloConcluidos: true, soloPeriodo: true, archivo: "", existentes: new Set(), msg: "" };
+        opsComImpPintar();
+    };
+    window.opsComImpArchivo = async function (file) {
+        if (!file) return;
+        try {
+            const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+            // Fila de encabezados: la primera que reconoce 3 o más columnas.
+            let hi = 0, best = -1;
+            aoa.slice(0, 15).forEach((r, i) => { const n = OPS_COM_IMP_CAMPOS.filter(([, , rx]) => r.some(c => rx.test(String(c).trim()))).length; if (n > best) { best = n; hi = i; } });
+            const cab = (aoa[hi] || []).map(c => String(c).trim());
+            const map = {};
+            OPS_COM_IMP_CAMPOS.forEach(([k, , rx]) => { const i = cab.findIndex((c, j) => rx.test(c) && !Object.values(map).includes(j)); if (i >= 0) map[k] = i; });
+            if (map.fecha == null && map.fechaEnvio != null) map.fecha = map.fechaEnvio;
+            opsComImp.cab = cab; opsComImp.map = map; opsComImp.archivo = file.name;
+            opsComImp.filas = aoa.slice(hi + 1).filter(r => r.some(c => String(c).trim() !== ""));
+            if (/p[oó]liza/i.test(file.name)) opsComImp.tipo = "Póliza de mantenimiento";
+            // Ya importados (para no duplicar)
+            try { const sb = await opsSb(); const { data } = await sb.from("ops_comisiones").select("folio_id,tecnico_nombre").like("folio_id", "connecteam:%"); opsComImp.existentes = new Set((data || []).map(x => x.folio_id + "|" + opsNormalizaTexto(x.tecnico_nombre))); } catch (e) {}
+            opsComImpPintar();
+        } catch (e) { alert("No se pudo leer el archivo: " + (e.message || e)); }
+    };
+    function opsComImpRegistros() {
+        const I = opsComImp, s = opsComEstado(), g = (r, k) => I.map[k] != null ? r[I.map[k]] : "";
+        const out = [];
+        I.filas.forEach((r, i) => {
+            const fecha = opsComImpFecha(g(r, "fecha")) || opsComImpFecha(g(r, "fechaEnvio"));
+            const conc = String(g(r, "concluyo")).trim();
+            const concluido = conc ? /^(s[ií]|yes|true|1)/i.test(conc) : null;
+            const ref = String(g(r, "ref") || "").trim() || ("fila" + (i + 1) + "-" + String(g(r, "os")).trim() + "-" + fecha);
+            const base = { fila: i + 1, ref, fecha, os: String(g(r, "os")).trim(), cliente: String(g(r, "cliente")).trim(), razon: String(g(r, "razon")).trim(), estacion: String(g(r, "estacion")).trim(), concluido, conc, descripcion: String(g(r, "descripcion")).trim() };
+            const enPeriodo = !!fecha && fecha >= s.desde && fecha <= s.hasta;
+            [["tecnico", "Técnico"], ["auxiliar", "Auxiliar"]].forEach(([k, rol]) => {
+                const nombre = String(g(r, k)).trim(); if (!nombre) return;
+                const tec = opsComImpTecnico(nombre), folioId = "connecteam:" + ref;
+                const dup = I.existentes.has(folioId + "|" + opsNormalizaTexto(tec ? tec.nombre : nombre));
+                const monto = Number(rol === "Técnico" ? I.montoTec : I.montoAux) || 0;
+                const motivo = dup ? "Ya importado" : !fecha ? "Sin fecha" : (I.soloPeriodo && !enPeriodo) ? "Fuera del periodo" : (I.soloConcluidos && concluido === false) ? "No se concluyó" : "";
+                out.push({ ...base, rol, nombre, tec, folioId, monto, entra: !motivo, motivo });
+            });
+        });
+        return out;
+    }
+    function opsComImpPintar() {
+        const I = opsComImp; if (!I) return;
+        const regs = I.filas.length ? opsComImpRegistros() : [], entran = regs.filter(x => x.entra);
+        const inp = "border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;">
+          <div style="background:#fff;border-radius:14px;width:1100px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;">
+            <div style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;gap:10px;align-items:flex-start;">
+              <div style="flex:1;"><div style="font-size:16px;font-weight:800;color:#0369a1;">Importar trabajos de Connecteam</div>
+              <div style="font-size:11.5px;color:#64748b;line-height:1.45;">1) En Connecteam: Forms → Servicio Técnico (o Póliza) → Exportar a Excel. 2) Súbelo aquí. 3) Revisa la vista previa y escribe el monto por técnico y por auxiliar. Entran como <b>Por autorizar</b>; Paloma las autoriza igual que las demás.</div></div>
+              <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:700;">Cerrar</button>
+            </div>
+            <div style="padding:12px 18px;overflow-y:auto;flex:1;">
+              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;">
+                <input type="file" accept=".xlsx,.xls,.csv" onchange="opsComImpArchivo(this.files[0])" style="font-size:12px;">
+                ${I.archivo ? `<span style="font-size:12px;color:#334155;"><b>${opsEsc(I.archivo)}</b> · ${I.filas.length} envío(s)</span>` : ""}
+              </div>
+              ${I.filas.length ? `
+              <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+                <label style="font-size:11.5px;font-weight:700;color:#334155;">Tipo de trabajo<br><select onchange="opsComImpSet('tipo',this.value)" style="${inp}">${["Servicio técnico", "Póliza de mantenimiento", "Otro"].map(t => `<option ${I.tipo === t ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+                <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto por técnico ($)<br><input type="number" min="0" step="0.01" value="${opsEsc(I.montoTec)}" onchange="opsComImpSet('montoTec',this.value)" style="${inp}width:130px;"></label>
+                <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto por auxiliar ($)<br><input type="number" min="0" step="0.01" value="${opsEsc(I.montoAux)}" onchange="opsComImpSet('montoAux',this.value)" style="${inp}width:130px;"></label>
+                <label style="font-size:12px;"><input type="checkbox" ${I.soloPeriodo ? "checked" : ""} onchange="opsComImpSet('soloPeriodo',this.checked)"> Solo del periodo (${opsEsc(opsComEstado().desde)} al ${opsEsc(opsComEstado().hasta)})</label>
+                <label style="font-size:12px;"><input type="checkbox" ${I.soloConcluidos ? "checked" : ""} onchange="opsComImpSet('soloConcluidos',this.checked)"> Excluir los que NO se concluyeron</label>
+              </div>
+              <details style="margin-bottom:10px;"><summary style="font-size:12px;font-weight:700;color:#0369a1;cursor:pointer;">Columnas reconocidas (cámbialas si alguna está mal)</summary>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">${OPS_COM_IMP_CAMPOS.map(([k, t]) => `<label style="font-size:11.5px;color:#334155;">${t}<br><select onchange="opsComImpMap('${k}',this.value)" style="${inp}width:100%;"><option value="">— no viene —</option>${I.cab.map((c, i) => `<option value="${i}" ${I.map[k] === i ? "selected" : ""}>${opsEsc(c || "(columna " + (i + 1) + ")")}</option>`).join("")}</select></label>`).join("")}</div>
+              </details>
+              <div style="font-size:12.5px;margin-bottom:8px;"><b style="color:#15803d;">${entran.length}</b> comisión(es) entran por <b>${opsDinero(entran.reduce((a, x) => a + x.monto, 0))}</b> · ${regs.length - entran.length} se omiten${entran.some(x => !x.tec) ? ` · <span style="color:#b45309;font-weight:700;">${entran.filter(x => !x.tec).length} sin ligar a ficha de técnico (entran con el nombre de Connecteam)</span>` : ""}${entran.some(x => !x.monto) ? ` · <span style="color:#b91c1c;font-weight:700;">hay montos en $0: escribe el monto arriba</span>` : ""}</div>
+              <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11.8px;">
+                <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px;">#</th><th style="padding:6px;">Fecha</th><th style="padding:6px;">Persona</th><th style="padding:6px;">Rol</th><th style="padding:6px;">O.S.</th><th style="padding:6px;">Estación / cliente</th><th style="padding:6px;">¿Concluyó?</th><th style="padding:6px;text-align:right;">Monto</th><th style="padding:6px;">Entra</th></tr></thead>
+                <tbody>${regs.slice(0, 400).map(x => `<tr style="border-bottom:1px solid #f1f5f9;${x.entra ? "" : "color:#94a3b8;"}"><td style="padding:5px 6px;">${opsEsc(x.ref)}</td><td style="padding:5px 6px;">${opsEsc(x.fecha || "—")}</td>
+                    <td style="padding:5px 6px;">${opsEsc(x.nombre)}${x.tec ? (opsNormalizaTexto(x.tec.nombre) !== opsNormalizaTexto(x.nombre) ? `<div style="font-size:10px;color:#15803d;">→ ${opsEsc(x.tec.nombre)}</div>` : "") : `<div style="font-size:10px;color:#b45309;">sin ficha</div>`}</td>
+                    <td style="padding:5px 6px;">${x.rol}</td><td style="padding:5px 6px;">${opsEsc(x.os)}</td><td style="padding:5px 6px;">${opsEsc(x.estacion || x.razon || "")}<div style="font-size:10px;color:#94a3b8;">${opsEsc(x.cliente)}</div></td>
+                    <td style="padding:5px 6px;">${x.concluido === null ? "—" : x.concluido ? "Sí" : "No"}</td><td style="padding:5px 6px;text-align:right;">${opsDinero(x.monto)}</td>
+                    <td style="padding:5px 6px;font-weight:700;color:${x.entra ? "#15803d" : "#94a3b8"};">${x.entra ? "Sí" : opsEsc(x.motivo)}</td></tr>`).join("")}</tbody></table></div>
+              ${regs.length > 400 ? `<div style="font-size:11px;color:#94a3b8;">Se muestran 400 de ${regs.length}; se importan todos los que entran.</div>` : ""}` : `<div style="font-size:12.5px;color:#94a3b8;padding:20px 0;">Sube el Excel para ver la vista previa.</div>`}
+            </div>
+            <div style="padding:12px 18px;border-top:1px solid #f1f5f9;display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+              <div id="com-imp-msg" style="flex:1;font-size:12px;color:#b91c1c;font-weight:700;">${opsEsc(I.msg || "")}</div>
+              <button ${entran.length ? "" : "disabled"} onclick="opsComImpGuardar()" style="border:none;background:${entran.length ? "#0369a1" : "#cbd5e1"};color:#fff;border-radius:8px;padding:10px 16px;cursor:pointer;font-weight:800;">Importar ${entran.length} comisión(es)</button>
+            </div>
+          </div></div>`;
+    }
+    window.opsComImpPintar = opsComImpPintar;
+    window.opsComImpSet = function (k, v) { if (!opsComImp) return; opsComImp[k] = v; opsComImpPintar(); };
+    window.opsComImpMap = function (k, v) { if (!opsComImp) return; opsComImp.map[k] = v === "" ? null : Number(v); opsComImpPintar(); };
+    window.opsComImpGuardar = async function () {
+        const I = opsComImp; if (!I) return;
+        const entran = opsComImpRegistros().filter(x => x.entra);
+        if (entran.some(x => !x.monto) && !confirm("Hay comisiones con monto $0. Entrarán en $0 y se pueden editar después. ¿Importar así?")) return;
+        const ahora = new Date().toISOString();
+        const filas = entran.map(x => ({
+            folio_id: x.folioId, tecnico_id: x.tec ? x.tec.id : null, tecnico_nombre: x.tec ? x.tec.nombre : x.nombre, tecnico_correo: x.tec && x.tec.correo ? String(x.tec.correo).toLowerCase() : null,
+            concepto: x.rol + " · " + I.tipo, tipo: "monto", valor: x.monto, monto: x.monto, estatus: "por_pagar", servicio_nombre: I.tipo,
+            estacion: x.estacion || x.razon || x.cliente || null, plaza: x.tec ? (x.tec.plaza || null) : null, fecha_servicio: x.fecha, creado_por: opsComCorreo(),
+            checklist: { origen: "connecteam", ref: x.ref, os: x.os || null, cliente: x.cliente || null, razonSocial: x.razon || null, concluyo: x.conc || null, descripcion: x.descripcion || null, archivo: I.archivo, nombreConnecteam: x.nombre },
+            historial: [{ accion: "importado_connecteam", nota: I.archivo + " · fila " + x.fila, a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: ahora }],
+        }));
+        try {
+            const sb = await opsSb();
+            for (let i = 0; i < filas.length; i += 200) { const { error } = await sb.from("ops_comisiones").insert(filas.slice(i, i + 200)); if (error) throw error; }
+            for (const para of OPS_COM_AVISO_POR_AUTORIZAR) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comisiones_por_pagar", para, mensaje: `Se importaron ${filas.length} comisión(es) de Connecteam (${I.tipo}) por ${opsDinero(filas.reduce((a, f) => a + f.monto, 0))}. Están Por autorizar en Operaciones → Comisiones.`, modulo: "Operaciones" }); } catch (e) {} }
+            document.getElementById("ops-modal-wrap").innerHTML = ""; opsComImp = null;
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Connecteam importado", texto: filas.length + " comisión(es) quedaron Por autorizar.", nivel: "normal", modulo: "Operaciones" });
+            opsComCargar(true);
+        } catch (e) { I.msg = "No se pudo importar: " + (e.message || e); opsComImpPintar(); }
+    };
+
+    // ═══════════════════ CALENDARIO DE VEHÍCULOS (22-oct-2026, junta Operaciones/Flotilla) ═══════════════════
+    // Como el calendario de Operaciones pero por unidad: en qué servicio anda cada vehículo, quién
+    // lo trae, cuándo está en taller y qué días queda LIBRE (para que Flotilla programe
+    // mantenimientos o se la preste a otro). Lo ven Operaciones (pestaña Vehículos) y Flotilla
+    // (botón del calendario de unidades). Solo lectura: lee folios (vehículo planeado), viáticos
+    // (vehículo del viaje) y las solicitudes de taller de Flotilla.
+    let opsCV = null;
+    function opsCVEstado() {
+        if (!opsCV) { const h = new Date(); const lun = new Date(h.getFullYear(), h.getMonth(), h.getDate() - ((h.getDay() + 6) % 7)); opsCV = { ini: opsCalFechaISO(lun), dias: 14, plaza: "todas", q: "", bajas: false, datos: null, cargando: false, error: "", clave: "", el: "ops-tab-content" }; }
+        return opsCV;
+    }
+    function opsCVEco(v) { const m = String(v || "").match(/ECO\s*-?\s*([\w-]+)/i); return (m ? m[1] : String(v || "").trim()).toUpperCase().replace(/^0+(?=\d)/, ""); }
+    async function opsCVCargar(forzar) {
+        const s = opsCVEstado(), fin = opsDiaISOmas(s.ini, s.dias - 1), clave = s.ini + "|" + s.dias;
+        if (s.cargando || (!forzar && s.clave === clave && s.datos)) return;
+        s.cargando = true; s.error = "";
+        try {
+            const { db, fs } = await opsGetFB();
+            const vsnap = await fs.getDocs(fs.collection(db, "flotilla_vehiculos"));
+            const vehs = opsViaOrdenarFlota(vsnap.docs.map(d => opsViaMapearVehFlotilla({ id: d.id, ...d.data() })).filter(v => v.Eco && !OPS_VIA_NO_VEHICULO.test(v.Unidad || "")));
+            let folios = cacheFolios;
+            if (!folios || !folios.length) { const fsnap = await fs.getDocs(fs.collection(db, COL_FOLIOS)); folios = fsnap.docs.map(d => ({ id: d.id, ...d.data() })); }
+            const sb = await opsSb();
+            const [rv, rt] = await Promise.all([
+                sb.from("ops_solicitudes_viaticos").select("folio,estatus,integrantes,destino,fecha_salida,fecha_regreso,vehiculo,tarifas").lte("fecha_salida", fin).gte("fecha_regreso", s.ini).not("estatus", "in", '("Cancelada","Rechazada")'),
+                sb.from("flotilla_solicitudes").select("folio,eco,estado,tipo,descripcion,enviada_servicio_en,liberado_en,taller_interno,taller_externo,creado_en").in("estado", ["Servicio", "Evaluación"]),
+            ]);
+            s.datos = { vehs, folios, vias: (rv && rv.data) || [], taller: (rt && rt.data) || [], fin };
+            s.clave = clave;
+        } catch (e) { s.error = e.message || String(e); console.warn("[calendario vehículos]", e); }
+        finally { s.cargando = false; }
+        opsCVPintar();
+    }
+    function opsCVEventos(v, dia) {
+        const s = opsCV, d = s.datos, eco = opsCVEco(v.Eco), ev = [];
+        if (v.Status === "baja") return [{ t: "baja", txt: "Baja", det: "Vehículo dado de baja" }];
+        d.taller.filter(x => opsCVEco(x.eco) === eco).forEach(x => {
+            // Sin fecha de liberación se marca en taller también los días siguientes (no se sabe cuándo sale).
+            const desde = String(x.enviada_servicio_en || x.creado_en || "").slice(0, 10), hasta = x.liberado_en ? String(x.liberado_en).slice(0, 10) : "9999-12-31";
+            if (x.estado === "Servicio" && desde && dia >= desde && dia <= hasta) ev.push({ t: "taller", txt: x.liberado_en ? "Taller" : "Taller (sin salida)", det: `En ${x.taller_externo ? "taller externo" : x.taller_interno ? "taller interno" : "taller"} · ${x.folio || ""} · ${x.descripcion || x.tipo || ""}${x.liberado_en ? "" : " · aún no se libera"}` });
+            else if (x.estado === "Evaluación" && dia === opsCalFechaISO(new Date())) ev.push({ t: "revision", txt: "En revisión", det: `Solicitud ${x.folio || ""} en evaluación: ${x.descripcion || ""}` });
+        });
+        d.folios.filter(f => f.cancelado !== true && f.vehiculoPlaneado && opsCVEco(f.vehiculoPlaneado) === eco && f.fechaProgramada).forEach(f => {
+            const a = f.fechaProgramada.slice(0, 10), b = opsFolioFechaFin(f) || a;
+            if (dia >= a && dia <= b) ev.push({ t: "servicio", txt: f.estacion || "Servicio", det: `${f.estacion || ""} · ${(f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || ""}${dia === a ? " · sale " + (f.fechaProgramada.slice(11, 16) || "") : ""}`, id: f.id });
+        });
+        d.vias.filter(x => { const t = x.tarifas || {}; return opsCVEco(t.vehiculoEco || x.vehiculo) === eco && (t.hoja || 1) === 1; }).forEach(x => {
+            if (dia >= x.fecha_salida && dia <= (x.fecha_regreso || x.fecha_salida) && !ev.some(e => e.t === "servicio")) ev.push({ t: "viaje", txt: "Viaje", det: `${x.folio} · ${x.destino || ""} · ${x.integrantes || ""}` });
+        });
+        return ev;
+    }
+    const OPS_CV_COL = { servicio: ["#1D2E73", "#fff"], viaje: ["#0369a1", "#fff"], taller: ["#ea580c", "#fff"], revision: ["#fef3c7", "#92400e"], baja: ["#cbd5e1", "#475569"] };
+    function opsCVPintar() {
+        const s = opsCVEstado(), el = document.getElementById(s.el); if (!el) return;
+        if (!s.datos) { el.innerHTML = `<div style="padding:24px;color:#64748b;font-size:13px;">${s.error ? "No se pudo cargar: " + opsEsc(s.error) : "Cargando vehículos, servicios y taller…"}</div>`; if (!s.cargando && !s.error) opsCVCargar(false); return; }
+        if (s.clave !== s.ini + "|" + s.dias) opsCVCargar(true);
+        const dias = Array.from({ length: s.dias }, (_, i) => opsDiaISOmas(s.ini, i)), hoy = opsCalFechaISO(new Date());
+        const partes = opsNormalizaTexto(s.q).split(" ").filter(Boolean);
+        const plazas = [...new Set(s.datos.vehs.map(v => v.Plaza || "Sin plaza"))].sort();
+        const vehs = s.datos.vehs.filter(v => s.bajas || v.Status !== "baja").filter(v => s.plaza === "todas" || (v.Plaza || "Sin plaza") === s.plaza)
+            .filter(v => !partes.length || partes.every(p => opsNormalizaTexto([v.Eco, v.Unidad, v.Placas, v.Responsable, v.Plaza].join(" ")).includes(p)));
+        const filas = vehs.map(v => ({ v, ev: dias.map(d => opsCVEventos(v, d)) }));
+        const libresHoy = filas.filter(r => { const i = dias.indexOf(hoy); return i >= 0 && !r.ev[i].length; }).length;
+        const nom = d => { const x = new Date(d + "T12:00:00"); return `<div style="font-size:10px;text-transform:uppercase;">${x.toLocaleDateString("es-MX", { weekday: "short" })}</div><div style="font-size:14px;font-weight:800;">${x.getDate()}</div>`; };
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
+          <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px;">
+            <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Calendario de vehículos</div>
+            <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Cada renglón es una unidad. <b style="color:#1D2E73;">Azul marino</b> = en servicio, <b style="color:#0369a1;">azul</b> = viaje con viáticos, <b style="color:#ea580c;">naranja</b> = en taller, <b style="color:#15803d;">vacío</b> = libre (se puede usar o mandar a mantenimiento). Hoy hay <b>${libresHoy}</b> unidad(es) libre(s).</div></div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <button onclick="opsCVMover(-7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">‹ Semana</button>
+              <button onclick="opsCVHoy()" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">Hoy</button>
+              <button onclick="opsCVMover(7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">Semana ›</button>
+              <select onchange="opsCVSet('plaza',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;"><option value="todas">Todas las plazas</option>${plazas.map(p => `<option ${s.plaza === p ? "selected" : ""}>${opsEsc(p)}</option>`).join("")}</select>
+              <input id="ops-cv-q" type="search" value="${opsEsc(s.q)}" oninput="opsCVBuscar(this.value)" placeholder="ECO, unidad, placas, responsable…" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12.5px;width:200px;">
+              <label style="font-size:12px;"><input type="checkbox" ${s.bajas ? "checked" : ""} onchange="opsCVSet('bajas',this.checked)"> Ver bajas</label>
+              <button onclick="opsCVCargar(true)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:12px;font-weight:700;">Actualizar</button>
+            </div>
+          </div>
+          ${s.cargando ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Actualizando…</div>` : ""}
+          <div style="overflow:auto;max-height:70vh;border:1px solid #e2e8f0;border-radius:10px;">
+            <table style="border-collapse:separate;border-spacing:0;font-size:11.5px;min-width:100%;">
+              <thead><tr><th style="position:sticky;top:0;left:0;z-index:3;background:#1f2937;color:#fff;padding:8px 10px;text-align:left;min-width:190px;">Unidad</th>${dias.map(d => `<th style="position:sticky;top:0;z-index:2;background:${d === hoy ? "#E7402B" : "#1f2937"};color:#fff;padding:5px 4px;min-width:82px;text-align:center;">${nom(d)}</th>`).join("")}</tr></thead>
+              <tbody>${filas.map(({ v, ev }) => `<tr>
+                <td style="position:sticky;left:0;z-index:1;background:#fff;border-bottom:1px solid #f1f5f9;padding:6px 10px;${v.Status === "baja" ? "color:#94a3b8;" : ""}"><b>ECO ${opsEsc(v.Eco)}</b> · ${opsEsc(v.Unidad || "")}<div style="font-size:10.5px;color:#64748b;">${opsEsc([v.Placas, v.Responsable, v.Plaza].filter(Boolean).join(" · "))}</div></td>
+                ${ev.map((lst, i) => `<td style="border-bottom:1px solid #f1f5f9;border-left:1px solid #f8fafc;padding:3px;vertical-align:top;background:${dias[i] === hoy ? "#fff7f5" : lst.length ? "#fff" : "#f0fdf4"};">${lst.map(e => { const c = OPS_CV_COL[e.t] || ["#334155", "#fff"]; return `<div title="${opsEsc(e.det)}" ${e.id && typeof window.opsAbrirPanelFolio === "function" && document.getElementById("ops-panel-wrap") ? `onclick="opsAbrirPanelFolio('${e.id}')"` : ""} style="background:${c[0]};color:${c[1]};border-radius:6px;padding:3px 5px;margin-bottom:2px;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px;cursor:${e.id ? "pointer" : "default"};">${opsEsc(e.txt)}</div>`; }).join("")}</td>`).join("")}
+              </tr>`).join("") || `<tr><td colspan="${dias.length + 1}" style="padding:20px;text-align:center;color:#94a3b8;">Sin vehículos con esos filtros.</td></tr>`}</tbody>
+            </table>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Para que un servicio aparezca aquí, al programarlo elige el vehículo (campo "Vehículo" del alta de servicio) o el vehículo de la solicitud de viáticos. Si dos técnicos viajan juntos, solo se aparta la unidad que se lleva; la otra queda libre.</div>
+        </div>`;
+    }
+    window.opsCVCargar = opsCVCargar;
+    window.opsCVMover = function (n) { const s = opsCVEstado(); s.ini = opsDiaISOmas(s.ini, n); opsCVPintar(); };
+    window.opsCVHoy = function () { opsCV = Object.assign(opsCVEstado(), { ini: (() => { const h = new Date(); return opsCalFechaISO(new Date(h.getFullYear(), h.getMonth(), h.getDate() - ((h.getDay() + 6) % 7))); })() }); opsCVPintar(); };
+    window.opsCVSet = function (k, v) { opsCVEstado()[k] = v; opsCVPintar(); };
+    window.opsCVBuscar = function (v) { opsCVEstado().q = v || ""; opsRerenderConFoco(opsCVPintar); };
+    // API pública para otros módulos (Flotilla): pinta el calendario dentro del elemento indicado.
+    window.tcCalVehiculos = function (elId) { const s = opsCVEstado(); s.el = elId || "ops-tab-content"; opsCVPintar(); };
 
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
     // Glen: "cada tipo de servicio requiere cierta información, cierta herramienta, ciertos

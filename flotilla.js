@@ -885,6 +885,9 @@ function buildHTML(){
       <button class="fl-tab-btn" id="fl-tb-calendario" onclick="flVista('calendario')" title="Calendario de actividades">${I.calendar}</button>
     </div>
     <div style="position:relative">
+      <button class="fl-tab-btn" id="fl-tb-ocupacion" onclick="flVista('ocupacion')" title="Calendario de vehículos: ocupación, taller y disponibilidad"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M7 14h4v3H7z"/></svg></button>
+    </div>
+    <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-mapa" onclick="flVista('mapa')" title="Mapa en tiempo real">${I.mappin}</button>
     </div>
     <div style="position:relative">
@@ -1475,7 +1478,15 @@ window.flVista=function(v){
   else if(v==='calendario')rCalendarioVista();
   else if(v==='mapa')rMapaVista();
   else if(v==='siniestros')rSiniestrosVista();
+  else if(v==='ocupacion')rOcupacionVista();
 };
+// Calendario de vehículos (22-oct-2026): lo pinta operaciones.js (dueño del calendario de servicios)
+// a través de su API pública window.tcCalVehiculos; Flotilla solo le presta el espacio.
+function rOcupacionVista(){
+  setContent('<div style="padding:16px"><div id="fl-ocupacion"></div></div>');
+  if(typeof window.tcCalVehiculos==='function')window.tcCalVehiculos('fl-ocupacion');
+  else{const el=document.getElementById('fl-ocupacion');if(el)el.innerHTML='<div style="padding:20px;color:#64748B;font-size:13px">El calendario de vehículos no está disponible: recarga el portal.</div>';}
+}
 function setContent(h){const c=document.getElementById('fl-content');if(c)c.innerHTML=h;}
 function padded(h){return`<div style="padding:16px">${h}</div>`;}
 
