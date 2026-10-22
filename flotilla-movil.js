@@ -177,6 +177,7 @@ const esMaquinaria=v=>!!v&&v.tipo==='maquinaria';
 
 // ── ESTADO ──
 let miVeh=null, misSols=[], misTareas=[], misNotif=[], misPipelineNotif=[];
+let misOpsMovidos=[]; // servicios que me quitaron/reprogramaron a otro técnico (tarjeta gris, 21-oct-2026)
 let misOpsServ=[], _opsServTecId=null, _unsubOpsServ=null, _unsubOpsAvisos=null; // servicios de Operaciones (ver bloque al final)
 let miPerfil=null; // {email, nombre, ecoVinculado, rol}
 let _unsubNotif=null; // listener en tiempo real de flotilla_notificaciones
@@ -6902,8 +6903,15 @@ window.fmOpsEstGuardarUbic=async function(id,btn){
     fin(/ubicacion_/.test(e&&e.message||'')?'Falta activar esta función en la base de datos. Avisa a Sistemas.':'No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
   }
 };
+// ¿Me lo quitaron? (21-oct-2026) Operaciones guarda en tecnicosAnteriores a quién se le pasó el
+// servicio a otro técnico; a esa persona ya no le sale como pendiente, solo como tarjeta gris.
+function opsSvMeLoQuitaron(f,correo){
+  if((f.tecnicosAsignadosIds||[]).indexOf(_opsServTecId)>=0)return false;
+  return (f.tecnicosAnteriores||[]).some(function(a){return a&&((_opsServTecId&&a.id===_opsServTecId)||(correo&&String(a.correo||'').toLowerCase()===correo));});
+}
 function opsSvEsMio(f,correo){
   if(f.fechaSolucion||f.cancelado===true)return false;
+  if(opsSvMeLoQuitaron(f,correo))return false;
   if(_opsServTecId&&((f.tecnicosAsignadosIds||[]).indexOf(_opsServTecId)>=0||f.tecnicoResponsableId===_opsServTecId))return true;
   return !!correo&&String(f.tecnicoResponsableCorreo||'').toLowerCase().trim()===correo;
 }
@@ -6917,9 +6925,16 @@ async function fmOpsServCargar(){
   }
   if(!_unsubOpsServ){
     _unsubOpsServ=opsDb().collection(OPS_COL_FOLIOS).onSnapshot(function(snap){
-      misOpsServ=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());})
+      const todos=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      misOpsServ=todos
         .filter(function(f){return opsSvEsMio(f,correo)&&!_fmColaIds.has(f.id);})
         .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
+      const hace7=new Date(Date.now()-7*86400000).toISOString();
+      misOpsMovidos=todos.filter(function(f){
+        if(f.cancelado===true||!opsSvMeLoQuitaron(f,correo))return false;
+        const mio=(f.tecnicosAnteriores||[]).filter(function(a){return a&&((_opsServTecId&&a.id===_opsServTecId)||String(a.correo||'').toLowerCase()===correo);}).pop()||{};
+        f._movido=mio; return String(mio.hasta||'')>=hace7;
+      }).sort(function(a,b){return String(b._movido.hasta||'').localeCompare(String(a._movido.hasta||''));});
       actualizarBadges();
       if(vistaAct==='tareas')renderTareas();
       else if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
@@ -7054,8 +7069,32 @@ window.fmOpsAvisoEnterado=async function(id,ver){
 };
 
 // ── Tarjetas en la vista Tareas ──
+// Tarjetas grises: servicios que Operaciones pasó a otro técnico (solo informativas, 7 días).
+function fmOpsMovidosHTML(){
+  if(!misOpsMovidos.length)return '';
+  return misOpsMovidos.map(function(f){
+    const m=f._movido||{};
+    return '<div style="border:1.5px dashed #CBD5E1;border-radius:12px;padding:11px 13px;margin-bottom:10px;background:#F1F5F9;color:#64748B">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px"><span style="font-size:10px;font-weight:900;color:#fff;background:#94A3B8;padding:2px 8px;border-radius:8px">REPROGRAMACIÓN</span><span style="font-size:10.5px;font-weight:700">'+opsSvEsc(opsSvFecha(m.hasta))+'</span></div>'+
+      '<div style="font-size:13px;font-weight:800;color:#475569;text-decoration:line-through">'+opsSvEsc(f.estacion||'')+'</div>'+
+      '<div style="font-size:11.5px;margin-top:2px">Ya no te toca. Se pasó a <b>'+opsSvEsc(m.pasadoA||(f.tecnicosAsignadosNombres||[]).join(', ')||'otro técnico')+'</b>'+(f.fechaProgramada?' · '+opsSvEsc(opsSvFecha(f.fechaProgramada)):'')+'</div>'+
+      (m.motivo?'<div style="font-size:11px;margin-top:2px">Motivo: '+opsSvEsc(m.motivo)+'</div>':'')+
+    '</div>';}).join('');
+}
+// Fecha del servicio en grande (21-oct-2026): lo primero que debe ver el técnico.
+function fmOpsFechaGrandeHTML(f,dia,diaFin,esHoy,atrasado){
+  if(!dia)return '<div style="background:#FEF3C7;color:#92400E;border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:13px;font-weight:900">SIN FECHA PROGRAMADA</div>';
+  const d=new Date(dia+'T12:00:00');
+  const dSem=d.toLocaleDateString('es-MX',{weekday:'long'}), dNum=d.getDate(), mes=d.toLocaleDateString('es-MX',{month:'long'});
+  const hora=String(f.fechaProgramada||'').includes('T')?String(f.fechaProgramada).slice(11,16):'';
+  const bg=atrasado?'#B91C1C':esHoy?'#D97706':'#1D2E73';
+  return '<div style="display:flex;align-items:center;gap:12px;background:'+bg+';color:#fff;border-radius:12px;padding:9px 12px;margin-bottom:9px">'+
+    '<div style="text-align:center;min-width:46px"><div style="font-size:28px;font-weight:900;line-height:1">'+dNum+'</div><div style="font-size:10px;font-weight:800;text-transform:uppercase">'+opsSvEsc(mes.slice(0,3))+'</div></div>'+
+    '<div style="flex:1"><div style="font-size:15px;font-weight:900;text-transform:capitalize">'+(esHoy?'HOY · ':atrasado?'ATRASADO · ':'')+opsSvEsc(dSem)+' '+dNum+' de '+opsSvEsc(mes)+'</div>'+
+    '<div style="font-size:12.5px;font-weight:700;opacity:.95">'+(hora?'a las '+opsSvEsc(hora):'Sin hora')+(diaFin!==dia?' · hasta el '+opsSvEsc(diaFin.split('-').reverse().join('/')):'')+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h de trabajo':'')+'</div></div></div>';
+}
 function fmOpsServHTML(){
-  if(!misOpsServ.length)return '';
+  if(!misOpsServ.length)return fmOpsMovidosHTML();
   const hoy=new Date(); hoy.setMinutes(hoy.getMinutes()-hoy.getTimezoneOffset());
   const hoyISO=hoy.toISOString().slice(0,10);
   const pc=fmOpsPendientesCierre();
@@ -7072,14 +7111,14 @@ function fmOpsServHTML(){
       const borde=enProc?'#BFDBFE':atrasado?'#FCA5A5':esHoy?'#FDE68A':'#E2E8F0';
       const mapa=opsSvMapaUrl(f);
       const tel=f.contactoWhatsapp||f.contactoTelefono||'';
-      return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">'+
+      return '<div style="border:1.5px solid '+borde+';border-radius:12px;padding:13px;margin-bottom:10px;background:#fff">'+fmOpsFechaGrandeHTML(f,dia,diaFin,esHoy,atrasado)+
         '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">'+
           '<span style="display:inline-flex;gap:5px;flex-wrap:wrap">'+(fmOpsEsPoliza(f)?'<span style="font-size:10px;font-weight:900;color:#fff;background:#7C3AED;padding:2px 8px;border-radius:8px">PÓLIZA</span>':'<span style="font-size:10px;font-weight:900;color:#fff;background:#1D2E73;padding:2px 8px;border-radius:8px">SERVICIO TÉCNICO</span>')+'<span style="font-size:10px;font-weight:800;color:#1D2E73;background:#EEF2FF;padding:2px 8px;border-radius:8px">'+opsSvEsc(opsSvTipo(f))+'</span></span>'+
           '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:8px;'+(enProc?'background:#DBEAFE;color:#1E40AF':atrasado?'background:#FEE2E2;color:#B91C1C':esHoy?'background:#FEF3C7;color:#92400E':'background:#F1F5F9;color:#475569')+'">'+(enProc?'En proceso':atrasado?'Atrasado':esHoy?'Hoy':'Programado')+'</span>'+
         '</div>'+
         (function(){const ni=opsSvNombreInfo(f);return '<div style="font-size:14px;font-weight:800;color:#0A1628;line-height:1.3;margin-bottom:2px">'+opsSvEsc(ni.titulo)+(ni.sinNombre?' <span style="font-size:10px;font-weight:800;color:#92400E;background:#FEF3C7;border-radius:6px;padding:1px 6px;vertical-align:middle">Sin nombre comercial</span>':'')+'</div>'+
           ((ni.e.razonSocial||ni.e.permiso)&&ni.e.razonSocial!==ni.titulo?'<div style="font-size:11px;color:#64748B;margin-bottom:4px">'+opsSvEsc([ni.e.razonSocial,ni.e.permiso].filter(Boolean).join(' · '))+'</div>':'');})()+
-        '<div style="font-size:12px;color:#475569;margin-bottom:6px">'+opsSvEsc(opsSvFecha(f.fechaProgramada))+(diaFin!==dia?' al '+opsSvEsc(diaFin.split('-').reverse().join('/')):'')+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h':'')+'</div>'+
+        (f.tareaFolio||f.folioClienteId?'<div style="font-size:12px;color:#334155;margin-bottom:6px">'+(f.folioClienteId?'<b>Folio '+opsSvEsc(f.folioClienteId)+'</b>':'')+(f.tareaFolio?(f.folioClienteId?' · ':'')+opsSvEsc(f.tareaFolio):'')+(f.prioridad?' · '+opsSvEsc(f.prioridad):'')+'</div>':'')+
         (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
         ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
@@ -7100,7 +7139,7 @@ function fmOpsServHTML(){
           (mapa?'<a href="'+mapa+'" target="_blank" rel="noopener" style="padding:9px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:8px;font-size:11px;font-weight:800;color:#1D2E73;text-align:center;text-decoration:none">Mapa</a>':'')+
         '</div>'+
       '</div>';
-    }).join('')+'<div style="height:10px"></div>';
+    }).join('')+fmOpsMovidosHTML()+'<div style="height:10px"></div>';
 }
 
 // ═══ Mi día y tiempos muertos (Etapa D, oct-2026) ═══

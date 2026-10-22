@@ -1176,6 +1176,7 @@
     let cacheRevisionesHerr = []; // últimas revisiones/checklists de herramienta, de cualquier origen (Portal o Flotilla)
     let cacheTraspasosPend = []; // ops_herramienta_traspasos con estatus "Pendiente recepción" — bloquea la pieza hasta que el receptor acepte/rechace/venza
     let cacheAutorizadoresCalibracion = []; // [{email,nombre}] — quién puede aprobar mover equipo con requiereAutorizacion=true
+    let filtroFolioGrupo = "todos"; // Petro Seven / OXXO / Externos (21-oct-2026)
     let filtroFolios = "", filtroFolioSemaforo = "todos", filtroFolioTipo = "servicio"; // servicio = folios normales (servicio+laboratorio); inspeccion = visitas de inspección — separados a propósito para no revolver a las personas
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
@@ -6292,6 +6293,212 @@
         }
     }
 
+    // ═══════════ FOLIOS POR CLIENTE: PETRO SEVEN / OXXO / EXTERNOS (21-oct-2026) ═══════════
+    // Petro Seven se identifica por su razón social (Petromax / Petro Máx Industrias) o el nombre;
+    // OXXO por "OXXO" o Servicios Gasolineros de México. Todo lo demás es cliente externo.
+    function opsGrupoClienteFolio(f) {
+        const t = opsAsNorm([f && f.clienteNombre, f && f.estacionRazonSocial, f && f.facturarA, f && f.estacion, f && f.estacionNombreComercial].filter(Boolean).join(" "));
+        if (/petro\s*(seven|siete|7)\b|petro\s*-?\s*max/.test(t)) return "petro";
+        if (/oxxo|servicios gasolineros de mexico/.test(t)) return "oxxo";
+        return "externos";
+    }
+    window.opsGrupoClienteFolio = opsGrupoClienteFolio;
+    const OPS_GRUPOS_FOLIO = {
+        petro: { nombre: "Petro Seven", color: "#00843D", claro: "#E6F4EC", logo: "img/logo-petro-seven.png" },
+        oxxo: { nombre: "OXXO", color: "#C8102E", claro: "#FDECEE", logo: "img/logo-oxxo.png" },
+        externos: { nombre: "Clientes externos", color: "#1D2E73", claro: "#E9ECF5", logo: "" },
+    };
+    // Prioridad: P1 crítica … P6 baja. Etiqueta sencilla para que cualquiera la entienda.
+    const OPS_PRIORIDAD_TXT = { P1: "P1 · Crítica", P2: "P2 · Alta", P3: "P3 · Media", P4: "P4 · Baja", P5: "P5 · Baja", P6: "P6 · Programable" };
+    function opsPrioNum(p) { const m = String(p || "").match(/P\s*(\d)/i); return m ? Number(m[1]) : 9; }
+    // Orden sugerido: primero los fijados a mano por Operaciones (en su orden), luego por
+    // semáforo (vencidos, urgentes, próximos), luego prioridad y luego el vencimiento más cercano.
+    function opsOrdenFolios(a, b) {
+        const oa = a.f.ordenManual, ob = b.f.ordenManual;
+        const pa = oa != null && !a.f.fechaSolucion, pb = ob != null && !b.f.fechaSolucion;
+        if (pa !== pb) return pa ? -1 : 1;
+        if (pa && pb && oa !== ob) return oa - ob;
+        const orden = { rojo: 0, naranja: 1, amarillo: 2, gris: 3, verde: 4 };
+        return (orden[a.info.semaforo] - orden[b.info.semaforo]) || (opsPrioNum(a.f.prioridad) - opsPrioNum(b.f.prioridad))
+            || String(a.f.vencimiento || "9999").localeCompare(String(b.f.vencimiento || "9999"));
+    }
+    window.opsFolioFijar = async function (id, accion) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const fijados = cacheFolios.filter(x => x.ordenManual != null && !x.fechaSolucion && !x.cancelado).sort((a, b) => a.ordenManual - b.ordenManual);
+        const cambios = [];
+        if (accion === "arriba") cambios.push([f, (fijados.length ? fijados[0].ordenManual : 1000) - 1]);
+        else if (accion === "quitar") cambios.push([f, null]);
+        else {
+            const i = fijados.findIndex(x => x.id === id), j = accion === "subir" ? i - 1 : i + 1;
+            if (i < 0 || j < 0 || j >= fijados.length) return;
+            cambios.push([f, fijados[j].ordenManual], [fijados[j], f.ordenManual]);
+        }
+        try {
+            const { db, fs } = await opsGetFB();
+            for (const [x, val] of cambios) {
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, x.id), { ordenManual: val, ordenManualPor: opsNombreActual(), ordenManualEn: opsFechaHora() });
+                x.ordenManual = val;
+            }
+            const txt = { arriba: "Fijado hasta arriba de la lista de folios", quitar: "Se quitó del orden manual (vuelve al orden sugerido)", subir: "Subió un lugar en el orden manual", bajar: "Bajó un lugar en el orden manual" }[accion];
+            fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Prioridad] " + txt + ".", autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "prioridad", createdAt: opsFechaHora() }).catch(() => {});
+            opsRenderFolios();
+        } catch (e) { alert("No se pudo cambiar el orden: " + (e.message || e)); }
+    };
+    window.opsFiltrarFolioGrupo = function (g) { filtroFolioGrupo = g || "todos"; opsRenderFolios(); };
+
+    // ═══════════ PROGRAMAR FOLIO — formulario corto (21-oct-2026, Junta Operaciones) ═══════════
+    // Solo lo necesario: ID, ubicación, tarea, vencimiento SLA, hora, prioridad, estatus, comentarios
+    // y quién lo realiza. Al guardar queda en el calendario de Operaciones (fecha y hora del SLA) y
+    // en las Tareas de la app del técnico, que recibe el aviso.
+    const OPS_PF_ESTATUS = ["Programado", "Pendiente de asignar", "En espera de material", "En espera del cliente", "En proceso"];
+    let opsPF = null;
+    function opsPFClienteGrupo(g) {
+        if (g === "petro") return cacheClientes.find(c => /petro/i.test(c.nombre || "")) || null;
+        if (g === "oxxo") return cacheClientes.find(c => /oxxo/i.test(c.nombre || "")) || null;
+        return null;
+    }
+    function opsPFGrupoEstacion(e) {
+        if (!e) return "externos";
+        return opsGrupoClienteFolio({ estacionRazonSocial: e.razonSocial, estacion: e.nombreComercial });
+    }
+    window.opsAbrirProgramarFolio = async function (grupo) {
+        if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
+        const ahora = new Date();
+        opsPF = { grupo: OPS_GRUPOS_FOLIO[grupo] ? grupo : "externos", idCliente: "", est: null, q: "", tarea: "", fecha: "", hora: "", prioridad: "", estatus: "Programado", comentarios: "", tecId: "", cat: window.__opsAsEstCatalogo || [], cargando: true, msg: "" };
+        opsPFPintar();
+        try { opsPF.cat = await opsCatalogoEstaciones(); window.__opsAsEstCatalogo = opsPF.cat; } catch (e) {}
+        if (opsPF) { opsPF.cargando = false; opsPFPintar(); }
+    };
+    function opsPFResultados() {
+        const n = opsPF; const partes = opsNormalizaTexto(n.q).split(" ").filter(Boolean);
+        if (!partes.length) return [];
+        return (n.cat || []).filter(e => { const t = opsNormalizaTexto([e.nombreComercial, e.razonSocial, e.permiso, e.municipio, e.identificadorCliente, e.codigoEstacionCre].join(" ")); return partes.every(p => t.includes(p)); })
+            .sort((a, b) => (opsPFGrupoEstacion(a) === n.grupo ? 0 : 1) - (opsPFGrupoEstacion(b) === n.grupo ? 0 : 1) || String(a.nombreComercial || a.razonSocial || "").localeCompare(String(b.nombreComercial || b.razonSocial || ""), "es"))
+            .slice(0, 30);
+    }
+    function opsPFHTMLResultados() {
+        const r = opsPFResultados();
+        if (!opsPF.q.trim()) return `<div style="padding:10px;font-size:12px;color:#94a3b8;">Escribe el PL, el nombre de la estación o la ciudad.</div>`;
+        if (!r.length) return `<div style="padding:10px;font-size:12px;color:#b45309;">No se encontró. Revisa el PL o pide a Ventas que dé de alta la estación (no se crean estaciones duplicadas desde aquí).</div>`;
+        return r.map(e => { const g = OPS_GRUPOS_FOLIO[opsPFGrupoEstacion(e)]; return `<div onclick="opsPFElegir('${opsEsc(String(e.id))}')" style="padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;border-left:4px solid ${g.color};" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <div style="font-weight:800;color:#1e293b;font-size:12.5px;">${opsEsc(e.nombreComercial || e.razonSocial || "Sin nombre")}${e.nombreComercial ? "" : ' <span style="font-size:10px;color:#92400e;background:#fef3c7;border-radius:5px;padding:1px 5px;">sin nombre comercial</span>'}</div>
+            <div style="font-size:11px;color:#64748b;">${opsEsc([e.permiso, e.razonSocial, e.municipio].filter(Boolean).join(" · "))}</div></div>`; }).join("");
+    }
+    window.opsPFBuscar = function (v) { opsPF.q = v || ""; const box = document.getElementById("ops-pf-res"); if (box) box.innerHTML = opsPFHTMLResultados(); };
+    window.opsPFElegir = function (id) { opsPFLeer(); opsPF.est = (opsPF.cat || []).find(e => String(e.id) === String(id)) || null; if (opsPF.est) opsPF.grupo = opsPFGrupoEstacion(opsPF.est); opsPFPintar(); };
+    window.opsPFCambiarEst = function () { opsPFLeer(); opsPF.est = null; opsPFPintar(); };
+    window.opsPFPrioridad = function (v) {
+        opsPFLeer(); opsPF.prioridad = v;
+        // Si es Petro Seven u OXXO y aún no hay vencimiento, se sugiere con el SLA del cliente.
+        const cli = opsPFClienteGrupo(opsPF.grupo), h = cli && cli.horasSLA && cli.horasSLA[v];
+        if (h && !opsPF.fecha) { const d = new Date(Date.now() + h * 3600000); opsPF.fecha = opsCalFechaISO(d); opsPF.hora = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); opsPF.msg = `Vencimiento sugerido con el SLA de ${cli.nombre} (${h} h). Cámbialo si el folio trae otra fecha.`; }
+        opsPFPintar();
+    };
+    function opsPFLeer() {
+        const v = id => (document.getElementById(id) || {}).value;
+        if (!opsPF || !document.getElementById("ops-pf-id")) return;
+        opsPF.idCliente = (v("ops-pf-id") || "").trim(); opsPF.tarea = v("ops-pf-tarea") || ""; opsPF.fecha = v("ops-pf-fecha") || ""; opsPF.hora = v("ops-pf-hora") || "";
+        opsPF.estatus = v("ops-pf-estatus") || opsPF.estatus; opsPF.comentarios = v("ops-pf-com") || ""; opsPF.tecId = v("ops-pf-tec") || "";
+        const pr = v("ops-pf-prio"); if (pr) opsPF.prioridad = pr;
+    }
+    function opsPFPintar() {
+        const n = opsPF, wrap = document.getElementById("ops-modal-wrap"); if (!n || !wrap) return;
+        const G = OPS_GRUPOS_FOLIO[n.grupo], cli = opsPFClienteGrupo(n.grupo), e = n.est;
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;";
+        const lab = (num, t, req) => `<div style="font-size:12px;font-weight:800;color:#1e293b;margin:12px 0 5px;"><span style="display:inline-flex;width:20px;height:20px;border-radius:50%;background:${G.color};color:#fff;align-items:center;justify-content:center;font-size:11px;margin-right:6px;">${num}</span>${t}${req ? ' <span style="color:#E7402B;">*</span>' : ""}</div>`;
+        const tecs = cacheTec.filter(t => (t.estatus || "activo") !== "baja" && !opsEsAdministrativo(t)).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+        const ocupados = id => n.fecha ? cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && (f.tecnicosAsignadosIds || []).includes(id) && String(f.fechaProgramada || "").slice(0, 10) === n.fecha).length : 0;
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:16px;width:620px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="background:${G.color};color:#fff;padding:14px 18px;display:flex;align-items:center;gap:12px;">
+              ${G.logo ? `<img src="${G.logo}" alt="" onerror="this.style.display='none'" style="height:34px;max-width:120px;object-fit:contain;background:#fff;border-radius:7px;padding:3px 6px;">` : ""}
+              <div style="flex:1;"><div style="font-size:16px;font-weight:900;">Programar folio · ${opsEsc(G.nombre)}</div><div style="font-size:11.5px;opacity:.9;">Solo 9 datos. Al guardar aparece en el calendario y en la app del técnico.</div></div>
+              <button onclick="opsPFCerrar()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:7px 11px;cursor:pointer;font-weight:800;">Cerrar</button>
+            </div>
+            <div style="padding:4px 18px 16px;overflow-y:auto;">
+              ${lab(1, "ID del folio (el que se publica en WhatsApp: ServiceNow / Fractal)", true)}
+              <input id="ops-pf-id" value="${opsEsc(n.idCliente)}" placeholder="Ej. INC0012345 o MC0537408" style="${inp}">
+              ${lab(2, "Ubicación (estación)", true)}
+              ${e ? `<div style="display:flex;gap:10px;align-items:center;background:${G.claro};border-radius:10px;padding:10px 12px;">
+                    <div style="flex:1;"><div style="font-weight:900;color:${G.color};">${opsEsc(e.nombreComercial || e.razonSocial || "")}</div>
+                    <div style="font-size:11.5px;color:#475569;">${opsEsc([e.permiso ? "PL " + e.permiso : "", e.razonSocial, e.municipio].filter(Boolean).join(" · "))}</div>
+                    ${e.direccionNormalizada || e.domicilioRaw ? `<div style="font-size:11px;color:#64748b;">${opsEsc(e.direccionNormalizada || e.domicilioRaw)}</div>` : `<div style="font-size:11px;color:#b45309;font-weight:700;">Sin dirección física capturada: pide a Ventas que la complete.</div>`}</div>
+                    <button onclick="opsPFCambiarEst()" style="border:none;background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:700;color:#475569;">Cambiar</button></div>`
+                : `<input id="ops-pf-q" type="search" autocomplete="off" value="${opsEsc(n.q)}" oninput="opsPFBuscar(this.value)" placeholder="${n.cargando ? "Cargando estaciones…" : "Busca por PL, nombre comercial, razón social o ciudad"}" style="${inp}">
+                   <div id="ops-pf-res" style="border:1px solid #e2e8f0;border-radius:9px;max-height:220px;overflow-y:auto;margin-top:6px;">${opsPFHTMLResultados()}</div>`}
+              ${lab(3, "Tarea (qué hay que hacer)", true)}
+              <input id="ops-pf-tarea" value="${opsEsc(n.tarea)}" placeholder="Ej. Dispensario 2 no despacha Magna / cambio de bota" style="${inp}">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div>${lab(4, "Vencimiento SLA", true)}<input id="ops-pf-fecha" type="date" value="${opsEsc(n.fecha)}" onchange="opsPFLeer();opsPFPintar()" style="${inp}"></div>
+                <div>${lab(5, "Hora", true)}<input id="ops-pf-hora" type="time" value="${opsEsc(n.hora)}" style="${inp}"></div>
+                <div>${lab(6, "Prioridad", true)}<select id="ops-pf-prio" onchange="opsPFPrioridad(this.value)" style="${inp}"><option value="">Elige…</option>${Object.entries(OPS_PRIORIDAD_TXT).map(([k, t]) => `<option value="${k}" ${n.prioridad === k ? "selected" : ""}>${t}${cli && cli.horasSLA && cli.horasSLA[k] ? " (" + cli.horasSLA[k] + " h)" : ""}</option>`).join("")}</select></div>
+              </div>
+              ${n.msg ? `<div style="font-size:11.5px;color:#1d4ed8;margin-top:6px;">${opsEsc(n.msg)}</div>` : ""}
+              ${lab(7, "Estatus", true)}
+              <select id="ops-pf-estatus" style="${inp}">${OPS_PF_ESTATUS.map(x => `<option ${n.estatus === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+              ${lab(8, "Comentarios", false)}
+              <textarea id="ops-pf-com" rows="2" style="${inp};resize:vertical;" placeholder="Lo que el técnico debe saber (acceso, contacto, refacción probable…)">${opsEsc(n.comentarios)}</textarea>
+              ${lab(9, "¿Quién lo realiza?", true)}
+              <select id="ops-pf-tec" style="${inp}"><option value="">Elige al técnico…</option>${tecs.map(t => { const o = ocupados(t.id); return `<option value="${opsEsc(t.id)}" ${n.tecId === t.id ? "selected" : ""}>${opsEsc(t.nombre || "")}${o ? " · ya tiene " + o + " servicio(s) ese día" : ""}</option>`; }).join("")}</select>
+              <div id="ops-pf-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px;margin-top:10px;"></div>
+              <button id="ops-pf-btn" onclick="opsPFGuardar()" style="width:100%;margin-top:6px;background:${G.color};color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:900;cursor:pointer;">Guardar y avisar al técnico</button>
+            </div>
+          </div>
+        </div>`;
+        if (!n.idCliente) { const i1 = document.getElementById("ops-pf-id"); if (i1) i1.focus(); }
+    }
+    window.opsPFLeer = opsPFLeer; window.opsPFPintar = opsPFPintar;
+    window.opsPFCerrar = function () { opsPF = null; const w = document.getElementById("ops-modal-wrap"); if (w) w.innerHTML = ""; };
+    window.opsPFGuardar = async function () {
+        opsPFLeer();
+        const n = opsPF, err = document.getElementById("ops-pf-err"), btn = document.getElementById("ops-pf-btn");
+        const falta = [];
+        if (!n.idCliente) falta.push("ID del folio"); if (!n.est) falta.push("ubicación"); if (!n.tarea.trim()) falta.push("tarea");
+        if (!n.fecha) falta.push("fecha de vencimiento"); if (!n.hora) falta.push("hora"); if (!n.prioridad) falta.push("prioridad");
+        if (!n.tecId && n.estatus !== "Pendiente de asignar") falta.push("quién lo realiza (o elige el estatus «Pendiente de asignar»)");
+        if (falta.length) { err.textContent = "Falta: " + falta.join(", ") + "."; return; }
+        // Sin duplicados: el mismo ID de folio no se programa dos veces.
+        const idN = opsNormalizaTexto(n.idCliente);
+        const dup = cacheFolios.find(f => !f.cancelado && opsNormalizaTexto(f.folioClienteId || "") === idN);
+        if (dup) { err.innerHTML = `Ese ID ya está programado: ${opsEsc(dup.estacion || "")} · ${opsEsc(opsFmtFechaCorta(dup.fechaProgramada))}. <a href="#" onclick="event.preventDefault();opsPFCerrar();opsAbrirPanelFolio('${dup.id}')" style="color:#1D2E73;">Abrirlo</a>`; return; }
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        const e = n.est, cli = opsPFClienteGrupo(n.grupo), tec = n.tecId ? opsTecPorId(n.tecId) : null;
+        const cuando = n.fecha + "T" + n.hora;
+        const equipo = tec ? opsCamposEquipo({}, [tec.id], null) : { tecnicosAsignadosIds: [], tecnicosAsignadosNombres: [] };
+        const datos = {
+            folioClienteId: n.idCliente, folioOS: null, tareaFolio: n.tarea.trim(),
+            estacion: e.nombreComercial || e.razonSocial || "", estacionNombreComercial: e.nombreComercial || null,
+            estacionCatalogoId: e.id, estacionRazonSocial: e.razonSocial || null, estacionPermiso: e.permiso || null,
+            estacionDireccion: e.direccionNormalizada || e.domicilioRaw || null, estacionMunicipio: e.municipio || null,
+            estacionLat: e.lat ?? null, estacionLng: e.lng ?? null, estacionEncargado: e.encargado || null, estacionZona: e.zona || null,
+            clienteId: cli ? cli.id : null, clienteNombre: cli ? cli.nombre : (e.razonSocial || null), grupoCliente: n.grupo,
+            prioridad: n.prioridad, estatusFolio: n.estatus, vencimiento: cuando, fechaSolicitud: (() => { const d = new Date(); return opsCalFechaISO(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); })(),
+            fechaProgramada: n.tecId ? cuando : null, fechaAtencion: null, fechaSolucion: null,
+            tipoFolio: "servicio", tipoAlta: "folio", conceptoGeneral: "Atención de folio", categoriaServicio: "Atención de folio · " + n.tarea.trim(),
+            tiempoEjecucionHrs: 1, duracionValor: 1, duracionUnidad: "horas",
+            plaza: /juarez/i.test(opsAsNorm(e.municipio || "")) ? "Juárez" : /parral/i.test(opsAsNorm(e.municipio || "")) ? "Parral" : /monterrey/i.test(opsAsNorm(e.municipio || "")) ? "Monterrey" : "Chihuahua",
+            comentarios: n.comentarios.trim(), ...equipo,
+            folioNumero: opsSiguienteNumeroServicio(), origen: "programar_folio", creadoPor: opsUsuarioActual(), creadoEn: opsFechaHora(),
+            historialEstatusFolio: [{ estatus: n.estatus, por: opsNombreActual(), en: opsFechaHora() }],
+        };
+        try {
+            const { db, fs } = await opsGetFB();
+            const ref = await fs.addDoc(fs.collection(db, COL_FOLIOS), datos);
+            await fs.addDoc(fs.collection(db, COL_FOLIOS, ref.id, "comentarios"), { texto: `Folio ${n.idCliente} programado por ${opsNombreActual()}: ${n.tarea.trim()} · vence ${n.fecha} ${n.hora} · ${OPS_PRIORIDAD_TXT[n.prioridad] || n.prioridad} · ${n.estatus}${tec ? " · lo realiza " + tec.nombre : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "captura", createdAt: opsFechaHora() }).catch(() => {});
+            let aviso = "";
+            if (tec) { const a = await opsAvisarTecnicosAsignados({ id: ref.id, ...datos }, [tec], "Folio " + n.idCliente); aviso = a.enviados.length ? " Se avisó a " + a.enviados.join(", ") + " en su app." : a.sinCorreo.length ? " OJO: " + tec.nombre + " no tiene correo en su ficha, no recibió aviso." : ""; }
+            opsPF = null; document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "Folio programado", texto: n.idCliente + " · " + datos.estacion + "." + aviso, nivel: "normal", modulo: "Operaciones" });
+            else alert("Folio programado." + aviso);
+            if (tabActual === "folios") opsRenderFolios(); try { opsRenderCalendario(); } catch (x) {}
+        } catch (x) {
+            if (err) err.textContent = "No se pudo guardar: " + (x.message || x);
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar y avisar al técnico"; }
+        }
+    };
+
     function opsRenderFolios() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -6300,7 +6507,10 @@
         const calcTodos = cacheFolios.map(f => ({ f, info: opsCalcularSemaforoFolio(f) }));
         const numInspeccion = calcTodos.filter(x => x.f.tipoFolio === "inspeccion").length;
         const numServicio = calcTodos.length - numInspeccion;
-        const calc = calcTodos.filter(x => filtroFolioTipo === "inspeccion" ? x.f.tipoFolio === "inspeccion" : x.f.tipoFolio !== "inspeccion");
+        const calcTipo = calcTodos.filter(x => filtroFolioTipo === "inspeccion" ? x.f.tipoFolio === "inspeccion" : x.f.tipoFolio !== "inspeccion");
+        const nGrupo = g => calcTipo.filter(x => opsGrupoClienteFolio(x.f) === g && !x.f.fechaSolucion && !x.f.cancelado).length;
+        const calc = filtroFolioGrupo === "todos" ? calcTipo : calcTipo.filter(x => opsGrupoClienteFolio(x.f) === filtroFolioGrupo);
+        const GR = OPS_GRUPOS_FOLIO[filtroFolioGrupo];
         const kpis = [
             { label: "Total de folios", valor: calc.length, color: "#1f2937" },
             { label: "Solucionados", valor: calc.filter(x => x.info.estado === "SOLUCIONADO").length, color: OPS_SEMAFORO.verde.dot },
@@ -6310,17 +6520,30 @@
             { label: "Por revisar", valor: calc.filter(x => x.info.estado === "REVISAR DATOS" || x.info.estado === "SIN FECHA").length, color: OPS_SEMAFORO.gris.dot },
         ];
 
-        const filtroTexto = filtroFolios.trim().toLowerCase();
+        const partesQ = opsNormalizaTexto(filtroFolios).split(" ").filter(Boolean);
         let filtrados = calc.filter(({ f, info }) => {
             if (filtroFolioSemaforo !== "todos" && info.semaforo !== filtroFolioSemaforo) return false;
-            if (!filtroTexto) return true;
-            return `${f.estacion || ""} ${f.comentarios || ""} ${opsResponsableFolio(f)} ${f.folioOS || ""}`.toLowerCase().includes(filtroTexto);
+            if (!partesQ.length) return true;
+            const t = opsNormalizaTexto([f.estacion, f.estacionNombreComercial, f.estacionRazonSocial, f.estacionPermiso, f.comentarios, f.tareaFolio, opsResponsableFolio(f), f.folioOS, f.osTecnico, f.folioClienteId, f.clienteNombre].join(" "));
+            return partesQ.every(p => t.includes(p));
         });
-        const orden = { rojo: 0, naranja: 1, amarillo: 2, gris: 3, verde: 4 };
-        filtrados.sort((a, b) => orden[a.info.semaforo] - orden[b.info.semaforo]);
+        filtrados.sort(opsOrdenFolios);
 
+        const tabGrupo = (g, txt, color, n) => { const on = filtroFolioGrupo === g; return `<button onclick="opsFiltrarFolioGrupo('${g}')" style="border:2px solid ${color};background:${on ? color : "#fff"};color:${on ? "#fff" : color};padding:9px 16px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:800;display:inline-flex;align-items:center;gap:8px;">${txt}${n != null ? `<span style="background:${on ? "rgba(255,255,255,.25)" : color};color:#fff;border-radius:20px;padding:1px 8px;font-size:11px;">${n}</span>` : ""}</button>`; };
         el.innerHTML = `
             ${filtroFolioTipo !== "inspeccion" ? opsMesaFoliosHTML() : ""}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                ${tabGrupo("todos", "Todos", "#334155", null)}
+                ${tabGrupo("petro", "Petro Seven", OPS_GRUPOS_FOLIO.petro.color, nGrupo("petro"))}
+                ${tabGrupo("oxxo", "OXXO", OPS_GRUPOS_FOLIO.oxxo.color, nGrupo("oxxo"))}
+                ${tabGrupo("externos", "Clientes externos", OPS_GRUPOS_FOLIO.externos.color, nGrupo("externos"))}
+            </div>
+            ${GR ? `<div style="display:flex;align-items:center;gap:14px;background:${GR.color};color:#fff;border-radius:14px;padding:14px 18px;margin-bottom:14px;">
+                ${GR.logo ? `<img src="${GR.logo}" alt="" onerror="this.style.display='none'" style="height:42px;max-width:150px;object-fit:contain;background:#fff;border-radius:8px;padding:4px 8px;">` : ""}
+                <div style="flex:1;"><div style="font-size:18px;font-weight:900;letter-spacing:.3px;">Folios ${opsEsc(GR.nombre)}</div>
+                <div style="font-size:12px;opacity:.9;">${nGrupo(filtroFolioGrupo)} pendiente(s). Ordenados por lo más urgente: vencidos, urgentes, prioridad y vencimiento. Operaciones puede fijar el orden a mano.</div></div>
+                ${opsPuedeGestionar() ? `<button onclick="opsAbrirProgramarFolio('${filtroFolioGrupo}')" style="background:#fff;color:${GR.color};border:none;border-radius:10px;padding:10px 16px;font-weight:900;cursor:pointer;font-size:13px;">+ Programar folio</button>` : ""}
+            </div>` : ""}
             <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:10px;width:fit-content;margin-bottom:14px;">
                 ${[["servicio", `Folios de servicio (${numServicio})`], ["inspeccion", `Visitas de inspección (${numInspeccion})`]].map(([val, label]) => {
                     const on = filtroFolioTipo === val;
@@ -6338,7 +6561,7 @@
                 <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <span style="color:#94a3b8;">${ICON.search}</span>
-                        <input type="text" placeholder="Buscar estación, O.S., comentario o responsable..." value="${opsEsc(filtroFolios)}" oninput="opsFiltrarFolios(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:280px;outline:none;">
+                        <input id="ops-folios-q" type="search" autocomplete="off" placeholder="Buscar ID, estación, O.S., técnico, comentario…" value="${opsEsc(filtroFolios)}" oninput="opsFiltrarFolios(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;width:300px;outline:none;">
                         <select onchange="opsFiltrarFolioSemaforo(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;outline:none;">
                             <option value="todos" ${filtroFolioSemaforo === "todos" ? "selected" : ""}>Todos</option>
                             <option value="rojo" ${filtroFolioSemaforo === "rojo" ? "selected" : ""}>Vencidos</option>
@@ -6350,7 +6573,8 @@
                     </div>
                     ${gestion ? `
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        ${opsPuedeCrear() ? `<button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio</button>` : ""}
+                        ${opsPuedeGestionar() ? `<button onclick="opsAbrirProgramarFolio('${filtroFolioGrupo}')" class="mkt-add-btn" style="background:#15803D;">${ICON.plus} Programar folio</button>` : ""}
+                        ${opsPuedeCrear() ? `<button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio (completo)</button>` : ""}
                         <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;display:inline-flex;align-items:center;gap:6px;">${ICON.download} Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
                         <button onclick="opsExportarFoliosPDF()" title="Tabla de seguimiento en PDF, para imprimir o revisar rápido" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF seguimiento</button>
@@ -6380,17 +6604,23 @@
     window.opsRenderFolios = opsRenderFolios;
 
     function opsFilaFolio(f, info, i, gestion) {
+        const GRf = OPS_GRUPOS_FOLIO[opsGrupoClienteFolio(f)];
+        const fijado = f.ordenManual != null && !f.fechaSolucion;
+        const ctrlOrden = gestion && !f.fechaSolucion ? `<div style="display:flex;gap:3px;justify-content:flex-end;margin-top:4px;">${fijado
+            ? `<button title="Subir" onclick="opsFolioFijar('${f.id}','subir')" style="border:none;background:#eef2f7;border-radius:6px;padding:3px 7px;cursor:pointer;font-weight:900;">↑</button><button title="Bajar" onclick="opsFolioFijar('${f.id}','bajar')" style="border:none;background:#eef2f7;border-radius:6px;padding:3px 7px;cursor:pointer;font-weight:900;">↓</button><button title="Quitar orden manual" onclick="opsFolioFijar('${f.id}','quitar')" style="border:none;background:#fef2f2;color:#E7402B;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10.5px;font-weight:700;">Soltar</button>`
+            : `<button title="Ponerlo primero en la lista" onclick="opsFolioFijar('${f.id}','arriba')" style="border:none;background:#eef2f7;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:10.5px;font-weight:700;">Fijar arriba</button>`}</div>` : "";
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
         const filaVencida = info.semaforo === "rojo" ? "background:#fef2f2;" : `background:${zebra};`;
         const cp = [f.clienteNombre, f.prioridad].filter(Boolean).join(" · ") || "—";
         return `<tr style="${filaVencida}border-bottom:1px solid #eef1f5;cursor:pointer;" title="${info.motivo ? opsEsc(info.motivo) : ""}" onclick="opsAbrirFichaFolio('${f.id}')">
-            <td style="padding:8px 10px;color:#334155;">
+            <td style="padding:8px 10px;color:#334155;border-left:5px solid ${GRf.color};">
+                ${fijado ? `<div style="font-size:9px;font-weight:900;color:#fff;background:#1D2E73;border-radius:5px;padding:1px 6px;width:fit-content;margin-bottom:3px;">ORDEN MANUAL</div>` : ""}
                 <div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">O.S.</div>
                 <div style="font-weight:600;margin-bottom:${f.folioClienteId ? "4px" : "0"};">${f.folioOS ? opsEsc(f.folioOS) : "—"}</div>
                 ${f.folioClienteId ? `<div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">ID Orden</div><div style="font-weight:600;">${opsEsc(f.folioClienteId)}</div>` : ""}
             </td>
-            <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}</td>
-            <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}</td>
+            <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(f.estacion)}${f.tareaFolio ? `<div style="font-size:11px;color:#64748b;font-weight:500;">${opsEsc(f.tareaFolio)}</div>` : ""}</td>
+            <td style="padding:8px 10px;color:#64748b;">${opsEsc(cp)}${f.estatusFolio ? `<div style="font-size:10.5px;font-weight:700;color:#1D2E73;">${opsEsc(f.estatusFolio)}</div>` : ""}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.fechaSolicitud)}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsFmtFechaCorta(f.vencimiento)}</td>
             <td style="padding:8px 10px;color:#64748b;">${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</td>
@@ -6401,11 +6631,11 @@
                 ${opsEsc(info.diasTexto)}
             </td>
             <td style="padding:8px 10px;">${opsBadgeSemaforoFolio(info)}</td>
-            <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}</td>
+            <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">${gestion ? `<button onclick="opsAbrirModalFolio('${f.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">Editar</button>` : ""}${ctrlOrden}</td>
         </tr>`;
     }
 
-    window.opsFiltrarFolios = function (v) { filtroFolios = v || ""; opsRenderFolios(); };
+    window.opsFiltrarFolios = function (v) { filtroFolios = v || ""; opsRerenderConFoco(opsRenderFolios); };
     window.opsFiltrarFolioSemaforo = function (v) { filtroFolioSemaforo = v || "todos"; opsRenderFolios(); };
     window.opsFiltrarFolioTipo = function (v) { filtroFolioTipo = v || "servicio"; opsRenderFolios(); };
 
@@ -8113,7 +8343,12 @@
                     <input type="datetime-local" id="ops-folio-reprog-fecha-${f.id}" value="${opsEsc((f.fechaProgramada || "").slice(0, 16))}" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
                     <button onclick="opsFolioAccion('${f.id}','guardarReprog')" class="mkt-add-btn" style="background:#4f46e5;">Guardar</button>
                 </div>
-                <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Detalle (si cambia de día te pedirá la causa)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                <div style="font-size:11px;font-weight:600;color:#475569;margin:8px 0 4px;">Técnico (puedes cambiarlo y dejar la misma fecha e información)</div>
+                <select id="ops-folio-reprog-tec-${f.id}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                    <option value="">Mismo equipo: ${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "sin técnico")}</option>
+                    ${cacheTec.filter(t => (t.estatus || "activo") !== "baja" && !opsEsAdministrativo(t)).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(t => `<option value="${opsEsc(t.id)}">Pasar a: ${opsEsc(t.nombre || "")}</option>`).join("")}
+                </select>
+                <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Detalle (si cambia de día o de técnico te pedirá la causa)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
             </div>
             ${extra.length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;line-height:1.6;">${extra.join("<br>")}</div>` : ""}
         </div>`;
@@ -8173,6 +8408,31 @@
             de: de || null, a: a || null, por: opsNombreActual(), en: opsFechaHora() };
         return { cambiosProgramacion: (f.cambiosProgramacion || []).concat([entrada]), ultimaCausaCambio: entrada };
     }
+    // ── Equipo del servicio siempre sincronizado (21-oct-2026) ──
+    // La app del técnico muestra un servicio si está en tecnicosAsignadosIds O si es el responsable
+    // (id o correo). Antes, al pasar un servicio a otro técnico se cambiaba solo uno de los dos
+    // campos y el servicio les seguía saliendo a ambos. Esto cambia los dos juntos y guarda a quién
+    // se le quitó (tecnicosAnteriores) para que en su app quede una tarjeta gris "Reprogramado".
+    function opsCamposEquipo(f, nuevosIds, motivo) {
+        const tecs = [...new Set(nuevosIds || [])].map(id => opsTecPorId(id)).filter(Boolean);
+        if (!tecs.length) return {};
+        const ids = tecs.map(t => t.id);
+        const lider = (f.tecnicoResponsableId && ids.includes(f.tecnicoResponsableId)) ? opsTecPorId(f.tecnicoResponsableId) : tecs[0];
+        const antes = [...new Set([...(f.tecnicosAsignadosIds || []), f.tecnicoResponsableId].filter(Boolean))];
+        const salen = antes.filter(id => !ids.includes(id));
+        const corrDe = id => { const t = opsTecPorId(id) || {}; return String(t.correo || (id === f.tecnicoResponsableId ? f.tecnicoResponsableCorreo : "") || "").toLowerCase().trim() || null; };
+        const anteriores = (f.tecnicosAnteriores || []).filter(a => a && !ids.includes(a.id)).concat(salen.map(id => ({
+            id, nombre: (opsTecPorId(id) || {}).nombre || (id === f.tecnicoResponsableId ? f.tecnicoResponsableNombre : "") || "",
+            correo: corrDe(id), hasta: opsFechaHora(), pasadoA: tecs.map(t => t.nombre || "").join(", "),
+            fechaAntes: f.fechaProgramada || null, motivo: motivo || null })));
+        // Si el responsable anterior no tenía id (solo correo), también deja de verlo.
+        if (!f.tecnicoResponsableId && f.tecnicoResponsableCorreo && !tecs.some(t => String(t.correo || "").toLowerCase().trim() === String(f.tecnicoResponsableCorreo).toLowerCase().trim()))
+            anteriores.push({ id: null, nombre: f.tecnicoResponsableNombre || "", correo: String(f.tecnicoResponsableCorreo).toLowerCase().trim(), hasta: opsFechaHora(), pasadoA: tecs.map(t => t.nombre || "").join(", "), fechaAntes: f.fechaProgramada || null, motivo: motivo || null });
+        return { tecnicosAsignadosIds: ids, tecnicosAsignadosNombres: tecs.map(t => t.nombre || ""),
+            tecnicoResponsableId: lider.id, tecnicoResponsableNombre: lider.nombre || null,
+            tecnicoResponsableCorreo: lider.correo ? String(lider.correo).toLowerCase().trim() : null, responsable: lider.nombre || null,
+            tecnicosAnteriores: anteriores.slice(-20) };
+    }
     function opsTextoCausa(r) { return r.causaNombre + (r.solicito ? " (pidió: " + r.solicito + ")" : "") + (r.detalle ? " · " + r.detalle : ""); }
     // Franja roja en el calendario cuando el último cambio vino de fuera de Operaciones.
     function opsMarcaCambioExterno(f) {
@@ -8195,7 +8455,7 @@
     // cliente, ponerle estatus (Working on it / Done), descargar el PDF con todo, mandar al
     // cliente una liga con el reporte completo (con video) y bajar un ZIP ordenado para el Drive.
     // Todo se guarda en el propio folio: revisionCierre = { estatus, cobro, cotizacion, nota, ... }.
-    const OPS_REV_ESTATUS = { por_revisar: ["Por revisar", "#b45309", "#fef3c7"], en_revision: ["En revisión", "#1d4ed8", "#dbeafe"], revisado: ["Revisado", "#15803d", "#dcfce7"] };
+    const OPS_REV_ESTATUS = { por_revisar: ["Por revisar", "#b45309", "#fef3c7"], en_revision: ["WORKING ON IT", "#1d4ed8", "#dbeafe"], revisado: ["DONE", "#15803d", "#dcfce7"] };
     let opsRev = null;
     function opsRevHoyISO(d) { const x = d || new Date(); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
     function opsRevEstado() {
@@ -8231,13 +8491,19 @@
         finally { opsRevPolCargando = false; }
         if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
     }
+    // Buscador (21-oct-2026): sin acentos ni mayúsculas, por O.S., nombre comercial, cliente, técnico,
+    // ID del cliente y cotización. Mientras hay texto busca en TODAS las fechas y estatus (antes solo
+    // dentro de "Por revisar" y 30 días, y por eso parecía que no encontraba nada).
     function opsRevItems() {
-        const s = opsRevEstado(), q = String(s.q || "").toLowerCase().trim();
+        const s = opsRevEstado(), qn = opsNormalizaTexto(s.q || ""), q = qn;
+        const partes = qn.split(" ").filter(Boolean);
+        const coincide = txt => { const t = opsNormalizaTexto(txt); return partes.every(p => t.includes(p)); };
         const folios = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f))
-            .filter(f => { const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
+            .filter(f => { if (q) return true; const d = opsRevFechaCierre(f).slice(0, 10); return d >= s.desde && d <= s.hasta; })
             .map(f => ({ k: "f", id: f.id, f, cierre: opsRevFechaCierre(f), os: opsRevOS(f), estacion: f.estacion || "", cliente: opsRevCliente(f),
                 poliza: opsRevEsPoliza(f), estatus: (f.revisionCierre && f.revisionCierre.estatus) || "por_revisar",
-                buscar: [opsRevOS(f), f.folioOS, f.folioClienteId, f.folioNumero, f.estacion, f.estacionPermiso, opsRevCliente(f), (f.revisionCierre || {}).cotizacion].join(" ") }));
+                buscar: [opsRevOS(f), f.osTecnico, f.folioOS, f.folioClienteId, f.folioNumero, f.estacion, f.estacionNombreComercial, f.estacionPermiso, f.estacionRazonSocial, opsRevCliente(f), (f.revisionCierre || {}).cotizacion,
+                    (opsRevUltimaVisita(f) || {}).nombre, f.completadoPor, f.tecnicoResponsableNombre, (f.tecnicosAsignadosNombres || []).join(" ")].join(" ") }));
         const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
         const pols = opsRevPolizas.filter(p => !ligadas.has(p.id)).map(p => {
             const r = opsRevPolRev.get(p.id) || {};
@@ -8247,8 +8513,8 @@
         return folios.concat(pols)
             .filter(x => s.cliente === "todos" || x.cliente === s.cliente)
             .filter(x => s.tipo === "todos" || (s.tipo === "poliza") === x.poliza)
-            .filter(x => s.estatus === "todos" || x.estatus === s.estatus)
-            .filter(x => !q || String(x.buscar).toLowerCase().includes(q))
+            .filter(x => q || s.estatus === "todos" || x.estatus === s.estatus)
+            .filter(x => !q || coincide(x.buscar))
             .sort((a, b) => b.cierre.localeCompare(a.cierre));
     }
     function opsRevLista() { return opsRevItems().filter(x => x.k === "f").map(x => x.f); }
@@ -8257,7 +8523,7 @@
         const s = opsRevEstado(), items = opsRevItems();
         opsRevCargarPolizas(false);
         const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente).concat(opsRevPolizas.map(p => String(p.cliente_razon_social || "Sin cliente").trim())))].sort((a, b) => a.localeCompare(b, "es"));
-        const sel = (k, ops) => `<select onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
+        const sel = (k, ops) => `<select id="ops-rev-${k}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
         const fecha = k => `<input type="date" value="${s[k]}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">`;
         const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
         const porRevisar = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f) && !((f.revisionCierre || {}).estatus === "revisado")).length
@@ -8270,12 +8536,13 @@
                 <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
-                <input type="text" value="${opsEsc(s.q)}" placeholder="Buscar O.S., folio de póliza, ID del cliente, cotización, estación…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:270px;">
-                ${sel("estatus", [["por_revisar", "Por revisar"], ["en_revision", "En revisión"], ["revisado", "Revisados"], ["todos", "Todos los estatus"]])}
+                <input id="ops-rev-q" type="search" autocomplete="off" value="${opsEsc(s.q)}" placeholder="Buscar O.S., nombre de la estación, cliente, técnico, ID del folio…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:320px;">
+                ${sel("estatus", [["por_revisar", "Por revisar"], ["en_revision", "WORKING ON IT (con pendientes)"], ["revisado", "DONE (completos)"], ["todos", "Todos los estatus"]])}
                 ${sel("tipo", [["todos", "Pólizas y servicios técnicos"], ["servicio", "Solo servicios técnicos"], ["poliza", "Solo pólizas"]])}
                 ${sel("cliente", [["todos", "Todos los clientes"], ...clientes.map(c => [c, c])])}
                 <span style="font-size:12px;color:#64748b;">del</span>${fecha("desde")}<span style="font-size:12px;color:#64748b;">al</span>${fecha("hasta")}
             </div>
+            ${s.q ? `<div style="font-size:11.5px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:6px 10px;margin:-4px 0 10px;">Buscando «${opsEsc(s.q)}» en <b>todas las fechas y todos los estatus</b> (${items.length} resultado(s)). Borra la búsqueda para volver a usar los filtros.</div>` : ""}
             <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12.3px;">
                 <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
@@ -8350,8 +8617,9 @@
                 ${r.por ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">Última revisión: ${opsEsc(r.por)} · ${opsEsc(opsFmtFechaCorta(r.en))}</div>` : ""}
                 <div id="opsrev-msg" style="font-size:11.5px;color:#b91c1c;margin-top:6px;"></div>
                 ${gest ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
-                  <button onclick="opsRevGuardarPoliza('${id}',false)" style="background:#e2e8f0;border:none;border-radius:8px;padding:9px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12.5px;">Guardar</button>
-                  <button onclick="opsRevGuardarPoliza('${id}',true)" style="background:#15803d;border:none;border-radius:8px;padding:9px;font-weight:800;color:#fff;cursor:pointer;font-size:12.5px;">Marcar como revisado</button></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
+                  <button onclick="opsRevGuardarPoliza('${id}','working')" style="background:#1d4ed8;border:none;border-radius:8px;padding:11px;font-weight:900;color:#fff;cursor:pointer;font-size:12.5px;">WORKING ON IT</button>
+                  <button onclick="opsRevGuardarPoliza('${id}',true)" style="background:#15803d;border:none;border-radius:8px;padding:11px;font-weight:900;color:#fff;cursor:pointer;font-size:12.5px;">DONE</button></div>
+                  <button onclick="opsRevGuardarPoliza('${id}',false)" style="width:100%;margin-top:6px;background:#e2e8f0;border:none;border-radius:8px;padding:8px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12px;">Solo guardar los datos</button>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
               </div>
             </div>
           </div>
@@ -8363,7 +8631,10 @@
         const cobroSi = (document.querySelector('input[name="opsrev-cobro"]:checked') || {}).value === "si";
         const monto = document.getElementById("opsrev-monto").value;
         if (cobroSi && !(Number(monto) > 0)) { if (msg) msg.textContent = "Escribe el monto que se cobró."; return; }
-        const fila = { poliza_id: id, estatus: revisado ? "revisado" : document.getElementById("opsrev-estatus").value,
+        const working = revisado === "working"; if (working) revisado = false;
+        if (working && !document.getElementById("opsrev-nota").value.trim()) { if (msg) msg.textContent = "WORKING ON IT: escribe en la Nota qué falta."; return; }
+        if (revisado === true && (document.querySelector('input[name="opsrev-cobro"]:checked') || {}).value === "si" && !document.getElementById("opsrev-cotizacion").value.trim()) { if (msg) msg.textContent = "No se puede marcar DONE: se cobró algo y falta el número de cotización."; return; }
+        const fila = { poliza_id: id, estatus: revisado ? "revisado" : working ? "en_revision" : document.getElementById("opsrev-estatus").value,
             cobro: cobroSi ? { si: true, monto: Number(monto), concepto: document.getElementById("opsrev-concepto").value.trim() || null } : { si: false },
             cotizacion: document.getElementById("opsrev-cotizacion").value.trim() || null, id_cliente: document.getElementById("opsrev-idcliente").value.trim() || null,
             nota: document.getElementById("opsrev-nota").value.trim() || null, por: opsNombreActual(), en: new Date().toISOString() };
@@ -8426,8 +8697,10 @@
                 ${r.por ? `<div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">Última revisión: ${opsEsc(r.por)} · ${opsEsc(opsFmtFechaCorta(r.en))}</div>` : ""}
                 <div id="opsrev-msg" style="font-size:11.5px;color:#b91c1c;margin-top:6px;"></div>
                 ${gest ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
-                  <button onclick="opsRevGuardar('${f.id}',false)" style="background:#e2e8f0;border:none;border-radius:8px;padding:9px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12.5px;">Guardar</button>
-                  <button onclick="opsRevGuardar('${f.id}',true)" style="background:#15803d;border:none;border-radius:8px;padding:9px;font-weight:800;color:#fff;cursor:pointer;font-size:12.5px;">Marcar como revisado</button></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
+                  <button onclick="opsRevGuardar('${f.id}','working')" title="Hay algo pendiente: escribe en la nota qué falta" style="background:#1d4ed8;border:none;border-radius:8px;padding:11px;font-weight:900;color:#fff;cursor:pointer;font-size:12.5px;letter-spacing:.3px;">WORKING ON IT</button>
+                  <button onclick="opsRevGuardar('${f.id}',true)" title="Todo completo y correcto" style="background:#15803d;border:none;border-radius:8px;padding:11px;font-weight:900;color:#fff;cursor:pointer;font-size:12.5px;letter-spacing:.3px;">DONE</button></div>
+                  <button onclick="opsRevGuardar('${f.id}',false)" style="width:100%;margin-top:6px;background:#e2e8f0;border:none;border-radius:8px;padding:8px;font-weight:700;color:#1e293b;cursor:pointer;font-size:12px;">Solo guardar los datos</button>
+                  <div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.4;">DONE pide: número de O.S., foto de la orden de servicio, al menos una foto de evidencia, ID del folio del cliente (OXXO y Petro Seven) y número de cotización si se cobró algo.</div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Tu usuario es de solo lectura.</div>`}
                 <div style="border-top:1px solid #e2e8f0;margin:12px 0 8px;"></div>
                 <button onclick="opsRevPdf('${f.id}')" style="width:100%;background:#1D2E73;border:none;border-radius:8px;padding:9px;font-weight:700;color:#fff;cursor:pointer;font-size:12.5px;margin-bottom:6px;">Descargar PDF completo</button>
                 <button onclick="opsRevLigaCliente('${f.id}')" style="width:100%;background:#fff;border:1.5px solid #1D2E73;border-radius:8px;padding:9px;font-weight:700;color:#1D2E73;cursor:pointer;font-size:12.5px;">Liga para el cliente (PDF con video)</button>
@@ -8446,9 +8719,29 @@
         const cobroSi = (document.querySelector('input[name="opsrev-cobro"]:checked') || {}).value === "si";
         const monto = document.getElementById("opsrev-monto").value;
         if (cobroSi && !(Number(monto) > 0)) { if (msg) msg.textContent = "Escribe el monto que se cobró."; return; }
+        const working = revisado === "working"; if (working) revisado = false;
+        const notaTxt = document.getElementById("opsrev-nota").value.trim();
+        if (working && !notaTxt) { if (msg) msg.textContent = "WORKING ON IT: escribe en la Nota qué falta y quién lo tiene que hacer."; return; }
+        if (revisado === true) {
+            // Candado de DONE: no se cierra si falta algo obligatorio.
+            const falta = [];
+            if (!opsRevOS(f)) falta.push("número de orden de servicio");
+            const grupo = opsGrupoClienteFolio(f);
+            const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
+            if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
+            if (cobroSi && !document.getElementById("opsrev-cotizacion").value.trim()) falta.push("número de cotización de Aspel (se cobró algo)");
+            try {
+                const { db, fs } = await opsGetFB();
+                const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, id, "evidencias"));
+                const tipos = snap.docs.map(d => (d.data() || {}).tipo);
+                if (!tipos.includes("orden_servicio")) falta.push("foto de la orden de servicio física");
+                if (!tipos.includes("foto")) falta.push("al menos una foto de evidencia");
+            } catch (e) { falta.push("no se pudieron revisar las evidencias (sin conexión)"); }
+            if (falta.length) { if (msg) msg.innerHTML = "<b>No se puede marcar DONE.</b> Falta: " + falta.map(opsEsc).join(", ") + ". Usa WORKING ON IT y anota qué falta."; return; }
+        }
         const ahora = opsFechaHora(), yo = opsNombreActual();
         const rc = Object.assign({}, f.revisionCierre || {}, {
-            estatus: revisado ? "revisado" : document.getElementById("opsrev-estatus").value,
+            estatus: revisado ? "revisado" : working ? "en_revision" : document.getElementById("opsrev-estatus").value,
             cobro: cobroSi ? { si: true, monto: Number(monto), concepto: document.getElementById("opsrev-concepto").value.trim() || null } : { si: false },
             cotizacion: document.getElementById("opsrev-cotizacion").value.trim() || null,
             nota: document.getElementById("opsrev-nota").value.trim() || null, por: yo, en: ahora,
@@ -8516,6 +8809,15 @@
         kv("Dirección", f.estacionDireccion); kv("Técnico", v.nombre || f.completadoPor); kv("Técnico auxiliar", v.tecnicoAuxiliar || f.tecnicoAuxiliar);
         kv("¿Se concluyó?", v.resultado === "no_finalizado" ? "No: " + (v.motivo || "") : v.resultado === "no_realizado" ? "No se realizó: " + (v.motivo || "") : "Sí");
         kv("Descripción", v.detalle);
+        // Video de evidencia como renglón propio, igual que en Connecteam (liga válida 1 año).
+        {
+            const vids0 = ev.filter(e => e.tipo === "video" && e.url);
+            salto(6);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS); doc.text("Video de evidencia", M, y);
+            if (vids0.length) { doc.setFont("helvetica", "bold"); doc.setTextColor(29, 78, 216); vids0.forEach((e, i) => { doc.textWithLink("Ver video" + (vids0.length > 1 ? " " + (i + 1) : "") + " (toca aquí)", M + 52 + i * 42, y, { url: e.url }); }); }
+            else { doc.setFont("helvetica", "bold"); doc.setTextColor(...TINTA); doc.text("Sin video", M + 52, y); }
+            y += 6;
+        }
         const mat = v.materialAlmacen || f.materialAlmacen; if (mat) kv("Material de almacén", mat.usado ? (mat.almacen || "Sí") + (mat.detalle ? " · " + mat.detalle : "") : "No se utilizó");
         if (r.cotizacion) kv("No. de cotización", r.cotizacion);
         if (v.ubicacion && v.ubicacion.lat) kv("Ubicación al cerrar", v.ubicacion.lat.toFixed(6) + ", " + v.ubicacion.lng.toFixed(6));
@@ -8558,7 +8860,8 @@
     window.opsRevPdf = async function (id) {
         const f = cacheFolios.find(x => x.id === id); if (!f) return;
         const msg = document.getElementById("opsrev-msg"); if (msg) { msg.style.color = "#475569"; msg.textContent = "Armando el PDF con las fotos…"; }
-        try { const { doc } = await opsRevArmarPdf(f, 604800); doc.save(opsRevNombreArchivo(f, "pdf")); if (msg) msg.textContent = ""; }
+        try { const { doc } = await opsRevArmarPdf(f, 31536000); // video válido 1 año (el PDF va al Drive del cliente)
+ doc.save(opsRevNombreArchivo(f, "pdf")); if (msg) msg.textContent = ""; }
         catch (e) { if (msg) { msg.style.color = "#b91c1c"; msg.textContent = "No se pudo armar el PDF: " + (e.message || e); } }
     };
     // Liga para el cliente: PDF completo en un espacio público con nombre imposible de adivinar.
@@ -8718,16 +9021,35 @@
             const nueva = (document.getElementById(`ops-folio-reprog-fecha-${id}`) || {}).value;
             const motivo = ((document.getElementById(`ops-folio-reprog-motivo-${id}`) || {}).value || "").trim();
             if (!nueva) { alert("Elige la nueva fecha y hora."); return; }
+            const tecNuevo = ((document.getElementById(`ops-folio-reprog-tec-${id}`) || {}).value || "").trim();
             cambios = { fechaProgramada: nueva, ...opsCamposReprogramacion(f, nueva) };
             let causaTxt = motivo;
-            if (cambios.reprogramaciones) {
+            if (tecNuevo) {
+                // Cambio de técnico: el nuevo reemplaza al responsable; el resto del equipo se queda.
+                const actuales = (f.tecnicosAsignadosIds || []).slice();
+                let ids;
+                if (actuales.includes(tecNuevo)) ids = actuales;
+                else if (!actuales.length) ids = [tecNuevo];
+                else { const quita = f.tecnicoResponsableId && actuales.includes(f.tecnicoResponsableId) ? f.tecnicoResponsableId : actuales[0]; ids = actuales.map(x => x === quita ? tecNuevo : x); }
+                const r = await opsPedirCausaCambio("Pasar el servicio a otro técnico", `${(f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "sin técnico"} → ${(opsTecPorId(tecNuevo) || {}).nombre || ""}`, motivo);
+                if (!r) return;
+                const fBase = { ...f, tecnicosAsignadosIds: actuales.concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : []), tecnicoResponsableId: tecNuevo };
+                Object.assign(cambios, opsCamposEquipo(fBase, ids, opsTextoCausa(r)));
+                if (actuales.includes(tecNuevo)) { const t = opsTecPorId(tecNuevo); Object.assign(cambios, { tecnicoResponsableId: t.id, tecnicoResponsableNombre: t.nombre || null, tecnicoResponsableCorreo: t.correo ? String(t.correo).toLowerCase().trim() : null, responsable: t.nombre || null }); }
+                Object.assign(cambios, opsCamposCausa(f, "cambio_tecnico", r, (f.fechaProgramada || "") + " · " + ((f.tecnicosAsignadosNombres || []).join(", ") || ""), nueva + " · " + (cambios.tecnicosAsignadosNombres || []).join(", ")));
+                causaTxt = opsTextoCausa(r);
+                if (!cambios.reprogramaciones) cambios.ultimaReprogramacion = opsFechaHora();
+                // Aviso al técnico nuevo en su app (misma alerta que un servicio nuevo).
+                setTimeout(() => { const tn = opsTecPorId(tecNuevo); if (tn && !actuales.includes(tecNuevo)) opsAvisarTecnicosAsignados({ ...f, ...cambios, id }, [tn], "Servicio reasignado a ti").catch(() => {}); }, 0);
+            }
+            if (cambios.reprogramaciones && !tecNuevo) {
                 // Cambia de día: la causa es obligatoria (evidencia de por qué no se hizo lo programado)
                 const r = await opsPedirCausaCambio("Reprogramar a otro día", `${(f.fechaProgramada || "sin fecha").replace("T", " ")} → ${nueva.replace("T", " ")}`, motivo);
                 if (!r) return;
                 Object.assign(cambios, opsCamposCausa(f, "reprogramacion", r, f.fechaProgramada, nueva));
                 causaTxt = opsTextoCausa(r);
             } else cambios.ultimaReprogramacion = opsFechaHora(); // solo cambió la hora
-            nota = `Reprogramado de ${(f.fechaProgramada || "sin fecha").replace("T", " ")} a ${nueva.replace("T", " ")}${causaTxt ? " · causa: " + causaTxt : ""}.`;
+            nota = `Reprogramado de ${(f.fechaProgramada || "sin fecha").replace("T", " ")} a ${nueva.replace("T", " ")}${tecNuevo ? " · pasa a " + (cambios.tecnicosAsignadosNombres || []).join(", ") : ""}${causaTxt ? " · causa: " + causaTxt : ""}.`;
         }
         else return;
         try {
@@ -9170,7 +9492,8 @@
                         ${dato("Hora de salida", opsEsc(f.horaSalida || "No capturada"))}
                     </div>
                     ${opsAccPuedeVer("viaticos") && (f.gastoEstimado || f.viaticosMonto || f.hospedajeMonto || f.casetasMonto) ? `
-                    <div style="margin-top:10px;background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;line-height:1.7;">
+                    <div style="margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;font-size:12px;color:#334155;line-height:1.7;">
+                        <div style="font-size:11px;font-weight:800;color:#92400e;">Estimado capturado a mano (calculadora vieja). NO es solicitud de viáticos: no llega a Pagos ni sale en el PDF.</div>
                         ${f.diasTrabajo ? `Días de viaje: ${f.diasTrabajo}<br>` : ""}
                         ${f.viaticosMonto ? `Viáticos: $${f.viaticosMonto.toLocaleString("es-MX")}<br>` : ""}
                         ${f.hospedajeMonto ? `Hospedaje: $${f.hospedajeMonto.toLocaleString("es-MX")}<br>` : ""}
@@ -9285,7 +9608,7 @@
 
         try {
             const { db, fs } = await opsGetFB();
-            const cambios = { fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres, ...reprog,
+            const cambios = { fechaProgramada, tecnicosAsignadosIds: nuevosIds, tecnicosAsignadosNombres: nuevosNombres, ...opsCamposEquipo(f, nuevosIds, causa ? opsTextoCausa(causa) : null), ...reprog,
                 ...(causa ? opsCamposCausa(f, teniaOtroUnico ? "cambio_tecnico" : "reprogramacion", causa, (f.fechaProgramada || "") + (teniaOtroUnico ? " · " + (f.tecnicosAsignadosNombres || [])[0] : ""), fechaProgramada + (teniaOtroUnico ? " · " + t.nombre : "")) : {}) };
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioId), cambios);
             Object.assign(f, cambios);
@@ -9654,29 +9977,14 @@
 
                     ${secAbre("via")}
                     <div style="background:#f0f9ff;border:1px solid #dbeefb;border-radius:10px;margin:6px 0 0;padding:14px;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <div style="font-size:11.5px;font-weight:700;color:#1D2E73;">Calculadora de viáticos / hospedaje / casetas</div>
-                            ${opsPuedeGestionar() ? `<button type="button" onclick="opsAbrirModalConfigViaticos()" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:2px;" title="Ajustar tarifas">${ICON.gear}</button>` : ""}
-                        </div>
-                        <div style="display:flex;gap:8px;">
-                            <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Días de viaje</label>
-                            <input type="number" min="0" step="1" id="ops-fol-dias-viaje" value="${f?.diasTrabajo ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                            <div style="flex:1;"><label style="font-size:11px;color:#64748b;font-weight:600;">Km estimados (opcional)</label>
-                            <input type="number" min="0" step="1" id="ops-fol-km" value="${f?.kmEstimados ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                        </div>
-                        <button type="button" onclick="opsCalcularViaticos()" class="mkt-add-btn" style="background:#0e7490;width:100%;margin:8px 0 4px;">${ICON.sparkle} Calcular automático</button>
-                        <div id="ops-fol-viaticos-fuente" style="font-size:10px;color:#94a3b8;margin-bottom:8px;min-height:12px;"></div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Viáticos ($)</label>
-                            <input type="number" min="0" step="0.01" id="ops-fol-viaticos-monto" value="${f?.viaticosMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Hospedaje ($)</label>
-                            <input type="number" min="0" step="0.01" id="ops-fol-hospedaje-monto" value="${f?.hospedajeMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Casetas/gasolina ($, estimado)</label>
-                            <input type="number" min="0" step="0.01" id="ops-fol-casetas-monto" value="${f?.casetasMonto ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;"></div>
-                            <div><label style="font-size:11px;color:#64748b;font-weight:600;">Gasto total estimado ($)</label>
-                            <input type="number" min="0" step="0.01" id="ops-fol-gasto" value="${f?.gastoEstimado ?? ""}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin:3px 0;font-weight:700;"></div>
-                        </div>
-                        <div style="font-size:10px;color:#94a3b8;margin-top:6px;">El kilometraje ya es real (gratis, vía OSRM) cuando la estación viene del catálogo. Casetas siguen siendo un estimado por tarifa fija — ningún servicio gratuito las conoce en México. Todo aquí se puede editar a mano después de calcular.</div>
+                        <div style="font-size:12px;font-weight:800;color:#1D2E73;margin-bottom:4px;">Viáticos de este servicio</div>
+                        <div style="font-size:11.5px;color:#475569;line-height:1.45;margin-bottom:10px;">Los viáticos se piden y se corrigen SIEMPRE con la calculadora oficial (tarifas autorizadas, hotel, casetas, una hoja por técnico). Así llegan a Pagos y salen en el PDF del servicio. <b>Si cambiaste algo arriba, guarda primero</b>: el botón verde cierra esta ventana.</div>
+                        <div id="ops-fol-via-lista" data-folio="${opsEsc(f ? f.id : "")}" style="font-size:12px;color:#94a3b8;margin-bottom:10px;">${f ? "Buscando viáticos ligados…" : "Guarda primero el servicio; después podrás pedir sus viáticos."}</div>
+                        ${f ? `<button type="button" onclick="opsAsIrViaticos('${f.id}')" class="mkt-add-btn" style="background:#15803d;width:100%;">Pedir o corregir viáticos (calculadora oficial)</button>` : ""}
+                        ${(f && (f.viaticosMonto || f.hospedajeMonto || f.casetasMonto || f.gastoEstimado)) ? `<div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-top:10px;line-height:1.45;"><b>Montos capturados a mano antes</b> (calculadora vieja): viáticos ${opsDinero(f.viaticosMonto || 0)} · hospedaje ${opsDinero(f.hospedajeMonto || 0)} · casetas/gasolina ${opsDinero(f.casetasMonto || 0)} · total ${opsDinero(f.gastoEstimado || 0)}.<br>Esto NO es una solicitud de viáticos: no llega a Pagos ni sale en el PDF. Si sí se van a pagar, pídelos con el botón verde.</div>` : ""}
+                        <input type="hidden" id="ops-fol-dias-viaje" value="${opsEsc(f?.diasTrabajo ?? "")}"><input type="hidden" id="ops-fol-km" value="${opsEsc(f?.kmEstimados ?? "")}">
+                        <input type="hidden" id="ops-fol-viaticos-monto" value="${opsEsc(f?.viaticosMonto ?? "")}"><input type="hidden" id="ops-fol-hospedaje-monto" value="${opsEsc(f?.hospedajeMonto ?? "")}">
+                        <input type="hidden" id="ops-fol-casetas-monto" value="${opsEsc(f?.casetasMonto ?? "")}"><input type="hidden" id="ops-fol-gasto" value="${opsEsc(f?.gastoEstimado ?? "")}">
                     </div>
 
                     <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#334155;margin:10px 0 8px;">
@@ -9698,6 +10006,7 @@
             </div>
         </div>`;
         window.opsFolioActualizarVencimientoPreview();
+        if (f) opsFolViaPintarLista(f);
         window.__opsFolioEstMeta = f?.estacionCatalogoId ? {
             catalogoId: f.estacionCatalogoId, encargado: f.estacionEncargado || null, zona: f.estacionZona || null,
             numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
@@ -10052,6 +10361,15 @@
         if (id) {
             const previo = cacheFolios.find(x => x.id === id);
             if (previo) Object.assign(datos, opsCamposReprogramacion(previo, datos.fechaProgramada));
+            // Si se cambió el responsable, el equipo cambia con él (antes el anterior lo seguía viendo).
+            if (previo && datos.tecnicoResponsableId && datos.tecnicoResponsableId !== previo.tecnicoResponsableId) {
+                const act = (previo.tecnicosAsignadosIds || []).slice();
+                const ids = act.includes(datos.tecnicoResponsableId) ? act
+                    : (previo.tecnicoResponsableId && act.includes(previo.tecnicoResponsableId)) ? act.map(x => x === previo.tecnicoResponsableId ? datos.tecnicoResponsableId : x)
+                    : act.length === 1 ? [datos.tecnicoResponsableId] : act.concat([datos.tecnicoResponsableId]);
+                const eq = opsCamposEquipo({ ...previo, tecnicosAsignadosIds: act.concat(previo.tecnicoResponsableId ? [previo.tecnicoResponsableId] : []), tecnicoResponsableId: datos.tecnicoResponsableId }, ids, "Cambio de responsable en Editar folio");
+                Object.assign(datos, eq);
+            }
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);
             if (opsCalFiltroPlaza !== "todas" && datos.plaza && opsCalFiltroPlaza !== datos.plaza) opsCalFiltroPlaza = datos.plaza;
             if (tipoFolioNuevo === "laboratorio" && !eraLaboratorioAntes) await opsNotificarFolioLaboratorio({ id, ...datos });
@@ -10445,6 +10763,18 @@
             const cubre = folios.filter(f => opsViaCubre(v, f));
             return (directo || cubre.length) ? { ...v, _directo: directo, _cubre: cubre.map(f => f.id) } : null;
         }).filter(Boolean).sort((a, b) => String(a.fecha_salida || "").localeCompare(String(b.fecha_salida || "")) || String(a.folio || "").localeCompare(String(b.folio || "")));
+    }
+    // Lista de solicitudes de viáticos reales ligadas al folio, dentro de "Editar folio" (21-oct-2026).
+    async function opsFolViaPintarLista(f) {
+        let vias = [];
+        try { vias = (await opsViaticosDeFolios([f])).filter(v => v._directo || (v._cubre || []).includes(f.id)); }
+        catch (e) { const el0 = document.getElementById("ops-fol-via-lista"); if (el0) el0.textContent = "No se pudieron consultar los viáticos (" + (e.message || e) + ")."; return; }
+        const el = document.getElementById("ops-fol-via-lista"); if (!el || el.dataset.folio !== f.id) return;
+        if (!vias.length) { el.innerHTML = `<span style="color:#b45309;font-weight:700;">Este servicio no tiene solicitud de viáticos.</span>`; return; }
+        el.innerHTML = vias.map(v => `<div style="display:flex;justify-content:space-between;gap:8px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;margin-bottom:6px;color:#334155;">
+            <div><b>${opsEsc(v.folio || "")}</b> · ${opsEsc(v.integrantes || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(opsViaRango(v))} · ${opsEsc(v.estatus || "")}</div></div>
+            <div style="text-align:right;font-weight:800;color:#15803d;white-space:nowrap;">${opsViaDinero(opsViaDeposito(v))}<div style="font-size:10px;color:#64748b;font-weight:600;">se deposita</div></div></div>`).join("")
+            + (vias.length > 1 ? `<div style="font-size:11px;color:#64748b;">Para corregir: usa el botón verde; al guardar te ofrece reemplazar las pendientes.</div>` : "");
     }
     // Servicios de la programación completa de un folio (siempre incluye al propio folio).
     async function opsProgramacionCompleta(f) {
@@ -16361,7 +16691,9 @@
                     const fin = esUltimo ? r.getHours() * 60 + r.getMinutes() : 24 * 60;
                     if ((esPrimero ? ini < mD : true) && fin >= mD) d++;
                     if (ini <= mC && fin >= mC) c++;
-                    if (fin >= mN) n++;
+                    // Cena: solo si están fuera a la hora de la cena (21-oct-2026). Antes el primer día
+                    // contaba la cena aunque salieran DESPUÉS de cenar (VIA-00038: salió 10:30 p. m.).
+                    if (ini <= mN && fin >= mN) n++;
                 }
             }
             f.desayunos = d; f.comidas = c; f.cenas = n;
@@ -16908,6 +17240,10 @@
         if (!f.salida) { alert("Indica la fecha y hora de salida."); return; }
         const sinCosto = f.aplicaCasetas ? f.casetas.filter(c => c.aplica && !c.costo) : [];
         if (sinCosto.length && !confirm(`Hay ${sinCosto.length} caseta(s) marcadas sin costo. ¿Enviar así de todos modos?`)) return;
+        // Candado antes de guardar (21-oct-2026): revisa que los números cuadren y que no se
+        // dupliquen viáticos del mismo técnico o del mismo servicio.
+        const val = await opsViaValidarAntesDeGuardar(f);
+        if (!val.ok) return;
         const btn = document.getElementById("via-btn-guardar");
         if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
         const veh = opsViaVehiculoCfg(f.tipoVehiculo);
@@ -16918,7 +17254,9 @@
             folio_servicio: f.folioServicio || null, cliente: f.cliente || (f.estacion ? f.estacion.razon_social : null),
             destino: f.destinoTexto, motivo: null,
             fecha_salida: f.salida.slice(0, 10), fecha_regreso: (f.regreso || f.salida).slice(0, 10),
-            dias: Math.max(1, opsViaNum(f.noches) + 1), personas: f.personas,
+            // Días = días de calendario del viaje (21-oct-2026). Antes era noches + 1, y si alguien
+            // ponía 0 noches un viaje de 6 días quedaba como de 1 (VIA-00019).
+            dias: Math.max(1, opsViaNum(f.dias) || 1), personas: f.personas,
             integrantes: f.tecnicos.map(t => t.nombre).join(", "),
             km_sencillo: opsViaNum(f.kmSencillo), tipo_vehiculo: veh.nombre || f.tipoVehiculo, vehiculo: f.vehiculo || null,
             rendimiento: opsViaNum(f.rendimiento), precio_litro: opsViaNum(f.precioLitro), factor: opsViaNum(f.factor), gasolina: f.gasolina,
@@ -16995,10 +17333,27 @@
             }
             const data = guardadas[0];
             const folio = data.folio;
+            // Si se eligió reemplazar solicitudes anteriores del mismo servicio, se cancelan
+            // (no se borran) y queda escrito por cuál se sustituyeron.
+            if (val.reemplazar && val.reemplazar.length) {
+                const nuevos = guardadas.map(g => g.folio).join(", ");
+                for (const v of val.reemplazar) {
+                    try {
+                        await sb.from("ops_solicitudes_viaticos").update({ estatus: "Cancelada",
+                            notas: [v.notas, "Sustituida por " + nuevos + " (" + opsNombreActual() + ", " + new Date().toLocaleString("es-MX") + ")."].filter(Boolean).join("\n"),
+                            actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() }).eq("id", v.id).eq("estatus", "Pendiente");
+                        try { await opsAuditar("viaticos", v.id, "estatus", v.estatus, "Cancelada (sustituida por " + nuevos + ")"); } catch (e) {}
+                        (opsViaCfg.correosNotificar || []).forEach(correo => opsViaAvisoPortal(correo, "viaticos_solicitud",
+                            `${v.folio} quedó CANCELADA: se sustituyó por ${nuevos}. No la depositen.`, { viaticoId: v.id }));
+                    } catch (e) { console.warn("[viáticos] no se pudo cancelar la anterior", v.folio, e); }
+                }
+                opsViaToast(`Se cancelaron ${val.reemplazar.map(v => v.folio).join(", ")} y quedó ${nuevos} en su lugar.`, "#15803d");
+            }
             const resumen = opsViaResumenTexto(data);
             // Aviso real a quien autoriza y a Pagos (antes no salía: opsCopiaFirestore ya no hace nada).
             (opsViaCfg.correosNotificar || []).forEach(correo => guardadas.forEach(g => opsViaAvisoPortal(correo, "viaticos_solicitud",
                 `${opsNombreActual()} solicita viáticos ${g.folio} para ${g.integrantes}${g.rol_viaje ? " (hoja " + ((g.tarifas || {}).hoja || 1) + " de " + ((g.tarifas || {}).hojas || 1) + " del viaje)" : ""}: ${g.destino} · depositar ${opsViaDinero(g.deposito ?? g.total)}${g.rol_viaje && (g.tarifas || {}).hoja > 1 ? "" : " · cobrar al cliente " + opsViaDinero(g.cobro_cliente ?? g.total)}.`, { viaticoId: g.id })));
+            if (guardadas.length > 1) data._grupo = guardadas;
             opsViaCerrar();
             opsViaMostrarEnviada(data, resumen);
             if (tabActual === "viaticos") opsRenderViaticos();
@@ -17008,6 +17363,61 @@
             if (btn) { btn.disabled = false; btn.textContent = "Enviar solicitud"; }
         }
     };
+    // ── Candado antes de guardar viáticos (21-oct-2026) ──
+    // 1) Errores que impiden guardar: números que no cuadran (días, comidas, noches, total).
+    // 2) Avisos: el mismo técnico ya tiene viáticos en esas fechas (doble pago de comidas).
+    // 3) El mismo servicio ya tiene una solicitud Pendiente: se ofrece reemplazarla.
+    async function opsViaValidarAntesDeGuardar(f) {
+        const n = opsViaNum, errores = [], avisos = [];
+        const sal = f.salida ? new Date(f.salida) : null, reg = f.regreso ? new Date(f.regreso) : null;
+        if (sal && reg && reg < sal) errores.push("La fecha de regreso es ANTES de la salida.");
+        let diasCal = 1;
+        if (sal && reg) diasCal = Math.max(1, Math.round((new Date(reg.getFullYear(), reg.getMonth(), reg.getDate()) - new Date(sal.getFullYear(), sal.getMonth(), sal.getDate())) / 86400000) + 1);
+        if (n(f.dias) !== diasCal) errores.push(`Los días del viaje (${f.dias}) no coinciden con las fechas (${diasCal}). Vuelve a revisar salida y regreso.`);
+        ["desayunos", "comidas", "cenas"].forEach(k => { if (n(f[k]) > diasCal) errores.push(`Hay ${f[k]} ${k} y el viaje solo dura ${diasCal} día(s).`); });
+        if (n(f.noches) > Math.max(0, diasCal - 1)) errores.push(`Hay ${f.noches} noche(s) de hotel y el viaje solo tiene ${Math.max(0, diasCal - 1)}.`);
+        if (f.requiere && diasCal > 1 && n(f.noches) === 0) avisos.push(`El viaje dura ${diasCal} días y no lleva hotel. Si se quedan en otro lado está bien; si no, captura las noches.`);
+        if (f.requiere && diasCal >= 1 && n(f.desayunos) + n(f.comidas) + n(f.cenas) === 0) avisos.push("El viaje sale de la ciudad y no lleva ninguna comida.");
+        if (n(f.personas) !== (f.tecnicos || []).length) errores.push(`Se calcularon ${f.personas} persona(s) pero hay ${(f.tecnicos || []).length} marcada(s). Quita y vuelve a marcar al personal.`);
+        const suma = Math.round((n(f.gasolina) + n(f.alimentos) + n(f.hospedaje) + n(f.casetasTotal) + n(f.otros)) * 100) / 100;
+        if (Math.abs(suma - n(f.total)) > 1) errores.push(`El total (${opsViaDinero(f.total)}) no es la suma de los conceptos (${opsViaDinero(suma)}).`);
+        if (![f.total, f.deposito, f.alimentos, f.hospedaje, f.gasolina].every(x => isFinite(Number(x)))) errores.push("Algún importe salió inválido (no es número). Revisa rendimiento, precio de litro y tarifas.");
+        if (errores.length) {
+            alert("No se puede guardar todavía, la calculadora encontró esto:\n\n• " + errores.join("\n• ") + "\n\nCorrígelo y vuelve a intentar. Así no se registran importes incorrectos.");
+            return { ok: false };
+        }
+        // Traslapes y duplicados contra lo ya registrado
+        let previas = [];
+        try {
+            const sb = await opsSb();
+            const ini = f.salida.slice(0, 10), fin = (f.regreso || f.salida).slice(0, 10);
+            const { data, error } = await sb.from("ops_solicitudes_viaticos").select("id,folio,estatus,integrantes,responsable_nombre,fecha_salida,fecha_regreso,folio_servicio,alimentos,deposito,notas")
+                .lte("fecha_salida", fin).gte("fecha_regreso", ini).not("estatus", "in", "(\"Cancelada\",\"Rechazada\")");
+            if (error) throw error;
+            previas = data || [];
+            if (f.folioServicio) {
+                const r2 = await sb.from("ops_solicitudes_viaticos").select("id,folio,estatus,integrantes,responsable_nombre,fecha_salida,fecha_regreso,folio_servicio,alimentos,deposito,notas")
+                    .eq("folio_servicio", f.folioServicio).not("estatus", "in", "(\"Cancelada\",\"Rechazada\")");
+                if (!r2.error) (r2.data || []).forEach(v => { if (!previas.some(x => x.id === v.id)) previas.push(v); });
+            }
+        } catch (e) { console.warn("[viáticos] no se pudo revisar duplicados:", e); avisos.push("No se pudo revisar si ya hay viáticos de estas personas (sin conexión a la base). Revisa la lista de Viáticos antes de pedir el depósito."); }
+        const mios = new Set((f.tecnicos || []).map(t => opsAsNorm(t.nombre).trim()).filter(Boolean));
+        const delServicio = f.folioServicio ? previas.filter(v => String(v.folio_servicio || "") === String(f.folioServicio)) : [];
+        const traslapes = previas.filter(v => !delServicio.includes(v) && opsViaIntegrantes(v).some(x => mios.has(x) || [...mios].some(m => m.includes(x) || x.includes(m))));
+        traslapes.forEach(v => avisos.push(`${v.folio} (${v.integrantes}) ya cubre del ${v.fecha_salida} al ${v.fecha_regreso || v.fecha_salida} · ${v.estatus}. Si se guardan las dos, se pagan comidas DOBLES esos días.`));
+        if (avisos.length && !confirm("Antes de guardar revisa esto:\n\n• " + avisos.join("\n• ") + "\n\n¿Guardar de todos modos?")) return { ok: false };
+        let reemplazar = [];
+        if (delServicio.length) {
+            const pend = delServicio.filter(v => v.estatus === "Pendiente"), otras = delServicio.filter(v => v.estatus !== "Pendiente");
+            const lista = delServicio.map(v => `${v.folio} · ${v.integrantes} · ${v.fecha_salida} al ${v.fecha_regreso || v.fecha_salida} · ${v.estatus} · depositar ${opsViaDinero(v.deposito)}`).join("\n");
+            if (otras.length) alert("Este servicio ya tiene viáticos APROBADOS o PAGADOS:\n\n" + otras.map(v => v.folio + " · " + v.estatus).join("\n") + "\n\nEsas no se pueden cancelar desde aquí: avisa a Pagos para que no se deposite dos veces.");
+            if (pend.length) {
+                if (confirm("Este servicio YA tiene solicitud(es) de viáticos:\n\n" + lista + "\n\nAceptar = la nueva REEMPLAZA a las pendientes (se cancelan y Pagos recibe aviso).\nCancelar = no reemplazar.")) reemplazar = pend;
+                else if (!confirm("¿Guardar la nueva SIN cancelar las anteriores? Quedarían dos solicitudes para el mismo servicio.")) return { ok: false };
+            }
+        }
+        return { ok: true, reemplazar };
+    }
     function opsViaResumenTexto(s) {
         const t = s.tarifas || {};
         const det = (t.casetasDetalle || []).map(c => `   · ${c.nombre}: ${opsViaDinero(c.costo)} × ${c.cruces} = ${opsViaDinero(c.subtotal)}`).join("\n");
@@ -17104,6 +17514,41 @@
         else tarjeta(M + anchoT + 12, EMP.color, AZUL_CL, "COBRAR AL CLIENTE · INGRESOS", cobro,
             ["Costo real del viaje: " + din(s.total), "Se cobra a: " + COBRA]);
         y += altoT + 8;
+
+        // ── Viaje completo (21-oct-2026, Cristy/Pagos): cuando van 2+ técnicos cada uno tiene su
+        // hoja, pero Pagos necesita ver en UNA tabla cuánto se deposita a cada quien y qué paga Compras.
+        if (s.grupo_viaje && Array.isArray(s._grupo) && s._grupo.length > 1) {
+            const g = s._grupo.slice().sort((a, b) => ((a.tarifas || {}).hoja || 0) - ((b.tarifas || {}).hoja || 0));
+            const hotelCompras = g.filter(x => x.hotel_modo === "compras").reduce((a, x) => a + (Number(x.hospedaje) || 0), 0);
+            const totalDep = g.filter(x => x.estatus !== "Cancelada").reduce((a, x) => a + (Number(opsViaDeposito(x)) || 0), 0);
+            const altoTabla = 34 + g.length * 15 + (hotelCompras ? 15 : 0) + 18;
+            if (y + altoTabla > H - 60) { doc.addPage(); y = encabezado() + 14; }
+            doc.setFillColor(...AZUL_CL); doc.roundedRect(M, y, AN, altoTabla, 6, 6, "F");
+            doc.setTextColor(...EMP.color); doc.setFont("helvetica", "bold"); doc.setFontSize(9.5);
+            doc.text("VIAJE COMPLETO: " + g.length + " TÉCNICOS, UNA HOJA POR TÉCNICO", M + 10, y + 15);
+            let yy = y + 30;
+            doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+            doc.text("HOJA", M + 10, yy); doc.text("FOLIO", M + 48, yy); doc.text("TÉCNICO", M + 120, yy); doc.text("ESTATUS", M + 330, yy); doc.text("SE LE DEPOSITA", W - M - 10, yy, { align: "right" });
+            yy += 13;
+            g.forEach(x => {
+                const yo = x.id === s.id, canc = x.estatus === "Cancelada";
+                doc.setFont("helvetica", yo ? "bold" : "normal"); doc.setFontSize(9); doc.setTextColor(...(canc ? [148, 163, 184] : TINTA));
+                doc.text(String((x.tarifas || {}).hoja || "—"), M + 10, yy); doc.text(String(x.folio || ""), M + 48, yy);
+                doc.text(doc.splitTextToSize(String(x.integrantes || "") + (yo ? "  (esta hoja)" : ""), 200)[0], M + 120, yy);
+                doc.text(String(x.estatus || ""), M + 330, yy);
+                doc.text(canc ? "no se deposita" : din(opsViaDeposito(x)), W - M - 10, yy, { align: "right" });
+                yy += 15;
+            });
+            if (hotelCompras) {
+                doc.setFont("helvetica", "bold"); doc.setTextColor(146, 64, 14);
+                doc.text("Hotel de todo el viaje: lo paga COMPRAS directo al hotel (NO se deposita)", M + 10, yy); doc.text(din(hotelCompras), W - M - 10, yy, { align: "right" });
+                yy += 15;
+            }
+            doc.setDrawColor(...LINEA); doc.line(M + 10, yy - 9, W - M - 10, yy - 9);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(...VERDE);
+            doc.text("TOTAL A DEPOSITAR EN EL VIAJE (todas las hojas)", M + 10, yy + 3); doc.text(din(totalDep), W - M - 10, yy + 3, { align: "right" });
+            y += altoTabla + 10;
+        }
 
         // ── Datos del viaje en dos columnas ──
         titulo("Datos del viaje");
@@ -17239,8 +17684,18 @@
         window.open(`https://wa.me/?text=${encodeURIComponent(textoCorto + "\n(Adjunto el PDF de la solicitud)")}`, "_blank");
         if (window.mostrarPush) window.mostrarPush("Viáticos", "Se descargó el PDF: adjúntalo en el chat de WhatsApp que se abrió.", "📎");
     };
+    // Trae las demás hojas del mismo viaje para que el PDF muestre la tabla del viaje completo.
+    async function opsViaCargarGrupo(s) {
+        if (!s || !s.grupo_viaje || s._grupo) return;
+        try {
+            const sb = await opsSb();
+            const { data } = await sb.from("ops_solicitudes_viaticos").select("*").eq("grupo_viaje", s.grupo_viaje);
+            s._grupo = data || [];
+        } catch (e) { console.warn("[viáticos] grupo del viaje:", e); }
+    }
     function opsViaMostrarEnviada(s, resumen) {
         opsViaUltima = s;
+        opsViaCargarGrupo(s);
         const correos = (opsViaCfg.correosNotificar || []).join(",");
         const mailto = `mailto:${correos}?subject=${encodeURIComponent("Solicitud de viáticos " + s.folio + " — " + (s.destino || ""))}&body=${encodeURIComponent(resumen)}`;
         const wa = `https://wa.me/?text=${encodeURIComponent(resumen)}`;
