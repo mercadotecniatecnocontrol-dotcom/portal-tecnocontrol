@@ -7287,6 +7287,7 @@
                 <span style="align-self:flex-start;font-size:10.5px;font-weight:800;color:${est.c};background:${est.bg};border-radius:6px;padding:3px 8px;">${est.t}</span>
                 ${p.opsPlaza ? `<div style="font-size:11px;color:#1D2E73;background:#eef2ff;border-radius:8px;padding:5px 8px;"><b>Lo atiende plaza ${opsEsc(p.opsPlaza)}</b>${p.opsGestionLocal ? " · Gestión local: " + opsEsc(p.opsGestionLocal) : ""}</div>` : ""}
                 ${p.fichaServicio ? `<div style="font-size:11px;color:#15803d;background:#f0fdf4;border-radius:8px;padding:5px 8px;"><b>Ficha de Ventas:</b> ${opsEsc(p.fichaServicio.cantidad || "")} ${opsEsc(p.fichaServicio.unidad || "")}${p.fichaServicio.fechaSugerida ? " · sugerido " + opsEsc(p.fichaServicio.fechaSugerida) : ""}${p.fichaServicio.requiereViaticos ? " · con viáticos" : ""}${p.fichaServicio.notas ? `<div style="color:#475569;margin-top:2px;">${opsEsc(p.fichaServicio.notas)}</div>` : ""}</div>` : `<div style="font-size:10.5px;color:#b45309;">Sin ficha de servicio de Ventas (pedido subido antes del cambio).</div>`}
+                <div id="ops-ped-aspel-${p.id}" data-folio="${opsEsc(p.folio || "")}" style="font-size:11px;color:#94a3b8;">${/^[A-Z]{2,4}\d{6,}/i.test(p.folio || "") ? "Buscando partidas en Aspel…" : ""}</div>
                 ${opsPedEvidenciasHTML(p)}
                 ${p.vehiculoTamano ? `<div style="font-size:11px;color:#0369a1;font-weight:700;">Pide vehículo ${opsEsc(OPS_VEH_TAM[p.vehiculoTamano] || p.vehiculoTamano)}</div>` : ""}
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
@@ -7309,6 +7310,7 @@
                 <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
                 <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
             </div>
+            ${(opsPedVentasAbierto && lista.length ? (setTimeout(() => lista.forEach(p => opsPedAspelPintar(p)), 0), "") : "")}
             ${opsPedVentasAbierto ? ((lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
     }
@@ -7647,8 +7649,9 @@
         }
         return out;
     }
-    window.opsCalProgramarPedido = function (id) {
+    window.opsCalProgramarPedido = async function (id) {
         const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        if (!(await opsPedCandadoViaticos(p))) return;
         window.opsAbrirAltaServicio(opsCalFechaISO(new Date()));
         if (!opsAS) return;
         // Viene de Ventas: "Solo programación" con sus servicios ya puestos (15-oct-2026).
@@ -12459,9 +12462,27 @@
         if (el && el.dataset.folio) { const f = cacheFolios.find(x => x.id === el.dataset.folio); if (f) opsPanelMaterialPintar(f); }
         if (Date.now() - opsNecUltAviso > 60000) { opsNecUltAviso = Date.now(); opsNecAvisarRiesgos(); }
         if (tabActual === "folios" && !document.querySelector("#ops-modal-wrap > *")) opsRenderFolios();
+        opsSHAutoEntregadas();
     }
+    // Pedido de herramienta aprobado "· Almacén": cuando Almacén entrega su pedido, se marca solo como
+    // entregado (22-oct-2026, Glen). Solo lo hace un usuario con gestión, para no repetir la escritura.
+    let opsSHRevisando = false;
+    async function opsSHAutoEntregadas() {
+        if (opsPuedeGestionar() && !opsTDCargado) { opsTDSuscribir(); return; }
+        if (opsSHRevisando || !opsPuedeGestionar() || !cacheSolHerr.length) return;
+        const listos = cacheSolHerr.filter(s => s.estatus === "aprobada_almacen" && s.surtidoId && (cacheSurtidos || []).some(p => p.id === s.surtidoId && (p.estado === "entregado" || p.estado === "finalizado")));
+        if (!listos.length) return;
+        opsSHRevisando = true;
+        try { for (const s of listos) { try { await opsTDActualizar(COL_SOL_HERR, s.id, { estatus: "entregada", entregadaEn: new Date().toISOString(), entregadaPor: "Almacén (automático)" }, "entregada", "Almacén entregó el pedido " + (s.surtidoFolio || "")); opsTDAvisarTecnico(s.tecnicoCorreo, `Ya puedes recoger tu herramienta: ${s.descripcion}. Almacén la entregó (${s.surtidoFolio || ""}).`); } catch (e) { console.warn("[sol. herramienta] auto", e); } } }
+        finally { opsSHRevisando = false; }
+        if (tabActual === "herrsol") opsRenderSolHerr();
+    }
+    // Solo pedidos de MATERIAL que generó Operaciones (folio OPERACIONES ####). Los pedidos de Ventas que se
+    // ligaron al servicio (opsFolioId) son de servicios y no llevan nada que surtir (22-oct-2026: salían
+    // como "material que no llegará a tiempo" sin serlo).
     function opsNecPedidosFolio(f) {
-        return (cacheSurtidos || []).filter(p => !p.eliminada && (p.opsFolioId === f.id || (p.origen === "operaciones" && p.folioServicio === f.id)))
+        return (cacheSurtidos || []).filter(p => !p.eliminada && p.origen === "operaciones" && p.folioPrefijo === "OPERACIONES" && (p.opsFolioId === f.id || p.folioServicio === f.id)
+                && (p.productos || []).some(x => x && x.tipo !== "servicio"))
             .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     }
     // Estado de un pedido visto desde Operaciones. riesgo = el material no estará a tiempo.
@@ -12778,7 +12799,8 @@
                 <button onclick="opsSHAprobar('${s.id}','almacen')" style="border:none;background:#1d4ed8;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Almacén</button>
                 <button onclick="opsSHAprobar('${s.id}','compras')" style="border:none;background:#7c3aed;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Comprar</button>
                 <button onclick="opsSHRechazar('${s.id}')" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Rechazar</button>` : ""}
-                ${["aprobada_almacen", "aprobada_compras"].includes(s.estatus) ? `<button onclick="opsSHEntregada('${s.id}')" style="border:none;background:#dcfce7;color:#15803d;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Ya se entregó al técnico</button>` : ""}</div>` : ""}
+                ${s.estatus === "aprobada_almacen" ? `<span style="font-size:11px;color:#1d4ed8;">Se marca entregada sola cuando Almacén entregue ${opsEsc(s.surtidoFolio || "el pedido")}.</span>` : ""}
+                ${s.estatus === "aprobada_compras" ? `<button onclick="opsSHEntregada('${s.id}')" style="border:none;background:#dcfce7;color:#15803d;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Ya se entregó al técnico</button>` : ""}</div>` : ""}
             </div>`; }).join("") || `<div style="color:#94a3b8;font-size:12.5px;padding:20px;">Sin pedidos de herramienta con este filtro.</div>`}
           </div></div>`;
     }
@@ -13397,6 +13419,50 @@
     }
 
 
+    // ═══════════════════ PARTIDAS DE ASPEL (22-oct-2026, urgente) ═══════════════════
+    // El sincronizador sincronizar-partidas-aspel.js copia los renglones de pedidos y cotizaciones de
+    // Aspel a aspel_partidas. El portal los consulta con la función aspel_pedido_operaciones (encabezado +
+    // partidas, sin saldos ni RFC) usando la sesión real del portal.
+    const opsAspelCache = {};
+    async function opsAspelPedido(cve, tip) {
+        const k = (tip || "P") + "|" + String(cve || "").trim().toUpperCase();
+        const c = opsAspelCache[k]; if (c && c.hasta > Date.now()) return c.datos;
+        if (typeof window.tcSbSesion !== "function") throw new Error("Falta portal-supabase.js actualizado");
+        const sb = await window.tcSbSesion();
+        const r = await sb.rpc("aspel_pedido_operaciones", { p_cve: String(cve || "").trim(), p_tip: tip || "P" });
+        if (r.error) throw r.error;
+        opsAspelCache[k] = { datos: r.data, hasta: Date.now() + 5 * 60000 };
+        return r.data;
+    }
+    const OPS_RX_VIATICOS = /vi[aá]t/i;
+    function opsAspelTraeViaticos(d) { return (d && d.partidas || []).some(x => OPS_RX_VIATICOS.test([x.clave, x.descripcion, x.extra].join(" "))); }
+    async function opsPedAspelPintar(p) {
+        const el = document.getElementById("ops-ped-aspel-" + p.id); if (!el || !el.dataset.folio || !/^[A-Z]{2,4}\d{6,}/i.test(el.dataset.folio)) return;
+        let d; try { d = await opsAspelPedido(el.dataset.folio, "P"); } catch (e) { el.textContent = ""; return; }
+        const box = document.getElementById("ops-ped-aspel-" + p.id); if (!box) return;
+        if (!d || d.error) { box.innerHTML = d && d.error === "sin_sesion" ? "" : `<span style="color:#94a3b8;">Pedido aún no está en Aspel.</span>`; return; }
+        if (!d.partidas_sincronizadas) { box.innerHTML = `<span style="color:#94a3b8;">Pedido en Aspel por ${opsDinero(d.total)} · partidas aún sin sincronizar.</span>`; return; }
+        const viat = opsAspelTraeViaticos(d), pide = p.aplicaViaticos !== false && (p.productos || []).some(x => x && (x.tipo === "viaticos" || /vi[aá]t/i.test(x.desc || ""))) || (p.fichaServicio || {}).requiereViaticos;
+        box.innerHTML = `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;color:#334155;">
+            <b>Aspel ${opsEsc(d.cve_doc)}</b> · ${opsDinero(d.total)}${d.cotizacion ? " · cot. " + opsEsc(d.cotizacion) : ""}
+            ${(d.partidas || []).slice(0, 6).map(x => `<div style="font-size:10.5px;">${opsEsc(x.cant)} × ${opsEsc(x.clave || "")} ${opsEsc((x.extra || x.descripcion || "").slice(0, 70))} · ${opsDinero(x.importe)}</div>`).join("")}${(d.partidas || []).length > 6 ? `<div style="font-size:10.5px;">… ${(d.partidas || []).length - 6} más</div>` : ""}
+            <div style="font-size:10.5px;font-weight:800;margin-top:3px;color:${viat ? "#15803d" : pide ? "#b91c1c" : "#64748b"};">${viat ? "✓ Trae viáticos en el pedido" : pide ? "✗ Requiere viáticos y el pedido NO los trae" : "Sin concepto de viáticos"}</div></div>`;
+    }
+    window.opsPedAspelPintar = opsPedAspelPintar;
+    // Candado de viáticos al programar un pedido de Ventas.
+    async function opsPedCandadoViaticos(p) {
+        if (!/^[A-Z]{2,4}\d{6,}/i.test(p.folio || "")) return true;
+        const requiere = p.aplicaViaticos !== false && ((p.productos || []).some(x => x && (x.tipo === "viaticos" || /vi[aá]t/i.test(x.desc || ""))) || (p.fichaServicio || {}).requiereViaticos);
+        if (!requiere) return true;
+        let d; try { d = await opsAspelPedido(p.folio, "P"); } catch (e) { return true; }
+        if (!d || d.error || !d.partidas_sincronizadas || opsAspelTraeViaticos(d)) return true;
+        const m = prompt(`El pedido ${p.folio} requiere viáticos, pero en Aspel NO trae el concepto de viáticos.\n\nLo correcto es regresarlo a Ventas para que lo agregue. Para programarlo de todos modos escribe el motivo (queda registrado):`, "");
+        if (!m || !m.trim()) return false;
+        try { if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(p.id, { por: opsNombreActual(), nota: "Programado SIN viáticos en el pedido de Aspel: " + m.trim() }); } catch (e) {}
+        if (p.solicitanteEmail && window.tcNotificar) window.tcNotificar({ tipo: "ventas_pedido_sin_viaticos", para: p.solicitanteEmail, mensaje: `Tu pedido ${p.folio} requiere viáticos y en Aspel no trae el concepto. Operaciones lo programó con este motivo: ${m.trim()}. Corrige el pedido en Aspel.`, modulo: "Ventas" }).catch(() => {});
+        return true;
+    }
+
     // ═══════════════════ DIAGNÓSTICO: EVIDENCIAS, VEHÍCULO POR TAMAÑO Y CANCELACIÓN (22-oct-2026) ═══════════════════
     // · Ventas puede subir fotos y video en la Petición/diagnóstico; Operaciones los ve en la tarjeta y,
     //   al programar, pasan al servicio para que el técnico los vea en su app.
@@ -13499,6 +13565,7 @@
     window.opsRenderGestoria = opsRenderGestoria;
     window.opsGestFiltroSet = function (v) { opsGestFiltro = v; opsRenderGestoria(); };
     window.opsGestNueva = function () {
+        window.__gvAspel = null; window.__gvPartidas = null;
         opsMiniModal("Venta de gestoría", `
             <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">Escribe el número de PEDIDO de Aspel y toca "Jalar de Aspel": se llenan cliente, fecha, total y cotización.</div>
             <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Pedido Aspel *</label><input id="gv-ped" placeholder="Ej. CHH0000006732 o 6732" style="${OPS_MINI_IN}"></div><button type="button" onclick="opsGestJalarAspel()" style="border:none;background:#0e7490;color:#fff;border-radius:8px;padding:9px 12px;font-weight:800;cursor:pointer;margin-bottom:10px;">Jalar de Aspel</button></div>
@@ -13506,45 +13573,42 @@
             <label style="font-size:11.5px;font-weight:700;color:#334155;">Cliente *</label><input id="gv-cli" style="${OPS_MINI_IN}">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Fecha</label><input id="gv-fecha" type="date" value="${opsHoy()}" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Total ($)</label><input id="gv-total" type="number" step="0.01" style="${OPS_MINI_IN}"></div><div><label style="font-size:11.5px;font-weight:700;color:#334155;">Cotización</label><input id="gv-cot" style="${OPS_MINI_IN}"></div></div>
             <label style="font-size:11.5px;font-weight:700;color:#334155;">Vendedor</label><input id="gv-vend" style="${OPS_MINI_IN}">
-            <label style="font-size:11.5px;font-weight:700;color:#334155;">Trámites vendidos (marca los del pedido)</label>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Trámites vendidos (si el pedido ya trae sus partidas de Aspel, se agregan solos; marca aquí solo los que falten)</label>
             <div style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;margin:4px 0 10px;">${OPS_GEST_CATALOGO.map((n, i) => `<label style="display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;"><input type="checkbox" class="gv-part" value="${i}"> ${opsEsc(n)}</label>`).join("")}</div>
             <label style="font-size:11.5px;font-weight:700;color:#334155;">Otro trámite (opcional)</label><input id="gv-otro" style="${OPS_MINI_IN}">`,
             async err => {
                 const g = id => document.getElementById(id).value.trim();
-                const parts = Array.from(document.querySelectorAll(".gv-part:checked")).map(c => OPS_GEST_CATALOGO[Number(c.value)]);
+                const parts = (window.__gvPartidas || []).map(x => x.nombre).concat(Array.from(document.querySelectorAll(".gv-part:checked")).map(c => OPS_GEST_CATALOGO[Number(c.value)]));
                 if (g("gv-otro")) parts.push(g("gv-otro"));
                 if (!g("gv-ped") || !g("gv-cli")) { err.textContent = "Faltan el pedido y el cliente."; return false; }
                 if (!parts.length) { err.textContent = "Marca al menos un trámite."; return false; }
                 if (cacheGestVentas.some(v => opsNormalizaTexto(v.pedido) === opsNormalizaTexto(g("gv-ped")))) { err.textContent = "Ese pedido ya está dado de alta."; return false; }
                 const datos = { pedido: g("gv-ped"), cliente: g("gv-cli"), fechaPedido: g("gv-fecha") || null, total: Number(g("gv-total")) || 0, cotizacion: g("gv-cot") || null, vendedor: g("gv-vend") || null,
-                    partidas: parts.map(n => ({ nombre: n, cantidad: 1, estatus: "pendiente", fechaCompromiso: null, documentoAtrasa: null, nota: null })),
+                    partidas: parts.map(n => { const a = (window.__gvPartidas || []).find(x => x.nombre === n); return { nombre: n, cantidad: a ? a.cantidad : 1, importe: a ? a.importe : null, claveAspel: a ? a.clave : null, estatus: "pendiente", fechaCompromiso: null, documentoAtrasa: null, nota: null }; }),
                     aspel: window.__gvAspel || null, creadoPor: opsNombreActual(), creadoPorCorreo: opsUsuarioActual(), creadoEn: new Date().toISOString(), historial: [{ accion: "alta", por: opsNombreActual(), en: new Date().toISOString() }] };
                 const { db, fs } = await opsGetFB();
                 await fs.addDoc(fs.collection(db, COL_GEST_VENTAS), datos);
                 const msg = `Venta de gestoría: ${datos.cliente} · pedido ${datos.pedido} · ${opsDinero(datos.total)} · ${parts.length} trámite(s): ${parts.join(", ")}.`;
                 for (const para of OPS_GEST_AVISO) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "gestoria_venta", para, mensaje: msg, modulo: "Operaciones" }); } catch (e) {} }
                 if (window.tcNotif) window.tcNotif.agregar({ titulo: "Venta de gestoría registrada", texto: msg, nivel: "normal", modulo: "Operaciones" });
-                window.__gvAspel = null;
+                window.__gvAspel = null; window.__gvPartidas = null;
             });
     };
     window.opsGestJalarAspel = async function () {
         const raw = (document.getElementById("gv-ped").value || "").trim().toUpperCase(), box = document.getElementById("gv-aspel");
         if (!raw) { box.textContent = "Escribe el pedido."; return; }
-        const num = raw.replace(/\D/g, "");
         box.textContent = "Buscando en Aspel…";
         try {
-            const sb = await opsSb();
-            let q = sb.from("aspel_documentos").select("cve_doc,cve_clpv,empresa,fecha_doc,total,doc_ant,cve_vend,status").eq("tip_doc", "P");
-            q = /^[A-Z]/.test(raw) ? q.eq("cve_doc", raw) : q.eq("folio", Number(num));
-            const { data, error } = await q.order("fecha_doc", { ascending: false }).limit(5);
-            if (error) throw error;
-            if (!data || !data.length) { box.innerHTML = '<span style="color:#b45309;">No está en Aspel (o aún no se sincroniza). Captúralo a mano.</span>'; return; }
-            const d = data[0];
-            const c = await sb.from("aspel_clientes").select("nombre,nombre_comercial,rfc").eq("clave", d.cve_clpv).eq("empresa", d.empresa).maybeSingle();
+            const d = await opsAspelPedido(raw, "P");
+            if (!d || d.error) { box.innerHTML = `<span style="color:#b45309;">${d && d.error === "sin_sesion" ? "Tu sesión no llegó a Supabase: recarga el portal." : "No está en Aspel (o aún no se sincroniza). Captúralo a mano."}</span>`; return; }
             const set = (id, v) => { const e = document.getElementById(id); if (e && v != null) e.value = v; };
-            set("gv-ped", d.cve_doc); set("gv-cli", (c.data && (c.data.nombre_comercial || c.data.nombre)) || ""); set("gv-fecha", d.fecha_doc); set("gv-total", d.total); set("gv-cot", d.doc_ant || ""); set("gv-vend", d.cve_vend ? "Vendedor " + d.cve_vend : "");
-            window.__gvAspel = { cveDoc: d.cve_doc, cliente: d.cve_clpv, rfc: c.data && c.data.rfc, status: d.status };
-            box.innerHTML = `Encontrado: <b>${opsEsc(d.cve_doc)}</b> · ${opsEsc((c.data && c.data.nombre) || "")} · ${opsDinero(d.total)}${data.length > 1 ? ` (hay ${data.length} pedidos con ese número; se tomó el más reciente)` : ""}. Las partidas no vienen de Aspel: márcalas abajo.`;
+            set("gv-ped", d.cve_doc); set("gv-cli", d.cliente || ""); set("gv-fecha", d.fecha_doc); set("gv-total", d.total); set("gv-cot", d.cotizacion || ""); set("gv-vend", d.cve_vend ? "Vendedor " + d.cve_vend : "");
+            window.__gvAspel = { cveDoc: d.cve_doc, cliente: d.cve_clpv, status: d.status };
+            const parts = (d.partidas || []).map(x => ({ nombre: String(x.extra || x.descripcion || x.clave || "").replace(/\s+/g, " ").trim(), cantidad: Number(x.cant) || 1, importe: Number(x.importe) || 0, clave: x.clave || null }));
+            window.__gvPartidas = parts.length ? parts : null;
+            box.innerHTML = `Encontrado: <b>${opsEsc(d.cve_doc)}</b> · ${opsEsc(d.cliente || "")} · ${opsDinero(d.total)}. ` + (parts.length
+                ? `<b>${parts.length} trámite(s) del pedido</b> se agregan solos:<div style="max-height:110px;overflow-y:auto;margin-top:4px;color:#334155;">${parts.map(x => "· " + opsEsc(x.nombre) + (x.cantidad > 1 ? " × " + x.cantidad : "") + " · " + opsDinero(x.importe)).join("<br>")}</div>`
+                : "Las partidas de este pedido aún no se sincronizan: márcalas abajo.");
         } catch (e) { box.innerHTML = '<span style="color:#b91c1c;">No se pudo consultar Aspel: ' + opsEsc(e.message || e) + "</span>"; }
     };
     async function opsGestGuardarPartidas(v, partidas, accion, nota) {
