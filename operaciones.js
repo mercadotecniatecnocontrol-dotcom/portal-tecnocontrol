@@ -11634,6 +11634,7 @@
             const total = f.comisiones.reduce((a, c) => a + (Number(c.monto) || 0), 0);
             await opsNotificarComisiones("ops_comisiones_por_pagar",
                 `Servicio FINALIZADO · ${f.estacion}: comisiones listas para pago — ${f.comisiones.map(c => c.nombre + " " + opsDinero(c.monto)).join(", ")}. Total ${opsDinero(total)}.`, f.id);
+            for (const para of OPS_COM_AVISO_POR_AUTORIZAR) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comisiones_por_pagar", para, mensaje: `Comisiones por autorizar · ${f.estacion}: ${f.comisiones.map(c => c.nombre + " " + opsDinero(c.monto)).join(", ")}. Revísalas en Operaciones → Comisiones.`, folioId: f.id, modulo: "Operaciones" }); } catch (e) {} }
         } catch (e) { console.warn("[Comisiones] al finalizar:", e.message || e); }
     }
 
@@ -11686,9 +11687,48 @@
         finally { s.cargando = false; }
         if (tabActual === "comisiones") opsRenderComisiones();
     }
+    // ── Calificación para el pago (22-oct-2026, Paloma): "todo se calificará para el pago de la
+    // comisión: información subida, servicios cerrados en tiempo y forma, evidencia entregada
+    // suficiente y completa". Tres criterios; si no cumple los tres, no se autoriza sin excepción.
+    const OPS_COM_MIN_FOTOS = 2;        // fotos de evidencia mínimas además de la O.S.
+    const OPS_COM_TOLERANCIA_DIAS = 1;  // días después del último día programado para cerrar "a tiempo"
+    function opsComCalificar(c) {
+        const k = c.checklist || {};
+        if (Number(c.monto) < 0 || k.origen === "garantia") return { aplica: false, cumple: true, criterios: [], txt: "Descuento" };
+        if (k.origen === "connecteam" || k.origen === "manual") return { aplica: false, cumple: true, criterios: [], txt: k.origen === "connecteam" ? "Calificar a mano (Connecteam)" : "Captura manual" };
+        const f = cacheFolios.find(x => x.id === c.folio_id);
+        if (!f) return { aplica: true, cumple: false, criterios: [{ k: "info", ok: false, txt: "Información subida", det: "No se encontró el servicio" }], txt: "0/3" };
+        const v = opsRevUltimaVisita(f) || {}, ev = v.evidencias || {};
+        const g = opsGrupoClienteFolio(f);
+        const faltaInfo = [];
+        if (!opsRevOS(f)) faltaInfo.push("número de O.S.");
+        if (!String(v.detalle || "").trim()) faltaInfo.push("descripción del trabajo");
+        if (!(ev.firma || (f.firmaConformidad || {}).nombre || v.firmante)) faltaInfo.push("firma del cliente");
+        if ((g === "petro" || g === "oxxo") && !f.folioClienteId) faltaInfo.push("ID del folio del cliente");
+        const cierre = String(v.fin || f.completadoEn || f.fechaSolucion || "").slice(0, 10);
+        const limite = opsDiaISOmas(String(opsFolioFechaFin(f) || (f.fechaProgramada || "").slice(0, 10) || cierre || "2000-01-01"), OPS_COM_TOLERANCIA_DIAS);
+        const faltaTiempo = [];
+        if (!f.fechaSolucion) faltaTiempo.push("el servicio no está cerrado");
+        else {
+            if (cierre && cierre > limite) faltaTiempo.push(`se cerró el ${cierre}, debía cerrarse a más tardar el ${limite}`);
+            if (f.vencimiento && cierre && cierre > String(f.vencimiento).slice(0, 10)) faltaTiempo.push("se cerró después del vencimiento del SLA");
+            if (v.resultado && v.resultado !== "finalizado") faltaTiempo.push("la visita no quedó como finalizada");
+        }
+        const faltaEv = [];
+        if (!(ev.documentos > 0)) faltaEv.push("foto de la orden de servicio");
+        if (!((ev.fotos || 0) >= OPS_COM_MIN_FOTOS)) faltaEv.push(`al menos ${OPS_COM_MIN_FOTOS} fotos (tiene ${ev.fotos || 0})`);
+        const criterios = [
+            { k: "info", ok: !faltaInfo.length, txt: "Información subida", det: faltaInfo.length ? "Falta: " + faltaInfo.join(", ") : "Completa" },
+            { k: "tiempo", ok: !faltaTiempo.length, txt: "Cerrado en tiempo y forma", det: faltaTiempo.length ? faltaTiempo.join("; ") : "Sí" },
+            { k: "evidencia", ok: !faltaEv.length, txt: "Evidencia suficiente y completa", det: faltaEv.length ? "Falta: " + faltaEv.join(", ") : "Completa" + ((f.revisionCierre || {}).estatus === "revisado" ? " · revisada (DONE)" : "") },
+        ];
+        const n = criterios.filter(x => x.ok).length;
+        return { aplica: true, cumple: n === 3, criterios, txt: n + "/3" };
+    }
     // Justificación de cada comisión: lo que respalda que se pague.
     function opsComJustif(c) {
         const k = c.checklist || {};
+        if (k.origen === "garantia") return { ok: true, chips: [["Descuento por garantía", "#b91c1c"]], texto: k.justificacion || "" };
         if (k.origen === "connecteam") {
             const ok = k.concluyo == null ? null : /^(s[ií]|yes|true|1)/i.test(String(k.concluyo));
             return { ok: ok !== false, chips: [["Connecteam" + (k.ref ? " #" + k.ref : ""), "#0369a1"], k.os ? ["O.S. " + k.os, "#334155"] : null, ok === null ? ["Sin dato de conclusión", "#b45309"] : ok ? ["Concluido", "#15803d"] : ["NO concluido", "#b91c1c"]].filter(Boolean), texto: k.descripcion || "" };
@@ -11777,7 +11817,7 @@
             <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.2px;">
                 <thead><tr style="background:#1f2937;color:#fff;text-align:left;">
                     <th style="padding:8px;"><input type="checkbox" onchange="opsComSelTodas(this.checked)" ${lista.length && lista.every(c => s.sel.has(c.id)) ? "checked" : ""}></th>
-                    <th style="padding:8px;">Fecha</th><th style="padding:8px;">Técnico</th><th style="padding:8px;">Servicio / estación</th><th style="padding:8px;">Concepto</th><th style="padding:8px;">Justificación</th><th style="padding:8px;text-align:right;">Monto</th><th style="padding:8px;">Estatus</th><th style="padding:8px;"></th></tr></thead>
+                    <th style="padding:8px;">Fecha</th><th style="padding:8px;">Técnico</th><th style="padding:8px;">Servicio / estación</th><th style="padding:8px;">Concepto</th><th style="padding:8px;">Justificación</th><th style="padding:8px;">Calificación</th><th style="padding:8px;text-align:right;">Monto</th><th style="padding:8px;">Estatus</th><th style="padding:8px;"></th></tr></thead>
                 <tbody>${lista.map(c => {
                     const j = opsComJustif(c), e = OPS_COM_EST[c.estatus] || [c.estatus, "#334155", "#f1f5f9"];
                     const f = j.folio;
@@ -11788,13 +11828,15 @@
                         <td style="padding:8px;">${opsEsc(c.servicio_nombre || "Servicio")}<div style="font-size:11px;color:#64748b;">${opsEsc(c.estacion || "")}${c.plaza ? " · " + opsEsc(c.plaza) : ""}</div>${f ? `<a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="font-size:11px;color:#1D2E73;font-weight:700;">Ver servicio</a>` : ""}</td>
                         <td style="padding:8px;">${opsEsc(c.concepto || "—")}${c.tipo === "porcentaje" ? `<div style="font-size:10.5px;color:#64748b;">${opsEsc(c.valor)} %</div>` : ""}</td>
                         <td style="padding:8px;max-width:300px;"><div style="display:flex;flex-wrap:wrap;gap:4px;">${j.chips.map(([t, col]) => `<span style="font-size:10px;font-weight:800;color:${col};background:${col}14;border:1px solid ${col}44;border-radius:6px;padding:1px 6px;">${opsEsc(t)}</span>`).join("")}</div>${j.texto ? `<div style="font-size:11px;color:#475569;margin-top:3px;">${opsEsc(String(j.texto).slice(0, 140))}</div>` : ""}${c.notas ? `<div style="font-size:11px;color:#7c3aed;margin-top:3px;">Nota: ${opsEsc(c.notas)}</div>` : ""}</td>
-                        <td style="padding:8px;text-align:right;font-weight:800;white-space:nowrap;">${opsDinero(c.monto)}</td>
+                        <td style="padding:8px;min-width:150px;">${(() => { const q = opsComCalificar(c); if (!q.aplica) return `<span style="font-size:10.5px;color:#64748b;">${opsEsc(q.txt)}</span>`;
+                            return `<div style="font-size:11px;font-weight:900;color:${q.cumple ? "#15803d" : "#b45309"};">${q.cumple ? "CUMPLE" : "NO CUMPLE"} · ${q.txt}</div>` + q.criterios.map(x => `<div title="${opsEsc(x.det)}" style="font-size:10.5px;color:${x.ok ? "#15803d" : "#b91c1c"};">${x.ok ? "✓" : "✗"} ${opsEsc(x.txt)}${x.ok ? "" : `<div style="color:#64748b;">${opsEsc(x.det)}</div>`}</div>`).join(""); })()}</td>
+                        <td style="padding:8px;text-align:right;font-weight:800;white-space:nowrap;color:${Number(c.monto) < 0 ? "#b91c1c" : "inherit"};">${opsDinero(c.monto)}</td>
                         <td style="padding:8px;"><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:3px 8px;white-space:nowrap;">${opsEsc(e[0])}</span>${c.pagado_en ? `<div style="font-size:10px;color:#64748b;margin-top:3px;">${opsEsc(opsFmtFechaCorta(c.pagado_en))}</div>` : ""}</td>
-                        <td style="padding:8px;white-space:nowrap;"><button onclick="opsComVerHistorial('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Historial</button>${opsComEdita() && c.estatus !== "pagada" ? ` <button onclick="opsComEditarMonto('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Editar</button>` : ""}</td>
+                        <td style="padding:8px;white-space:nowrap;"><button onclick="opsComVerHistorial('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Historial</button>${opsComEdita() && c.estatus !== "pagada" ? ` <button onclick="opsComEditarMonto('${c.id}')" style="border:none;background:#eef2f7;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">Editar</button>` : ""}${opsComEdita() && Number(c.monto) > 0 && c.estatus !== "rechazada" ? `<div style="margin-top:4px;"><button onclick="opsComAbrirGarantia('${c.id}')" title="El servicio se tuvo que volver a hacer por garantía: se descuenta de esta comisión" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;">Garantía: descontar</button></div>` : ""}</td>
                     </tr>`;
-                }).join("") || `<tr><td colspan="9" style="padding:20px;text-align:center;color:#94a3b8;">Sin comisiones con estos filtros.</td></tr>`}</tbody>
+                }).join("") || `<tr><td colspan="10" style="padding:20px;text-align:center;color:#94a3b8;">Sin comisiones con estos filtros.</td></tr>`}</tbody>
             </table></div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Las filas en amarillo no tienen justificación completa (servicio sin terminar, cancelado o no concluido). Revísalas antes de autorizar.</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Las filas en amarillo no tienen justificación completa. <b>Calificación para el pago</b>: información subida (O.S., descripción, firma e ID del folio en OXXO/Petro), cerrado en tiempo y forma (a más tardar ${OPS_COM_TOLERANCIA_DIAS} día después de lo programado y antes del SLA) y evidencia completa (foto de la O.S. y al menos ${OPS_COM_MIN_FOTOS} fotos). Las garantías de servicio se registran como descuento en rojo.</div>
         </div>`;
     }
     window.opsRenderComisiones = opsRenderComisiones;
@@ -11818,6 +11860,16 @@
         if (accion === "autorizar") {
             if (!opsComAutoriza()) return;
             validas = elegidas.filter(c => c.estatus === "por_pagar");
+            const noCumplen = validas.filter(c => !opsComCalificar(c).cumple);
+            if (noCumplen.length) {
+                const lista = noCumplen.slice(0, 12).map(c => "· " + c.tecnico_nombre + " · " + (c.estacion || "") + ": " + opsComCalificar(c).criterios.filter(x => !x.ok).map(x => x.txt).join(", ")).join("\n");
+                if (confirm(`${noCumplen.length} comisión(es) NO cumplen la calificación para el pago:\n${lista}${noCumplen.length > 12 ? "\n…" : ""}\n\nAceptar = autorizar SOLO las que sí cumplen.\nCancelar = decidir si se autorizan con excepción.`)) validas = validas.filter(c => opsComCalificar(c).cumple);
+                else {
+                    const exc = prompt("Para autorizarlas aunque no cumplan escribe el motivo de la excepción (queda en el historial). Déjalo vacío para no autorizar nada.", "");
+                    if (!exc || !exc.trim()) return;
+                    nota = "Excepción de calificación: " + exc.trim();
+                }
+            }
             const sinJ = validas.filter(c => !opsComJustif(c).ok);
             const otras = elegidas.length - validas.length;
             if (!validas.length) { alert("Solo se autorizan las que están \"Por autorizar\"."); return; }
@@ -11838,7 +11890,10 @@
             extra = { estatus: "rechazada" };
         }
         let ok = 0, fallas = [];
-        for (const c of validas) { try { await opsComActualizar(c, { ...extra, ...(nota && accion !== "pagar" ? { notas: nota } : {}) }, accion, nota); ok++; } catch (e) { fallas.push(c.tecnico_nombre + ": " + (e.message || e)); } }
+        for (const c of validas) {
+            const snap = accion === "autorizar" ? { checklist: { ...(c.checklist || {}), calificacion: (() => { const q = opsComCalificar(c); return { cumple: q.cumple, txt: q.txt, criterios: q.criterios, en: new Date().toISOString(), excepcion: !q.cumple ? (nota || null) : null }; })() } } : {};
+            try { await opsComActualizar(c, { ...extra, ...snap, ...(nota && accion !== "pagar" ? { notas: nota } : {}) }, accion, nota); ok++; } catch (e) { fallas.push(c.tecnico_nombre + ": " + (e.message || e)); }
+        }
         if (ok && accion === "autorizar") {
             const porTec = {}; validas.filter(c => c.estatus === "autorizada").forEach(c => { porTec[c.tecnico_nombre] = (porTec[c.tecnico_nombre] || 0) + Number(c.monto || 0); });
             const txt = `${opsNombreActual()} autorizó comisiones (${s.desde} al ${s.hasta}): ` + Object.entries(porTec).map(([t, m]) => t + " " + opsDinero(m)).join(", ") + `. Total ${opsDinero(Object.values(porTec).reduce((a, b) => a + b, 0))}. Ya están en Operaciones → Comisiones para depositar.`;
@@ -11884,6 +11939,47 @@
             <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="margin-top:6px;border:none;background:#f1f5f9;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700;">Cerrar</button>
           </div></div>`;
     };
+    // ── Garantía de servicio: descuento sobre una comisión ya registrada (22-oct-2026, Paloma) ──
+    // Si un servicio se tiene que volver a hacer por garantía (mal hecho, regresó la falla), se
+    // registra un DESCUENTO ligado a la comisión original. No se borra nada: queda una fila en rojo
+    // con su justificación, pasa por la misma autorización y el técnico la ve en su app.
+    window.opsComAbrirGarantia = function (id) {
+        if (!opsComEdita()) return;
+        const c = opsComEstado().lista.find(x => x.id === id); if (!c) return;
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin:3px 0 10px;font-family:inherit;";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:500px;max-width:96vw;padding:18px;">
+            <div style="font-size:15px;font-weight:800;color:#b91c1c;">Descuento por garantía de servicio</div>
+            <div style="font-size:12px;color:#475569;margin:4px 0 12px;line-height:1.45;">Comisión de <b>${opsEsc(c.tecnico_nombre || "")}</b> por <b>${opsDinero(c.monto)}</b> · ${opsEsc(c.servicio_nombre || "")} · ${opsEsc(c.estacion || "")} (${opsEsc(opsFmtFechaCorta(c.fecha_servicio))}). El descuento queda como una fila en rojo, pasa por la autorización de Paloma y el técnico lo ve en su app.</div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto a descontar ($)</label><input id="com-g-monto" type="number" min="0" step="0.01" value="${opsEsc(c.monto)}" style="${inp}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Servicio de garantía (O.S. o folio con el que se volvió a atender)</label><input id="com-g-ref" placeholder="Ej. O.S. 4410 del 28-oct" style="${inp}">
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">¿Por qué fue garantía? (obligatorio)</label><textarea id="com-g-just" rows="3" style="${inp};resize:vertical;" placeholder="Ej. La bomba volvió a fallar a los 5 días; el capacitor quedó mal conectado."></textarea>
+            <div id="com-g-err" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+            <button onclick="opsComGuardarGarantia('${c.id}')" style="border:none;background:#b91c1c;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Registrar descuento</button></div>
+          </div></div>`;
+    };
+    window.opsComGuardarGarantia = async function (id) {
+        const c = opsComEstado().lista.find(x => x.id === id); if (!c) return;
+        const err = document.getElementById("com-g-err");
+        const monto = Number(document.getElementById("com-g-monto").value), just = document.getElementById("com-g-just").value.trim(), ref = document.getElementById("com-g-ref").value.trim();
+        if (!(monto > 0)) { err.textContent = "Escribe el monto a descontar."; return; }
+        if (monto > Number(c.monto)) { err.textContent = "No puede descontarse más de lo que vale la comisión."; return; }
+        if (!just) { err.textContent = "Escribe por qué fue garantía."; return; }
+        const fila = { folio_id: c.folio_id, tecnico_id: c.tecnico_id, tecnico_nombre: c.tecnico_nombre, tecnico_correo: c.tecnico_correo,
+            concepto: "Descuento por garantía de servicio", tipo: "monto", valor: -monto, monto: -monto, estatus: "por_pagar",
+            servicio_nombre: c.servicio_nombre, estacion: c.estacion, plaza: c.plaza, fecha_servicio: opsCalFechaISO(new Date()), creado_por: opsComCorreo(),
+            checklist: { origen: "garantia", comisionOriginalId: c.id, justificacion: just, servicioGarantia: ref || null, montoOriginal: Number(c.monto) },
+            historial: [{ accion: "descuento_garantia", nota: just + (ref ? " · " + ref : ""), a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }] };
+        try {
+            const sb = await opsSb(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
+            try { await opsComActualizar(c, { notas: [c.notas, "Tiene descuento por garantía de " + opsDinero(monto)].filter(Boolean).join(" · ") }, "garantia_registrada", just); } catch (e) {}
+            const avisos = [...OPS_COM_AVISO_POR_AUTORIZAR].concat(c.tecnico_correo ? [c.tecnico_correo] : []);
+            for (const para of avisos) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comision_garantia", para, mensaje: `Descuento por garantía de servicio a ${c.tecnico_nombre}: ${opsDinero(monto)} (${c.estacion || ""}). Motivo: ${just}`, modulo: "Operaciones" }); } catch (e) {} }
+            document.getElementById("ops-modal-wrap").innerHTML = ""; opsComCargar(true);
+        } catch (e) { err.textContent = "No se pudo guardar: " + (e.message || e); }
+    };
     // ── Comisión capturada a mano (trabajos que no pasaron por el portal) ──
     window.opsComAbrirManual = function () {
         if (!opsComEdita()) return;
@@ -11924,7 +12020,7 @@
     window.opsComExcel = function () {
         if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
         const s = opsComEstado();
-        const filas = opsComFiltradas().map(c => { const j = opsComJustif(c); return { "Fecha": c.fecha_servicio, "Técnico": c.tecnico_nombre, "Servicio": c.servicio_nombre || "", "Estación": c.estacion || "", "Plaza": c.plaza || "", "Concepto": c.concepto || "", "Monto": Number(c.monto) || 0, "Estatus": (OPS_COM_EST[c.estatus] || [c.estatus])[0], "Justificación": j.chips.map(x => x[0]).join(" · "), "Detalle": j.texto || "", "Pagada el": c.pagado_en ? String(c.pagado_en).slice(0, 10) : "", "Origen": (c.checklist || {}).origen || "portal" }; });
+        const filas = opsComFiltradas().map(c => { const j = opsComJustif(c); return { "Fecha": c.fecha_servicio, "Técnico": c.tecnico_nombre, "Servicio": c.servicio_nombre || "", "Estación": c.estacion || "", "Plaza": c.plaza || "", "Concepto": c.concepto || "", "Monto": Number(c.monto) || 0, "Estatus": (OPS_COM_EST[c.estatus] || [c.estatus])[0], "Justificación": j.chips.map(x => x[0]).join(" · "), "Calificación": (() => { const q = opsComCalificar(c); return q.aplica ? (q.cumple ? "Cumple" : "No cumple") + " " + q.txt + (q.cumple ? "" : " — " + q.criterios.filter(x => !x.ok).map(x => x.txt + ": " + x.det).join("; ")) : q.txt; })(), "Detalle": j.texto || "", "Pagada el": c.pagado_en ? String(c.pagado_en).slice(0, 10) : "", "Origen": (c.checklist || {}).origen || "portal" }; });
         const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), "Comisiones");
         XLSX.writeFile(wb, `Comisiones_${s.desde}_al_${s.hasta}.xlsx`);
     };
@@ -17162,7 +17258,7 @@
                     <input type="number" min="0" step="1" value="${opsEsc(f.cobroCliente)}" onchange="opsViaForm.cobroManual=true; opsViaCampo('cobroCliente', this.value, true)" style="width:100%;border:1.5px solid #1D2E73;border-radius:8px;padding:7px 9px;font-size:15px;font-weight:700;margin-top:3px;box-sizing:border-box;"></label>
                 <label style="display:block;font-size:11px;font-weight:600;color:#475569;">Empresa a la que se cobra${sel("empresaCobra", f.empresaCobra, "La misma que entrega")}</label>
             </div>
-            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${f.cobroManual ? `Ajustado a mano. <a href="#" onclick="event.preventDefault();opsViaForm.cobroManual=false;opsViaCampo('cobroCliente',null,true)" style="color:#1D2E73;font-weight:700;">Volver al sugerido (${opsViaDinero(f.cobroSugerido)})</a>` : "Sugerido: el costo redondeado hacia arriba. Puedes ajustarlo."}</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">${f.cobroManual ? `Ajustado a mano. <a href="#" onclick="event.preventDefault();opsViaForm.cobroManual=false;opsViaCampo('cobroCliente',null,true)" style="color:#1D2E73;font-weight:700;">Volver al sugerido (${opsViaDinero(f.cobroSugerido)})</a>` : (f.cobroTarifaDestino ? `Sugerido con la tarifa de cobro de <b>${opsEsc(f.cobroTarifaDestino.destino)}</b> (${opsViaDinero(f.cobroTarifaDestino.monto)}) o el costo del viaje si es mayor. Puedes ajustarlo.` : "Sugerido: el costo redondeado hacia arriba. Puedes ajustarlo.")}${f.kmExtraAplicado ? `<br>Distancia con +${f.kmExtraAplicado} km por trayecto (el mapa dio ${opsViaNum(f.kmRuta).toFixed(1)} km).` : ""}</div>
         </div>`;
     }
     // ── Administración del catálogo de hoteles ──
@@ -17334,6 +17430,9 @@
         f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)
             + (f.gasolinaDeposito ? f.gasolina : 0) + (f.casetasDeposito ? f.casetasTotal : 0)) * 100) / 100;
         f.cobroSugerido = Math.ceil(f.total / 100) * 100;
+        const tarDest = opsViaCobroTarifa(f);
+        f.cobroTarifaDestino = tarDest ? { destino: tarDest.destino, monto: Number(tarDest.monto) } : null;
+        if (tarDest && f.requiere && Number(tarDest.monto) > f.cobroSugerido) f.cobroSugerido = Number(tarDest.monto);
         if (!f.cobroManual) f.cobroCliente = f.cobroSugerido;
     }
 
@@ -17658,6 +17757,17 @@
             await sb.from("estaciones_servicio").update({ lat, lng, ubicacion_verificada: true, ubicacion_fuente: "viaticos_pin", ubicacion_por: opsUsuarioActual(), ubicacion_en: ahora, actualizado_en: ahora }).eq("id", e.id);
         } catch (err) { console.warn("[viáticos] no se pudo guardar la ubicación de la estación:", err && err.message); }
     }
+    function opsViaKmExtra() { const v = opsViaCfg && opsViaCfg.kmExtraPorTrayecto; return v == null || v === "" ? 20 : Math.max(0, Number(v) || 0); }
+    // Cobro al cliente por destino (22-oct-2026, Paloma: "a Ojinaga por lo regular cobramos 2,800").
+    // Lista editable en Tarifas; si el destino coincide, el cobro sugerido nunca baja de ese monto.
+    function opsViaCobroDestinos() {
+        const l = opsViaCfg && Array.isArray(opsViaCfg.cobroDestinos) ? opsViaCfg.cobroDestinos : [{ destino: "Ojinaga", monto: 2800 }];
+        return l.filter(x => x && x.destino && Number(x.monto) > 0);
+    }
+    function opsViaCobroTarifa(f) {
+        const txt = opsNormalizaTexto([(f.estacion && f.estacion.municipio) || "", f.destinoTexto || ""].join(" "));
+        return opsViaCobroDestinos().find(x => { const d = opsNormalizaTexto(x.destino); return d && (" " + txt + " ").includes(" " + d + " "); }) || null;
+    }
     async function opsViaCalcularRuta() {
         const f = opsViaForm; if (!f || !f.lat) return;
         f.calculando = true; opsViaPintarFormulario();
@@ -17684,6 +17794,11 @@
             f.horasIda = Math.round((f.kmSencillo / 80) * 100) / 100;
             if (!regresa) { f.kmRegreso = recta({ lat: f.lat, lng: f.lng }, fin); f.horasRegreso = Math.round((f.kmRegreso / 80) * 100) / 100; }
         }
+        // Regla de Paloma (22-oct-2026): +km por trayecto (entradas a la ciudad, desvíos, estación).
+        // Ej. Ojinaga: el mapa da ~212 km y en la realidad son ~232. Editable en Tarifas.
+        const extra = opsViaKmExtra();
+        f.kmRuta = f.kmSencillo; f.kmExtraAplicado = extra;
+        if (extra) { f.kmSencillo = Math.round((f.kmSencillo + extra) * 10) / 10; if (!regresa) f.kmRegreso = Math.round((opsViaNum(f.kmRegreso) + extra) * 10) / 10; }
         if (regresa) { f.kmRegreso = f.kmSencillo; f.horasRegreso = f.horasIda; }
         f.calculando = false;
         opsViaRecalcular();
@@ -17700,6 +17815,15 @@
         const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
         const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
         return 2 * R * Math.asin(Math.sqrt(h));
+    }
+    // Casetas del catálogo que OpenStreetMap no tiene ubicadas (22-oct-2026, Paloma: "a Ojinaga sí hay
+    // una caseta"). La caseta "Ojinaga" está en el catálogo pero sin coordenadas, así que el mapa nunca la
+    // encontraba. Si el destino es el municipio que da nombre a la caseta, se agrega sola (se puede quitar).
+    function opsViaCasetasPorDestino(f) {
+        const txt = " " + opsNormalizaTexto([(f.estacion && f.estacion.municipio) || "", f.destinoTexto || ""].join(" ")) + " ";
+        return (opsViaCasetasCat || []).filter(c => !(c.lat && c.lng) && [c.nombre].concat(c.alias || []).filter(Boolean).some(n => txt.includes(" " + opsNormalizaTexto(n) + " ")))
+            .filter(c => !(f.casetas || []).some(x => x.catalogoId === c.id))
+            .map(c => ({ key: "dest-" + c.id, catalogoId: c.id, aplica: true, manual: true, porDestino: true, cruces: opsViaRegresaAlInicio() ? 2 : 1 }));
     }
     async function opsViaDetectarCasetas() {
         const f = opsViaForm; if (!f || !f.rutaGeo) return;
@@ -17762,6 +17886,7 @@
             const vistas = new Set();
             const unicas = detectadas.filter(d => { if (!d.catalogoId) return true; if (vistas.has(d.catalogoId)) return false; vistas.add(d.catalogoId); return true; });
             f.casetas = unicas.concat(manuales.filter(m => !unicas.some(d => d.catalogoId && d.catalogoId === m.catalogoId)));
+            f.casetas = f.casetas.concat(opsViaCasetasPorDestino(f));
             f.aplicaCasetas = f.casetas.length > 0;
             f.casetasEstado = "listo";
         } catch (e) {
@@ -17772,6 +17897,7 @@
             const conocidas = (opsViaCasetasCat || []).filter(c => c.lat && c.lng && geo.some(q2 => opsViaDistKm([c.lat, c.lng], q2) < 1.5))
                 .map(c => ({ key: "cat-" + c.id, catalogoId: c.id, lat: c.lat, lng: c.lng, aplica: true, cruces: opsViaRegresaAlInicio() ? 2 : 1 }));
             f.casetas = conocidas.concat(manuales.filter(mn => !conocidas.some(k => k.catalogoId === mn.catalogoId)));
+            f.casetas = f.casetas.concat(opsViaCasetasPorDestino(f));
             f.aplicaCasetas = f.casetas.length > 0;
             f.casetasEstado = conocidas.length ? "respaldo" : "error";
         }
@@ -17863,6 +17989,7 @@
                 inicio: { nombre: opsViaInicio().nombre || null, lat: opsViaInicio().lat, lng: opsViaInicio().lng },
                 final: { nombre: opsViaFinal().nombre || null, lat: opsViaFinal().lat, lng: opsViaFinal().lng },
                 regresaAlInicio: opsViaRegresaAlInicio(), kmRegreso: opsViaNum(f.kmRegreso), horasRegreso: opsViaNum(f.horasRegreso), kmTotal: opsViaNum(f.kmTotal),
+                kmRuta: f.kmRuta != null ? opsViaNum(f.kmRuta) : null, kmExtraPorTrayecto: f.kmExtraAplicado || 0, cobroTarifaDestino: f.cobroTarifaDestino || null,
             },
         };
         // ── Cuadrilla = una requisición POR TÉCNICO (14-oct-2026) ──
@@ -18361,6 +18488,12 @@
                 <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0 10px;">
                     ${opsViaInput("Nombre", "via-cfg-onombre", c.origen.nombre)}${opsViaInput("Latitud", "via-cfg-olat", c.origen.lat, "", "number")}${opsViaInput("Longitud", "via-cfg-olng", c.origen.lng, "", "number")}
                 </div>
+                <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:6px 0 6px;">Ajustes de distancia y cobro</div>
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:0 10px;">
+                    ${opsViaInput("Km extra por trayecto (ida y regreso)", "via-cfg-kmextra", opsViaKmExtra(), "", "number")}
+                    <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Cobro al cliente por destino (uno por renglón: Destino = monto)
+                    <textarea id="via-cfg-cobrodest" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;font-family:inherit;">${opsEsc(opsViaCobroDestinos().map(x => x.destino + " = " + x.monto).join("\n"))}</textarea></label>
+                </div>
                 ${opsViaInput("Correos a notificar (separados por coma)", "via-cfg-correos", (c.correosNotificar || []).join(", "))}
                 <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:6px 0 6px;">Comprobación de viáticos</div>
                 <div style="display:grid;grid-template-columns:1fr 2fr;gap:0 10px;">
@@ -18384,6 +18517,8 @@
         nuevo.origen = { nombre: document.getElementById("via-cfg-onombre").value, lat: Number(document.getElementById("via-cfg-olat").value), lng: Number(document.getElementById("via-cfg-olng").value) };
         nuevo.correosNotificar = document.getElementById("via-cfg-correos").value.split(",").map(x => x.trim()).filter(Boolean);
         nuevo.diasComprobacion = Math.max(0, Number(document.getElementById("via-cfg-diascomp").value) || 0);
+        nuevo.kmExtraPorTrayecto = Math.max(0, Number(document.getElementById("via-cfg-kmextra").value) || 0);
+        nuevo.cobroDestinos = document.getElementById("via-cfg-cobrodest").value.split("\n").map(l => { const m = l.split("="); return { destino: (m[0] || "").trim(), monto: Number(String(m[1] || "").replace(/[$,\s]/g, "")) || 0 }; }).filter(x => x.destino && x.monto > 0);
         nuevo.rfcsReceptor = document.getElementById("via-cfg-rfcs").value.split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
         try {
             const sb = await opsSb();

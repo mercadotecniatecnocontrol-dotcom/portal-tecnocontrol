@@ -7688,6 +7688,7 @@ function fmOpsNoProgBtnHTML(){
   return cola+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
     '<button onclick="fmAgendaAbrir()" style="padding:11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#1D2E73">Mi agenda (semana / mes)</button>'+
     '<button onclick="fmCerradosAbrir()" style="padding:11px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#166534">Mis servicios cerrados</button></div>'+
+    '<button onclick="fmComisionesAbrir()" style="width:100%;padding:11px;margin-bottom:10px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#92400E">Mis comisiones</button>'+
     '<button onclick="fmOpsNoProgAbrir()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin-bottom:14px;background:#fff;border:1.5px dashed #1D2E73;border-radius:12px;font-family:inherit;font-size:13px;font-weight:800;color:#1D2E73;cursor:pointer">+ Servicio no programado (guardia, llamada o visita)</button>';
 }
 async function fmNPCargarCatalogo(){
@@ -7975,6 +7976,7 @@ async function fmCierreSubir(P,prog){
   await marcar('folio');
   let nCuadrilla=0;
   if(res==='finalizado'){try{nCuadrilla=await fmOpsCerrarCuadrilla(f,id,quien,ahora);}catch(ce){console.warn('[OPS cuadrilla]',ce);}}
+  if(res==='finalizado'){try{await fmComisionesAlTerminar(id,f,quien);}catch(ce){console.warn('[comisiones]',ce);}}
   const etiqueta=res==='finalizado'?'[Finalizado]':res==='no_finalizado'?'[Atendido sin finalizar] '+visita.motivo+' ·':'[No se realizó] '+visita.motivo+' ·';
   const resumenExtra=(P.osNum?' · O.S. '+P.osNum:'')+(P.esPol&&res!=='no_realizado'?' · Póliza llenada en la app de Pólizas':'')+(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'')+(P.enCola?' · Cerrado sin señal a las '+new Date(ahora).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+' y subido después':'');
   try{await opsSvComentario(id,etiqueta+' '+(P.txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);}catch(e){}
@@ -7982,6 +7984,53 @@ async function fmCierreSubir(P,prog){
   try{await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+(P.titulo||opsSvTitulo(f))+(res==='finalizado'?'.':': '+visita.motivo+' · '+(String(P.txt||'').slice(0,100))),id);}catch(e){}
   return {nCuadrilla:nCuadrilla,videoFallo:videoFallo};
 }
+
+// ── Comisiones al terminar desde la app (22-oct-2026) ──
+// Antes las comisiones de servicios cerrados en la app se quedaban en "Servicio sin terminar"
+// (solo el portal las pasaba a "Por autorizar"). Ahora el cierre en la app hace lo mismo y avisa a Paloma.
+async function fmComisionesAlTerminar(id,f,quien){
+  const sb=await fmvSb();
+  const r=await sb.from('ops_comisiones').update({estatus:'por_pagar',actualizado_en:new Date().toISOString(),actualizado_por:opsSvMiCorreo()}).eq('folio_id',id).eq('estatus','pendiente').select('tecnico_nombre,monto');
+  const filas=(r&&r.data)||[]; if(!filas.length)return;
+  const txt='Comisiones por autorizar · '+(f.estacion||'servicio')+' (cerrado por '+quien+' en la app): '+filas.map(function(x){return x.tecnico_nombre+' $'+Number(x.monto||0).toLocaleString('es-MX');}).join(', ')+'. Revísalas en Operaciones → Comisiones.';
+  try{await sb.from('portal_notificaciones').insert({tipo:'ops_comisiones_por_pagar',para:'p.pinedo@tecnocontrol.com.mx',mensaje:txt,datos:{folioId:id,modulo:'Operaciones'}});}catch(e){}
+}
+
+// ══ Mis comisiones (22-oct-2026, Paloma): el técnico ve lo que lleva acumulado, lo autorizado,
+// lo pagado y los descuentos por garantía, con la calificación de cada servicio. Solo las suyas.
+window.fmComisionesAbrir=async function(){
+  document.getElementById('fm-comis')?.remove();
+  const ov=document.createElement('div'); ov.id='fm-comis';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.6);z-index:99998;display:flex;align-items:flex-end;justify-content:center';
+  const din=function(n){return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  const marco=function(c){return '<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:16px 16px calc(env(safe-area-inset-bottom,0px) + 18px);max-height:92vh;display:flex;flex-direction:column"><div style="display:flex;align-items:center;margin-bottom:6px"><div style="flex:1;font-size:15px;font-weight:900;color:#0A1628">Mis comisiones</div><button onclick="document.getElementById(\'fm-comis\').remove()" style="border:none;background:#F1F5F9;border-radius:8px;padding:7px 11px;font-family:inherit;font-weight:800;color:#475569">Cerrar</button></div><div style="overflow-y:auto;flex:1">'+c+'</div></div>';};
+  ov.innerHTML=marco('<div style="font-size:12.5px;color:#64748B;padding:12px 0">Cargando…</div>');
+  document.body.appendChild(ov);
+  try{
+    const sb=await fmvSb(), correo=opsSvMiCorreo();
+    const desde=new Date(Date.now()-120*86400000).toISOString().slice(0,10);
+    const qs=[sb.from('ops_comisiones').select('*').eq('tecnico_correo',correo).gte('fecha_servicio',desde)];
+    if(_opsServTecId)qs.push(sb.from('ops_comisiones').select('*').eq('tecnico_id',_opsServTecId).gte('fecha_servicio',desde));
+    const rs=await fmConTiempo(Promise.all(qs),25000);
+    const mapa=new Map(); rs.forEach(function(r){((r&&r.data)||[]).forEach(function(c){mapa.set(c.id,c);});});
+    const l=[...mapa.values()].filter(function(c){return c.estatus!=='rechazada';}).sort(function(a,b){return String(b.fecha_servicio||'').localeCompare(String(a.fecha_servicio||''));});
+    const sum=function(f){return l.filter(f).reduce(function(a,c){return a+(Number(c.monto)||0);},0);};
+    const est={pendiente:['Servicio sin cerrar','#64748B','#F1F5F9'],por_pagar:['En revisión de Gerencia','#B45309','#FEF3C7'],autorizada:['Autorizada · por depositar','#1D4ED8','#DBEAFE'],pagada:['Pagada','#15803D','#DCFCE7']};
+    const tarj=function(t,m,c){return '<div style="flex:1;background:'+c+'14;border:1.5px solid '+c+'55;border-radius:12px;padding:9px 10px"><div style="font-size:15px;font-weight:900;color:'+c+'">'+din(m)+'</div><div style="font-size:10.5px;color:#475569;font-weight:700">'+t+'</div></div>';};
+    ov.innerHTML=marco(
+      '<div style="display:flex;gap:6px;margin-bottom:8px">'+tarj('En revisión',sum(function(c){return c.estatus==='por_pagar'||c.estatus==='pendiente';}),'#B45309')+tarj('Autorizado',sum(function(c){return c.estatus==='autorizada';}),'#1D4ED8')+tarj('Pagado',sum(function(c){return c.estatus==='pagada';}),'#15803D')+'</div>'+
+      '<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:10px;padding:9px 11px;font-size:11.5px;color:#334155;line-height:1.45;margin-bottom:10px"><b>Para que se pague tu comisión</b> el servicio debe tener: <b>1)</b> información completa (O.S., descripción, firma del cliente y, en OXXO/Petro Seven, el ID del folio); <b>2)</b> cerrado en tiempo y forma (el mismo día o a más tardar el día siguiente); <b>3)</b> evidencia completa (foto de la O.S. y al menos 2 fotos). Si un servicio se tiene que volver a hacer por <b>garantía</b>, se descuenta de tu comisión.</div>'+
+      (l.length?l.map(function(c){
+        const e=est[c.estatus]||[c.estatus,'#334155','#F1F5F9'], k=c.checklist||{}, neg=Number(c.monto)<0, q=k.calificacion;
+        return '<div style="border:1px solid '+(neg?'#FCA5A5':'#E2E8F0')+';background:'+(neg?'#FEF2F2':'#fff')+';border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+          '<div style="display:flex;gap:6px;align-items:center;margin-bottom:3px"><span style="font-size:13px;font-weight:900;color:'+(neg?'#B91C1C':'#0A1628')+'">'+din(c.monto)+'</span><span style="margin-left:auto;font-size:10.5px;font-weight:800;color:'+e[1]+';background:'+e[2]+';padding:2px 8px;border-radius:6px">'+e[0]+'</span></div>'+
+          '<div style="font-size:12px;color:#334155;font-weight:700">'+opsSvEsc(neg?'Descuento por garantía':(c.servicio_nombre||'Servicio'))+' · '+opsSvEsc(c.estacion||'')+'</div>'+
+          '<div style="font-size:11px;color:#64748B">'+opsSvEsc(c.fecha_servicio||'')+(c.concepto?' · '+opsSvEsc(c.concepto):'')+'</div>'+
+          (neg&&k.justificacion?'<div style="font-size:11px;color:#B91C1C;margin-top:3px">Motivo: '+opsSvEsc(k.justificacion)+'</div>':'')+
+          (q&&q.criterios&&q.criterios.length?'<div style="font-size:11px;margin-top:4px;color:'+(q.cumple?'#15803D':'#B45309')+';font-weight:800">'+(q.cumple?'Cumplió la calificación':'No cumplió: '+q.criterios.filter(function(x){return !x.ok;}).map(function(x){return x.txt+' ('+x.det+')';}).join('; '))+'</div>':'')+
+        '</div>';}).join(''):'<div style="font-size:12.5px;color:#94A3B8;padding:12px 0">Todavía no tienes comisiones registradas en los últimos 4 meses.</div>'));
+  }catch(e){console.warn('[mis comisiones]',e);ov.innerHTML=marco('<div style="font-size:12.5px;color:#B91C1C;padding:12px 0">No se pudo cargar. Revisa tu conexión.</div>');}
+};
 
 // ══ Cola de cierres guardados en el teléfono (IndexedDB) ══
 let _fmColaIds=new Set(), _fmColaN=0, _fmColaSubiendo=false;
