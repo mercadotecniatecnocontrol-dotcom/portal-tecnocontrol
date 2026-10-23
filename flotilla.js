@@ -8609,10 +8609,16 @@ window.flModalEvaluacion = function(id) {
     };
     inp.click();
   };
+  window._flAdjPend.eval = [];
   window.evalAgregarComentario = async function(){
-    const inp=document.getElementById('eval-comment-inp'); if(!inp||!inp.value.trim())return;
+    const inp=document.getElementById('eval-comment-inp'); if(!inp) return;
+    const pend=window._flAdjPend.eval||[];
+    if(!inp.value.trim() && !pend.length) return;
     const email=window.auth?.currentUser?.email||'—';
-    const nuevoComt={texto:inp.value.trim(),por:email,en:new Date().toISOString()};
+    let adjuntos=[];
+    if(pend.length){ try{ flToast('Subiendo '+pend.length+' archivo(s)…','ok'); adjuntos=await flSubirAdjuntos(s.id,pend); }catch(e){ flToast('No se pudieron subir los archivos: '+e.message,'err'); return; } }
+    window._flAdjPend.eval=[]; const pb=document.getElementById('eval-adj-pend'); if(pb) pb.innerHTML='';
+    const nuevoComt={texto:inp.value.trim(),por:email,en:new Date().toISOString(),...(adjuntos.length?{adjuntos}:{})};
     window._flEvalComents.push(nuevoComt);
     inp.value='';
     document.getElementById('eval-comments-list').innerHTML=renderComents(window._flEvalComents);
@@ -8629,7 +8635,7 @@ window.flModalEvaluacion = function(id) {
           para:s.creadoPor,
           vehiculoEco:s.vehiculoEco||'—',
           tipo:'comentario',
-          mensaje:`Nuevo comentario en tu solicitud ECO ${s.vehiculoEco||'—'}: "${nuevoComt.texto}"`,
+          mensaje:`Nuevo comentario en tu solicitud ECO ${s.vehiculoEco||'—'}: "${nuevoComt.texto||'(fotos/video)'}"${adjuntos.length?' · '+adjuntos.length+' archivo(s)':''}`,
           leido:false,
           creadaEn:new Date().toISOString(),
         });
@@ -8687,8 +8693,10 @@ window.flModalEvaluacion = function(id) {
             <div id="eval-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderComents(window._flEvalComents)}</div>
             <div style="display:flex;gap:8px">
               <input id="eval-comment-inp" placeholder="Agregar comentario de revisión o VoBo…" style="flex:1">
+              <button onclick="flElegirAdjuntos('eval')" title="Adjuntar fotos o videos" style="padding:7px 10px;background:#fff;color:#1E3A5F;border:1.5px solid #CBD5E1;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📎 Foto/video</button>
               <button onclick="evalAgregarComentario()" style="padding:7px 14px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Agregar</button>
             </div>
+            <div id="eval-adj-pend"></div>
           </div>
           <div id="eval-err" style="color:#B91C1C;font-size:11px;display:none"></div>
           <div class="fl-fa">
@@ -8779,11 +8787,19 @@ window.flModalServicio = function(id) {
     };
     inp.click();
   };
-  window.servAgregarComentario=function(){
-    const inp=document.getElementById('serv-comment-inp');if(!inp||!inp.value.trim())return;
-    window._flServComents.push({texto:inp.value.trim(),por:window.auth?.currentUser?.email||'—',en:new Date().toISOString()});
+  window._flAdjPend.serv = [];
+  window.servAgregarComentario=async function(){
+    const inp=document.getElementById('serv-comment-inp');if(!inp)return;
+    const pend=window._flAdjPend.serv||[];
+    if(!inp.value.trim() && !pend.length) return;
+    let adjuntos=[];
+    if(pend.length){ try{ flToast('Subiendo '+pend.length+' archivo(s)…','ok'); adjuntos=await flSubirAdjuntos(s.id,pend); }catch(e){ flToast('No se pudieron subir los archivos: '+e.message,'err'); return; } }
+    window._flAdjPend.serv=[]; const pb=document.getElementById('serv-adj-pend'); if(pb) pb.innerHTML='';
+    window._flServComents.push({texto:inp.value.trim(),por:window.auth?.currentUser?.email||'—',en:new Date().toISOString(),...(adjuntos.length?{adjuntos}:{})});
     inp.value='';
     document.getElementById('serv-comments-list').innerHTML=renderComents(window._flServComents);
+    try{ await fs.updateDoc(fs.doc(db,C.SOLS,s.id),{comentariosServicio:window._flServComents,actualizadoEn:new Date().toISOString()}); flToast('Comentario guardado','ok'); }
+    catch(e){ flToast('El comentario se guardará al guardar el servicio','warn'); }
   };
 
   const pagoProgr=s.pagoProgramado||null;
@@ -8849,8 +8865,10 @@ window.flModalServicio = function(id) {
             <div id="serv-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">${renderComents(window._flServComents)}</div>
             <div style="display:flex;gap:8px">
               <input id="serv-comment-inp" placeholder="Notas del taller, validación de trabajos, garantías…" style="flex:1">
+              <button onclick="flElegirAdjuntos('serv')" title="Adjuntar fotos o videos" style="padding:7px 10px;background:#fff;color:#1E3A5F;border:1.5px solid #CBD5E1;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📎 Foto/video</button>
               <button onclick="servAgregarComentario()" style="padding:7px 14px;background:#1E3A5F;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Agregar</button>
             </div>
+            <div id="serv-adj-pend"></div>
           </div>
           <div id="serv-err" style="color:#B91C1C;font-size:11px;display:none"></div>
           <div class="fl-fa">
@@ -9019,12 +9037,51 @@ window.flGuardarServicio = async function(id, cerrar) {
 // ═══════════════════════════════════════════════════════════════
 window.flModalCierre4 = function(id){ window.flModalServicio(id); };
 
+// ── Fotos y videos en los comentarios (23-oct-2026): el departamento de Flotilla, Cristina y los
+// administradores pueden adjuntar imágenes y videos como comentario de resolución o en cualquier
+// momento del proceso. Se guardan en Supabase Storage (privado) y se abren con liga temporal.
+window._flAdjPend = { eval: [], serv: [] };
+function flAdjPendHTML(caja){
+  const l = window._flAdjPend[caja] || [];
+  if(!l.length) return '';
+  return l.map((f,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:2px 7px;font-size:10.5px;color:#1E40AF;margin:4px 4px 0 0">${/^video/.test(f.type)?'🎥':'📷'} ${String(f.name).slice(0,28)} <a href="#" onclick="event.preventDefault();window._flAdjPend['${caja}'].splice(${i},1);document.getElementById('${caja}-adj-pend').innerHTML=flAdjPendHTML('${caja}')" style="color:#B91C1C;text-decoration:none;font-weight:800">×</a></span>`).join('');
+}
+window.flAdjPendHTML = flAdjPendHTML;
+window.flElegirAdjuntos = function(caja){
+  const inp=document.createElement('input'); inp.type='file'; inp.multiple=true; inp.accept='image/*,video/*';
+  inp.onchange=()=>{
+    for(const f of [...inp.files]){
+      if(f.size > 80*1024*1024){ flToast(f.name+' pesa más de 80 MB','err'); continue; }
+      window._flAdjPend[caja].push(f);
+    }
+    const box=document.getElementById(caja+'-adj-pend'); if(box) box.innerHTML=flAdjPendHTML(caja);
+  };
+  inp.click();
+};
+async function flSubirAdjuntos(solId, files){
+  if(!files.length) return [];
+  if(typeof window.tcSbSesion!=='function') throw new Error('No hay conexión con el almacenamiento');
+  const sb = await window.tcSbSesion(), out=[];
+  for(const [i,f] of files.entries()){
+    const ext=(String(f.name).split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const ruta='flotilla/'+solId+'/comentarios/'+Date.now()+'_'+i+'.'+ext;
+    const r=await sb.storage.from('ops-evidencias').upload(ruta,f,{contentType:f.type||undefined,upsert:false});
+    if(r.error) throw new Error(r.error.message);
+    out.push({tipo:/^video/.test(f.type)?'video':'foto',bucket:'ops-evidencias',ruta,nombre:f.name});
+  }
+  return out;
+}
+window.flVerAdjunto = async function(bucket, ruta){
+  try{ const sb=await window.tcSbSesion(); const r=await sb.storage.from(bucket).createSignedUrl(ruta,3600); if(r.error) throw r.error; window.open(r.data.signedUrl,'_blank'); }
+  catch(e){ flToast('No se pudo abrir: '+(e.message||e),'err'); }
+};
 // Helper: renderizar comentarios
 function renderComents(coments){
   if(!coments?.length) return '<div style="font-size:11px;color:#94A3B8;text-align:center;padding:8px">Sin comentarios aún</div>';
   return coments.map(c=>`
     <div style="background:#F8FAFC;border-radius:8px;padding:9px 12px;border-left:3px solid #2563EB">
-      <div style="font-size:10.5px;color:#374151">${c.texto}</div>
+      ${c.texto?`<div style="font-size:10.5px;color:#374151">${c.texto}</div>`:''}
+      ${(c.adjuntos||[]).length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">${c.adjuntos.map(a=>`<button onclick="flVerAdjunto('${a.bucket}','${a.ruta}')" style="background:#fff;border:1px solid #CBD5E1;border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;color:#1E3A5F;cursor:pointer;font-family:inherit">${a.tipo==='video'?'🎥 Ver video':'📷 Ver foto'}</button>`).join('')}</div>`:''}
       <div style="font-size:9px;color:#94A3B8;margin-top:3px">${c.por||'—'} · ${c.en?new Date(c.en).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—'}</div>
     </div>`).join('');
 }
