@@ -357,6 +357,12 @@
         const primero = n.split(/\s+/)[0];
         return OPS_NOMBRES_ADMIN_SUGERIDOS.some(x => x.includes(" ") ? n.includes(x) : primero === x);
     }
+    // Técnicos en orden alfabético en todas las listas (23-oct-2026).
+    // Recursos Humanos (Lucero, 23-oct-2026): en Operaciones puede registrar vacaciones, permisos,
+    // incapacidades y actas administrativas, y dar de baja a un técnico.
+    const OPS_RH = ["rh@tecnocontrol.com.mx"];
+    function opsEsRH() { return OPS_RH.includes(String(opsUsuarioActual() || "").toLowerCase()); }
+    function opsOrdenTec(l) { return (l || []).slice().sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" })); }
     function opsTecOperativos() {
         return cacheTec.filter(t => t.estatus === "activo" && !opsEsAdministrativo(t));
     }
@@ -667,7 +673,7 @@
             await opsAuditar("tecnico", idInterno, "firebaseUid", null, uid);
 
             const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
-            cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
+            cacheTec = opsOrdenTec(snapTec.docs.map(d => ({ id: d.id, ...d.data() })));
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.mostrarPush) window.mostrarPush("Acceso creado", `${t.nombre} ya puede entrar al kiosco con ${t.correo}.`, "🔑");
             else alert(`Acceso creado.\nCorreo: ${t.correo}\nContraseña: ${pass}`);
@@ -1156,7 +1162,7 @@
     let unsubHerr = null, unsubTec = null, unsubMov = null, unsubSurt = null, unsubSurtPoll = null, unsubFolios = null, unsubNotif = null, unsubTraspasos = null, unsubConfigCalibracion = null, unsubServiciosCatalogo = null, unsubTarifasPersonal = null, unsubAusencias = null, unsubAlmacenes = null, unsubConfigRevision = null, unsubRevisiones = null, unsubConfigAlertas = null, unsubConfigViaticos = null;
     let cacheHerr = [], cacheTec = [], cacheMov = [], cacheSurtidos = [], cacheFolios = [];
     let cacheServiciosCatalogo = [], cacheTarifasPersonal = {};
-    let cacheAusencias = [];
+    let cacheAusencias = [], cacheActas = []; // las actas administrativas NO cuentan como ausencia
     let opsTecVista = "operativos"; // pestaña Técnicos: operativos | administrativos | bajas
     let cacheAlmacenes = []; // TODOS los almacenes (general/técnico/ubicación) — para las ubicaciones físicas tipo "Banco de trabajo Saltillo"
     let cacheRevisoresHerramienta = []; // [{email,nombre}] — quién puede revisar CUALQUIER almacén desde Flotilla móvil
@@ -2192,6 +2198,7 @@
         calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
         derivados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
+        connecteam: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>',
         comparativa: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
         tableros: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
         gestoria: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
@@ -2207,10 +2214,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2277,6 +2284,7 @@
         else if (tab === "tableros") opsRenderTableros();
         else if (tab === "gestoria") { opsGestAsegurarRenglon(); opsRenderGestoria(); }
         else if (tab === "comparativa") opsRenderComparativa();
+        else if (tab === "connecteam") opsRenderConnecteam();
         else if (tab === "pendientes") opsRenderPendientes();
         else if (tab === "herrsol") opsRenderSolHerr();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
@@ -2297,7 +2305,7 @@
         }
         if (!unsubTec) {
             unsubTec = fs.onSnapshot(fs.query(fs.collection(db, COL_TECNICOS), fs.orderBy("numeroOperativo")), snap => {
-                cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                cacheTec = opsOrdenTec(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                 opsAjustarTecnicosForzados();
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (tabActual === "dashboard") opsRenderDashboard();
@@ -2376,7 +2384,8 @@
         }
         if (!unsubAusencias) {
             unsubAusencias = fs.onSnapshot(fs.collection(db, COL_AUSENCIAS), snap => {
-                cacheAusencias = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const todasAus = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                cacheAusencias = todasAus.filter(a => a.tipo !== "acta"); cacheActas = todasAus.filter(a => a.tipo === "acta");
                 if (tabActual === "tecnicos") opsRenderTecnicos();
                 if (fichaTecActual) opsRenderFichaTecContenido(fichaTecActual);
             }, () => { cacheAusencias = []; });
@@ -3673,7 +3682,7 @@
         }
         // Refrescar cachés locales tras la importación masiva.
         const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
-        cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
+        cacheTec = opsOrdenTec(snapTec.docs.map(d => ({ id: d.id, ...d.data() })));
         cacheHerr = await opsSbHerrListar();
 
         const msg = `Importación completa: ${tecnicosCreados} técnico(s) nuevo(s), ${piezasCreadas} pieza(s) creada(s)${piezasOmitidas ? `, ${piezasOmitidas} omitida(s) por ya existir` : ""}.`;
@@ -4517,7 +4526,7 @@
         opsFotoTecnicoPendiente = undefined;
         if (Object.keys(cambios).length) await fs.updateDoc(fs.doc(db, COL_TECNICOS, idInterno), cambios);
         const snapTec = await fs.getDocs(fs.collection(db, COL_TECNICOS));
-        cacheTec = snapTec.docs.map(d => ({ id: d.id, ...d.data() }));
+        cacheTec = opsOrdenTec(snapTec.docs.map(d => ({ id: d.id, ...d.data() })));
         document.getElementById("ops-modal-wrap").innerHTML = "";
         opsAbrirFichaTecnico(idInterno);
     };
@@ -4603,7 +4612,7 @@
                 });
             }
             const snap = await fs.getDocs(fs.collection(db, COL_TECNICOS));
-            cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            cacheTec = opsOrdenTec(snap.docs.map(d => ({ id: d.id, ...d.data() })));
             if (window.mostrarPush) window.mostrarPush("Operaciones", "Acceso otorgado.", "✅");
             window.opsAbrirModalAccesos();
         } catch (e) {
@@ -4781,6 +4790,7 @@
                         <div style="font-size:11.5px;color:#64748b;">${opsEsc(t.puesto || "—")} · Técnico N.° ${opsEsc(t.numeroOperativo)}${t.registroHistorico > 1 ? ` (registro ${t.registroHistorico})` : ""}${t.employeeId ? ` · ${opsEsc(t.employeeId)}` : ""}</div>
                         <span style="background:${activo ? "#dcfce7" : "#e5e7eb"};color:${activo ? "#166534" : "#374151"};font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;margin-top:4px;">${activo ? "Activo" : "Baja"}</span>
                     </div>
+                    ${!opsPuedeGestionar() && opsEsRH() && activo ? `<button onclick="opsIniciarBajaTecnico('${idInterno}')" style="background:#fee2e2;border:none;color:#b91c1c;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Dar de baja</button>` : ""}
                     ${opsPuedeGestionar() ? `
                     <div style="position:relative;">
                         <button onclick="opsToggleMenuTecnico(event)" title="Configuración" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;color:#475569;display:flex;align-items:center;justify-content:center;">${ICON.gear}</button>
@@ -4947,16 +4957,16 @@
             return;
         } else if (fichaTecTabActual === "ausencias") {
             const hoy = opsHoy();
-            const ausenciasTec = cacheAusencias.filter(a => a.tecnicoId === idInterno).sort((a, b) => (a.fechaInicio < b.fechaInicio ? 1 : -1));
+            const ausenciasTec = cacheAusencias.concat(cacheActas).filter(a => a.tecnicoId === idInterno).sort((a, b) => (a.fechaInicio < b.fechaInicio ? 1 : -1));
             const activasHoy = ausenciasTec.filter(a => a.fechaInicio <= hoy && a.fechaFin >= hoy);
-            const tipoLabel = { vacaciones: "Vacaciones", incapacidad: "Incapacidad", permiso: "Permiso" };
-            const tipoColor = { vacaciones: { bg: "#dbeafe", fg: "#1e40af" }, incapacidad: { bg: "#fee2e2", fg: "#E7402B" }, permiso: { bg: "#fef3c7", fg: "#b45309" } };
+            const tipoLabel = { vacaciones: "Vacaciones", incapacidad: "Incapacidad", permiso: "Permiso", acta: "Acta administrativa" };
+            const tipoColor = { vacaciones: { bg: "#dbeafe", fg: "#1e40af" }, incapacidad: { bg: "#fee2e2", fg: "#E7402B" }, permiso: { bg: "#fef3c7", fg: "#b45309" }, acta: { bg: "#ede9fe", fg: "#6d28d9" } };
             el.innerHTML = `
                 ${activasHoy.length ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px;color:#92400e;font-weight:600;">${activasHoy.map(a => `${tipoLabel[a.tipo] || a.tipo} activo hasta ${opsEsc(a.fechaFin)}`).join(" · ")}</div>` : ""}
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Vacaciones, incapacidades y permisos</div>
-                        ${opsPuedeCrear() ? `<button onclick="opsAbrirModalAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar</button>` : ""}
+                        ${opsPuedeCrear() || opsEsRH() ? `<button onclick="opsAbrirModalAusencia('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Registrar</button>` : ""}
                     </div>
                     <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Calendario propio de Operaciones — todavía no se cruza automáticamente contra la planeación de servicios (no hay fecha de programación de trabajo todavía).</div>
                     ${ausenciasTec.length ? ausenciasTec.map(a => {
@@ -4966,7 +4976,7 @@
                                 <span style="background:${c.bg};color:${c.fg};font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;">${opsEsc(tipoLabel[a.tipo] || a.tipo)}</span>
                                 <div style="font-size:11.5px;color:#334155;margin-top:4px;">${opsEsc(a.fechaInicio)} → ${opsEsc(a.fechaFin)}${a.motivo ? ` · ${opsEsc(a.motivo)}` : ""}</div>
                             </div>
-                            ${opsPuedeGestionar() ? `<button onclick="opsEliminarAusencia('${a.id}')" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
+                            ${opsPuedeGestionar() || opsEsRH() ? `<button onclick="opsEliminarAusencia('${a.id}')" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
                         </div>`;
                     }).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin registros.</div>'}
                 </div>`;
@@ -4999,6 +5009,7 @@
                     <option value="vacaciones">Vacaciones</option>
                     <option value="incapacidad">Incapacidad</option>
                     <option value="permiso">Permiso</option>
+                    <option value="acta">Acta administrativa</option>
                 </select>
 
                 <div style="display:flex;gap:8px;">
@@ -12662,6 +12673,25 @@
         } catch (e) { console.warn("[material] no se pudo anotar en el servicio:", e.message || e); }
         return { id, folio, req };
     }
+    // Herramienta que trae otro técnico (23-oct-2026): si el servicio necesita una herramienta y todas
+    // las piezas de ese tipo las trae alguien que NO va al servicio, se le avisa para que la devuelva a tiempo.
+    function opsAvisarHerramientaOcupada(f, herrLista, tecsServicio) {
+        const equipo = new Set((tecsServicio || []).map(t => t && t.id).filter(Boolean));
+        const cuando = f.fechaProgramada ? new Date(f.fechaProgramada).toLocaleString("es-MX", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "la fecha programada";
+        const avisados = [];
+        (herrLista || []).forEach(h => {
+            const q = opsNormalizaTexto(h.descripcion || h.nombre || ""); if (q.length < 4) return;
+            const piezas = cacheHerr.filter(x => x.estado !== "baja" && opsNormalizaTexto(x.descripcion || "").includes(q));
+            if (!piezas.length) return;
+            if (piezas.some(x => !x.tecnicoActualId || equipo.has(x.tecnicoActualId))) return; // hay una libre o ya la trae alguien del equipo
+            const p = piezas[0], t = opsTecPorId(p.tecnicoActualId); if (!t || !t.correo) return;
+            const msg = `Por favor regresa ${p.descripcion} (${p.folio || p.id}) al almacén: se necesita el ${cuando} para el servicio en ${f.estacion || ""}.`;
+            opsTDAvisarTecnico(t.correo, msg);
+            avisados.push(t.nombre + " · " + (p.folio || p.id));
+        });
+        if (avisados.length && window.tcNotif) window.tcNotif.agregar({ titulo: "Herramienta en manos de otro técnico", texto: "Se les avisó para que la devuelvan: " + avisados.join(", "), nivel: "normal", modulo: "Operaciones" });
+        return avisados;
+    }
     // Llamado al guardar un servicio del catálogo.
     async function opsNecAlGuardarAlta(folio, receta, cantidad, herrLista, pedir) {
         if (!pedir || !receta) return null;
@@ -13926,6 +13956,115 @@
             const idDoc = r.ini + "_" + s.grupo + (s.cliente ? "_" + opsNormalizaTexto(s.cliente).replace(/\s+/g, "_").slice(0, 40) : "");
             await fs.setDoc(fs.doc(db, COL_TABLEROS, idDoc), { semana: r.ini, grupo: s.grupo, cliente: s.cliente || null, nombre: nom, recibidos: r.recibidos.length, cerrados: r.cerrados.length, cumplimientoSla: r.cumpl, conSla: r.conSla.length, enSla: r.enSla.length, pendientes: r.pendientes.length, vencidosAbiertos: r.vencidosAbiertos.length, respuestaH: r.tResp, solucionH: r.tSol, reprogramaciones: r.reprog, extras: r.extras.length, generadoPor: opsNombreActual(), generadoEn: new Date().toISOString() });
         } catch (e) { console.warn("[tablero] histórico:", e); }
+    };
+
+
+    // ═══════════════════ PÓLIZAS DE CONNECTEAM (23-oct-2026) ═══════════════════
+    // Se sube el Excel exportado del formulario "POLIZA MTTO" de Connecteam. Por cada envío se guarda:
+    // fecha de subida, fecha del servicio, fecha en que se marcó Done (completado), O.S., estación,
+    // cliente (1 Petromax · 2 externos · 3 OXXO), sensores, observaciones ASEA/PROFECO y las ligas a
+    // las fotos. Se liga con el servicio del portal por número de O.S. y se calcula cuánto tardó cada
+    // póliza en subirse y en completarse (sirve también para comisiones: trabajos atrasados).
+    const OPS_CT_CLIENTES = { "1": "Petromax / Petro Seven", "2": "Externos", "3": "OXXO" };
+    let cacheCt = [], opsCtCargado = false, opsCtFiltro = "todas";
+    function opsCtFecha(v) {
+        if (v == null || v === "") return null;
+        if (v instanceof Date) return isNaN(v) ? null : v.toISOString();
+        if (typeof v === "number") { const d = new Date(Math.round((v - 25569) * 86400000)); return isNaN(d) ? null : d.toISOString(); }
+        const t = String(v).trim();
+        let m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+        if (m) { const d = new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)); return isNaN(d) ? null : d.toISOString(); }
+        m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) { const d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)); return isNaN(d) ? null : d.toISOString(); }
+        const d = new Date(t); return isNaN(d) ? null : d.toISOString();
+    }
+    // Lee la hoja (SheetJS) y devuelve filas listas para guardar. Función pura para poder probarla.
+    function opsCtParsearHoja(ws, XLSXlib) {
+        const ref = XLSXlib.utils.decode_range(ws["!ref"]);
+        const cab = []; for (let c = ref.s.c; c <= ref.e.c; c++) { const cell = ws[XLSXlib.utils.encode_cell({ r: ref.s.r, c })]; cab.push(cell ? String(cell.v).trim() : ""); }
+        const col = (rx, desde) => cab.findIndex((h, i) => i >= (desde || 0) && rx.test(h));
+        const iId = col(/^#$/), iNom = col(/^full name$/i), iEnv = col(/^submission date$/i), iSerD = col(/fecha del servicio - date/i), iSerT = col(/fecha del servicio - time/i),
+            iCli = col(/^cliente$/i), iRs = col(/razon social/i), iOs = col(/^orden de servicio$/i), iEst = col(/^estacion de servicio$/i),
+            iSen = col(/activaron todos los sensores/i), iDisp = col(/numero de dispensario/i), iTan = col(/numero de tanques/i), iObs = col(/observaciones tipo asea/i),
+            iObsT = col(/si tu respuesta fue si/i), iNota = col(/^note$/i), iSt = col(/^status$/i), iStC = col(/status - last status change/i);
+        if (iId < 0 || iEnv < 0 || iOs < 0) throw new Error("Este Excel no parece la exportación de POLIZA MTTO de Connecteam (faltan columnas #, Submission Date u ORDEN DE SERVICIO).");
+        const val = (r, i) => { if (i < 0) return null; const cell = ws[XLSXlib.utils.encode_cell({ r, c: i })]; return cell ? (cell.v instanceof Date ? cell.v : cell.v) : null; };
+        const txt = (r, i) => { const v = val(r, i); if (v == null) return null; const t = String(v).trim(); return t && !/^(none|nan|null)$/i.test(t) ? t : null; };
+        const filas = [];
+        for (let r = ref.s.r + 1; r <= ref.e.r; r++) {
+            const id = txt(r, iId); if (!id) continue;
+            const ligas = [];
+            for (let c = 0; c < cab.length; c++) { const cell = ws[XLSXlib.utils.encode_cell({ r, c })]; if (cell && cell.l && cell.l.Target && /^https?:/i.test(cell.l.Target)) ligas.push({ campo: cab[c].replace(/\s*\(\d+\)$/, "").replace(/\.1$/, ""), url: cell.l.Target }); }
+            let fs = opsCtFecha(val(r, iSerD));
+            const hora = txt(r, iSerT);
+            if (fs && hora && /^\d{1,2}:\d{2}/.test(hora)) { const d = new Date(fs); const [h, m] = hora.split(":"); d.setHours(+h, +m, 0, 0); fs = d.toISOString(); }
+            const sen = txt(r, iSen), obs = txt(r, iObs);
+            const cliCod = txt(r, iCli) ? String(parseInt(txt(r, iCli), 10)) : null;
+            filas.push({
+                id: "PM-" + id, formulario: "POLIZA MTTO", tecnico: txt(r, iNom), enviado_en: opsCtFecha(val(r, iEnv)), fecha_servicio: fs,
+                cliente_codigo: cliCod, cliente: OPS_CT_CLIENTES[cliCod] || null, estacion: txt(r, iRs), os: (txt(r, iOs) || "").replace(/\D/g, "") || null, ubicacion: txt(r, iEst),
+                sensores_ok: sen == null ? null : /^s[ií]$/i.test(sen), sensores_txt: sen, dispensarios: txt(r, iDisp), tanques: txt(r, iTan),
+                obs_asea: obs == null ? null : /^s[ií]/i.test(obs), obs_txt: txt(r, iObsT), nota: txt(r, iNota), status: txt(r, iSt),
+                completado_en: /done/i.test(txt(r, iSt) || "") ? opsCtFecha(val(r, iStC)) : null, ligas,
+            });
+        }
+        return filas;
+    }
+    function opsCtDias(a, b) { if (!a || !b) return null; return Math.round((new Date(b) - new Date(a)) / 86400000 * 10) / 10; }
+    async function opsCtCargar() {
+        const sb = await opsSb(); let todos = [], desde = 0;
+        while (true) { const { data, error } = await sb.from("connecteam_polizas").select("*").order("enviado_en", { ascending: false }).range(desde, desde + 999); if (error) throw error; todos = todos.concat(data || []); if (!data || data.length < 1000) break; desde += 1000; }
+        cacheCt = todos; opsCtCargado = true;
+    }
+    function opsCtFolioDe(x) { if (!x.os) return null; return cacheFolios.find(f => [f.osTecnico, f.folioOS].some(v => String(v || "").replace(/\D/g, "") === x.os)) || null; }
+    function opsRenderConnecteam() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsCtCargado) { el.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;">Cargando pólizas de Connecteam…</div>`; opsCtCargar().then(opsRenderConnecteam).catch(e => { el.innerHTML = `<div style="padding:30px;color:#b91c1c;">No se pudieron cargar: ${opsEsc(e.message || e)}</div>`; }); return; }
+        const l = cacheCt.map(x => ({ ...x, dSub: opsCtDias(x.fecha_servicio, x.enviado_en), dDone: opsCtDias(x.enviado_en, x.completado_en), folio: opsCtFolioDe(x) }));
+        const vis = l.filter(x => opsCtFiltro === "todas" || (opsCtFiltro === "pend" ? !x.completado_en : opsCtFiltro === "tarde" ? (x.dSub != null && x.dSub > 1) : opsCtFiltro === "obs" ? x.obs_asea : opsCtFiltro === "sen" ? x.sensores_ok === false : true));
+        const prom = a => { const v = a.filter(n => n != null && n >= 0); return v.length ? (v.reduce((s, n) => s + n, 0) / v.length).toFixed(1) : "—"; };
+        const kpi = (t, v, c) => `<div style="background:#fff;border:1px solid #e2e8f0;border-top:3px solid ${c};border-radius:12px;padding:10px 12px;"><div style="font-size:20px;font-weight:800;">${v}</div><div style="font-size:11px;color:#64748b;">${t}</div></div>`;
+        const btnF = (k, t) => `<button onclick="opsCtFiltrar('${k}')" style="border:1px solid ${opsCtFiltro === k ? "#1D2E73" : "#cbd5e1"};background:${opsCtFiltro === k ? "#1D2E73" : "#fff"};color:${opsCtFiltro === k ? "#fff" : "#334155"};border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;">${t}</button>`;
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:12px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;">
+              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pólizas de Connecteam</div><div style="font-size:11.5px;color:#64748b;max-width:640px;">Sube el Excel exportado del formulario POLIZA MTTO. No se duplican: si vuelves a subirlo se actualizan (por ejemplo cuando ya quedaron en Done).</div></div>
+              ${opsPuedeGestionar() ? `<label class="mkt-add-btn" style="background:#1D2E73;cursor:pointer;">Importar Excel de Connecteam<input type="file" accept=".xlsx,.xls" onchange="opsCtImportar(this.files[0]);this.value=''" style="display:none;"></label>` : ""}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px;">
+              ${kpi("Pólizas", l.length, "#1D2E73")}${kpi("Completadas (Done)", l.filter(x => x.completado_en).length, "#15803d")}${kpi("Sin completar", l.filter(x => !x.completado_en).length, "#b45309")}
+              ${kpi("Días promedio del servicio a la subida", prom(l.map(x => x.dSub)), "#0369a1")}${kpi("Días promedio de la subida a Done", prom(l.map(x => x.dDone)), "#7c3aed")}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${btnF("todas", "Todas")}${btnF("pend", "Sin completar")}${btnF("tarde", "Subidas tarde (más de 1 día)")}${btnF("obs", "Con observaciones ASEA/PROFECO")}${btnF("sen", "Sensores que no activaron")}</div>
+          </div>
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:10px 12px;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px;">O.S.</th><th style="padding:6px;">Estación</th><th style="padding:6px;">Técnico</th><th style="padding:6px;">Servicio</th><th style="padding:6px;">Subida</th><th style="padding:6px;">Done</th><th style="padding:6px;">Revisión</th><th style="padding:6px;">Fotos</th></tr></thead>
+            <tbody>${vis.map(x => `<tr style="border-bottom:1px solid #f1f5f9;vertical-align:top;">
+              <td style="padding:6px;white-space:nowrap;"><b>${opsEsc(x.os || "—")}</b>${x.folio ? `<div><a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${x.folio.id}')" style="color:#1D2E73;font-size:11px;font-weight:700;">ver servicio</a></div>` : `<div style="font-size:10.5px;color:#94a3b8;">sin servicio en el portal</div>`}</td>
+              <td style="padding:6px;">${opsEsc(x.estacion || "")}<div style="font-size:10.5px;color:#64748b;">${opsEsc(x.cliente || "")}</div></td>
+              <td style="padding:6px;">${opsEsc(x.tecnico || "")}</td>
+              <td style="padding:6px;white-space:nowrap;">${x.fecha_servicio ? opsEsc(new Date(x.fecha_servicio).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })) : "—"}</td>
+              <td style="padding:6px;white-space:nowrap;">${x.enviado_en ? opsEsc(new Date(x.enviado_en).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })) : "—"}${x.dSub != null ? `<div style="font-size:10.5px;font-weight:800;color:${x.dSub > 1 ? "#b91c1c" : "#15803d"};">${x.dSub} día(s) después</div>` : ""}</td>
+              <td style="padding:6px;white-space:nowrap;">${x.completado_en ? opsEsc(new Date(x.completado_en).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })) + (x.dDone != null ? `<div style="font-size:10.5px;color:#64748b;">${x.dDone} día(s)</div>` : "") : `<span style="color:#b45309;font-weight:700;">Pendiente</span>`}</td>
+              <td style="padding:6px;max-width:240px;">${x.sensores_ok === false ? `<div style="color:#b91c1c;">Sensores: ${opsEsc(x.sensores_txt || "no")}</div>` : x.sensores_ok ? `<div style="color:#15803d;">Sensores OK</div>` : ""}${x.obs_asea ? `<div style="color:#b45309;">ASEA/PROFECO: ${opsEsc(x.obs_txt || "sí")}</div>` : ""}${x.nota ? `<div style="color:#475569;">${opsEsc(x.nota)}</div>` : ""}${x.dispensarios || x.tanques ? `<div style="font-size:10.5px;color:#64748b;">${x.dispensarios ? opsEsc(x.dispensarios) + " disp." : ""} ${x.tanques ? opsEsc(x.tanques) + " tanques" : ""}</div>` : ""}</td>
+              <td style="padding:6px;white-space:nowrap;">${(x.ligas || []).length ? `<a href="${opsEsc((x.ligas.find(g => /orden de servicio/i.test(g.campo)) || x.ligas[0]).url)}" target="_blank" rel="noopener" style="color:#1D2E73;font-weight:700;">O.S.</a> · ${(x.ligas || []).length} foto(s)` : "—"}</td>
+            </tr>`).join("") || `<tr><td colspan="8" style="padding:18px;text-align:center;color:#94a3b8;">${cacheCt.length ? "Nada con este filtro." : "Aún no hay pólizas importadas. Sube el Excel de Connecteam."}</td></tr>`}</tbody></table></div>`;
+    }
+    window.opsRenderConnecteam = opsRenderConnecteam;
+    window.opsCtFiltrar = function (k) { opsCtFiltro = k; opsRenderConnecteam(); };
+    window.opsCtImportar = async function (file) {
+        if (!file) return; if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
+        try {
+            const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+            const filas = opsCtParsearHoja(wb.Sheets[wb.SheetNames[0]], XLSX);
+            if (!filas.length) { alert("El archivo no trae pólizas."); return; }
+            const yo = opsUsuarioActual();
+            filas.forEach(x => { x.importado_por = yo; x.importado_en = new Date().toISOString(); const f = opsCtFolioDe(x); x.folio_id = f ? f.id : null; });
+            const sb = await opsSb();
+            for (let i = 0; i < filas.length; i += 200) { const { error } = await sb.from("connecteam_polizas").upsert(filas.slice(i, i + 200), { onConflict: "id" }); if (error) throw error; }
+            await opsCtCargar();
+            alert(`Listo: ${filas.length} póliza(s) importadas o actualizadas (${filas.filter(x => x.completado_en).length} en Done, ${filas.filter(x => x.folio_id).length} ligadas a un servicio del portal).`);
+            opsRenderConnecteam();
+        } catch (e) { alert("No se pudo importar: " + (e.message || e)); }
     };
 
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════
@@ -15569,6 +15708,7 @@
             if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
             if (s.__derivadoId) opsTDLigarAlta(s.__derivadoId, nuevo.id, opsFmtFechaCorta(datos.fechaProgramada));
             opsAvisarVehiculoRequerido(s, nuevo.id);
+            try { opsAvisarHerramientaOcupada({ id: nuevo.id, ...datos }, herrLista, tecs); } catch (err) { console.warn("[Alta servicio] aviso de herramienta:", err); }
             // Material y herramienta de la receta → pedido a Almacén con la fecha en que se necesita (22-oct-2026)
             if (s.tipo === "receta" && receta && s.pedirAlmacen !== false) {
                 try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
@@ -18142,7 +18282,7 @@
             if (!cacheTec.length) {
                 const { db, fs } = await opsGetFB();
                 const snap = await fs.getDocs(fs.collection(db, COL_TECNICOS));
-                if (snap.size && !cacheTec.length) { cacheTec = snap.docs.map(d => ({ id: d.id, ...d.data() })); opsAjustarTecnicosForzados(); }
+                if (snap.size && !cacheTec.length) { cacheTec = opsOrdenTec(snap.docs.map(d => ({ id: d.id, ...d.data() }))); opsAjustarTecnicosForzados(); }
             }
             if (!cacheAlmacenes.length) {
                 const { db, fs } = await opsGetFB();
@@ -18440,7 +18580,15 @@
         if (t === "auto" || t === "car") return "chico";
         return "mediano";
     }
+    // Rendimiento real (23-oct-2026): mediana de las cargas de gasolina de cada unidad (tarjeta OXXO Gas),
+    // guardada en Tarifas → rendimientoReal {porEco, porPlaca}. Si la unidad no tiene cargas, se usa el
+    // dato de Flotilla y, si tampoco hay, el rendimiento de la política por tamaño (9/6/4).
     function opsViaRendimientoReal(v) {
+        const rr = (opsViaCfg && opsViaCfg.rendimientoReal) || {};
+        const eco = String(v.Eco ?? "").replace(/\D/g, "").replace(/^0+/, "");
+        const placa = String(v.Placas || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const deCargas = (eco && rr.porEco && Number(rr.porEco[eco])) || (placa && rr.porPlaca && Number(rr.porPlaca[placa])) || null;
+        if (deCargas && deCargas > 0) return deCargas;
         const n = parseFloat(String(v.Rendimiento || "").replace(/[^0-9.]/g, ""));
         return isNaN(n) || n <= 0 ? null : n;
     }
@@ -18951,6 +19099,8 @@
         </div>
         <div style="border:1.5px solid #1D2E73;border-radius:12px;padding:12px;background:#f8fafd;margin-top:10px;">
             <div style="font-size:11px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">Se cobra al cliente · Ingresos</div>
+            ${(f.grupoCliente === "petro" || f.grupoCliente === "oxxo") ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:7px 9px;font-size:11.5px;color:#9a3412;margin-bottom:6px;">${f.grupoCliente === "petro" ? "Petro Seven" : "OXXO"} no paga viáticos${f.proyectoEspecial ? " — <b>marcado como proyecto especial: sí se cobra</b>" : ": el cobro al cliente queda en $0"}.
+                <label style="display:flex;gap:6px;align-items:center;margin-top:4px;font-weight:700;cursor:pointer;"><input type="checkbox" ${f.proyectoEspecial ? "checked" : ""} onchange="opsViaForm.proyectoEspecial=this.checked;opsViaForm.cobroManual=false;opsViaRecalcular();opsViaPintarFormulario()"> Es proyecto especial (sí se cobran viáticos)</label></div>` : ""}
             <div style="display:flex;justify-content:space-between;font-size:12.5px;"><span>Costo total del viaje (todo lo de arriba)</span><b>${opsViaDinero(f.total)}</b></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">
                 <label style="display:block;font-size:11px;font-weight:700;color:#1D2E73;">Monto a cobrar al cliente
@@ -19119,6 +19269,9 @@
         f.alimentosTopados = sumaAlim > topeViaje;
         f.alimentosPorPersona = Math.min(sumaAlim, topeViaje);
         f.alimentos = f.requiere ? f.alimentosPorPersona * personas : 0;
+        const hz = opsViaHotelZona(f);
+        f.hotelZona = hz ? { destino: hz.destino, monto: Number(hz.monto) } : null;
+        if (hz && !f.hotelPrecioManual && !f.hotelId) { f.precioSencilla = Number(hz.monto); f.precioDoble = Number(hz.monto); }
         f.hospedajePorNocheTotal = f.habSencillas * opsViaNum(f.precioSencilla) + f.habDobles * opsViaNum(f.precioDoble);
         f.hospedaje = f.requiere ? Math.round(opsViaNum(f.noches) * f.hospedajePorNocheTotal * 100) / 100 : 0;
         f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros)) * 100) / 100;
@@ -19129,6 +19282,13 @@
         f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)
             + (f.gasolinaDeposito ? f.gasolina : 0) + (f.casetasDeposito ? f.casetasTotal : 0)) * 100) / 100;
         f.cobroSugerido = Math.ceil(f.total / 100) * 100;
+        // Petro Seven y OXXO no pagan viáticos, salvo proyecto especial (23-oct-2026).
+        f.grupoCliente = opsViaGrupoCliente(f);
+        if ((f.grupoCliente === "petro" || f.grupoCliente === "oxxo") && !f.proyectoEspecial) {
+            f.cobroTarifaDestino = null; f.cobroSugerido = 0;
+            if (!f.cobroManual) f.cobroCliente = 0;
+            return;
+        }
         const tarDest = opsViaCobroTarifa(f);
         f.cobroTarifaDestino = tarDest ? { destino: tarDest.destino, monto: Number(tarDest.monto) } : null;
         if (tarDest && f.requiere && Number(tarDest.monto) > f.cobroSugerido) f.cobroSugerido = Number(tarDest.monto);
@@ -19336,6 +19496,7 @@
         if (!opsViaForm) return;
         opsViaForm[campo] = valor;
         if (campo === "empresaEntrega") opsViaForm.empresaEntregaManual = true;
+        if (campo === "precioSencilla" || campo === "precioDoble") opsViaForm.hotelPrecioManual = true;
         opsViaRecalcular();
         if (repintar) opsViaPintarFormulario();
     };
@@ -19362,7 +19523,8 @@
         f.vehiculo = `ECO ${v.Eco} · ${v.Unidad || ""}${v.Placas ? " · " + v.Placas : ""}`;
         f.tipoVehiculo = opsViaTipoDeVehiculo(v);
         f.rendimientoReal = opsViaRendimientoReal(v);
-        f.rendimiento = null; // vuelve al rendimiento de la política para ese tipo
+        // Se usa el rendimiento REAL de la unidad cuando existe; si no, el de la política para su tamaño.
+        f.rendimiento = f.rendimientoReal || null;
         opsViaRecalcular();
         opsViaPintarFormulario();
     };
@@ -19387,6 +19549,7 @@
         const f = opsViaForm;
         if (!fo || !f) return;
         f.folioServicio = fo.folioOS || fo.id;
+        f.folioId = fo.id;
         f.cliente = fo.clienteNombre || "";
         // La empresa del viático es la del servicio (JOMAR, VH, Tecnocontrol…), salvo que la hayan cambiado a mano.
         if (!f.empresaEntregaManual) { f.empresaEntrega = opsEmpresaNombreFolio(fo); if (!f.empresaCobra) f.empresaCobra = ""; }
@@ -19462,6 +19625,19 @@
     function opsViaCobroDestinos() {
         const l = opsViaCfg && Array.isArray(opsViaCfg.cobroDestinos) ? opsViaCfg.cobroDestinos : [{ destino: "Ojinaga", monto: 2800 }];
         return l.filter(x => x && x.destino && Number(x.monto) > 0);
+    }
+    function opsViaGrupoCliente(f) {
+        const e = f.estacion || {};
+        const ligado = (f.folioId && (cacheFolios || []).find(x => x.id === f.folioId)) || null;
+        if (ligado) return opsGrupoClienteFolio(ligado);
+        return opsGrupoClienteFolio({ clienteNombre: f.cliente || e.razonSocial || e.razon_social || e.clienteNombre || "", estacionRazonSocial: e.razonSocial || e.razon_social || "", estacion: [e.nombre, e.nombreComercial, e.nombre_comercial, f.destinoTexto].filter(Boolean).join(" ") });
+    }
+    // Hotel por zona (23-oct-2026): lista editable en Tarifas ("Parral = 1200"); si el destino coincide,
+    // la habitación toma ese precio mientras no se haya cambiado a mano.
+    function opsViaHotelZona(f) {
+        const l = (opsViaCfg && Array.isArray(opsViaCfg.hotelZonas) ? opsViaCfg.hotelZonas : []).filter(x => x && x.destino && Number(x.monto) > 0);
+        const txt = opsNormalizaTexto([(f.estacion && f.estacion.municipio) || "", f.destinoTexto || ""].join(" "));
+        return l.find(x => { const d = opsNormalizaTexto(x.destino); return d && (" " + txt + " ").includes(" " + d + " "); }) || null;
     }
     function opsViaCobroTarifa(f) {
         const txt = opsNormalizaTexto([(f.estacion && f.estacion.municipio) || "", f.destinoTexto || ""].join(" "));
@@ -19684,6 +19860,7 @@
                 gasolinaDeposito: !!f.gasolinaDeposito, casetasDeposito: !!f.casetasDeposito,
                 estacionId: f.estacion ? f.estacion.id : null, lat: f.lat, lng: f.lng, tecnicos: f.tecnicos,
                 vehiculoEco: f.vehiculoEco || null, rendimientoReal: f.rendimientoReal || null,
+                grupoCliente: f.grupoCliente || null, proyectoEspecial: !!f.proyectoEspecial, hotelZona: f.hotelZona || null,
                 aplicaCasetas: !!f.aplicaCasetas, casetasDetalle,
                 inicio: { nombre: opsViaInicio().nombre || null, lat: opsViaInicio().lat, lng: opsViaInicio().lng },
                 final: { nombre: opsViaFinal().nombre || null, lat: opsViaFinal().lat, lng: opsViaFinal().lng },
@@ -20191,6 +20368,8 @@
                 <div style="display:grid;grid-template-columns:1fr 2fr;gap:0 10px;">
                     ${opsViaInput("Km extra por trayecto (ida y regreso)", "via-cfg-kmextra", opsViaKmExtra(), "", "number")}
                     <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Cobro al cliente por destino (uno por renglón: Destino = monto)
+                    <div style="font-size:11.5px;font-weight:600;color:#475569;">Hotel por zona ($ por habitación por noche, uno por renglón: Parral = 1200)
+                    <textarea id="via-cfg-hotelzona" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;font-family:inherit;">${opsEsc(((c.hotelZonas || [])).map(x => x.destino + " = " + x.monto).join("\n"))}</textarea></div>
                     <textarea id="via-cfg-cobrodest" rows="3" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;font-family:inherit;">${opsEsc(opsViaCobroDestinos().map(x => x.destino + " = " + x.monto).join("\n"))}</textarea></label>
                 </div>
                 ${opsViaInput("Correos a notificar (separados por coma)", "via-cfg-correos", (c.correosNotificar || []).join(", "))}
@@ -20217,6 +20396,8 @@
         nuevo.correosNotificar = document.getElementById("via-cfg-correos").value.split(",").map(x => x.trim()).filter(Boolean);
         nuevo.diasComprobacion = Math.max(0, Number(document.getElementById("via-cfg-diascomp").value) || 0);
         nuevo.kmExtraPorTrayecto = Math.max(0, Number(document.getElementById("via-cfg-kmextra").value) || 0);
+        const hzEl = document.getElementById("via-cfg-hotelzona");
+        if (hzEl) nuevo.hotelZonas = hzEl.value.split("\n").map(l => { const m = l.split("="); return { destino: (m[0] || "").trim(), monto: Number(String(m[1] || "").replace(/[^0-9.]/g, "")) || 0 }; }).filter(x => x.destino && x.monto > 0);
         nuevo.cobroDestinos = document.getElementById("via-cfg-cobrodest").value.split("\n").map(l => { const m = l.split("="); return { destino: (m[0] || "").trim(), monto: Number(String(m[1] || "").replace(/[$,\s]/g, "")) || 0 }; }).filter(x => x.destino && x.monto > 0);
         nuevo.rfcsReceptor = document.getElementById("via-cfg-rfcs").value.split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
         try {
@@ -20501,6 +20682,8 @@
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsViaFechaCorta(s.fecha_limite_comprobacion)}${opsViaLimiteTxt(E)}</td>
                 <td style="padding:9px 8px;">${opsViaChip(E.estado, OPS_VIA_EST_COMP)}</td>
                 <td style="padding:9px 8px;white-space:nowrap;" onclick="event.stopPropagation()">
+                    ${s.hotel_modo === "compras" && !((s.tarifas || {}).hotelComprado) && opsPuedeGestionar() ? `<button onclick="opsViaHotelComprado(${s.id})" style="background:#7c3aed;border:none;color:#fff;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Hotel comprado</button>` : ""}
+                    ${(s.tarifas || {}).hotelComprado ? `<span style="font-size:11px;color:#7c3aed;font-weight:700;">Hotel comprado ✓</span>` : ""}
                     ${!s.entregado_en && autoriza ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#1D2E73;border:none;color:#fff;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Registrar entrega</button>`
                     : `<button onclick="opsViaVerComprobacion(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>`}
                 </td>
@@ -20564,6 +20747,24 @@
     window.opsViaBuscarCompIdx = function (i) { const p = (window.__opsViaPersonas || [])[i]; if (!p) return; opsViaBuscaComp = p.nombre === "Sin responsable" ? "" : p.nombre; opsViaFiltroComp = "activas"; opsRenderViaticos(); };
 
     // ── Registrar entrega (al pasar a "Pagada") ──
+    // Hotel pagado por Compras (23-oct-2026): al marcarlo comprado se avisa a Nyra (Contabilidad) y al técnico.
+    window.opsViaHotelComprado = async function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const hotel = prompt(`Hotel comprado para ${s.folio} (${s.destino || ""}). ¿Qué hotel y por cuánto? (ej. Hotel Real, $3,600, 3 noches)`, ""); if (!hotel || !hotel.trim()) return;
+        try {
+            const sb = await opsSb();
+            const tarifas = { ...(s.tarifas || {}), hotelComprado: { detalle: hotel.trim(), por: opsNombreActual(), en: new Date().toISOString() } };
+            const r = await sb.from("ops_solicitudes_viaticos").update({ tarifas }).eq("id", id); if (r.error) throw r.error;
+            s.tarifas = tarifas;
+            const msg = `Hotel comprado para ${s.folio} · ${s.destino || ""} (${(s.integrantes || "").slice(0, 80)}): ${hotel.trim()}.`;
+            if (window.tcNotificar) {
+                window.tcNotificar({ tipo: "viaticos_hotel_comprado", para: "contabilidad@tecnocontrol.com.mx", mensaje: msg, modulo: "Operaciones" }).catch(() => {});
+                const tecs = ((s.tarifas || {}).tecnicos || []).map(t => String(t.correo || "").toLowerCase()).filter(Boolean);
+                tecs.forEach(c => window.tcNotificar({ tipo: "viaticos_hotel_comprado", para: c, mensaje: "Ya está reservado tu hotel: " + hotel.trim(), modulo: "Operaciones" }).catch(() => {}));
+            }
+            opsRenderViaticos();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
     window.opsViaAbrirEntrega = async function (id) {
         const s = opsViaLista.find(x => x.id === id); if (!s) return;
         if (!opsViaFormas || opsViaFormas === OPS_VIA_FORMAS_DEFAULT) { try { await opsViaCargarComprobantes(); } catch (e) {} }
