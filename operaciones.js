@@ -74,7 +74,9 @@
     const COL_SERVICIOS_CATALOGO = "ops_servicios_catalogo";
     const COL_TARIFAS_PERSONAL = "ops_tarifas_personal"; // doc por rol (lider/tecnico/obra_civil) — nunca por nombre de empleado
     const COL_AUSENCIAS = "ops_tecnico_ausencias"; // calendario propio de vacaciones/incapacidad/permiso por técnico (sep-2026, a petición de Glen)
-    const MIGUEL_EMAIL = "miguel@tecnocontrol.com.mx"; // dueño del seguimiento interno (fecha de atención / compromiso)
+    // Dueño del seguimiento interno (fecha de atención / compromiso). Era Miguel Montellano; dejó la
+    // empresa el 23-oct-2026 y lo toma Magali. El nombre de la constante se conserva por compatibilidad.
+    const MIGUEL_EMAIL = "magali@tecnocontrol.com.mx";
 
     // ════════════ FASE 5 (sep-2026): Gestión de servicios — calendario, ════════════
     // habilidades de personal, sugerencia de técnico, y campos comerciales/contables
@@ -394,7 +396,7 @@
     // (subir/editar/cambiar todo). No son esAdminTotal, así que NO obtienen acceso a otros
     // departamentos del portal — el alcance queda limitado a operaciones.js.
     const OPS_ADMINS = [
-        "miguel@tecnocontrol.com.mx",
+        // miguel@ dejó la empresa (23-oct-2026)
         "clientes@tecnocontrol.com.mx",
         "magali@tecnocontrol.com.mx",
     ];
@@ -1455,7 +1457,7 @@
     }
     function opsAccUsuariosSeed() {
         const u = {};
-        ["miguel@tecnocontrol.com.mx", "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx"].forEach(c => { u[c] = { rol: "administrador", soloLectura: false }; });
+        ["clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx"].forEach(c => { u[c] = { rol: "administrador", soloLectura: false }; });
         ["gestoria@tecnocontrol.com.mx", "gestoria1@tecnocontrol.com.mx", "gestoria2@tecnocontrol.com.mx", "gestoria3@tecnocontrol.com.mx",
             "gestoria4@tecnocontrol.com.mx", "gestoria5@tecnocontrol.com.mx", "d.gutierrez@tecnocontrol.com.mx", "calidad@tecnocontrol.com.mx",
             "contabilidad@tecnocontrol.com.mx", "compras@tecnocontrol.com.mx", "aux.compras@tecnocontrol.com.mx"]
@@ -2014,7 +2016,6 @@
         cacheRevisoresHerramienta = [
             { nombre: "", email: "clientes@tecnocontrol.com.mx" },
             { nombre: "Magali Chávez", email: "magali@tecnocontrol.com.mx" },
-            { nombre: "Miguel", email: "miguel@tecnocontrol.com.mx" },
             { nombre: "Ulises Núñez", email: "u.nunez@tecnocontrol.com.mx" },
             { nombre: "Paloma Pinedo", email: "p.pinedo@tecnocontrol.com.mx" },
             { nombre: "Martín de la O", email: "m.delao@tecnocontrol.com.mx" },
@@ -8875,6 +8876,7 @@
                 <textarea id="opsrev-obs" rows="2" style="${inp};resize:vertical;" placeholder="Ej. Se recomienda cambiar el filtro en la próxima visita.">${opsEsc(r.observaciones || "")}</textarea>
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">ID del folio del cliente</div>
                 <input id="opsrev-idcliente" type="text" value="${opsEsc(f.folioClienteId || "")}" placeholder="Ej. MC0537408" style="${inp}">
+                ${["oxxo", "petro"].includes(opsGrupoClienteFolio(f)) ? `<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;font-weight:700;color:#334155;margin:-4px 0 10px;"><input type="checkbox" id="opsrev-idhoja" ${r.idEnHoja ? "checked" : ""}> ID del folio escrito en la hoja de la O.S. (revisado en la foto)</label>` : ""}
                 ${f.folioClienteCapturado ? `<div style="font-size:11px;color:${f.excepcionFolioId ? "#b91c1c" : "#15803d"};font-weight:700;margin:-6px 0 8px;">${f.excepcionFolioId ? `El técnico capturó ${opsEsc(f.folioClienteCapturado)} y el programado era ${opsEsc(f.excepcionFolioId.programado)}${f.excepcionFolioId.autorizadoSegunTecnico ? " (dice que Operaciones lo autorizó)" : ""}. Confírmalo contra la hoja.` : "El técnico capturó el mismo ID en la app: " + opsEsc(f.folioClienteCapturado)}</div>` : ""}
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Estatus</div>
                 <select id="opsrev-estatus" style="${inp}">${Object.entries(OPS_REV_ESTATUS).map(([k, x]) => `<option value="${k}" ${(r.estatus || "por_revisar") === k ? "selected" : ""}>${x[0]}</option>`).join("")}</select>
@@ -8916,6 +8918,8 @@
             const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
             if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
             if (cobroSi && !document.getElementById("opsrev-cotizacion").value.trim()) falta.push("número de cotización de Aspel (se cobró algo)");
+            const chkHoja = document.getElementById("opsrev-idhoja");
+            if (chkHoja && !chkHoja.checked) falta.push("confirmar que el ID del folio está escrito en la hoja de la O.S.");
             if (opsDictAplica(f) && !((f.dictamen || {}).folio && (f.dictamen || {}).pdf && (f.dictamen || {}).firmadoPor)) falta.push("dictamen ASEA / Anexo 21 y 22 (folio, firma del cliente y PDF) — se captura en el servicio");
             try {
                 const { db, fs } = await opsGetFB();
@@ -8933,6 +8937,7 @@
             cotizacion: document.getElementById("opsrev-cotizacion").value.trim() || null,
             nota: document.getElementById("opsrev-nota").value.trim() || null, por: yo, en: ahora,
             observaciones: ((document.getElementById("opsrev-obs") || {}).value || "").trim() || null,
+            ...(document.getElementById("opsrev-idhoja") ? { idEnHoja: document.getElementById("opsrev-idhoja").checked } : {}),
         });
         if (rc.estatus === "revisado") { rc.revisadoPor = yo; rc.revisadoEn = ahora; }
         const idCli = document.getElementById("opsrev-idcliente").value.trim();
@@ -11869,8 +11874,8 @@
         rechazada: ["Rechazada", "#b91c1c", "#fee2e2"],
     };
     function opsComCorreo() { return String(opsUsuarioActual() || "").toLowerCase().trim(); }
-    function opsComVer() { const c = opsComCorreo(); return opsAccEsAdminPortal() || opsAccVerDinero("comisiones") || OPS_COM_PAGAN.includes(c) || OPS_COM_AUTORIZAN.includes(c) || c === MIGUEL_EMAIL; }
-    function opsComEdita() { const c = opsComCorreo(); return opsAccEsAdminPortal() || c === MIGUEL_EMAIL || (opsPuedeHacer("admin_operaciones") && opsAccVerDinero("comisiones")); }
+    function opsComVer() { const c = opsComCorreo(); return opsAccEsAdminPortal() || opsAccVerDinero("comisiones") || OPS_COM_PAGAN.includes(c) || OPS_COM_AUTORIZAN.includes(c); }
+    function opsComEdita() { const c = opsComCorreo(); return opsAccEsAdminPortal() || (opsPuedeHacer("admin_operaciones") && opsAccVerDinero("comisiones")); }
     function opsComAutoriza() { return opsAccEsAdminPortal() || OPS_COM_AUTORIZAN.includes(opsComCorreo()); }
     function opsComPaga() { return opsAccEsAdminPortal() || OPS_COM_PAGAN.includes(opsComCorreo()); }
     let opsCom = null;
@@ -22802,7 +22807,7 @@
     const OPS_GTEL_ACC = { resuelto_telefono: "Se resolvió por teléfono", se_genero_folio: "Se generó folio", se_envio_tecnico: "Se envió técnico", pendiente: "Queda pendiente",
         plataforma: "Se atendió en plataforma (ServiceNow / Fractal)", publico_folio: "Se publicó / asignó el folio", gestion_admin: "Gestión administrativa" };
     const OPS_GTEL_EST = { Generado: ["#b45309", "#fef3c7"], Entregado: ["#1d4ed8", "#dbeafe"], Pagado: ["#15803d", "#dcfce7"], Cancelado: ["#64748b", "#f1f5f9"] };
-    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "MIGUEL MONTELLANO", autorizaAdm: "PALOMA PINEDO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
+    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "PALOMA PINEDO", autorizaAdm: "PALOMA PINEDO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
     let opsGtelSemana = null;
     async function opsGtelCargar() {
         const sb = await opsSb();

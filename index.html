@@ -2229,7 +2229,6 @@ const USUARIOS_AREA = {
         'guillermo.d@tecnocontrol.com.mx',
         'antonio@tecnocontrol.com.mx',
         'jenriquez@tecnocontrol.com.mx',
-        'miguel@tecnocontrol.com.mx',
         'p.pinedo@tecnocontrol.com.mx',
         'm.delao@tecnocontrol.com.mx',
     ],
@@ -3045,7 +3044,7 @@ const EMAIL_AREA_MAP = {
     'guillermo.d@tecnocontrol.com.mx':      'Ventas',
     'antonio@tecnocontrol.com.mx':          'Ventas', 
     'jenriquez@tecnocontrol.com.mx':        'Ventas',
-    'miguel@tecnocontrol.com.mx':      'Operaciones', // + acceso extra de solo lectura a Flotilla, ver EMAIL_ACCESO_EXTRA abajo
+    // miguel@tecnocontrol.com.mx — dejó la empresa el 23-oct-2026 (sin acceso)
     'magali@tecnocontrol.com.mx':      'Operaciones',
     'clientes@tecnocontrol.com.mx':    'Operaciones',
     'u.nunez@tecnocontrol.com.mx':     'Operaciones',
@@ -3076,8 +3075,7 @@ window.EMAIL_AREA_MAP_PORTAL = EMAIL_AREA_MAP; // para notif-matriz.js (Fase 1, 
 // módulo correspondiente (p.ej. flotilla-reglas.js para Flotilla).
 window.EMAIL_ACCESO_EXTRA = window.EMAIL_ACCESO_EXTRA || {};
 const EMAIL_ACCESO_EXTRA = {
-    'miguel@tecnocontrol.com.mx': ['Flotilla', 'Operaciones'], // vista de solo lectura a Flotilla y Operaciones (por si Firestore trae otro departamento)
-    'i.ruiz@jomarverifica.com.mx': ['Operaciones'], // Norma Idaly Ruiz Olmedo (JOMAR) — respaldo por si Firestore trae otro departamento
+    'i.ruiz@jomarverifica.com.mx': ['Operaciones', 'Flotilla'], // Norma Idaly Ruiz Olmedo (JOMAR): Operaciones + Flotilla en solo lectura (23-oct-2026)
 };
 window.EMAIL_ACCESO_EXTRA = EMAIL_ACCESO_EXTRA;
 // Áreas que TODO usuario con sesión puede ver en solo lectura (oct-2026).
