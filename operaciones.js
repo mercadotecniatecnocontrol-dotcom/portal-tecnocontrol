@@ -700,6 +700,8 @@
     // Campos "enterprise" de alta (Glen, sep-2026): departamento de uso, condición
     // (nueva/usada/reacondicionada) y unidad de peso. Son opcionales — piezas ya
     // existentes simplemente no los tienen y se muestran como "—".
+    // Plaza a la que pertenece la herramienta (22-oct-2026, Idaly): Chihuahua, Monterrey, Parral, Cd. Juárez.
+    const PLAZAS_HERRAMIENTA = ["Chihuahua", "Monterrey", "Parral", "Cd. Juárez"];
     const DEPARTAMENTOS_HERRAMIENTA = ["Operaciones", "Almacén", "Flotilla", "Ventas", "Mantenimiento", "Construcción / Desarrollos", "Administración", "Otro"];
     const CONDICIONES_HERRAMIENTA = {
         nueva:           { label: "Nueva",           bg: "#dcfce7", fg: "#166534" },
@@ -1180,7 +1182,7 @@
     let filtroFolios = "", filtroFolioSemaforo = "todos", filtroFolioTipo = "servicio"; // servicio = folios normales (servicio+laboratorio); inspeccion = visitas de inspección — separados a propósito para no revolver a las personas
     let tabActual = "dashboard";
     let filtroHerr = "", filtroTec = "";
-    let filtroCat = { busca: "", categoria: "", departamento: "", estado: "", condicion: "" };
+    let filtroCat = { busca: "", categoria: "", departamento: "", plaza: "", estado: "", condicion: "" };
 
     // Desde oct-2026 Operaciones vive en Supabase. operaciones-supabase.js entrega un
     // puente con la misma forma que Firestore: todo lo "ops_*" va a Supabase (tabla
@@ -2170,6 +2172,7 @@
         revision: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>',
         derivados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
         comparativa: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>',
+        tableros: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>',
         gestoria: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
         extras: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>',
         pendientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M4 4l3 3"/></svg>',
@@ -2183,10 +2186,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2250,6 +2253,7 @@
         else if (tab === "comisiones") opsRenderComisiones();
         else if (tab === "derivados") opsRenderDerivados();
         else if (tab === "extras") opsRenderExtras();
+        else if (tab === "tableros") opsRenderTableros();
         else if (tab === "gestoria") { opsGestAsegurarRenglon(); opsRenderGestoria(); }
         else if (tab === "comparativa") opsRenderComparativa();
         else if (tab === "pendientes") opsRenderPendientes();
@@ -2567,6 +2571,7 @@
         if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
         if (filtroCat.categoria) lista = lista.filter(h => (h.categoria || "") === filtroCat.categoria);
         if (filtroCat.departamento) lista = lista.filter(h => (h.departamento || "") === filtroCat.departamento);
+        if (filtroCat.plaza) lista = lista.filter(h => (h.plaza || "Chihuahua") === filtroCat.plaza);
         if (filtroCat.estado) lista = lista.filter(h => (h.estado || "disponible") === filtroCat.estado);
         if (filtroCat.condicion) lista = lista.filter(h => (h.condicion || "") === filtroCat.condicion);
 
@@ -2826,7 +2831,7 @@
 
     window.opsFiltrarCatalogo = function (campo, valor) { filtroCat[campo] = valor; opsRerenderConFoco(opsRenderDashboard); };
     window.opsLimpiarFiltrosCatalogo = function () {
-        filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", estado: "", condicion: "" };
+        filtroCat = { busca: filtroCat.busca, categoria: "", departamento: "", plaza: "", estado: "", condicion: "" };
         opsRenderDashboard();
     };
 
@@ -2989,6 +2994,8 @@
                     ${selFiltro("ops-cat-f-categoria", "categoria", categorias, filtroCat.categoria)}
                     <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Departamento</div>
                     ${selFiltro("ops-cat-f-depto", "departamento", DEPARTAMENTOS_HERRAMIENTA, filtroCat.departamento)}
+                    <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Plaza</div>
+                    ${selFiltro("ops-cat-f-plaza", "plaza", PLAZAS_HERRAMIENTA, filtroCat.plaza)}
                     <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Estado</div>
                     ${selFiltroEstado(filtroCat.estado)}
                     <div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;">Condición</div>
@@ -3114,6 +3121,7 @@
                     <div><strong>Marca / modelo:</strong> ${opsEsc(h.marca || "—")} ${opsEsc(h.modelo || "")}</div>
                     <div><strong>N.° de serie:</strong> ${opsEsc(h.numeroSerie || "—")}</div>
                     <div><strong>Departamento:</strong> ${opsEsc(h.departamento || "—")}</div>
+                    <div><strong>Plaza:</strong> ${opsEsc(h.plaza || "Chihuahua")}</div>
                     <div><strong>Uso:</strong> ${opsEsc(h.uso || "—")}</div>
                     <div><strong>Peso:</strong> ${h.peso != null ? opsEsc(h.peso) + " " + opsEsc(h.pesoUnidad || "") : "—"}</div>
                     <div><strong>Medida:</strong> ${opsEsc(h.medida || "—")}</div>
@@ -3224,6 +3232,10 @@
                     <select id="ops-in-depto" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                         <option value="">— Selecciona —</option>
                         ${DEPARTAMENTOS_HERRAMIENTA.map(d => `<option value="${opsEsc(d)}" ${h?.departamento === d ? "selected" : ""}>${opsEsc(d)}</option>`).join("")}
+                    </select></div>
+                    <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Plaza</label>
+                    <select id="ops-in-plaza" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                        ${PLAZAS_HERRAMIENTA.map(d => `<option value="${opsEsc(d)}" ${(h?.plaza || "Chihuahua") === d ? "selected" : ""}>${opsEsc(d)}</option>`).join("")}
                     </select></div>
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Condición</label>
                     <select id="ops-in-cond" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
@@ -3339,6 +3351,7 @@
             const categoria = document.getElementById("ops-in-cat").value.trim();
             const numeroSerie = document.getElementById("ops-in-serie").value.trim();
             const departamento = document.getElementById("ops-in-depto").value || null;
+            const plaza = (document.getElementById("ops-in-plaza") || {}).value || "Chihuahua";
             const condicion = document.getElementById("ops-in-cond").value || null;
             const uso = document.getElementById("ops-in-uso").value.trim() || null;
             const pesoVal = document.getElementById("ops-in-peso").value;
@@ -3351,7 +3364,7 @@
             if (id) {
                 // Edición: solo los datos propios de la pieza — estado, técnico y
                 // ubicación se manejan por separado con "Registrar movimiento"/"Dar de baja".
-                const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
+                const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, plaza, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
                 if (window.__opsFotoPiezaTmp) datos.fotoBase64 = window.__opsFotoPiezaTmp;
                 await opsSbHerrActualizar(id, datos);
                 const idx = cacheHerr.findIndex(x => x.id === id);
@@ -3365,7 +3378,7 @@
             const req = opsRequisicionSeleccionada ? { id: opsRequisicionSeleccionada.id, folio: opsRequisicionSeleccionada.folio } : null;
             const pieza = {
                 descripcion, marca, modelo, categoria, numeroSerie,
-                departamento, condicion, uso, peso, pesoUnidad, medida,
+                departamento, plaza, condicion, uso, peso, pesoUnidad, medida,
                 fotoBase64: window.__opsFotoPiezaTmp || null,
                 requiereAutorizacion, tecnicoDestinoId, requisicion: req,
                 fechaAlta: opsHoy(), capturadoPor: (typeof opsUsuarioActual === "function" ? opsUsuarioActual() : null),
@@ -3404,7 +3417,7 @@
         const folio = await opsSiguienteFolioHerramienta();
         await opsSbHerrGuardar(folio, {
             folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
-            departamento: p.departamento, condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
+            departamento: p.departamento, plaza: p.plaza || "Chihuahua", condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
             fotoBase64: p.fotoBase64 || null,
             estado: p.tecnicoDestinoId ? "asignada" : "disponible",
             ubicacionActual: UBICACIONES[0],
@@ -7410,6 +7423,21 @@
         if (folioOps) datos.opsFolioId = folioOps;
         await window.tcSbActualizarSurtido(id, datos);
         if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por: opsNombreActual(), nota: nota || (folioOps ? "Programado en Operaciones" : "Gestionado por Operaciones") }).catch(() => {});
+        // Aviso al vendedor con ventana y VOZ: "Operaciones programó tu servicio" (22-oct-2026).
+        if (folioOps) {
+            try {
+                const pv = (cacheSurtidos || []).find(x => x.id === id) || {};
+                const fv = cacheFolios.find(x => x.id === folioOps) || {};
+                const para = pv.solicitanteEmail || null;
+                if (para && window.tcNotificar) {
+                    const cuando = fv.fechaProgramada ? new Date(fv.fechaProgramada).toLocaleString("es-MX", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "fecha por confirmar";
+                    const quien = (fv.tecnicosAsignadosNombres || []).join(", ") || fv.tecnicoResponsableNombre || "técnico por asignar";
+                    window.tcNotificar({ tipo: "ventas_servicio_programado", para, modulo: "Ventas", folioId: folioOps,
+                        mensaje: `Operaciones programó tu servicio ${pv.folio || ""} · ${pv.cliente || fv.estacion || ""}: ${cuando} con ${quien}.`,
+                        voz: `Operaciones programó tu servicio de ${pv.cliente || fv.estacion || "tu cliente"} para el ${cuando}.` }).catch(() => {});
+                }
+            } catch (e) { console.warn("[aviso a Ventas]", e); }
+        }
         // El servicio también guarda de qué pedido viene (para abrir el PDF de la venta desde el servicio).
         if (folioOps) {
             const ped = (cacheSurtidos || []).find(x => x.id === id);
@@ -11707,7 +11735,7 @@
 
     // Después de guardar el folio: venta para sugerir, filas de comisión y avisos.
     async function opsAsGuardarPrecioYComisiones(folioId, datos) {
-        const sb = await opsSb();
+        const sb = await opsSbCom();
         const p = datos.precioServicio;
         if (p && p.precio > 0 && p.clienteClave) {
             const { error } = await sb.from("ops_ventas_servicio").upsert({
@@ -11738,11 +11766,14 @@
         }
     }
     // Al marcar un servicio como completado: comisiones pasan a "por pagar" y se avisa.
+    // Comisiones: tabla protegida (22-oct-2026). Se usa la sesión real del portal (Firebase → Supabase);
+    // con la llave pública sola ya no se pueden leer ni cambiar.
+    async function opsSbCom() { return typeof window.tcSbSesion === "function" ? window.tcSbSesion() : opsSb(); }
     async function opsComisionesAlFinalizar(f) {
         if (!(f.comisiones || []).length) return;
         try {
-            const sb = await opsSb();
-            await sb.from("ops_comisiones").update({ estatus: "por_pagar" }).eq("folio_id", f.id).eq("estatus", "pendiente");
+            const sb = await opsSbCom();
+            await sb.rpc("ops_comisiones_al_terminar", { p_folio: f.id });
             const total = f.comisiones.reduce((a, c) => a + (Number(c.monto) || 0), 0);
             await opsNotificarComisiones("ops_comisiones_por_pagar",
                 `Servicio FINALIZADO · ${f.estacion}: comisiones listas para pago — ${f.comisiones.map(c => c.nombre + " " + opsDinero(c.monto)).join(", ")}. Total ${opsDinero(total)}.`, f.id);
@@ -11787,7 +11818,7 @@
         if (s.cargando || (!forzar && clave === s.clave)) return;
         s.cargando = true; s.error = "";
         try {
-            const sb = await opsSb();
+            const sb = await opsSbCom();
             let todo = [], desde = 0;
             for (let i = 0; i < 20; i++) {
                 const { data, error } = await sb.from("ops_comisiones").select("*").gte("fecha_servicio", s.desde).lte("fecha_servicio", s.hasta).order("fecha_servicio").range(desde, desde + 999);
@@ -11958,7 +11989,7 @@
     window.opsComSel = function (id, on) { const s = opsComEstado(); if (on) s.sel.add(id); else s.sel.delete(id); opsRenderComisiones(); };
     window.opsComSelTodas = function (on) { const s = opsComEstado(); s.sel = new Set(on ? opsComFiltradas().map(c => c.id) : []); opsRenderComisiones(); };
     async function opsComActualizar(c, cambios, accion, nota) {
-        const sb = await opsSb();
+        const sb = await opsSbCom();
         const hist = (Array.isArray(c.historial) ? c.historial : []).concat([{ accion, nota: nota || null, de: c.estatus, a: cambios.estatus || c.estatus, monto: cambios.monto != null ? cambios.monto : undefined, montoAntes: cambios.monto != null ? c.monto : undefined, por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }]);
         const fila = { ...cambios, historial: hist, actualizado_en: new Date().toISOString(), actualizado_por: opsComCorreo() };
         const { error } = await sb.from("ops_comisiones").update(fila).eq("id", c.id);
@@ -12085,7 +12116,7 @@
             checklist: { origen: "garantia", comisionOriginalId: c.id, justificacion: just, servicioGarantia: ref || null, montoOriginal: Number(c.monto) },
             historial: [{ accion: "descuento_garantia", nota: just + (ref ? " · " + ref : ""), a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }] };
         try {
-            const sb = await opsSb(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
+            const sb = await opsSbCom(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
             try { await opsComActualizar(c, { notas: [c.notas, "Tiene descuento por garantía de " + opsDinero(monto)].filter(Boolean).join(" · ") }, "garantia_registrada", just); } catch (e) {}
             const avisos = [...OPS_COM_AVISO_POR_AUTORIZAR].concat(c.tecnico_correo ? [c.tecnico_correo] : []);
             for (const para of avisos) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comision_garantia", para, mensaje: `Descuento por garantía de servicio a ${c.tecnico_nombre}: ${opsDinero(monto)} (${c.estacion || ""}). Motivo: ${just}`, modulo: "Operaciones" }); } catch (e) {} }
@@ -12124,7 +12155,7 @@
             estacion: est || null, plaza: t.plaza || null, fecha_servicio: v("com-m-fecha"), creado_por: opsComCorreo(),
             checklist: { origen: "manual", justificacion: just }, historial: [{ accion: "captura_manual", nota: just, a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: new Date().toISOString() }] };
         try {
-            const sb = await opsSb(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
+            const sb = await opsSbCom(); const { error } = await sb.from("ops_comisiones").insert(fila); if (error) throw error;
             document.getElementById("ops-modal-wrap").innerHTML = ""; opsComCargar(true);
         } catch (e) { err.textContent = "No se pudo guardar: " + (e.message || e); }
     };
@@ -12230,7 +12261,7 @@
             opsComImp.filas = aoa.slice(hi + 1).filter(r => r.some(c => String(c).trim() !== ""));
             if (/p[oó]liza/i.test(file.name)) opsComImp.tipo = "Póliza de mantenimiento";
             // Ya importados (para no duplicar)
-            try { const sb = await opsSb(); const { data } = await sb.from("ops_comisiones").select("folio_id,tecnico_nombre").like("folio_id", "connecteam:%"); opsComImp.existentes = new Set((data || []).map(x => x.folio_id + "|" + opsNormalizaTexto(x.tecnico_nombre))); } catch (e) {}
+            try { const sb = await opsSbCom(); const { data } = await sb.from("ops_comisiones").select("folio_id,tecnico_nombre").like("folio_id", "connecteam:%"); opsComImp.existentes = new Set((data || []).map(x => x.folio_id + "|" + opsNormalizaTexto(x.tecnico_nombre))); } catch (e) {}
             opsComImpPintar();
         } catch (e) { alert("No se pudo leer el archivo: " + (e.message || e)); }
     };
@@ -12315,7 +12346,7 @@
             historial: [{ accion: "importado_connecteam", nota: I.archivo + " · fila " + x.fila, a: "por_pagar", por: opsNombreActual(), correo: opsComCorreo(), en: ahora }],
         }));
         try {
-            const sb = await opsSb();
+            const sb = await opsSbCom();
             for (let i = 0; i < filas.length; i += 200) { const { error } = await sb.from("ops_comisiones").insert(filas.slice(i, i + 200)); if (error) throw error; }
             for (const para of OPS_COM_AVISO_POR_AUTORIZAR) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_comisiones_por_pagar", para, mensaje: `Se importaron ${filas.length} comisión(es) de Connecteam (${I.tipo}) por ${opsDinero(filas.reduce((a, f) => a + f.monto, 0))}. Están Por autorizar en Operaciones → Comisiones.`, modulo: "Operaciones" }); } catch (e) {} }
             document.getElementById("ops-modal-wrap").innerHTML = ""; opsComImp = null;
@@ -12548,8 +12579,8 @@
         const lineas = items.map(i => "• " + i.desc + " × " + i.cant + " " + (i.unidad || "")).join("\n");
         try { if (window.tcSbAgregarHistorial) await window.tcSbAgregarHistorial(id, { de: null, a: "pendiente", por: opsNombreActual(), nota: "Pedido generado desde Operaciones para el servicio de " + (f.estacion || "") }); } catch (e) {}
         if (window.tcNotificarEvento) {
-            window.tcNotificarEvento("servicio_material_almacen", { mensaje: `Operaciones pide material para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`, modulo: "Almacén", folioId: f.id }).catch(() => {});
-            window.tcNotificarEvento("servicio_material_compras", { mensaje: `Para tu planeación: el ${opsFmtFechaCorta(f.fechaProgramada)} hay ${servicio} en ${f.estacion || ""} y se pidió a Almacén (${folio}). Si Almacén lo pasa a Sobre stock, se necesita antes de ${req.toLocaleString("es-MX")}.\n${lineas}`, modulo: "Compras", folioId: f.id }).catch(() => {});
+            window.tcNotificarEvento("servicio_material_almacen", { voz: `Operaciones pide material para un servicio en ${f.estacion || "una estación"}.`, mensaje: `Operaciones pide material para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`, modulo: "Almacén", folioId: f.id }).catch(() => {});
+            window.tcNotificarEvento("servicio_material_compras", { voz: `Aviso para Compras: material para el servicio de ${f.estacion || "una estación"}.`, mensaje: `Para tu planeación: el ${opsFmtFechaCorta(f.fechaProgramada)} hay ${servicio} en ${f.estacion || ""} y se pidió a Almacén (${folio}). Si Almacén lo pasa a Sobre stock, se necesita antes de ${req.toLocaleString("es-MX")}.\n${lineas}`, modulo: "Compras", folioId: f.id }).catch(() => {});
         }
         try {
             const { db, fs } = await opsGetFB();
@@ -13700,6 +13731,119 @@
                 try { await opsAvisarTecnicosAsignados({ id: ref.id, ...datos }, [t], "Tarea extra"); } catch (e) {}
                 if (window.tcNotif) window.tcNotif.agregar({ titulo: "Tarea extra programada", texto: `${t.nombre}: ${g("tx-que")} (${g("tx-donde")}) · ${g("tx-dia")}`, nivel: "normal", modulo: "Operaciones" });
             });
+    };
+
+
+    // ═══════════════════ TABLEROS DE EFICIENCIA SEMANALES (22-oct-2026, junta Operaciones) ═══════════════════
+    // Cada viernes se presenta al cliente: uno para Petro Seven, uno para OXXO y uno por cliente externo.
+    // Solo datos reales del portal. El PDF para el cliente NO lleva información interna (técnicos, causas
+    // internas, costos) ni datos de otros clientes. Cada PDF generado se guarda como histórico.
+    const COL_TABLEROS = "ops_tableros_semanales";
+    let opsTab = null;
+    function opsTabEstado() { if (!opsTab) opsTab = { semana: opsExLunes(new Date()), grupo: "petro", cliente: "" }; return opsTab; }
+    function opsTabFoliosGrupo(s) {
+        return cacheFolios.filter(f => !f.esTareaExtra && f.tipoAlta !== "gestoria" && f.tipoFolio !== "inspeccion" && f.eliminado !== true)
+            .filter(f => { const g = opsGrupoClienteFolio(f); if (s.grupo !== g) return false; return s.grupo !== "externos" || !s.cliente || opsNormalizaTexto(f.clienteNombre || f.estacionRazonSocial || f.estacion) === opsNormalizaTexto(s.cliente); });
+    }
+    function opsTabCalcular(s) {
+        const ini = s.semana, fin = opsDiaISOmas(ini, 6), d10 = x => String(x || "").slice(0, 10);
+        const base = opsTabFoliosGrupo(s);
+        const recibidos = base.filter(f => { const d = d10(f.fechaSolicitud || f.creadoEn); return d >= ini && d <= fin; });
+        const cerrados = base.filter(f => !f.cancelado && f.fechaSolucion && d10(f.fechaSolucion) >= ini && d10(f.fechaSolucion) <= fin);
+        const pendientes = base.filter(f => !f.cancelado && d10(f.fechaSolicitud || f.creadoEn) <= fin && (!f.fechaSolucion || d10(f.fechaSolucion) > fin));
+        const conSla = cerrados.filter(f => f.vencimiento);
+        const enSla = conSla.filter(f => new Date(f.fechaSolucion) <= new Date(f.vencimiento));
+        const horas = (a, b) => (a && b) ? (new Date(b) - new Date(a)) / 3600000 : null;
+        const prom = l => { const v = l.filter(x => x != null && x >= 0 && x < 24 * 60); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+        const tResp = prom(cerrados.map(f => horas(f.fechaSolicitud, f.primerArriboEn || f.fechaAtencion || (f.atenciones || [])[0]?.inicio)));
+        const tSol = prom(cerrados.map(f => horas(f.fechaSolicitud, f.fechaSolucion)));
+        const reprog = base.reduce((a, f) => a + (f.cambiosProgramacion || []).filter(c => c && d10(c.en) >= ini && d10(c.en) <= fin).length, 0);
+        const vencidosAbiertos = pendientes.filter(f => f.vencimiento && new Date(f.vencimiento) < new Date(fin + "T23:59"));
+        const extras = (typeof opsExConceptos === "function" ? opsExConceptos(ini) : []).filter(c => c.grupo === s.grupo && (s.grupo !== "externos" || !s.cliente || opsNormalizaTexto(c.cliente) === opsNormalizaTexto(s.cliente)));
+        const done = cerrados.filter(f => (f.revisionCierre || {}).estatus === "revisado").length;
+        const porDia = Array.from({ length: 7 }, (_, i) => { const d = opsDiaISOmas(ini, i); return { d, rec: recibidos.filter(f => d10(f.fechaSolicitud || f.creadoEn) === d).length, cer: cerrados.filter(f => d10(f.fechaSolucion) === d).length }; });
+        const porPrio = {}; cerrados.forEach(f => { const p = f.prioridad || "—"; porPrio[p] = porPrio[p] || { n: 0, ok: 0 }; porPrio[p].n++; if (f.vencimiento && new Date(f.fechaSolucion) <= new Date(f.vencimiento)) porPrio[p].ok++; });
+        return { ini, fin, recibidos, cerrados, pendientes, conSla, enSla, cumpl: conSla.length ? Math.round(enSla.length / conSla.length * 1000) / 10 : null, tResp, tSol, reprog, vencidosAbiertos, extras, done, porDia, porPrio };
+    }
+    function opsTabNombre(s) { return s.grupo === "externos" ? (s.cliente || "Clientes externos") : OPS_GRUPOS_FOLIO[s.grupo].nombre; }
+    const opsTabH = h => h == null ? "—" : h < 1 ? Math.round(h * 60) + " min" : (Math.round(h * 10) / 10) + " h";
+    function opsRenderTableros() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        try { opsTDSuscribir(); } catch (e) {}
+        const s = opsTabEstado(), r = opsTabCalcular(s), G = OPS_GRUPOS_FOLIO[s.grupo];
+        const clientesExt = [...new Set(cacheFolios.filter(f => opsGrupoClienteFolio(f) === "externos").map(f => f.clienteNombre || f.estacionRazonSocial || f.estacion).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+        const kpi = (t, v, sub, c) => `<div style="background:#fff;border:1px solid #e2e8f0;border-top:4px solid ${c};border-radius:12px;padding:12px 14px;"><div style="font-size:24px;font-weight:900;color:#1e293b;">${v}</div><div style="font-size:11.5px;font-weight:700;color:#334155;">${t}</div>${sub ? `<div style="font-size:10.5px;color:#64748b;">${sub}</div>` : ""}</div>`;
+        const maxD = Math.max(1, ...r.porDia.map(d => Math.max(d.rec, d.cer)));
+        const barras = r.porDia.map(d => `<div style="flex:1;text-align:center;"><div style="height:110px;display:flex;align-items:flex-end;justify-content:center;gap:3px;"><div title="Recibidos" style="width:14px;height:${Math.round(d.rec / maxD * 100)}%;background:#94a3b8;border-radius:4px 4px 0 0;"></div><div title="Cerrados" style="width:14px;height:${Math.round(d.cer / maxD * 100)}%;background:${G.color};border-radius:4px 4px 0 0;"></div></div><div style="font-size:10.5px;color:#64748b;margin-top:3px;">${new Date(d.d + "T12:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric" })}</div><div style="font-size:10px;color:#334155;">${d.rec}/${d.cer}</div></div>`).join("");
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:12px;">
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;">
+              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Tablero de eficiencia semanal</div><div style="font-size:11.5px;color:#64748b;">Para presentar al cliente cada viernes. El PDF no lleva datos internos.</div></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                ${["petro", "oxxo", "externos"].map(g => `<button onclick="opsTabSet('grupo','${g}')" style="border:2px solid ${OPS_GRUPOS_FOLIO[g].color};background:${s.grupo === g ? OPS_GRUPOS_FOLIO[g].color : "#fff"};color:${s.grupo === g ? "#fff" : OPS_GRUPOS_FOLIO[g].color};border-radius:9px;padding:7px 12px;font-weight:800;cursor:pointer;font-size:12px;">${OPS_GRUPOS_FOLIO[g].nombre}</button>`).join("")}
+                ${s.grupo === "externos" ? `<select onchange="opsTabSet('cliente',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;max-width:220px;"><option value="">Todos los externos (uso interno)</option>${clientesExt.map(c => `<option ${s.cliente === c ? "selected" : ""}>${opsEsc(c)}</option>`).join("")}</select>` : ""}
+                <button onclick="opsTabSemana(-7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 10px;cursor:pointer;font-weight:800;">‹</button>
+                <span style="font-size:12.5px;font-weight:800;">${opsEsc(opsFmtFechaCorta(r.ini))} – ${opsEsc(opsFmtFechaCorta(r.fin))}</span>
+                <button onclick="opsTabSemana(7)" style="border:none;background:#eef2f7;border-radius:8px;padding:7px 10px;cursor:pointer;font-weight:800;">›</button>
+                <button onclick="opsTabPdf()" style="border:none;background:${G.color};color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:900;">PDF para el cliente</button>
+              </div></div></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;">
+            ${kpi("Folios recibidos", r.recibidos.length, "en la semana", "#64748b")}${kpi("Folios atendidos y cerrados", r.cerrados.length, r.done ? r.done + " con revisión de cierre" : "", G.color)}
+            ${kpi("Cumplimiento de SLA", r.cumpl == null ? "—" : r.cumpl + "%", r.conSla.length ? `${r.enSla.length} de ${r.conSla.length} a tiempo` : "sin folios con SLA", r.cumpl == null ? "#94a3b8" : r.cumpl >= 90 ? "#15803d" : r.cumpl >= 75 ? "#b45309" : "#b91c1c")}
+            ${kpi("Pendientes al cierre", r.pendientes.length, r.vencidosAbiertos.length ? r.vencidosAbiertos.length + " ya vencidos" : "ninguno vencido", r.vencidosAbiertos.length ? "#b91c1c" : "#1d4ed8")}
+            ${kpi("Tiempo promedio de respuesta", opsTabH(r.tResp), "de la solicitud a la llegada", "#0369a1")}${kpi("Tiempo promedio de solución", opsTabH(r.tSol), "de la solicitud al cierre", "#0e7490")}
+            ${kpi("Reprogramaciones", r.reprog, "uso interno", "#7c3aed")}${kpi("Trabajos fuera de póliza", r.extras.length, r.extras.length ? opsDinero(r.extras.reduce((a, c) => a + c.monto, 0)) : "", "#b45309")}
+          </div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;margin-bottom:8px;">Por día · <span style="color:#94a3b8;">gris = recibidos</span> · <span style="color:${G.color};">color = cerrados</span></div><div style="display:flex;gap:6px;">${barras}</div></div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;margin-bottom:8px;">SLA por prioridad</div>${Object.entries(r.porPrio).sort().map(([p, x]) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #f1f5f9;"><span>${opsEsc(p)}</span><b>${x.ok}/${x.n} a tiempo</b></div>`).join("") || `<div style="font-size:12px;color:#94a3b8;">Sin cierres.</div>`}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;margin-bottom:8px;">Folios cerrados en la semana (${r.cerrados.length})</div>
+            <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11.8px;"><thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:6px;">ID folio</th><th style="padding:6px;">Estación</th><th style="padding:6px;">Prioridad</th><th style="padding:6px;">Solicitud</th><th style="padding:6px;">Cierre</th><th style="padding:6px;">SLA</th></tr></thead><tbody>
+            ${r.cerrados.sort((a, b) => String(a.fechaSolucion).localeCompare(String(b.fechaSolucion))).map(f => { const ok = f.vencimiento ? new Date(f.fechaSolucion) <= new Date(f.vencimiento) : null; return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="opsAbrirPanelFolio('${f.id}')"><td style="padding:5px 6px;">${opsEsc(f.folioClienteId || opsRevOS(f) || "—")}</td><td style="padding:5px 6px;">${opsEsc(f.estacion || "")}</td><td style="padding:5px 6px;">${opsEsc(f.prioridad || "—")}</td><td style="padding:5px 6px;">${opsEsc(opsFmtFechaCorta(f.fechaSolicitud))}</td><td style="padding:5px 6px;">${opsEsc(opsFmtFechaCorta(f.fechaSolucion))}</td><td style="padding:5px 6px;font-weight:800;color:${ok == null ? "#94a3b8" : ok ? "#15803d" : "#b91c1c"};">${ok == null ? "—" : ok ? "A tiempo" : "Fuera"}</td></tr>`; }).join("") || `<tr><td colspan="6" style="padding:12px;text-align:center;color:#94a3b8;">Sin cierres en la semana.</td></tr>`}
+            </tbody></table></div></div>`;
+    }
+    window.opsRenderTableros = opsRenderTableros;
+    window.opsTabSet = function (k, v) { const s = opsTabEstado(); s[k] = v; if (k === "grupo") s.cliente = ""; opsRenderTableros(); };
+    window.opsTabSemana = function (n) { const s = opsTabEstado(); s.semana = opsDiaISOmas(s.semana, n); opsRenderTableros(); };
+    window.opsTabPdf = async function () {
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("La librería de PDF no está cargada. Recarga la página."); return; }
+        const s = opsTabEstado(), r = opsTabCalcular(s), nom = opsTabNombre(s), G = OPS_GRUPOS_FOLIO[s.grupo];
+        if (s.grupo === "externos" && !s.cliente && !confirm("Elegiste TODOS los clientes externos: el PDF mezclaría datos de varios clientes. Úsalo solo internamente. ¿Continuar?")) return;
+        const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+        const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: "mm", format: "letter" });
+        const W = 215.9, M = 14, H = 279.4;
+        let y = opsPdfEncabezadoEmpresa(doc, opsEmpresaDoc("Tecnocontrol"), { W, M, k: 0.352778, tipo: "REPORTE SEMANAL DE EFICIENCIA", linea: `${nom} · del ${opsFmtFechaCorta(r.ini)} al ${opsFmtFechaCorta(r.fin)}` }) + 8;
+        const kpis = [["Folios recibidos", String(r.recibidos.length)], ["Atendidos y cerrados", String(r.cerrados.length)], ["Cumplimiento SLA", r.cumpl == null ? "—" : r.cumpl + "%"], ["Pendientes al cierre", String(r.pendientes.length)],
+            ["Respuesta promedio", opsTabH(r.tResp)], ["Solución promedio", opsTabH(r.tSol)], ["Trabajos fuera de póliza", String(r.extras.length)], ["Vencidos abiertos", String(r.vencidosAbiertos.length)]];
+        const bw = (W - 2 * M - 9) / 4;
+        kpis.forEach((k, i) => { const x = M + (i % 4) * (bw + 3), yy = y + Math.floor(i / 4) * 22; doc.setFillColor(...hex(G.color)); doc.rect(x, yy, bw, 2, "F"); doc.setDrawColor(226, 232, 240); doc.rect(x, yy, bw, 19); doc.setTextColor(30, 41, 59); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text(k[1], x + 3, yy + 10); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105); doc.text(k[0], x + 3, yy + 16); });
+        y += 50;
+        // Gráfica por día
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(30, 41, 59); doc.text("Folios por día (gris: recibidos · color: cerrados)", M, y); y += 4;
+        const maxD = Math.max(1, ...r.porDia.map(d => Math.max(d.rec, d.cer))), ch = 32, cw = (W - 2 * M) / 7;
+        r.porDia.forEach((d, i) => { const x = M + i * cw + cw / 2 - 6; const h1 = d.rec / maxD * ch, h2 = d.cer / maxD * ch; doc.setFillColor(148, 163, 184); doc.rect(x, y + ch - h1, 5, h1, "F"); doc.setFillColor(...hex(G.color)); doc.rect(x + 6, y + ch - h2, 5, h2, "F"); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(71, 85, 105); doc.text(new Date(d.d + "T12:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric" }) + `  ${d.rec}/${d.cer}`, x + 5.5, y + ch + 4, { align: "center" }); });
+        y += ch + 11;
+        // Tabla de folios cerrados (sin técnicos ni datos internos)
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(30, 41, 59); doc.text("Folios atendidos y cerrados", M, y); y += 3;
+        const cols = [["ID folio", 30], ["Estación", 62], ["Prior.", 15], ["Solicitud", 27], ["Cierre", 27], ["SLA", 20]];
+        const fila = (vals, head) => { if (y > H - 22) { doc.addPage(); y = 18; } let x = M; if (head) { doc.setFillColor(...hex(G.color)); doc.rect(M, y, W - 2 * M, 6, "F"); } doc.setFont("helvetica", head ? "bold" : "normal"); doc.setFontSize(7.8); vals.forEach((v, i) => { doc.setTextColor(...(head ? [255, 255, 255] : (i === 5 && v === "Fuera" ? [185, 28, 28] : [30, 41, 59]))); doc.text(doc.splitTextToSize(String(v || ""), cols[i][1] - 2)[0], x + 1.5, y + 4.2); x += cols[i][1]; }); y += 6; if (!head) { doc.setDrawColor(241, 245, 249); doc.line(M, y, W - M, y); } };
+        fila(cols.map(c => c[0]), true);
+        r.cerrados.sort((a, b) => String(a.fechaSolucion).localeCompare(String(b.fechaSolucion))).forEach(f => { const ok = f.vencimiento ? new Date(f.fechaSolucion) <= new Date(f.vencimiento) : null; fila([f.folioClienteId || opsRevOS(f) || "—", f.estacion || "", f.prioridad || "—", opsFmtFechaCorta(f.fechaSolicitud), opsFmtFechaCorta(f.fechaSolucion), ok == null ? "—" : ok ? "A tiempo" : "Fuera"]); });
+        if (!r.cerrados.length) { doc.setFont("helvetica", "italic"); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139); doc.text("Sin cierres en la semana.", M, y + 5); y += 8; }
+        if (r.extras.length) {
+            y += 6; if (y > H - 40) { doc.addPage(); y = 18; }
+            doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(30, 41, 59); doc.text("Trabajos fuera de póliza detectados en la semana", M, y); y += 5;
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+            r.extras.forEach(c => { if (y > H - 18) { doc.addPage(); y = 18; } doc.text(doc.splitTextToSize(`· ${opsFmtFechaCorta(c.fecha)} · ${c.estacion} · ${c.concepto}${c.cotizacion ? " · Cot. " + c.cotizacion : ""}`, W - 2 * M)[0], M, y); y += 4.5; });
+        }
+        const nombreArch = `Eficiencia_${nom.replace(/[^\w]+/g, "_")}_${r.ini}.pdf`;
+        doc.save(nombreArch);
+        // Histórico
+        try {
+            const { db, fs } = await opsGetFB();
+            const idDoc = r.ini + "_" + s.grupo + (s.cliente ? "_" + opsNormalizaTexto(s.cliente).replace(/\s+/g, "_").slice(0, 40) : "");
+            await fs.setDoc(fs.doc(db, COL_TABLEROS, idDoc), { semana: r.ini, grupo: s.grupo, cliente: s.cliente || null, nombre: nom, recibidos: r.recibidos.length, cerrados: r.cerrados.length, cumplimientoSla: r.cumpl, conSla: r.conSla.length, enSla: r.enSla.length, pendientes: r.pendientes.length, vencidosAbiertos: r.vencidosAbiertos.length, respuestaH: r.tResp, solucionH: r.tSol, reprogramaciones: r.reprog, extras: r.extras.length, generadoPor: opsNombreActual(), generadoEn: new Date().toISOString() });
+        } catch (e) { console.warn("[tablero] histórico:", e); }
     };
 
     // ═══════════════════ ALTA DE SERVICIO DESDE EL CALENDARIO (oct-2026) ═══════════════════

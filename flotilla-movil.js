@@ -1079,7 +1079,7 @@ function buildHTML(){
 function setContent(h){
   const c=document.getElementById('fm-content'); if(!c)return;
   // Candado de evidencias: fuera de Tareas y Avisos, la app muestra los servicios pendientes de cerrar.
-  if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&typeof misOpsServ!=='undefined'&&misOpsServ.length){
+  if(typeof OPS_CANDADO_ACTIVO!=='undefined'&&OPS_CANDADO_ACTIVO&&OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&typeof misOpsServ!=='undefined'&&misOpsServ.length){
     const p=fmOpsPendientesCierre(); if(p.length){c.innerHTML=fmOpsCandadoHTML(p);return;}
   }
   c.innerHTML=h;
@@ -6937,7 +6937,7 @@ async function fmOpsServCargar(){
       }).sort(function(a,b){return String(b._movido.hasta||'').localeCompare(String(a._movido.hasta||''));});
       actualizarBadges();
       if(vistaAct==='tareas')renderTareas();
-      else if(OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
+      else if(OPS_CANDADO_ACTIVO&&OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
       fmOpsEstRefrescar(false);
       fmVigilarVence1h();
     },function(err){console.warn('[OPS servicios]',err);});
@@ -7432,6 +7432,9 @@ async function fmEvSinOrden(f){
 // Cuenta como cerrado: finalizado, o una visita registrada (sin finalizar / no se realizó) de su
 // último día en adelante. Los turnos abiertos (Atención a folios, Guardia, Traslado…) no cuentan.
 var OPS_CANDADO_VISTAS_LIBRES=['tareas','notif']; // var: setContent la lee y puede correr antes de esta línea
+// 22-oct-2026: el candado que BLOQUEABA la app por servicios sin cerrar se quitó (autorizado por
+// Paloma Pinedo e Idaly Ruiz). Los pendientes se siguen mostrando como aviso en Tareas, sin bloquear.
+var OPS_CANDADO_ACTIVO=false;
 function fmHoyLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function fmOpsPendientesCierre(){
   const hoy=fmHoyLocal();
@@ -8054,8 +8057,8 @@ async function fmCierreSubir(P,prog){
 // Antes las comisiones de servicios cerrados en la app se quedaban en "Servicio sin terminar"
 // (solo el portal las pasaba a "Por autorizar"). Ahora el cierre en la app hace lo mismo y avisa a Paloma.
 async function fmComisionesAlTerminar(id,f,quien){
-  const sb=await fmvSb();
-  const r=await sb.from('ops_comisiones').update({estatus:'por_pagar',actualizado_en:new Date().toISOString(),actualizado_por:opsSvMiCorreo()}).eq('folio_id',id).eq('estatus','pendiente').select('tecnico_nombre,monto');
+  const sb=await fmvSbSesion();
+  const r=await sb.rpc('ops_comisiones_al_terminar',{p_folio:id});
   const filas=(r&&r.data)||[]; if(!filas.length)return;
   const txt='Comisiones por autorizar · '+(f.estacion||'servicio')+' (cerrado por '+quien+' en la app): '+filas.map(function(x){return x.tecnico_nombre+' $'+Number(x.monto||0).toLocaleString('es-MX');}).join(', ')+'. Revísalas en Operaciones → Comisiones.';
   try{await sb.from('portal_notificaciones').insert({tipo:'ops_comisiones_por_pagar',para:'p.pinedo@tecnocontrol.com.mx',mensaje:txt,datos:{folioId:id,modulo:'Operaciones'}});}catch(e){}
@@ -8087,7 +8090,7 @@ window.fmComisionesAbrir=async function(){
   ov.innerHTML=marco('<div style="font-size:12.5px;color:#64748B;padding:12px 0">Cargando…</div>');
   document.body.appendChild(ov);
   try{
-    const sb=await fmvSb(), correo=opsSvMiCorreo();
+    const sb=await fmvSbSesion(), correo=opsSvMiCorreo();
     const desde=new Date(Date.now()-120*86400000).toISOString().slice(0,10);
     const qs=[sb.from('ops_comisiones').select('*').eq('tecnico_correo',correo).gte('fecha_servicio',desde)];
     if(_opsServTecId)qs.push(sb.from('ops_comisiones').select('*').eq('tecnico_id',_opsServTecId).gte('fecha_servicio',desde));
@@ -8436,6 +8439,18 @@ function fmvSb(){
   _fmvSbP=import('https://esm.sh/@supabase/supabase-js@2').then(function(m){_fmvCli=m.createClient(FMV_SB_URL,FMV_SB_KEY);return _fmvCli;})
     .catch(function(e){_fmvSbP=null;throw e;});
   return _fmvSbP;
+}
+// Cliente de Supabase con la sesión real del técnico (Firebase → Supabase), para tablas protegidas
+// como las comisiones: cada técnico solo puede ver las suyas (22-oct-2026).
+let _fmvSesCli=null,_fmvSesP=null;
+function fmvSbSesion(){
+  if(_fmvSesCli) return Promise.resolve(_fmvSesCli);
+  if(_fmvSesP) return _fmvSesP;
+  _fmvSesP=import('https://esm.sh/@supabase/supabase-js@2').then(function(m){
+    _fmvSesCli=m.createClient(FMV_SB_URL,FMV_SB_KEY,{accessToken:function(){const u=window.auth&&window.auth.currentUser;return u?u.getIdToken():Promise.resolve(null);}});
+    return _fmvSesCli;
+  }).catch(function(e){_fmvSesP=null;throw e;});
+  return _fmvSesP;
 }
 function fmvNum(v){const n=Number(v);return isNaN(n)?0:n;}
 function fmvDin(n){return '$'+fmvNum(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}

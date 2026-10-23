@@ -288,6 +288,30 @@
     o.leido = row.leido; o.creadaEn = row.creada_en ? new Date(row.creada_en).toISOString() : ''; o.id = row.id;
     return o;
   }
+  // ── Voz para avisos (22-oct-2026): "Operaciones programó tu servicio", material para Almacén/Compras.
+  // Usa la mejor voz en español del equipo; si no hay voz en español, solo queda la ventana.
+  if (!window.tcHablar) (function () {
+    var cola = [];
+    function sig() {
+      if (!cola.length || !('speechSynthesis' in window)) return;
+      if (window.speechSynthesis.speaking) { setTimeout(sig, 800); return; }
+      var frase = cola.shift();
+      try {
+        var voces = window.speechSynthesis.getVoices().filter(function (v) { return /^es([-_]|$)/i.test(v.lang); });
+        if (!voces.length) { cola = []; return; }
+        var pts = function (v) { return (/natural|neural|online/i.test(v.name) ? 100 : 0) + (/google/i.test(v.name) ? 40 : 0) + (/es[-_]mx/i.test(v.lang) ? 10 : 0); };
+        var v = voces.sort(function (a, b) { return pts(b) - pts(a); })[0];
+        var u = new SpeechSynthesisUtterance(frase); u.voice = v; u.lang = v.lang; u.rate = 1; u.pitch = 1.05; u.volume = 0.85;
+        u.onend = function () { setTimeout(sig, 300); };
+        window.speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    window.tcHablar = function (frase) {
+      frase = String(frase || '').replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '').trim(); if (!frase || cola.length > 4) return;
+      cola.push(frase.slice(0, 220)); setTimeout(sig, 700);
+    };
+    if ('speechSynthesis' in window) { try { window.speechSynthesis.getVoices(); } catch (e) {} }
+  })();
   window.tcSbNotifSuscribir = function (cb) {
     var vistos = {};
     return sb().then(function (c) {
@@ -295,7 +319,13 @@
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'portal_notificaciones' }, function (p) {
           if (!p.new || vistos[p.new.id]) return;
           vistos[p.new.id] = 1;
-          try { cb(filaANotif(p.new)); } catch (e) { console.error('[tcSbNotif]', e); }
+          var o = filaANotif(p.new);
+          try { cb(o); } catch (e) { console.error('[tcSbNotif]', e); }
+          // Aviso con voz (22-oct-2026): solo a quien va dirigido y solo si el aviso lo pide (datos.voz).
+          try {
+            var yo = String((window.auth && window.auth.currentUser && window.auth.currentUser.email) || '').toLowerCase();
+            if (o.voz && yo && String(o.para || '').toLowerCase() === yo && window.tcHablar) window.tcHablar(typeof o.voz === 'string' ? o.voz : o.mensaje);
+          } catch (e) {}
         })
         .subscribe();
     });
