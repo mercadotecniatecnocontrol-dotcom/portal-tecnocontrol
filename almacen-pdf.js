@@ -769,8 +769,8 @@
       +   '<span style="flex:1;min-width:200px;">¿No lo hace Operaciones? (es producto, o lo hace un proveedor externo)</span>'
       +   '<button type="button" onclick="window.__almNoEsServicio()" style="background:#5b21b6;color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">No es servicio de Operaciones</button>'
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;">'
-      +   '<label style="' + lb + '">Estación donde se hace el servicio<input style="' + inp + '" value="' + esc(f.estacion) + '" oninput="window.__almFicha(\'estacion\',this.value)"></label>'
+      + '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;align-items:start;">'
+      +   '<div style="' + lb + '">Estación donde se hace el servicio *' + fichaEstacionHTML(f, inp) + '</div>'
       +   '<label style="' + lb + '">Cantidad *<input type="number" min="1" step="1" style="' + inp + '" value="' + esc(f.cantidad) + '" oninput="window.__almFicha(\'cantidad\',this.value)"></label>'
       +   '<label style="' + lb + '">De qué<select style="' + inp + '" onchange="window.__almFicha(\'unidad\',this.value)">'
       +     UNIDADES_FICHA.map(function (u) { return '<option' + (f.unidad === u ? ' selected' : '') + '>' + u + '</option>'; }).join('')
@@ -786,6 +786,99 @@
       + '</div>';
   }
   window.__almFicha = function (k, v) { if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha[k] = v; };
+  // ── Estación del servicio (22-oct-2026, urgente — Ricardo Torres): sin estación con dirección y
+  // ubicación, Operaciones no puede calcular viáticos. Se elige del catálogo maestro (coordenadas de SUDI)
+  // o, si el cliente NO está en SUDI, se captura completo: razón social, PL, dirección, ubicación y contacto.
+  function estNombre(e) { return e.nombre_comercial || e.nombreComercial || e.razon_social || e.razonSocial || e.nombre || ''; }
+  function estPL(e) { return e.permiso || ''; }
+  function estDir(e) { return e.direccion_normalizada || e.direccionNormalizada || e.domicilio_raw || e.domicilioRaw || e.direccion || ''; }
+  function normTxt(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
+  function fichaEstacionHTML(f, inp) {
+    var btn = 'border:none;border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;';
+    if (f.est) {
+      var ll = latLngEstacion(f.est);
+      return '<div style="display:flex;gap:8px;align-items:center;background:#fff;border:1px solid #c4b5fd;border-radius:8px;padding:7px 9px;margin-top:3px;">'
+        + '<div style="flex:1;min-width:0;font-weight:500;"><b style="color:#1D2E73;">' + esc(estNombre(f.est)) + '</b><div style="font-size:11px;color:#64748b;">' + esc([estPL(f.est), estDir(f.est)].filter(Boolean).join(' · ')) + '</div>'
+        + (ll ? '<div style="font-size:11px;color:#15803d;">Ubicación del catálogo ✓</div>' : '<div style="font-size:11px;color:#b91c1c;font-weight:700;">Sin ubicación: pega abajo la liga de Google Maps</div>') + '</div>'
+        + '<button type="button" onclick="window.__almFichaEstQuitar()" style="' + btn + 'background:#f1f5f9;color:#475569;">Cambiar</button></div>'
+        + (ll ? '' : '<input placeholder="Liga de Google Maps o coordenadas (ej. 28.6353, -106.0889)" onchange="window.__almFichaUbic(this.value)" style="' + inp + '">' + (f.lat ? '<div style="font-size:11px;color:#15803d;">Ubicación: ' + f.lat + ', ' + f.lng + '</div>' : ''));
+    }
+    if (f.nueva) {
+      var n = f.nueva, c = function (k, ph) { return '<input placeholder="' + ph + '" value="' + esc(n[k] || '') + '" oninput="window.__almFichaNueva(\'' + k + '\',this.value)" style="' + inp + '">'; };
+      return '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 9px;margin-top:3px;font-weight:500;">'
+        + '<div style="font-size:11px;color:#92400e;margin-bottom:2px;"><b>No está en SUDI:</b> captura todo para que Operaciones pueda calcular viáticos. <a href="#" onclick="event.preventDefault();window.__almFichaEstQuitar()" style="color:#5b21b6;">Buscar de nuevo</a></div>'
+        + c('razon', 'Razón social *') + c('nombre', 'Nombre comercial (como le dicen)') + c('permiso', 'PL * (ej. PL/4055/EXP/ES/2015)') + c('direccion', 'Dirección: calle, número y colonia *') + c('municipio', 'Municipio / ciudad *')
+        + '<input placeholder="Ubicación *: liga de Google Maps o coordenadas" onchange="window.__almFichaUbic(this.value)" style="' + inp + '">'
+        + (f.lat ? '<div style="font-size:11px;color:#15803d;">Ubicación: ' + f.lat + ', ' + f.lng + '</div>' : '<div style="font-size:11px;color:#b91c1c;">Sin ubicación todavía.</div>')
+        + c('contacto', 'Contacto: nombre *') + c('tel', 'Teléfono del contacto * (10 dígitos)') + c('correo', 'Correo del contacto')
+        + '</div>';
+    }
+    return '<input id="alm-ficha-busca" autocomplete="off" placeholder="Busca por PL, nombre o razón social…" oninput="window.__almFichaBuscar(this.value)" style="' + inp + '" value="' + esc(f.busca || '') + '">'
+      + '<div id="alm-ficha-res" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;max-height:180px;overflow-y:auto;margin-top:4px;font-weight:500;">' + fichaResultadosHTML(f.busca) + '</div>';
+  }
+  function fichaResultadosHTML(q) {
+    var partes = normTxt(q).split(' ').filter(Boolean);
+    if (!partes.length) return '<div style="padding:7px 9px;font-size:11.5px;color:#94a3b8;">Escribe para buscar en el catálogo de estaciones (SUDI).</div>';
+    var lista = (_estacionesCache || []).filter(function (e) { var t = normTxt([estNombre(e), e.razon_social || e.razonSocial, estPL(e), e.municipio].join(' ')); return partes.every(function (p) { return t.indexOf(p) >= 0; }); }).slice(0, 25);
+    return lista.map(function (e) { return '<div onclick="window.__almFichaEstElegir(\'' + esc(String(e.id)) + '\')" style="padding:6px 9px;border-bottom:1px solid #f1f5f9;cursor:pointer;" onmouseover="this.style.background=\'#f5f3ff\'" onmouseout="this.style.background=\'\'"><b style="font-size:12px;">' + esc(estNombre(e)) + '</b><div style="font-size:11px;color:#64748b;">' + esc([estPL(e), e.municipio].filter(Boolean).join(' · ')) + (latLngEstacion(e) ? '' : ' · <span style="color:#b45309;">sin ubicación</span>') + '</div></div>'; }).join('')
+      + '<div onclick="window.__almFichaNuevaIniciar()" style="padding:7px 9px;cursor:pointer;font-size:12px;font-weight:800;color:#b45309;">+ No está en la lista: capturar estación nueva</div>';
+  }
+  window.__almFichaBuscar = function (v) {
+    if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha.busca = v;
+    var pintar = function () { var r = document.getElementById('alm-ficha-res'); if (r) r.innerHTML = fichaResultadosHTML(v); };
+    if (_estacionesCache) pintar(); else cargarCatalogoEstaciones().then(pintar);
+  };
+  window.__almFichaEstElegir = function (id) {
+    var e = (_estacionesCache || []).filter(function (x) { return String(x.id) === String(id); })[0]; if (!e) return;
+    var f = estado.ficha; f.est = e; f.nueva = null; f.estacion = estNombre(e); var ll = latLngEstacion(e); f.lat = ll ? ll.lat : null; f.lng = ll ? ll.lng : null; renderFicha();
+  };
+  window.__almFichaEstQuitar = function () { var f = estado.ficha; f.est = null; f.nueva = null; f.lat = null; f.lng = null; renderFicha(); };
+  window.__almFichaNuevaIniciar = function () {
+    var f = estado.ficha, cli = ((document.getElementById('alm-cliente') || {}).value || '').trim();
+    var q = String(f.busca || ''); var pl = (q.match(/PL\s*\/?\s*\d+\S*/i) || [''])[0].toUpperCase().replace(/\s+/g, '');
+    f.nueva = { razon: cli, nombre: pl ? '' : q, permiso: pl, direccion: '', municipio: '', contacto: '', tel: '', correo: '' }; f.est = null; renderFicha();
+  };
+  window.__almFichaNueva = function (k, v) { if (estado.ficha && estado.ficha.nueva) estado.ficha.nueva[k] = v; };
+  window.__almFichaUbic = function (t) {
+    t = String(t || '').trim();
+    var m = t.match(/@(-?\d{1,2}\.\d+),(-?\d{2,3}\.\d+)/) || t.match(/[?&](?:q|query|ll)=(-?\d{1,2}\.\d+),\s*(-?\d{2,3}\.\d+)/) || t.match(/(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{2,3}\.\d{3,})/);
+    if (!m) { alert(/goo\.gl|maps\.app/.test(t) ? 'Esa liga corta no trae las coordenadas. Ábrela, mantén presionado el punto en el mapa y copia los números (ej. 28.6353, -106.0889).' : 'No encontré coordenadas. Pega la liga de Google Maps o los números (ej. 28.6353, -106.0889).'); return; }
+    estado.ficha.lat = +(+m[1]).toFixed(6); estado.ficha.lng = +(+m[2]).toFixed(6); renderFicha();
+  };
+  function fichaFaltantes(fc) {
+    var falta = [];
+    if (fc.est) { if (!(fc.lat && fc.lng)) falta.push('la ubicación de la estación (liga de Google Maps)'); }
+    else if (fc.nueva) {
+      var n = fc.nueva;
+      if (!String(n.razon || '').trim()) falta.push('razón social');
+      if (!/^PL\/\d+\/[A-Z]+\/[A-Z]+\/\d{4}$/i.test(String(n.permiso || '').replace(/\s+/g, ''))) falta.push('PL completo');
+      if (!String(n.direccion || '').trim()) falta.push('dirección');
+      if (!String(n.municipio || '').trim()) falta.push('municipio');
+      if (!(fc.lat && fc.lng)) falta.push('ubicación');
+      if (!String(n.contacto || '').trim()) falta.push('nombre del contacto');
+      if (String(n.tel || '').replace(/\D/g, '').length < 10) falta.push('teléfono del contacto');
+    } else falta.push('la estación (búscala en el catálogo o captúrala si no está)');
+    return falta;
+  }
+  // Si la estación es nueva, se da de alta en el catálogo maestro (sin duplicar por PL) antes de guardar el pedido.
+  function fichaPrepararEstacion(ficha) {
+    var fc = estado.ficha;
+    if (!ficha || !fc) return Promise.resolve();
+    if (fc.est) { ficha.estacionCatalogoId = fc.est.id; ficha.estacionPermiso = estPL(fc.est) || null; ficha.direccion = estDir(fc.est) || null; ficha.lat = fc.lat; ficha.lng = fc.lng; return Promise.resolve(); }
+    if (!fc.nueva || typeof window.tcSbSesion !== 'function') return Promise.resolve();
+    var n = fc.nueva, pl = String(n.permiso).replace(/\s+/g, '').toUpperCase();
+    ficha.estacion = String(n.nombre || n.razon).trim(); ficha.estacionPermiso = pl; ficha.direccion = String(n.direccion).trim() + ', ' + String(n.municipio).trim(); ficha.lat = fc.lat; ficha.lng = fc.lng;
+    ficha.contacto = { nombre: String(n.contacto).trim(), telefono: String(n.tel).replace(/\D/g, '').slice(-10), correo: String(n.correo || '').trim().toLowerCase() || null };
+    return window.tcSbSesion().then(function (sb) {
+      return sb.from('estaciones_servicio').select('id').eq('permiso', pl).limit(1).then(function (r) {
+        if (r.data && r.data.length) { ficha.estacionCatalogoId = r.data[0].id; return sb.from('estaciones_servicio').update({ lat: fc.lat, lng: fc.lng, ubicacion_fuente: 'ventas_pedido', actualizado_en: new Date().toISOString() }).eq('id', r.data[0].id).is('lat', null); }
+        return sb.from('estaciones_servicio').insert({ razon_social: String(n.razon).trim().toUpperCase(), nombre_comercial: String(n.nombre || '').trim() || null, permiso: pl,
+          direccion_normalizada: String(n.direccion).trim(), municipio: String(n.municipio).trim(), estado: 'Chihuahua', lat: fc.lat, lng: fc.lng, activo: true,
+          fuente_datos: 'ventas', ubicacion_fuente: 'ventas_pedido', ubicacion_verificada: false, encargado: String(n.contacto).trim() }).select('id').single()
+          .then(function (r2) { if (r2.data) { ficha.estacionCatalogoId = r2.data.id; if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones(); } });
+      });
+    }).catch(function (e) { console.warn('[almacen-pdf] alta de estación:', e); });
+  }
   // Un clic: todas las partidas marcadas como servicio/viáticos pasan a producto (Almacén) y la ficha deja de pedirse.
   window.__almNoEsServicio = function () {
     var n = 0;
@@ -1870,6 +1963,12 @@
         var bf = document.getElementById('alm-ficha'); if (bf) bf.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
+      var faltaEst = fichaFaltantes(fc);
+      if (faltaEst.length) {
+        msg('Ficha de servicio — falta: ' + faltaEst.join(', ') + '. Sin estación con dirección y ubicación, Operaciones no puede calcular los viáticos.', '#dc2626');
+        var bf2 = document.getElementById('alm-ficha'); if (bf2) bf2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       var yoF = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
       ficha = { estacion: String(fc.estacion || '').trim() || cliente, cantidad: Number(fc.cantidad), unidad: fc.unidad || 'tanques',
         fechaSugerida: fc.fecha || null, requiereViaticos: fc.viaticos === 'si', notas: String(fc.notas || '').trim() || null,
@@ -1888,7 +1987,7 @@
     // El PDF solo se adjunta si cabe cómodo en un documento de Firestore (tope 1MB en base64).
     var adjuntarPdf = !!(estado.pdfBuffer && estado.pdfSize && estado.pdfSize < 700 * 1024);
  
-    window.tcSbExisteFolioActivo(folio).then(function (dup) {
+    fichaPrepararEstacion(ficha).then(function () { return window.tcSbExisteFolioActivo(folio); }).then(function (dup) {
         if (dup && !confirm('Ya existe un surtido activo con folio ' + folio + '. ¿Crear otro de todos modos?')) {
           throw new Error('cancelado');
         }
@@ -1910,6 +2009,7 @@
           empresa: estado.empresa || '',
           clasificacion: clasificarPedido(productos),
           fichaServicio: ficha,
+          estacionId: (ficha && ficha.estacionCatalogoId) || datosDestino.estacionId || null,
           creadoPor: yo,
           tienePdfOriginal: adjuntarPdf,
           createdAt: new Date().toISOString()

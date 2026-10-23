@@ -1667,18 +1667,38 @@
     }
 
     // ── Contadores atómicos para folios permanentes ──────────────────
-    async function opsSiguienteFolioHerramienta() {
-        // Contador atómico en Supabase (ops_contadores). "minimo" = el HT más alto que
-        // ya existe, para que nunca se repita un folio aunque el contador se haya quedado atrás.
+    // Folio por almacén (23-oct-2026, Glen): cada almacén tiene su propia serie de folios.
+    // Almacén General = HT-000001…; las ubicaciones físicas usan las iniciales de su nombre
+    // (ej. Transformación Digital y Mercadotecnia = TDM-000001) o el prefijo guardado en el almacén.
+    function opsPrefijoAlmacen(almacenId) {
+        if (!almacenId) return "HT";
+        const a = cacheAlmacenes.find(x => x.id === almacenId);
+        if (!a) return "HT";
+        if (a.prefijoFolio) return String(a.prefijoFolio).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5) || "HT";
+        const palabras = String(a.nombre || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\(.*?\)/g, " ").split(/[^A-Z0-9]+/)
+            .filter(w => w && !["Y", "DE", "DEL", "LA", "LAS", "EL", "LOS", "E"].includes(w));
+        let pref = palabras.slice(0, 3).map(w => /^\d+$/.test(w) ? w : w[0]).join("") || "AL";
+        if (pref === "HT") pref = "HT" + (palabras[2] ? palabras[2][0] : "1");
+        // Que no choque con el prefijo de otro almacén
+        const otros = cacheAlmacenes.filter(x => x.id !== almacenId && x.tipo === "ubicacion").map(x => x.prefijoFolio || null).filter(Boolean);
+        let final = pref, n = 2; while (otros.includes(final)) final = pref + (n++);
+        return final;
+    }
+    async function opsSiguienteFolioHerramienta(almacenId) {
+        // Contador atómico en Supabase (ops_contadores), uno por almacén. "minimo" = el folio más alto que
+        // ya existe con ese prefijo, para que nunca se repita aunque el contador se haya quedado atrás.
+        const pref = opsPrefijoAlmacen(almacenId);
         const sb = await opsSb();
-        const maxLocal = cacheHerr.reduce((m, h) => { const r = /^HT-(\d+)$/.exec(h.folio || h.id || ""); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+        const rx = new RegExp("^" + pref + "-(\\d+)$");
+        const maxLocal = cacheHerr.reduce((m, h) => { const r = rx.exec(h.folio || h.id || ""); return r ? Math.max(m, Number(r[1])) : m; }, 0);
+        const contador = pref === "HT" ? "herramientas" : "herramientas_" + pref;
         for (let intento = 0; intento < 5; intento++) {
-            const { data, error } = await sb.rpc("ops_siguiente_contador_min", { nombre_contador: "herramientas", minimo: maxLocal });
+            const { data, error } = await sb.rpc("ops_siguiente_contador_min", { nombre_contador: contador, minimo: maxLocal });
             if (error) throw new Error("Supabase (folio): " + error.message);
-            const folio = "HT-" + String(data).padStart(6, "0");
+            const folio = pref + "-" + String(data).padStart(6, "0");
             if (!cacheHerr.some(h => h.id === folio)) return folio;
         }
-        throw new Error("No se pudo generar un folio HT libre.");
+        throw new Error("No se pudo generar un folio " + pref + " libre.");
     }
     // Folio consecutivo de Solicitud de Material: "OPERACIONES 0001", "OPERACIONES 0002"...
     // OJO: el kiosco público (solicitud-material.html) escribe con auth ANÓNIMA a Firestore,
@@ -3245,6 +3265,23 @@
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Uso / para qué sirve (opcional)</label>
                 <input id="ops-in-uso" value="${opsEsc(h?.uso || "")}" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                ${id ? "" : `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿En qué almacén entra? (define la serie del folio)</label>
+                <select id="ops-in-almacen-alta" onchange="document.getElementById('ops-folio-prev').textContent = opsPrefijoAlmacenPublico(this.value) + '-######'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                    <option value="">Almacén General (HT)</option>
+                    ${cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(a => `<option value="${opsEsc(a.id)}">${opsEsc(a.nombre)} (${opsEsc(opsPrefijoAlmacen(a.id))})${a.requiereAutorizacion ? " · requiere autorización" : ""}</option>`).join("")}
+                </select>
+                <div style="font-size:10.5px;color:#64748b;margin:0 0 10px;">Folio que tendrá: <b id="ops-folio-prev">HT-######</b></div>`}
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin:0 0 10px;">
+                    <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">Documentos de la pieza (opcional)</div>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Liga del tutorial (YouTube, Drive…)</label>
+                    <input id="ops-in-tutorial" value="${opsEsc(h?.tutorialUrl || "")}" placeholder="https://…" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:13px;margin:4px 0 8px;box-sizing:border-box;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">Manual de uso (PDF o documento)${h?.manual ? " · ya tiene uno; sube otro solo para reemplazarlo" : ""}</label>
+                    <input id="ops-in-manual" type="file" accept="application/pdf,.doc,.docx,image/*" style="width:100%;font-size:12px;margin:4px 0 8px;">
+                    ${id ? "" : `<div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;">
+                        <div><label style="font-size:11.5px;color:#64748b;font-weight:600;">No. de factura</label><input id="ops-in-fact-num" placeholder="Ej. A-1234" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:13px;margin:4px 0 0;box-sizing:border-box;"></div>
+                        <div><label style="font-size:11.5px;color:#64748b;font-weight:600;">Factura (PDF, XML o foto)</label><input id="ops-in-fact-file" type="file" accept="application/pdf,.xml,image/*" style="width:100%;font-size:12px;margin:6px 0 0;"></div>
+                    </div><div style="font-size:10.5px;color:#94a3b8;margin-top:4px;">La requisición de compra se liga arriba, en "Viene de una requisición".</div>`}
+                </div>
 
                 <div style="display:flex;gap:8px;">
                     <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Peso (opcional)</label>
@@ -3359,6 +3396,23 @@
             const pesoUnidad = peso !== null ? document.getElementById("ops-in-peso-unidad").value : null;
             const medida = document.getElementById("ops-in-medida").value.trim() || null;
             const requiereAutorizacion = document.getElementById("ops-in-requiere-autorizacion").checked;
+            // Documentos de la pieza (22-oct-2026): tutorial (liga), manual (archivo) y factura de compra al darla de alta.
+            const tutorialUrl = ((document.getElementById("ops-in-tutorial") || {}).value || "").trim() || null;
+            if (tutorialUrl && !/^https?:\/\//i.test(tutorialUrl)) { alert("La liga del tutorial debe empezar con https://"); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Guardar"; } return; }
+            const manualFile = ((document.getElementById("ops-in-manual") || {}).files || [])[0] || null;
+            const factNum = ((document.getElementById("ops-in-fact-num") || {}).value || "").trim();
+            const factFile = ((document.getElementById("ops-in-fact-file") || {}).files || [])[0] || null;
+            const subirDocsPieza = async (folioPieza, previo) => {
+                const extra = {};
+                if (tutorialUrl !== ((previo || {}).tutorialUrl || null)) extra.tutorialUrl = tutorialUrl;
+                if (manualFile) extra.manual = await opsSubirArchivo("herramientas/" + folioPieza + "/manual", manualFile);
+                if (factNum || factFile) {
+                    const fx = { numero: factNum || "s/n", fecha: opsHoy(), por: opsNombreActual(), en: new Date().toISOString(), alAlta: true };
+                    if (factFile) fx.archivo = await opsSubirArchivo("herramientas/" + folioPieza + "/facturas", factFile);
+                    extra.facturas = ((previo || {}).facturas || []).concat([fx]);
+                }
+                if (Object.keys(extra).length) { await opsSbHerrActualizar(folioPieza, extra); const h0 = cacheHerr.find(x => x.id === folioPieza); if (h0) Object.assign(h0, extra); }
+            };
             const { db, fs } = await opsGetFB();
 
             if (id) {
@@ -3367,6 +3421,7 @@
                 const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, plaza, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
                 if (window.__opsFotoPiezaTmp) datos.fotoBase64 = window.__opsFotoPiezaTmp;
                 await opsSbHerrActualizar(id, datos);
+                try { await subirDocsPieza(id, cacheHerr.find(x => x.id === id)); } catch (e) { alert("Los datos se guardaron, pero no se pudo subir el manual: " + (e.message || e)); }
                 const idx = cacheHerr.findIndex(x => x.id === id);
                 if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
                 document.getElementById("ops-modal-wrap").innerHTML = "";
@@ -3376,7 +3431,11 @@
 
             const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
             const req = opsRequisicionSeleccionada ? { id: opsRequisicionSeleccionada.id, folio: opsRequisicionSeleccionada.folio } : null;
+            const almacenAltaId = ((document.getElementById("ops-in-almacen-alta") || {}).value || "") || null;
+            const almAltaObj = almacenAltaId ? cacheAlmacenes.find(a => a.id === almacenAltaId) : null;
+            if (almAltaObj && almAltaObj.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(almAltaObj.nombre + " requiere autorización: solo los autorizadores pueden dar de alta piezas ahí."); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Generar folio y guardar"; } return; }
             const pieza = {
+                almacenId: almacenAltaId,
                 descripcion, marca, modelo, categoria, numeroSerie,
                 departamento, plaza, condicion, uso, peso, pesoUnidad, medida,
                 fotoBase64: window.__opsFotoPiezaTmp || null,
@@ -3386,6 +3445,7 @@
 
             try {
                 const folio = await opsCrearPiezaNueva(pieza);
+                try { await subirDocsPieza(folio, null); } catch (e) { alert("La pieza " + folio + " se guardó, pero no se pudieron subir sus documentos: " + (e.message || e) + ". Súbelos desde su ficha."); }
                 if (tecnicoDestinoId) {
                     try { opsGenerarResponsivaPDF(folio, true); }
                     catch (err) { console.error("[operaciones.js] la pieza se guardó, pero falló la responsiva PDF:", err); }
@@ -3414,13 +3474,15 @@
     // ── Alta de pieza (compartida por el guardado normal y la cola de pendientes) ──
     async function opsCrearPiezaNueva(p) {
         const { db, fs } = await opsGetFB();
-        const folio = await opsSiguienteFolioHerramienta();
+        const almAlta = p.almacenId ? cacheAlmacenes.find(x => x.id === p.almacenId) : null;
+        const folio = await opsSiguienteFolioHerramienta(almAlta ? almAlta.id : null);
         await opsSbHerrGuardar(folio, {
+            almacenId: almAlta ? almAlta.id : null,
             folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
             departamento: p.departamento, plaza: p.plaza || "Chihuahua", condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
             fotoBase64: p.fotoBase64 || null,
             estado: p.tecnicoDestinoId ? "asignada" : "disponible",
-            ubicacionActual: UBICACIONES[0],
+            ubicacionActual: almAlta ? almAlta.nombre : UBICACIONES[0],
             tecnicoActualId: p.tecnicoDestinoId || null,
             fechaAsignacion: p.tecnicoDestinoId ? opsHoy() : null,
             folioLegado: null, observaciones: null,
@@ -3431,7 +3493,7 @@
             externalId: null, sourceSystem: "manual", lastSync: null, syncStatus: "no_sincronizado",
         });
         await opsRegistrarMovimiento({
-            herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0],
+            herramientaId: folio, tipo: "alta", ubicacionNueva: almAlta ? almAlta.nombre : UBICACIONES[0],
             tecnicoNuevoId: p.tecnicoDestinoId || null,
             observaciones: p.requisicion ? `Origen: requisición de compra ${p.requisicion.folio}` : null,
         });
@@ -7704,6 +7766,11 @@
                 if (!opsAS || opsAS.__surtidoId !== p.id) return;
                 if ((window.__opsAsEstCatalogo || []).some(e => e.id === p.estacionId)) { window.opsAsElegirEstacion(p.estacionId); if (p.aplicaViaticos === false) { opsAS.viaticos = false; opsAsPintar(); } }
                 else if (intento < 20) setTimeout(() => elegir(intento + 1), 400);
+                else if (intento === 20) {
+                    // Estación recién dada de alta por Ventas: se vuelve a leer el catálogo una vez (22-oct-2026).
+                    _opsCatEstProm = null;
+                    opsCatalogoEstaciones().then(l => { window.__opsAsEstCatalogo = l || []; elegir(21); }).catch(() => {});
+                }
             };
             setTimeout(() => elegir(0), 150);
         }
@@ -7713,6 +7780,7 @@
         const fc = p.fichaServicio || null;
         if (fc) {
             if (fc.estacion) opsAS.estTexto = fc.estacion;
+            if (fc.contacto && fc.contacto.nombre) opsAS.comentarios = [opsAS.comentarios, `Contacto en la estación: ${fc.contacto.nombre} · ${fc.contacto.telefono || ""}${fc.contacto.correo ? " · " + fc.contacto.correo : ""}`].filter(Boolean).join("\n");
             if (fc.fechaSugerida) opsAS.fecha = fc.fechaSugerida.length > 10 ? fc.fechaSugerida : fc.fechaSugerida + "T08:00";
             if (Number(fc.cantidad) > 0) {
                 opsAS.dispensarios = String(fc.cantidad);
@@ -13376,6 +13444,13 @@
             ${(h.historialServicios || []).length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;">Antes: ${(h.historialServicios || []).slice(-4).reverse().map(x => opsEsc((x.estacion || "servicio") + " (" + opsFmtFechaCorta(x.salida) + " → " + (x.regresoReal ? opsFmtFechaCorta(x.regresoReal) : "—") + ")")).join(" · ")}</div>` : ""}
           </div>
           <div style="margin-top:12px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:12px 14px;">
+            <div style="font-size:12.5px;font-weight:800;color:#1e293b;margin-bottom:6px;">Tutorial y manual de uso</div>
+            ${h.tutorialUrl ? `<div style="font-size:12px;"><a href="${opsEsc(h.tutorialUrl)}" target="_blank" rel="noopener" style="color:#1D2E73;font-weight:700;">▶ Ver tutorial</a></div>` : `<div style="font-size:12px;color:#94a3b8;">Sin tutorial.</div>`}
+            ${h.manual ? `<div style="font-size:12px;margin-top:3px;"><a href="#" onclick="event.preventDefault();opsHerrVerManual('${h.id}')" style="color:#1D2E73;font-weight:700;">📄 Abrir manual de uso</a></div>` : `<div style="font-size:12px;color:#94a3b8;margin-top:3px;">Sin manual.</div>`}
+            ${h.origenRequisicionFolio ? `<div style="font-size:11.5px;color:#475569;margin-top:4px;">Viene de la requisición <b>${opsEsc(h.origenRequisicionFolio)}</b></div>` : ""}
+            ${gestion && h.estado !== "baja" ? `<div style="font-size:11px;color:#64748b;margin-top:6px;">Para agregar o cambiar el tutorial o el manual usa "Editar datos".</div>` : ""}
+          </div>
+          <div style="margin-top:12px;border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:12px 14px;">
             <div style="font-size:12.5px;font-weight:800;color:#1e293b;margin-bottom:6px;">Factura</div>
             ${fact.length ? fact.map((x, i) => `<div style="font-size:12px;color:#334155;margin-bottom:4px;"><b>${opsEsc(x.numero || "s/n")}</b> · ${opsEsc(x.proveedor || "")} · ${opsEsc(opsFmtFechaCorta(x.fecha))}${x.monto ? " · " + opsDinero(x.monto) : ""}${x.archivo ? ` · <a href="#" onclick="event.preventDefault();opsHerrVerFactura('${h.id}',${i})" style="color:#1D2E73;font-weight:700;">ver archivo</a>` : ""}</div>`).join("") : `<div style="font-size:12px;color:#94a3b8;">Sin factura capturada.</div>`}
             ${gestion && h.estado !== "baja" ? `<button onclick="opsHerrFactura('${h.id}')" class="mkt-add-btn" style="background:#475569;margin-top:8px;">${fact.length ? "Agregar otra factura" : "Meter factura"}</button>` : ""}
@@ -13432,6 +13507,8 @@
                 await opsHerrGuardarExtra(h, { facturas: (h.facturas || []).concat([x]) }, `Factura ${num}${x.proveedor ? " de " + x.proveedor : ""}${x.monto ? " por " + opsDinero(x.monto) : ""}`);
             });
     };
+    window.opsPrefijoAlmacenPublico = function (id) { return opsPrefijoAlmacen(id || null); };
+    window.opsHerrVerManual = async function (id) { const h = cacheHerr.find(x => x.id === id); if (!h || !h.manual) return; try { window.open(await opsUrlFirmada(h.manual.bucket, h.manual.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
     window.opsHerrVerFactura = async function (id, i) { const h = cacheHerr.find(x => x.id === id); const x = h && (h.facturas || [])[i]; if (!x || !x.archivo) return; try { window.open(await opsUrlFirmada(x.archivo.bucket, x.archivo.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
     // Aviso una vez al día de herramienta que no regresó a tiempo.
     function opsHerrAvisarVencidas() {
