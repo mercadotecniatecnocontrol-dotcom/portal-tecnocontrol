@@ -2370,7 +2370,7 @@ const VIDEO_MAX_BYTES=1024*1024*1024; // límite del espacio flotilla-videos (1 
 window.fmCapturarVideoSol=function(){
   const inp=document.createElement('input');
   inp.type='file';inp.accept='video/*';
-  inp.capture='environment';
+  
   inp.style.display='none';
   document.body.appendChild(inp);
   inp.onchange=async function(){
@@ -3011,7 +3011,7 @@ window.fmCapturar=async function(tipo,key,targetTag){
   const target=targetTag==='sem'?semState:solState;
   const inp=document.createElement('input');
   inp.type='file';inp.accept='image/*';
-  inp.capture='environment';
+  
   inp.style.display='none';
   document.body.appendChild(inp);
 
@@ -3565,7 +3565,7 @@ window.fmSrvQuitar=function(k,i){
 };
 window.fmSrvCapturar=function(kind){
   const inp=document.createElement('input');
-  inp.type='file';inp.accept=kind==='video'?'video/*':'image/*';inp.capture='environment';inp.style.display='none';
+  inp.type='file';inp.accept=kind==='video'?'video/*':'image/*';inp.style.display='none';
   document.body.appendChild(inp);
   inp.onchange=async function(){
     const file=this.files&&this.files[0];document.body.removeChild(inp);if(!file)return;
@@ -4881,7 +4881,7 @@ function revRenderPaso2(){
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px">
             ${IC.camera} Foto
-            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="revSeleccionarFoto('${h.id}',this)">
+            <input type="file" accept="image/*" style="display:none" onchange="revSeleccionarFoto('${h.id}',this)">
           </label>
           <img id="rev-thumb-${h.id}" style="display:none;width:32px;height:32px;object-fit:cover;border-radius:6px;border:1px solid #E2E8F0">
           <span id="rev-foto-estado-${h.id}" style="font-size:10px;color:#94A3B8"></span>
@@ -5449,7 +5449,7 @@ window.renderAngulosGrid=renderAngulosGrid;
 
 window.utilCapturar=async function(angulo){
   const inp=document.createElement('input');
-  inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.type='file';inp.accept='image/*';
   inp.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px';
   document.body.appendChild(inp);
   inp.onchange=async function(){
@@ -5496,7 +5496,7 @@ window.utilCapturar=async function(angulo){
 // ── FOTO ODÓMETRO ──────────────────────────────────────────────
 window.utilCapturarKm=async function(){
   const inp=document.createElement('input');
-  inp.type='file';inp.accept='image/*';inp.capture='environment';
+  inp.type='file';inp.accept='image/*';
   inp.style.cssText='position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px';
   document.body.appendChild(inp);
   inp.onchange=async function(){
@@ -6274,7 +6274,7 @@ window.renderFlotRequisicion=async function(){
     <div id="req-fotos-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">${_reqRenderFotos()}</div>
     <label style="display:block;width:100%;padding:9px;border:1.5px dashed #CBD5E1;border-radius:9px;background:#fff;color:#2563EB;font-size:12px;font-weight:700;cursor:pointer;text-align:center;margin-bottom:16px;box-sizing:border-box">
       + Agregar foto (cámara o galería)
-      <input type="file" accept="image/*" multiple capture="environment" onchange="reqAgregarFoto(this)" style="display:none">
+      <input type="file" accept="image/*" multiple onchange="reqAgregarFoto(this)" style="display:none">
     </label>
 
     <label style="display:block;font-size:11px;font-weight:800;color:#64748B;margin-bottom:4px">Comentarios <span style="font-weight:400;color:#94A3B8">(opcional)</span></label>
@@ -7405,7 +7405,7 @@ function fmEvPickerHTML(tipo,titulo,ayuda){
     (ayuda?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">'+ayuda+'</div>':'')+
     '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div id="fm-ev-'+tipo+'" style="display:flex;flex-wrap:wrap;gap:8px"></div>'+
     '<label style="width:64px;height:64px;border:1.5px dashed #94A3B8;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#475569;cursor:pointer;text-align:center">'+
-      '<span style="font-size:20px;line-height:1">+</span>Foto<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="fmEvAgregar(this,\''+tipo+'\')"></label></div></div>';
+      '<span style="font-size:20px;line-height:1">+</span>Foto<input type="file" accept="image/*" multiple style="display:none" onchange="fmEvAgregar(this,\''+tipo+'\')"></label></div></div>';
 }
 const OPS_EV_BUCKET='ops-evidencias';
 async function fmEvGuardar(folioId,tipo,lista,nota){
@@ -7909,56 +7909,60 @@ window.fmOpsServGuardarTermino=async function(id){
   const osNum=(document.getElementById('fm-term-os')?.value||'').trim();
   const esPol=!!window.__fmTermPoliza;
   if(!rb){err('Falta el punto 10: ¿Se concluyó satisfactoriamente el servicio?');return;}
+  // 23-oct-2026 (Paloma e Idaly): la app se usa con libertad. Lo que falte ya NO bloquea el cierre:
+  // se avisa, el técnico confirma y Operaciones ve en el servicio qué quedó pendiente.
+  const faltan=[]; const blando=function(t){faltan.push(String(t).replace(/^Falta (el )?/,''));};
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
-  if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){err('Falta el punto 4: No. folio / O.S.');return;}
+  if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){blando('Falta el punto 4: No. folio / O.S.');}
   // Candado del ID del folio (22-oct-2026, junta Operaciones): en folios de OXXO y Petro Seven el técnico
   // captura el ID de ServiceNow / Fractal que se publicó en WhatsApp y debe coincidir con el programado.
   let idFolio=null, idExc=false;
   if(res!=='no_realizado'&&res!=='avance_dia'&&fmPideIdFolio(f)){
     idFolio=(document.getElementById('fm-term-idfolio')?.value||'').trim().toUpperCase();
     idExc=!!document.getElementById('fm-term-idexc')?.checked;
-    if(!idFolio){err('Falta el ID del folio (el de WhatsApp: ServiceNow / Fractal).');return;}
+    if(!idFolio){blando('Falta el ID del folio (el de WhatsApp: ServiceNow / Fractal).');}
     const norm=function(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');};
-    if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){err('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');return;}
+    if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){blando('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');}
   }
-  if(esPol&&res!=='no_realizado'&&res!=='avance_dia'&&!document.getElementById('fm-term-pol-ok')?.checked){err('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');return;}
+  if(esPol&&res!=='no_realizado'&&res!=='avance_dia'&&!document.getElementById('fm-term-pol-ok')?.checked){blando('Es póliza: primero llénala en la app de Pólizas y marca «Ya llené la póliza en la app de Pólizas».');}
   const mb=document.querySelector(res==='no_realizado'?'#fm-term-motivos2 button[data-on]':'#fm-term-motivos button[data-on]');
   if(res==='finalizado'&&fmOpsQuedanDias(f)&&!confirm('Este servicio está programado hasta el '+fmOpsDiaFin(f).split('-').reverse().join('/')+'.\n\n¿Ya se terminó TODO el servicio?\n\nSi solo terminaste lo de hoy, cancela y elige «Terminé lo de HOY».'))return;
   if(res==='avance_dia'){
-    if(!ev.foto.length){err('Sube al menos una foto del avance de hoy.');return;}
-    if(txt.length<10){err('En el punto 7 explica qué se avanzó hoy y qué falta.');return;}
+    if(!ev.foto.length){blando('Sube al menos una foto del avance de hoy.');}
+    if(txt.length<10){blando('En el punto 7 explica qué se avanzó hoy y qué falta.');}
   }else if(res==='finalizado'){
-    if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta el punto 6: foto de la Orden de servicio.');return;}
-    if(!esPol&&!ev.foto.length){err('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');return;}
+    if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){blando('Falta el punto 6: foto de la Orden de servicio.');}
+    if(!esPol&&!ev.foto.length){blando('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');}
   }else if(res==='no_finalizado'){
-    if(!mb){err('Elige por qué no se finalizó.');return;}
-    if(!esPol&&!ev.foto.length){err('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');return;}
-    if(txt.length<10){err('En el punto 7 explica qué se hizo y qué falta (mínimo una frase).');return;}
+    if(!mb){blando('Elige por qué no se finalizó.');}
+    if(!esPol&&!ev.foto.length){blando('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');}
+    if(txt.length<10){blando('En el punto 7 explica qué se hizo y qué falta (mínimo una frase).');}
   }else{
-    if(!mb){err('Elige por qué no se realizó.');return;}
-    if(txt.length<5){err('Escribe un detalle.');return;}
+    if(!mb){blando('Elige por qué no se realizó.');}
+    if(txt.length<5){blando('Escribe un detalle.');}
   }
   // Datos de SERVICIO TECNICO (antes en Connecteam): auxiliar, material, video y firma de conformidad
   let extra={auxiliar:null,material:null,firmante:null,firma:null};
   if(res!=='no_realizado'&&res!=='avance_dia'){
     const aux=(document.getElementById('fm-term-aux')?.value||'').trim();
     const mat=window.__fmTermMat;
-    if(!esPol&&mat!=='si'&&mat!=='no'){err('Falta el punto 8: ¿Se utilizó material de almacén?');return;}
+    if(!esPol&&mat!=='si'&&mat!=='no'){blando('Falta el punto 8: ¿Se utilizó material de almacén?');}
     let almNom=null;
     if(mat==='si'){
       const sel=document.getElementById('fm-term-alm');
       almNom=sel&&sel.value?(sel.options[sel.selectedIndex].text||sel.value):(document.getElementById('fm-term-alm-txt')?.value||'').trim();
-      if(!almNom){err('Falta el punto 9: ¿De cuál almacén?');return;}
+      if(!almNom){blando('Falta el punto 9: ¿De cuál almacén?');}
     }
     const matDet=(document.getElementById('fm-term-mat-det')?.value||'').trim();
     const firmante=(document.getElementById('fm-term-firmante')?.value||'').trim();
     const hayFirma=firmaTieneTrazo('fm-term-firma');
-    if(!esPol&&!firmante){err('Punto 15: escribe el nombre de quien firma de conformidad.');return;}
-    if(!esPol&&!hayFirma){err('Falta el punto 15: Firma de conformidad.');return;}
+    if(!esPol&&!firmante){blando('Punto 15: escribe el nombre de quien firma de conformidad.');}
+    if(!esPol&&!hayFirma){blando('Falta el punto 15: Firma de conformidad.');}
     extra={auxiliar:aux||null,material:(mat==='si'||mat==='no')?{usado:mat==='si',almacen:almNom,detalle:matDet||null}:null,firmante:firmante||null,firma:hayFirma?firmaExportar('fm-term-firma'):null};
   }
+  if(faltan.length&&!confirm('Le falta esto al cierre:\n\n• '+faltan.join('\n• ')+'\n\n¿Cerrar de todos modos? Operaciones verá lo que faltó y te lo puede pedir después.'))return;
   const P={id:id,res:res,motivo:mb?mb.getAttribute('data-m'):null,txt:txt,osNum:osNum,esPol:esPol,extra:extra,idFolio:idFolio,idExc:idExc,
-    ev:{orden_servicio:(ev.orden_servicio||[]).slice(),foto:(ev.foto||[]).slice()},
+    ev:{orden_servicio:(ev.orden_servicio||[]).slice(),foto:(ev.foto||[]).slice()},faltantes:faltan.slice(),
     video:window.__fmTermVideo?{blob:window.__fmTermVideo.blob,nombre:window.__fmTermVideo.nombre,mime:window.__fmTermVideo.mime}:null,
     polizaApp:window.__fmTermPolizaApp||null,titulo:opsSvTitulo(f),capturadoEn:new Date().toISOString(),hecho:{},ub:null};
   if(btn){btn.disabled=true;btn.textContent='Leyendo ubicación…';}
@@ -8019,6 +8023,7 @@ async function fmCierreSubir(P,prog){
     evidenciasDocumentos:(Number(f.evidenciasDocumentos)||0)+nDoc,evidenciasFotos:(Number(f.evidenciasFotos)||0)+nFoto,evidenciasVideos:(Number(f.evidenciasVideos)||0)+nVid,ultimaEvidenciaEn:nDoc+nFoto?ahora:(f.ultimaEvidenciaEn||null)};
   if(extra.firmante)cambios.firmaConformidad={nombre:extra.firmante,en:ahora,por:quien};
   if(P.osNum){cambios.osTecnico=P.osNum; if(!f.folioOS)cambios.folioOS=P.osNum;}
+  if(P.faltantes&&P.faltantes.length)cambios.cierreFaltantes={lista:P.faltantes,por:quien,en:ahora};
   if(P.idFolio){
     cambios.folioClienteCapturado=P.idFolio;
     if(!f.folioClienteId)cambios.folioClienteId=P.idFolio;
@@ -8681,7 +8686,7 @@ function fmvRenderNuevo(body){
     h+=lbl('Fecha del gasto')+'<input type="date" value="'+esc(u.nd.fecha)+'" onchange="fmvSetND(\'fecha\',this.value)" style="'+inp+'">';
     h+=lbl('¿En qué se gastó?')+'<input type="text" value="'+esc(u.nd.concepto)+'" oninput="fmvSetND(\'concepto\',this.value)" placeholder="Ej. comida en fonda carretera" style="'+inp+'">';
     h+=lbl('¿Por qué no hay factura?')+'<input type="text" value="'+esc(u.nd.motivo)+'" oninput="fmvSetND(\'motivo\',this.value)" placeholder="Ej. el negocio no factura" style="'+inp+'">';
-    h+=lbl('Foto del ticket o nota (obligatoria)')+'<label style="display:block;border:2px dashed '+(u.foto?'#86EFAC':'#CBD5E1')+';background:'+(u.foto?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+(u.foto?esc(u.foto.name||'Foto lista'):'Tomar o elegir foto')+'<input type="file" accept="image/*" capture="environment" style="display:none" onchange="fmvElegirArchivo(this,\'foto\')"></label>';
+    h+=lbl('Foto del ticket o nota (obligatoria)')+'<label style="display:block;border:2px dashed '+(u.foto?'#86EFAC':'#CBD5E1')+';background:'+(u.foto?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+(u.foto?esc(u.foto.name||'Foto lista'):'Tomar o elegir foto')+'<input type="file" accept="image/*" style="display:none" onchange="fmvElegirArchivo(this,\'foto\')"></label>';
   }
   h+=lbl('Concepto del gasto')+cats;
   const bloq=u.tipo==='cfdi'&&(!u.xmlData||(u.val&&u.val.bloq.length)||!u.val);
