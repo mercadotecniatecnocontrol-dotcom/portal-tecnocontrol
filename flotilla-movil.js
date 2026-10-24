@@ -7375,6 +7375,8 @@ function fmEvLeer(file,maxW,q){
       let out=await comprimirBase64(fr.result,maxW,q);
       if(out.length>OPS_EV_MAX_BYTES)out=await comprimirBase64(fr.result,Math.round(maxW*0.7),0.6);
       if(out.length>OPS_EV_MAX_BYTES)out=await comprimirBase64(fr.result,900,0.5);
+      // Foto de la galería en un formato que el teléfono no pudo convertir (ej. HEIC muy pesado): no se sube.
+      if(!/^data:image\//.test(out)||out.length>OPS_EV_MAX_BYTES*1.5){res(null);return;}
       res(out);
     };
     fr.onerror=function(){res(null);};
@@ -7384,12 +7386,14 @@ function fmEvLeer(file,maxW,q){
 window.fmEvAgregar=async function(input,tipo){
   const files=Array.from(input.files||[]); if(!files.length)return;
   const box=document.getElementById('fm-ev-'+tipo); if(box)box.insertAdjacentHTML('beforeend','<div class="fm-ev-cargando" style="font-size:11px;color:#64748B;padding:6px">Procesando…</div>');
+  let fallas=0;
   for(const f of files){
     const b=await fmEvLeer(f,tipo==='orden_servicio'?1600:1100,tipo==='orden_servicio'?0.72:0.66);
-    if(b)window.__fmEv[tipo].push(b);
+    if(b)window.__fmEv[tipo].push(b); else fallas++;
   }
   input.value='';
   fmEvPintar(tipo);
+  if(fallas&&typeof toast==='function')toast(fallas+' foto(s) no se pudieron leer (formato del teléfono). Elige otra o tómala con la cámara.','err');
 };
 window.fmEvQuitar=function(tipo,i){window.__fmEv[tipo].splice(i,1);fmEvPintar(tipo);};
 function fmEvPintar(tipo){
@@ -7697,6 +7701,7 @@ function fmOpsNoProgBtnHTML(){
     '<button onclick="fmComisionesAbrir()" style="width:100%;padding:11px;margin-bottom:10px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#92400E">Mis comisiones</button>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px"><button onclick="fmDanoAbrir()" style="padding:11px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#B91C1C">Reportar daño adicional</button>'+
     '<button onclick="fmHerrAbrir()" style="padding:11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#3730A3">Pedir o reemplazar herramienta</button></div>'+
+    '<button onclick="fmAmpliacionAbrir()" style="width:100%;padding:11px;margin-bottom:10px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:12px;font-family:inherit;font-size:12.5px;font-weight:800;color:#075985">Pedir más días (ampliar estancia)</button>'+
     '<button onclick="fmOpsNoProgAbrir()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;margin-bottom:14px;background:#fff;border:1.5px dashed #1D2E73;border-radius:12px;font-family:inherit;font-size:13px;font-weight:800;color:#1D2E73;cursor:pointer">+ Servicio no programado (guardia, llamada o visita)</button>';
 }
 async function fmNPCargarCatalogo(){
@@ -8033,7 +8038,7 @@ async function fmCierreSubir(P,prog){
   if(extra.auxiliar)cambios.tecnicoAuxiliar=extra.auxiliar;
   if(extra.material)cambios.materialAlmacen=extra.material;
   if(res==='finalizado'){
-    cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde=P.enCola?'app_flotilla_sin_senal':'app_flotilla'; cambios.evidenciaCompleta=true;
+    cambios.fechaSolucion=ahora; cambios.completadoPor=quien; cambios.finalizadoDesde=P.enCola?'app_flotilla_sin_senal':'app_flotilla'; cambios.evidenciaCompleta=!(P.faltantes&&P.faltantes.length);
     if(!f.primerArriboEn)cambios.primerArriboEn=f.iniciadoEn||ahora;
   }else if(res==='avance_dia'){
     // Avance de un día: el servicio sigue abierto para los días que faltan.
@@ -8054,7 +8059,7 @@ async function fmCierreSubir(P,prog){
   const resumenExtra=(P.osNum?' · O.S. '+P.osNum:'')+(P.esPol&&res!=='no_realizado'?' · Póliza llenada en la app de Pólizas':'')+(extra.auxiliar?' · Auxiliar: '+extra.auxiliar:'')+(extra.material?(extra.material.usado?' · Material de almacén: '+extra.material.almacen+(extra.material.detalle?' ('+extra.material.detalle+')':''):' · Sin material de almacén'):'')+(extra.firmante?' · Firmó de conformidad: '+extra.firmante:'')+(P.enCola?' · Cerrado sin señal a las '+new Date(ahora).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+' y subido después':'');
   try{await opsSvComentario(id,etiqueta+' '+(P.txt||'Servicio terminado desde la app.')+(nDoc+nFoto+nVid?' ('+(nDoc?nDoc+' documento(s), ':'')+nFoto+' foto(s)'+(nVid?', 1 video':'')+')':'')+resumenExtra,res);}catch(e){}
   const verbo=res==='avance_dia'?' registró el avance del día en ':res==='finalizado'?' finalizó ':res==='no_finalizado'?' atendió SIN finalizar ':' NO realizó ';
-  try{await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+(P.titulo||opsSvTitulo(f))+(res==='finalizado'?'.':res==='avance_dia'?': '+String(P.txt||'').slice(0,120):': '+visita.motivo+' · '+(String(P.txt||'').slice(0,100))),id);}catch(e){}
+  try{await opsSvAvisarAdmins('ops_tecnico_'+res,quien+verbo+(P.titulo||opsSvTitulo(f))+(res==='finalizado'?'.':res==='avance_dia'?': '+String(P.txt||'').slice(0,120):': '+(visita.motivo||'sin motivo')+' · '+(String(P.txt||'').slice(0,100)))+(P.faltantes&&P.faltantes.length?' · CERRÓ CON FALTANTES: '+P.faltantes.join(', '):''),id);}catch(e){}
   return {nCuadrilla:nCuadrilla,videoFallo:videoFallo};
 }
 
@@ -8148,6 +8153,36 @@ function fmHojaModal(id,titulo,cuerpo){
   document.body.appendChild(ov);
 }
 const FM_IN='width:100%;box-sizing:border-box;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;margin:4px 0 10px';
+// ── Ampliar estancia (23-oct-2026): el técnico pide más días; Operaciones aprueba en el portal,
+// se recorre la fecha final del servicio y se genera la solicitud de viáticos adicional.
+window.fmAmpliacionAbrir=function(folioId){
+  fmHojaModal('fm-amp','Pedir más días',
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Si el trabajo necesita más días de los programados, pídelo aquí. Operaciones lo aprueba y te genera los viáticos de los días extra.</div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué servicio?</label><select id="fm-amp-folio" style="'+FM_IN+'">'+fmServOpcionesHTML()+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Cuántos días más? *</label><select id="fm-amp-dias" style="'+FM_IN+'">'+[1,2,3,4,5,6,7,10,14].map(function(n){return '<option value="'+n+'">'+n+' día'+(n>1?'s':'')+'</option>';}).join('')+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Por qué? *</label><textarea id="fm-amp-motivo" rows="3" style="'+FM_IN+'" placeholder="Ej. Falta terminar la instalación de 2 dispensarios; el material llegó tarde"></textarea>'+
+    '<div id="fm-amp-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
+    '<button id="fm-amp-btn" onclick="fmAmpliacionEnviar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#075985;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar a Operaciones</button>');
+  if(folioId){const s=document.getElementById('fm-amp-folio'); if(s)s.value=folioId;}
+};
+window.fmAmpliacionEnviar=async function(){
+  const msg=document.getElementById('fm-amp-msg'), btn=document.getElementById('fm-amp-btn');
+  const folioId=document.getElementById('fm-amp-folio').value, dias=Number(document.getElementById('fm-amp-dias').value)||1, motivo=document.getElementById('fm-amp-motivo').value.trim();
+  if(!folioId){msg.textContent='Elige el servicio.';return;}
+  if(motivo.length<8){msg.textContent='Explica por qué necesitas más días.';return;}
+  btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const ref=opsDb().collection(OPS_COL_FOLIOS).doc(folioId);
+    const snap=await ref.get(); const f=Object.assign({id:folioId},(snap&&snap.data&&snap.data())||{});
+    const quien=opsSvMiNombre(), correo=opsSvMiCorreo(), ahora=new Date().toISOString();
+    const lista=(f.solicitudesAmpliacion||[]).concat([{dias:dias,motivo:motivo,por:quien,correo:correo,en:ahora,estatus:'pendiente'}]);
+    await ref.update({solicitudesAmpliacion:lista});
+    try{await opsSvComentario(folioId,'[Ampliación] '+quien+' pide '+dias+' día(s) más: '+motivo,'seguimiento');}catch(e){}
+    try{await opsSvAvisarAdmins('ops_ampliacion_estancia',quien+' pide '+dias+' día(s) más en '+(opsSvTitulo(f)||f.estacion||'su servicio')+': '+motivo,folioId);}catch(e){}
+    document.getElementById('fm-amp')?.remove();
+    if(typeof toast==='function')toast('Listo: Operaciones recibió tu solicitud de '+dias+' día(s) más.','ok');
+  }catch(e){msg.textContent='No se pudo enviar: '+(e.message||e)+'. Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar a Operaciones';}
+};
 window.fmDanoAbrir=function(folioId){
   window.__fmEv=window.__fmEv||{}; window.__fmEv.derivado=[];
   fmHojaModal('fm-dano','Reportar daño adicional',

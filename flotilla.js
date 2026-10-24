@@ -1051,6 +1051,7 @@ function ldVehs(){
         // Deduplicar por id del documento (por si algo lo agregó también en memoria)
         {const vistos=new Set();flV=flV.filter(v=>vistos.has(v.id)?false:(vistos.add(v.id),true));}
         resolve();
+        if(!window._flFixIvanProgramado){window._flFixIvanProgramado=true;setTimeout(flQuitarEcosIvan,4000);}
         // Tras la carga inicial, cada cambio en vivo refresca lo que esté visible
         if(window._flInitDone){
           renderSB();
@@ -2458,6 +2459,41 @@ window.admElimSol=async function(id){
 // Libera en la app móvil a cualquier técnico vinculado a este ECO.
 // Se llama cada vez que el portal cambia el "responsable" de un vehículo,
 // para que el ECO quede libre de inmediato en la app del técnico anterior.
+// ── Quitar a Iván (Desarrollos) los ECOS 38, 85, 84, 32, 70 y 31 (23-oct-2026, pedido de Glen) ──
+// Corre una sola vez cuando entra un administrador de Flotilla: le quita esos ECOS de sus vehículos
+// vinculados en la app y, si aparece como responsable, deja el ECO sin responsable. Todo queda en consola.
+const FL_ECOS_QUITAR_IVAN=['38','85','84','32','70','31'];
+async function flQuitarEcosIvan(){
+  try{
+    if(!hAdm())return;
+    if(localStorage.getItem('fl_fix_ivan_23oct')==='hecho')return;
+    if(!fs){fs=await flImportFs();}
+    const esIvan=t=>/iv[aá]n/i.test(String(t||''))&&!/argenis|aceves|sep[uú]lveda/i.test(String(t||''));
+    const cambios=[];
+    const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
+    for(const d of snapU.docs){
+      const u=d.data(); const quien=[u.nombre,u.email,u.correo,d.id].join(' ');
+      if(!esIvan(quien))continue;
+      const arr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
+      const nuevo=arr.filter(e=>!FL_ECOS_QUITAR_IVAN.includes(e));
+      const upd={};
+      if(nuevo.length!==arr.length)upd.ecosVinculados=nuevo;
+      if(FL_ECOS_QUITAR_IVAN.includes(String(u.ecoVinculado||'')))upd.ecoVinculado=null;
+      if(Object.keys(upd).length){await fs.updateDoc(fs.doc(db,'fl_usuarios',d.id),{...upd,actualizadoEn:new Date().toISOString(),actualizadoPor:window.auth?.currentUser?.email||''});cambios.push((u.nombre||d.id)+': '+arr.filter(e=>FL_ECOS_QUITAR_IVAN.includes(e)).join(', '));}
+    }
+    for(const v of flV){
+      if(!FL_ECOS_QUITAR_IVAN.includes(String(v.eco))||!esIvan(v.responsable))continue;
+      if(String(v.id).startsWith('eco-'))continue;
+      await fs.updateDoc(fs.doc(db,C.VEHS,v.id),{responsable:'—',actualizadoEn:new Date().toISOString(),actualizadoPor:window.auth?.currentUser?.email||''});
+      cambios.push('ECO '+v.eco+': sin responsable (antes '+v.responsable+')');
+      v.responsable='—';
+    }
+    localStorage.setItem('fl_fix_ivan_23oct','hecho');
+    console.info('[Flotilla] ECOS quitados a Iván:',cambios.length?cambios:'no tenía ninguno');
+    if(cambios.length&&window.mostrarPush)window.mostrarPush('ECOS quitados a Iván',cambios.join(' · '),'✓');
+  }catch(e){console.warn('[Flotilla] no se pudieron quitar los ECOS a Iván:',e);}
+}
+window.flQuitarEcosIvan=function(){localStorage.removeItem('fl_fix_ivan_23oct');return flQuitarEcosIvan();};
 async function flDesvincularEcoApp(eco,nuevoResponsable){
   if(!eco)return;
   try{

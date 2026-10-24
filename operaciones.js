@@ -6968,6 +6968,10 @@
         else if (opsCalFiltroEstado === "abierto") l = l.filter(f => !f.fechaSolucion && !f.fechaAtencion);
         if (opsCalFiltroCategoria !== "todas") l = l.filter(f => opsCalCoincideCategoria(f, opsCalFiltroCategoria));
         if (opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas") l = l.filter(f => opsFolioEnPlaza(f, opsCalFiltroPlaza));
+        // Si lo escrito no es un técnico, filtra los servicios por estación, razón social, servicio u O.S.
+        const qCal = typeof opsCalFiltroTexto === "string" ? opsNormalizaTexto(opsCalFiltroTexto) : "";
+        if (qCal && !opsTecOperativos().some(t => opsNormalizaTexto([t.nombre, t.puesto].join(" ")).includes(qCal)))
+            l = l.filter(f => opsNormalizaTexto([f.estacion, f.estacionNombreComercial, f.estacionRazonSocial, f.clienteNombre, f.categoriaServicio, f.tareaFolio, f.folioOS, f.osTecnico, f.folioClienteId, f.folioNumero].join(" ")).includes(qCal));
         return l;
     }
 
@@ -7110,7 +7114,7 @@
                         <option value="inspeccion" ${opsCalFiltroTipo === "inspeccion" ? "selected" : ""}>Solo inspección</option>
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
-                    <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
+                    <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico, estación, servicio u O.S..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
                     ${opsPuedeCrear() && !opsAccFiltroEmpresa() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsTareaExtraAbrir('${opsCalFechaISO(opsCalFecha)}')" title="Un favor o pendiente que solo necesita programarse (ej. llevar un sobre a una estación)" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Tarea extra</button>` : ""}
@@ -7850,8 +7854,12 @@
             activos = activos.filter(t => (t.plaza || "Chihuahua") === opsCalFiltroPlaza || conServicio.has(t.id));
         }
         if (!opsCalFiltroTexto.trim()) return activos;
-        const q = opsCalFiltroTexto.toLowerCase();
-        return activos.filter(t => (t.nombre || "").toLowerCase().includes(q) || (t.puesto || "").toLowerCase().includes(q));
+        // Buscador del calendario (23-oct-2026): por técnico, servicio, estación o razón social.
+        const q = opsNormalizaTexto(opsCalFiltroTexto);
+        const porNombre = activos.filter(t => opsNormalizaTexto([t.nombre, t.puesto].join(" ")).includes(q));
+        if (porNombre.length) return porNombre;
+        const conFolio = new Set(opsCalFoliosFiltrados().flatMap(f => (f.tecnicosAsignadosIds || []).concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : [])));
+        return activos.filter(t => conFolio.has(t.id));
     }
 
     function opsCalRenderBody() {
@@ -13268,8 +13276,58 @@
                 ${bol.map((b, i) => `<div style="border:1px solid #e2e8f0;border-radius:9px;padding:7px 10px;margin-bottom:6px;font-size:12px;color:#334155;"><b>${opsEsc(b.tecnico || "")}</b> · ${opsEsc(opsFmtFechaCorta(b.fecha))} · ${opsEsc(b.ruta || "")} · <b>${opsDinero(b.costo)}</b>${b.cobrarCliente ? ' · <span style="color:#15803d;font-weight:700;">se cobra al cliente</span>' : ""}${b.reservacion ? "<br>Reservación: " + opsEsc(b.reservacion) : ""}${b.comprobante ? ` · <a href="#" onclick="event.preventDefault();opsBoletoVer('${f.id}',${i})" style="color:#1D2E73;font-weight:700;">comprobante</a>` : ""}</div>`).join("")}
                 ${opsPuedeGestionar() ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${!f.requiereAvion && !bol.length ? `<button onclick="opsAvionRequiere('${f.id}')" style="border:1px solid #0369a1;background:#fff;color:#0369a1;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer;">Este servicio requiere avión</button>` : ""}<button onclick="opsBoletoAbrir('${f.id}')" style="border:none;background:#0369a1;color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer;">Registrar boleto comprado</button></div>` : ""}</div>`;
         }
+        // Ampliación de estancia pedida desde la app (23-oct-2026)
+        const amps = f.solicitudesAmpliacion || [];
+        if (amps.length) {
+            html += `<div class="opf-sec"><div class="opf-sec-tit">Ampliación de estancia</div>${amps.map((a, i) => `<div style="border:1px solid ${a.estatus === "pendiente" ? "#fdba74" : "#e2e8f0"};background:${a.estatus === "pendiente" ? "#fff7ed" : "#f8fafc"};border-radius:9px;padding:8px 10px;margin-bottom:6px;font-size:12px;color:#334155;">
+                <b>${opsEsc(a.por || "")}</b> pide <b>${opsEsc(a.dias)} día(s) más</b> · ${opsEsc(opsFmtFechaCorta(a.en))}<div>${opsEsc(a.motivo || "")}</div>
+                <div style="margin-top:4px;font-weight:700;color:${a.estatus === "aprobada" ? "#15803d" : a.estatus === "rechazada" ? "#b91c1c" : "#b45309"};">${a.estatus === "aprobada" ? "Aprobada · " + opsEsc(a.resueltaPor || "") + (a.viaticoPendiente ? " · falta guardar la solicitud de viáticos" : "") : a.estatus === "rechazada" ? "Rechazada · " + opsEsc(a.respuesta || "") : "Pendiente de aprobar"}</div>
+                ${a.estatus === "pendiente" && opsPuedeGestionar() ? `<div style="display:flex;gap:6px;margin-top:6px;"><button onclick="opsAmpliacionResolver('${f.id}',${i},true)" style="border:none;background:#15803d;color:#fff;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar y generar viáticos</button><button onclick="opsAmpliacionResolver('${f.id}',${i},false)" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Rechazar</button></div>` : ""}
+                ${a.estatus === "aprobada" && a.viaticoPendiente && opsPuedeGestionar() ? `<button onclick="opsAmpliacionViaticos('${f.id}',${i})" style="margin-top:6px;border:none;background:#E7402B;color:#fff;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Abrir solicitud de viáticos adicional</button>` : ""}
+            </div>`).join("")}</div>`;
+        }
         el.innerHTML = html;
     }
+    // Fin del servicio (último día programado) en formato AAAA-MM-DD.
+    function opsFinServicioISO(f) {
+        const dia = String(f.fechaProgramada || "").slice(0, 10); if (!dia) return opsHoy();
+        if (f.fechaFinProgramada && String(f.fechaFinProgramada).slice(0, 10) > dia) return String(f.fechaFinProgramada).slice(0, 10);
+        if (f.duracionUnidad === "dias" && Number(f.duracionValor) > 1) return opsDiaISOmas(dia, Math.ceil(Number(f.duracionValor)) - 1);
+        return dia;
+    }
+    window.opsAmpliacionResolver = async function (id, i, aprobar) {
+        const f = cacheFolios.find(x => x.id === id); const a = f && (f.solicitudesAmpliacion || [])[i]; if (!a) return;
+        let respuesta = null;
+        if (!aprobar) { respuesta = prompt("¿Por qué se rechaza? (le llega al técnico)", ""); if (respuesta === null) return; }
+        else if (!confirm(`¿Aprobar ${a.dias} día(s) más para ${f.estacion || "este servicio"}? Se recorre la fecha final y se abre la solicitud de viáticos adicional.`)) return;
+        const finAnt = opsFinServicioISO(f), finNuevo = opsDiaISOmas(finAnt, Number(a.dias) || 1);
+        const lista = (f.solicitudesAmpliacion || []).slice();
+        lista[i] = { ...a, estatus: aprobar ? "aprobada" : "rechazada", respuesta: respuesta ? respuesta.trim() : null, resueltaPor: opsNombreActual(), resueltaEn: new Date().toISOString(), finAnterior: finAnt, finNuevo: aprobar ? finNuevo : null, viaticoPendiente: !!aprobar };
+        const cambios = { solicitudesAmpliacion: lista };
+        if (aprobar) { cambios.fechaFinProgramada = finNuevo; cambios.duracionUnidad = "dias"; cambios.duracionValor = Math.round((new Date(finNuevo + "T12:00") - new Date(String(f.fechaProgramada).slice(0, 10) + "T12:00")) / 86400000) + 1; }
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), cambios);
+            Object.assign(f, cambios);
+            fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: aprobar ? `[Ampliación] Aprobada: ${a.dias} día(s) más. Nueva fecha final ${opsFmtFechaCorta(finNuevo)}.` : `[Ampliación] Rechazada: ${respuesta || ""}`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "seguimiento", createdAt: opsFechaHora() }).catch(() => {});
+            if (a.correo) opsTDAvisarTecnico(a.correo, aprobar ? `Se aprobaron ${a.dias} día(s) más en ${f.estacion || "tu servicio"}. Nueva fecha final: ${opsFmtFechaCorta(finNuevo)}. Operaciones genera tus viáticos.` : `No se aprobó la ampliación en ${f.estacion || "tu servicio"}: ${respuesta || ""}`);
+            opsPanelExtraPintar(f);
+            if (aprobar) window.opsAmpliacionViaticos(id, i);
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    // Abre la calculadora oficial ya ligada al servicio, con las fechas de los días extra.
+    window.opsAmpliacionViaticos = async function (id, i) {
+        const f = cacheFolios.find(x => x.id === id); const a = f && (f.solicitudesAmpliacion || [])[i]; if (!a) return;
+        try { window.opsCerrarPanelFolio && window.opsCerrarPanelFolio(); } catch (e) {}
+        await window.opsAsIrViaticos(id);
+        if (!opsViaForm) return;
+        const ini = opsDiaISOmas(a.finAnterior || opsFinServicioISO(f), 1), fin = a.finNuevo || ini;
+        opsViaForm.salida = ini + "T07:00"; opsViaForm.salidaManual = true;
+        opsViaForm.regreso = fin + "T19:00"; opsViaForm.regresoManual = true;
+        opsViaForm.notas = `Ampliación de estancia: ${a.dias} día(s) más (pedido por ${a.por || "el técnico"}: ${a.motivo || ""}).`;
+        opsViaForm.__ampliacion = { folioId: id, indice: i };
+        opsViaRecalcular(); opsViaPintarFormulario();
+    };
     async function opsSubirArchivo(carpeta, file) {
         const sb = await opsSb();
         const ext = (String(file.name || "").split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -19920,6 +19978,17 @@
             }
             const data = guardadas[0];
             const folio = data.folio;
+            // Viático adicional por ampliación de estancia: se marca como generado en el servicio.
+            if (f.__ampliacion) {
+                try {
+                    const fa = cacheFolios.find(x => x.id === f.__ampliacion.folioId);
+                    if (fa) {
+                        const l = (fa.solicitudesAmpliacion || []).slice(), k = f.__ampliacion.indice;
+                        if (l[k]) { l[k] = { ...l[k], viaticoPendiente: false, viaticoFolio: guardadas.map(g => g.folio).join(", ") };
+                            const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, fa.id), { solicitudesAmpliacion: l }); fa.solicitudesAmpliacion = l; }
+                    }
+                } catch (e) { console.warn("[ampliación] no se pudo marcar el viático:", e); }
+            }
             // Si se eligió reemplazar solicitudes anteriores del mismo servicio, se cancelan
             // (no se borran) y queda escrito por cuál se sustituyeron.
             if (val.reemplazar && val.reemplazar.length) {
