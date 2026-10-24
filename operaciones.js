@@ -2802,13 +2802,12 @@
     window.opsAbrirAlmacenPiezas = function (almacenId) {
         const ubicacion = almacenId ? cacheAlmacenes.find(a => a.id === almacenId && a.tipo === "ubicacion") : null;
         const esTecnico = almacenId && !ubicacion;
-        const piezas = cacheHerr.filter(h => {
-            if (h.estado === "baja") return false;
-            if (esTecnico) return h.tecnicoActualId === almacenId;
-            if (ubicacion) return !h.tecnicoActualId && h.almacenId === almacenId;
-            return !h.tecnicoActualId && !h.almacenId; // Almacén General
-        }).sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
+        const piezas = opsPiezasDeAlmacen(almacenId);
         const nombre = esTecnico ? opsNombreTecnico(almacenId) : (ubicacion ? ubicacion.nombre : "Almacén General");
+        // Selección múltiple y traspaso masivo (24-oct-2026, Glen): solo en el almacén de un técnico
+        // y solo para quien puede gestionar herramientas.
+        const masivo = esTecnico && opsPuedeGestionar() && piezas.length > 0;
+        const idAlm = almacenId ? String(almacenId) : "";
         const wrap = document.getElementById("ops-panel-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);z-index:99998;display:flex;justify-content:flex-end;" onclick="if(event.target===this)document.getElementById('ops-panel-wrap').innerHTML=''">
@@ -2820,21 +2819,184 @@
                     </div>
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
+                ${piezas.length ? `
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                    <button onclick="opsExportarAlmacenExcel('${idAlm}')" style="background:#1D2E73;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Exportar todo (Excel)</button>
+                    ${masivo ? `<button id="ops-btn-traspaso-masivo" onclick="opsAbrirTraspasoMasivo('${idAlm}')" disabled style="background:#E7402B;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;opacity:.45;">Traspasar seleccionadas (0)</button>` : ""}
+                </div>
+                ${masivo ? `<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#334155;font-weight:600;padding:8px 10px;background:#f8fafc;border-radius:8px;margin-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" id="ops-sel-todas" onchange="opsSelTodasPiezas(this.checked)" style="width:16px;height:16px;cursor:pointer;"> Seleccionar todas
+                </label>` : ""}` : ""}
                 ${piezas.length ? piezas.map(h => {
                     const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
-                    return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center;">
-                        ${opsThumb(h, 38)}
-                        <div style="min-width:0;flex:1;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;">
-                                <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
-                                <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                    const pend = opsTraspasoPendientePara(h.id);
+                    return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:center;">
+                        ${masivo ? `<input type="checkbox" class="ops-sel-pieza" value="${h.id}" ${pend ? "disabled title=\"Ya tiene un traspaso pendiente\"" : ""} onchange="opsActualizarSelPiezas()" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">` : ""}
+                        <div onclick="opsAbrirFichaHerramienta('${h.id}')" style="display:flex;gap:10px;align-items:center;flex:1;min-width:0;cursor:pointer;">
+                            ${opsThumb(h, 38)}
+                            <div style="min-width:0;flex:1;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <span style="font-size:12.5px;font-weight:700;color:#334155;">${opsEsc(h.folio)}</span>
+                                    <span style="background:${e.bg};color:${e.fg};font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;">${e.label}</span>
+                                </div>
+                                <div style="font-size:11.5px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(h.descripcion)}${pend ? ` · <span style="color:#92400e;font-weight:600;">traspaso pendiente</span>` : ""}</div>
                             </div>
-                            <div style="font-size:11.5px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(h.descripcion)}</div>
                         </div>
                     </div>`;
                 }).join("") : '<div style="color:#94a3b8;font-size:12px;padding:10px 0;">Sin piezas en este almacén.</div>'}
             </div>
         </div>`;
+    };
+
+    // Piezas activas de un almacén (técnico, ubicación o Almacén General si es null).
+    function opsPiezasDeAlmacen(almacenId) {
+        const ubicacion = almacenId ? cacheAlmacenes.find(a => a.id === almacenId && a.tipo === "ubicacion") : null;
+        const esTecnico = almacenId && !ubicacion;
+        return cacheHerr.filter(h => {
+            if (h.estado === "baja") return false;
+            if (esTecnico) return h.tecnicoActualId === almacenId;
+            if (ubicacion) return !h.tecnicoActualId && h.almacenId === almacenId;
+            return !h.tecnicoActualId && !h.almacenId;
+        }).sort((a, b) => (a.folio || "").localeCompare(b.folio || ""));
+    }
+
+    // Exporta a Excel todas las piezas del almacén abierto.
+    window.opsExportarAlmacenExcel = function (almacenId) {
+        if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
+        almacenId = almacenId || null;
+        const ubicacion = almacenId ? cacheAlmacenes.find(a => a.id === almacenId && a.tipo === "ubicacion") : null;
+        const nombre = almacenId && !ubicacion ? opsNombreTecnico(almacenId) : (ubicacion ? ubicacion.nombre : "Almacén General");
+        const piezas = opsPiezasDeAlmacen(almacenId);
+        if (!piezas.length) { alert("Este almacén no tiene piezas para exportar."); return; }
+        const filas = piezas.map(h => ({
+            Almacén: nombre, Folio: h.folio || "", Descripción: h.descripcion || "", Categoría: h.categoria || "",
+            Marca: h.marca || "", Modelo: h.modelo || "", "N.° de serie": h.numeroSerie || "",
+            "Fecha de asignación": h.fechaAsignacion || "", Estado: (ESTADOS_HERRAMIENTA[h.estado] || {}).label || h.estado || "",
+            Ubicación: h.ubicacionActual || "", Observaciones: h.observaciones || "",
+        }));
+        const ws = XLSX.utils.json_to_sheet(filas);
+        ws["!cols"] = [{ wch: 26 }, { wch: 14 }, { wch: 36 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 30 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Herramientas");
+        const limpio = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "_");
+        XLSX.writeFile(wb, "Herramientas_" + limpio + "_" + opsFechaHora().slice(0, 10) + ".xlsx");
+    };
+
+    window.opsSelTodasPiezas = function (marcar) {
+        document.querySelectorAll(".ops-sel-pieza").forEach(c => { if (!c.disabled) c.checked = marcar; });
+        opsActualizarSelPiezas();
+    };
+
+    window.opsActualizarSelPiezas = function () {
+        const todas = Array.from(document.querySelectorAll(".ops-sel-pieza")).filter(c => !c.disabled);
+        const n = todas.filter(c => c.checked).length;
+        const btn = document.getElementById("ops-btn-traspaso-masivo");
+        if (btn) { btn.textContent = `Traspasar seleccionadas (${n})`; btn.disabled = !n; btn.style.opacity = n ? "1" : ".45"; }
+        const t = document.getElementById("ops-sel-todas");
+        if (t) t.checked = todas.length > 0 && n === todas.length;
+    };
+
+    // Ventana para elegir al técnico que recibe y revisar el resumen antes de enviar.
+    window.opsAbrirTraspasoMasivo = function (almacenId) {
+        const ids = Array.from(document.querySelectorAll(".ops-sel-pieza:checked")).map(c => c.value);
+        if (!ids.length) { alert("Selecciona al menos una herramienta."); return; }
+        const piezas = ids.map(id => cacheHerr.find(h => h.id === id)).filter(Boolean);
+        const bloqueadas = piezas.filter(h => h.requiereAutorizacion && !opsEsAutorizadorCalibracion());
+        const tecnicos = cacheTec.filter(t => t.estatus === "activo" && t.id !== almacenId)
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+        window._opsTraspasoMasivoIds = ids;
+        window._opsTraspasoMasivoOrigen = almacenId;
+        const wrap = document.getElementById("ops-modal-wrap");
+        wrap.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">Traspasar ${piezas.length} herramienta(s)</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:12px;">De: <b>${opsEsc(opsNombreTecnico(almacenId))}</b></div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿A quién se las pasas?</label>
+                <select id="ops-in-tec-masivo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                    <option value="">Elige un técnico…</option>
+                    ${tecnicos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)}${t.correo ? "" : " (sin correo)"}</option>`).join("")}
+                </select>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Comentario (opcional)</label>
+                <textarea id="ops-in-obs-masivo" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;"></textarea>
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;font-size:12px;color:#1e3a8a;margin-bottom:12px;">
+                    Las herramientas <b>no se mueven al instante</b>: el técnico que las recibe debe <b>aceptarlas desde Flotilla</b>. Mientras tanto quedan apartadas.
+                </div>
+                ${bloqueadas.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">${bloqueadas.length} pieza(s) requieren autorización previa y <b>no se van a traspasar</b>: ${bloqueadas.map(h => opsEsc(h.folio)).join(", ")}.</div>` : ""}
+                <div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:6px;">Resumen</div>
+                <div style="border:1px solid #e2e8f0;border-radius:8px;max-height:200px;overflow-y:auto;margin-bottom:16px;">
+                    ${piezas.map(h => `<div style="padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;"><b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion)}</div>`).join("")}
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="ops-btn-confirmar-masivo" onclick="opsConfirmarTraspasoMasivo()" style="background:#E7402B;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Enviar traspaso</button>
+                </div>
+            </div>
+        </div>`;
+    };
+
+    // Crea un traspaso pendiente por cada pieza (mismo flujo que el traspaso individual)
+    // y manda UNA sola notificación al técnico que recibe.
+    window.opsConfirmarTraspasoMasivo = async function () {
+        const ids = window._opsTraspasoMasivoIds || [];
+        const origenId = window._opsTraspasoMasivoOrigen;
+        const tecnicoNuevoId = document.getElementById("ops-in-tec-masivo").value;
+        const comentario = document.getElementById("ops-in-obs-masivo").value.trim();
+        if (!tecnicoNuevoId) { alert("Elige al técnico que recibe."); return; }
+        const receptor = cacheTec.find(t => t.id === tecnicoNuevoId);
+        const entrega = cacheTec.find(t => t.id === origenId);
+        if (!receptor || !receptor.correo) {
+            alert(`${receptor ? receptor.nombre : "Este técnico"} no tiene correo en su ficha de Operaciones > Técnicos. Sin correo no puede aceptar el traspaso desde Flotilla — captúralo primero.`);
+            return;
+        }
+        const piezas = ids.map(id => cacheHerr.find(h => h.id === id)).filter(h =>
+            h && h.tecnicoActualId === origenId && !opsTraspasoPendientePara(h.id) &&
+            !(h.requiereAutorizacion && !opsEsAutorizadorCalibracion()));
+        if (!piezas.length) { alert("Ninguna de las piezas seleccionadas se puede traspasar (ya tienen traspaso pendiente o requieren autorización)."); return; }
+
+        const btn = document.getElementById("ops-btn-confirmar-masivo");
+        if (btn) { btn.disabled = true; btn.textContent = "Enviando..."; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const now = new Date();
+            const venceEn = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const venceTxt = venceEn.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+            let enviados = 0, primerId = null;
+            for (const h of piezas) {
+                try {
+                    const ref = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
+                        herramientaId: h.id, folio: h.folio || "", descripcion: h.descripcion || "",
+                        entregaTecnicoId: origenId || null,
+                        entregaEmail: entrega && entrega.correo ? entrega.correo : null,
+                        entregaNombre: entrega ? entrega.nombre : "Almacén",
+                        receptorTecnicoId: tecnicoNuevoId, receptorEmail: receptor.correo, receptorNombre: receptor.nombre,
+                        almacenOrigenId: opsAlmacenIdDe(origenId), almacenDestinoId: opsAlmacenIdDe(tecnicoNuevoId),
+                        comentario: comentario || null, evidenciaBase64: null,
+                        estatus: "Pendiente recepción",
+                        creadoEn: now.toISOString(), venceEn: venceEn.toISOString(),
+                        origen: "operaciones", masivo: true,
+                        creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+                    });
+                    if (!primerId) primerId = ref.id;
+                    enviados++;
+                } catch (e) { console.error("[operaciones.js] traspaso masivo, falló", h.folio, e); }
+            }
+            if (enviados && window.tcNotificar2) {
+                await window.tcNotificar2(fs, db, {
+                    tipo: "herramienta_traspaso_iniciada", traspasoId: primerId, para: receptor.correo,
+                    mensaje: `${opsNombreActual()} te está traspasando ${enviados} herramienta(s) de ${entrega ? entrega.nombre : "otro técnico"}. Acéptalas antes del ${venceTxt} desde Flotilla, o el traspaso vencerá.`,
+                    leido: false, creadaEn: now.toISOString(),
+                }).catch(err => console.warn("[operaciones.js] no se pudo notificar al receptor:", err));
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            const panel = document.getElementById("ops-panel-wrap"); if (panel) panel.innerHTML = "";
+            const msg = `Traspaso de ${enviados} herramienta(s) enviado a ${receptor.nombre} — pendiente de que lo acepte.` + (enviados < piezas.length ? ` ${piezas.length - enviados} no se pudieron enviar.` : "");
+            window.mostrarPush ? mostrarPush("Herramientas", msg, ICON.lock) : alert(msg);
+        } catch (err) {
+            console.error("[operaciones.js] error en traspaso masivo:", err);
+            alert("No se pudo enviar el traspaso: " + (err && err.message ? err.message : err));
+            if (btn) { btn.disabled = false; btn.textContent = "Enviar traspaso"; }
+        }
     };
 
     // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
