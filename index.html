@@ -19,6 +19,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
     <script src="portal-supabase.js?v=5"></script>
+    <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
+    <script src="operaciones-supabase.js?v=ops3"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -2650,7 +2652,7 @@ onAuthStateChanged(auth, async user=>{
         const btnAgUsr = document.getElementById('btn-agregar-usuario');
         if(btnAgUsr) btnAgUsr.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
         const btnRolesFl = document.getElementById('btn-roles-flotilla');
-        if(btnRolesFl) btnRolesFl.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
+        if(btnRolesFl) btnRolesFl.style.display = 'none'; // 24-oct-2026: los roles de Flotilla ahora están en "Usuarios y permisos"
         const btnUp = document.getElementById('btn-usuarios-permisos');
         if(btnUp) btnUp.style.display = esAdminTotal(user.email) ? 'flex' : 'none';
         if(window.upVigilarMiBaja) window.upVigilarMiBaja();
@@ -3236,8 +3238,8 @@ window.abrirUsuariosPermisos = async () => {
     </div>`;
     try {
         const snap = await getDocs(collection(db,'usuarios'));
-        _upUsuarios = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>(a.nombre||a.correo||'').localeCompare(b.nombre||b.correo||'','es'));
-        await upCargarAvisos();
+        _upUsuarios = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>((a.correo?0:1)-(b.correo?0:1)) || upNombreDe(a).localeCompare(upNombreDe(b),'es'));
+        await Promise.all([upCargarAvisos(), upCargarPermisos()]);
         upRender();
     } catch(e){ document.getElementById('up-lista').innerHTML = `<div style="padding:20px;color:#b91c1c;">No se pudo cargar: ${upEsc(e.message)}</div>`; }
 };
@@ -3251,8 +3253,8 @@ function upRender(){
         const fijos = (EMAIL_ACCESO_EXTRA_FIJO[(u.correo||'').toLowerCase()] || []);
         return `<div style="border:1px solid ${u.activo===false?'#fecaca':'#e2e8f0'};background:${u.activo===false?'#fef2f2':'#fff'};border-radius:12px;padding:12px 14px;margin-bottom:8px;">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <div style="flex:1;min-width:200px;"><b style="font-size:14px;">${upEsc(u.nombre||'(sin nombre)')}</b> ${u.activo===false?'<span style="font-size:10.5px;font-weight:800;color:#b91c1c;background:#fee2e2;border-radius:5px;padding:2px 7px;">DE BAJA</span>':''}
-              <div style="font-size:12px;color:#64748b;">${upEsc(u.correo||'')}${u.rolFlotilla?' · Flotilla: '+upEsc(u.rolFlotilla):''}${esAdminTotal(u.correo||'')?' · <b>Admin total</b>':''}</div></div>
+            <div style="flex:1;min-width:200px;"><b style="font-size:14px;">${upEsc(upNombreDe(u))}</b>${!u.correo?' <span style="font-size:10.5px;color:#b45309;font-weight:800;">SIN CORREO GUARDADO</span>':''} ${u.activo===false?'<span style="font-size:10.5px;font-weight:800;color:#b91c1c;background:#fee2e2;border-radius:5px;padding:2px 7px;">DE BAJA</span>':''}
+              <div style="font-size:12px;color:#64748b;">${upEsc(u.correo||u.email||('id '+u.uid))}${u.rolFlotilla?' · Flotilla: '+upEsc(u.rolFlotilla):''}${esAdminTotal(u.correo||'')?' · <b>Admin total</b>':''}</div></div>
             <label style="font-size:11.5px;color:#475569;font-weight:700;">Departamento
               <select id="up-dep-${u.uid}" style="display:block;border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12.5px;margin-top:3px;">${['',...DEPTOS].map(d=>`<option value="${upEsc(d)}" ${String(u.departamento||'').toLowerCase()===d.toLowerCase()?'selected':''}>${d||'— sin departamento —'}</option>`).join('')}</select></label>
             <button onclick="upGuardar('${u.uid}')" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;">Guardar</button>
@@ -3263,8 +3265,9 @@ function upRender(){
           <div style="margin-top:8px;font-size:11.5px;color:#475569;font-weight:700;">También entra a:</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;">${DEPTOS.map(d=>{const fijo=fijos.includes(d);return `<label style="font-size:12px;display:inline-flex;gap:4px;align-items:center;${fijo?'color:#94a3b8;':''}" title="${fijo?'Dado en el código del portal':''}"><input type="checkbox" class="up-ext-${u.uid}" value="${upEsc(d)}" ${extra.includes(d)||fijo?'checked':''} ${fijo?'disabled':''}> ${d}</label>`;}).join('')}</div>
           <input id="up-nota-${u.uid}" value="${upEsc(u.notasPermisos||'')}" placeholder="Permisos especiales o notas (ej. puede ver datos de contacto de clientes)" style="width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;border-radius:7px;padding:6px 9px;font-size:12px;margin-top:8px;">
-          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;"><span style="font-size:11.5px;color:#7c3aed;font-weight:700;">🔔 ${upEsc(upResumenAvisos((u.correo||'').toLowerCase()))}</span><button onclick="upToggleAvisos('${u.uid}')" style="border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${_upAbierto===u.uid?'Ocultar avisos':'Editar avisos'}</button></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;"><span style="font-size:11.5px;color:#7c3aed;font-weight:700;">🔔 ${upEsc(upResumenAvisos((u.correo||'').toLowerCase()))}</span><button onclick="upToggleAvisos('${u.uid}')" style="border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${_upAbierto===u.uid?'Ocultar avisos':'Editar avisos'}</button><button onclick="upTogglePermisos('${u.uid}')" style="border:1px solid #99f6e4;background:#f0fdfa;color:#0e7490;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${_upDet===u.uid?'Ocultar permisos':'Permisos detallados'}</button></div>
           ${_upAbierto===u.uid ? upAvisosHTML(u) : ''}
+          ${_upDet===u.uid ? upPermisosHTML(u) : ''}
           ${u.activo===false&&(u.bajaMotivo||u.bajaEn)?`<div style="font-size:11.5px;color:#991b1b;margin-top:6px;">Baja ${upEsc((u.bajaEn||'').slice(0,10))}: ${upEsc(u.bajaMotivo||'')}</div>`:''}
         </div>`;
     };
@@ -3317,6 +3320,90 @@ function upVigilarMiBaja(){
     } catch(e){ console.warn('[usuarios] vigilancia de baja:', e.message); }
 }
 window.upVigilarMiBaja = upVigilarMiBaja;
+
+// ── Etapa 3 (24-oct-2026): TODOS los permisos de cada persona en un solo lugar ──
+// Reúne lo que antes estaba disperso: rol en Operaciones (ops_config_permisos), rol y acciones de
+// Flotilla (antes botón "Roles de Flotilla"), ver todas las comisiones, lectura de Aspel, y lo que pide
+// la hoja de permisos: qué debe ver, penalizaciones y responsabilidades.
+let _upOps = null, _upComAdm = new Set(), _upAspel = new Set(), _upDet = null;
+async function upCargarPermisos(){
+    try {
+        const c = await (window.tcSbSesion ? window.tcSbSesion() : window.tcSb());
+        const [o, ca, al] = await Promise.all([
+            c.from('ops_docs').select('datos').eq('coleccion','ops_config_permisos').eq('doc_id','general').maybeSingle(),
+            c.from('ops_comisiones_admins').select('correo'),
+            c.from('aspel_lectores').select('correo,activo')
+        ]);
+        _upOps = (o.data && o.data.datos) || null;
+        _upComAdm = new Set((ca.data||[]).map(x=>String(x.correo).toLowerCase()));
+        _upAspel = new Set((al.data||[]).filter(x=>x.activo!==false).map(x=>String(x.correo).toLowerCase()));
+    } catch(e){ console.warn('[usuarios] permisos:', e.message); }
+}
+function upNombreDe(u){ return u.nombre || u.displayName || u.nombreCompleto || (u.correo||u.email||'').split('@')[0] || ('Cuenta ' + String(u.uid).slice(0,6)); }
+function upPermisosHTML(u){
+    const correo = (u.correo||'').toLowerCase();
+    const opsU = (_upOps && _upOps.usuarios && _upOps.usuarios[correo]) || {};
+    const roles = Object.keys((_upOps && _upOps.roles) || {}).sort();
+    const flAcc = Array.isArray(u.permisosFlotilla) ? u.permisosFlotilla : (FL_ACCIONES_LEGADO_UI[u.rolFlotilla||''] || []);
+    const flModo = u.rolFlotilla === 'administrador' ? 'administrador' : u.rolFlotilla === 'lector' ? 'lector' : (flAcc.length ? 'personalizado' : '');
+    const sec = t => `<div style="font-size:12px;font-weight:800;color:#1D2E73;margin:10px 0 4px;">${t}</div>`;
+    const inp = 'border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12.5px;';
+    return `<div style="margin-top:10px;border-top:1px dashed #cbd5e1;padding-top:6px;">
+      ${sec('Operaciones')}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;">
+        <label>Rol <select id="up-opsrol-${u.uid}" style="${inp}"><option value="">— sin rol (lo que dé su departamento) —</option>${roles.map(r=>`<option value="${upEsc(r)}" ${opsU.rol===r?'selected':''}>${upEsc(((_upOps.roles[r]||{}).nombre)||r)}</option>`).join('')}</select></label>
+        <label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" id="up-opsro-${u.uid}" ${opsU.soloLectura?'checked':''}> Solo lectura</label>
+      </div>
+      ${sec('Flotilla')}
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;">${[['','Normal (lo de su departamento)'],['lector','Solo lectura'],['personalizado','Acciones elegidas'],['administrador','Administrador (todo)']].map(([v,t])=>`<label style="display:flex;gap:5px;align-items:center;"><input type="radio" name="up-flmodo-${u.uid}" value="${v}" ${flModo===v?'checked':''}> ${t}</label>`).join('')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:4px 0 0 4px;">${FL_ACCIONES.map(a=>`<label style="font-size:12px;display:inline-flex;gap:4px;align-items:center;"><input type="checkbox" class="up-flacc-${u.uid}" value="${a.v}" ${flAcc.includes(a.v)?'checked':''}> ${a.t}</label>`).join('')}</div>
+      ${sec('Dinero y Aspel')}
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;">
+        <label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" id="up-comadm-${u.uid}" ${_upComAdm.has(correo)?'checked':''}> Ve y autoriza TODAS las comisiones</label>
+        <label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" id="up-aspel-${u.uid}" ${_upAspel.has(correo)?'checked':''}> Lee datos de Aspel (saldos, facturas, pedidos)</label>
+        <label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" id="up-penal-${u.uid}" ${u.aplicaPenalizaciones?'checked':''}> Su comisión puede llevar penalización</label>
+      </div>
+      ${sec('Lo que debe ver y sus responsabilidades')}
+      <textarea id="up-ve-${u.uid}" rows="2" placeholder="Qué debe ver (ej. solo el programa de SCFI y alto flujo, la solicitud completa del servicio)" style="width:100%;box-sizing:border-box;${inp}">${upEsc(u.permisosVer||'')}</textarea>
+      <textarea id="up-resp-${u.uid}" rows="2" placeholder="Responsabilidades (ej. tener el material completo al día y a la vista de Dirección)" style="width:100%;box-sizing:border-box;margin-top:6px;${inp}">${upEsc(u.responsabilidades||'')}</textarea>
+      <button onclick="upGuardarPermisos('${u.uid}')" style="margin-top:8px;border:none;background:#0e7490;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">Guardar permisos</button>
+    </div>`;
+}
+window.upTogglePermisos = uid => { _upDet = _upDet === uid ? null : uid; upRender(); };
+window.upGuardarPermisos = async uid => {
+    const u = _upUsuarios.find(x=>x.uid===uid); if(!u) return;
+    const correo = (u.correo||'').toLowerCase(); if(!correo){ alert('Esta cuenta no tiene correo guardado; primero corrígela.'); return; }
+    const por = auth.currentUser?.email||'', ahora = new Date().toISOString();
+    try {
+        const c = await (window.tcSbSesion ? window.tcSbSesion() : window.tcSb());
+        // 1) Operaciones
+        if(_upOps){
+            const rol = document.getElementById('up-opsrol-'+uid).value, ro = document.getElementById('up-opsro-'+uid).checked;
+            const usuarios = { ...(_upOps.usuarios||{}) };
+            if(rol) usuarios[correo] = { ...(usuarios[correo]||{}), rol, soloLectura: ro }; else delete usuarios[correo];
+            const datos = { ..._upOps, usuarios };
+            const r = await c.from('ops_docs').update({ datos, actualizado_en: ahora }).eq('coleccion','ops_config_permisos').eq('doc_id','general'); if(r.error) throw r.error;
+            _upOps = datos;
+        }
+        // 2) Flotilla (mismos campos que usaba "Roles de Flotilla")
+        const modo = (document.querySelector(`input[name="up-flmodo-${uid}"]:checked`)||{}).value || '';
+        const acc = Array.from(document.querySelectorAll('.up-flacc-'+uid+':checked')).map(x=>x.value);
+        const flCambios = modo === 'administrador' ? { rolFlotilla: 'administrador', permisosFlotilla: null } : modo === 'lector' ? { rolFlotilla: 'lector', permisosFlotilla: null }
+            : modo === 'personalizado' ? { rolFlotilla: null, permisosFlotilla: acc } : { rolFlotilla: null, permisosFlotilla: null };
+        // 3) Comisiones y Aspel
+        const quiereCom = document.getElementById('up-comadm-'+uid).checked, quiereAspel = document.getElementById('up-aspel-'+uid).checked;
+        if(quiereCom && !_upComAdm.has(correo)){ const r = await c.from('ops_comisiones_admins').upsert({ correo, nombre: upNombreDe(u) }); if(r.error) throw r.error; _upComAdm.add(correo); }
+        if(!quiereCom && _upComAdm.has(correo)){ const r = await c.from('ops_comisiones_admins').delete().eq('correo', correo); if(r.error) throw r.error; _upComAdm.delete(correo); }
+        if(quiereAspel !== _upAspel.has(correo)){
+            const r = quiereAspel ? await c.from('aspel_lectores').upsert({ correo, activo: true }, { onConflict: 'correo' }) : await c.from('aspel_lectores').update({ activo: false }).eq('correo', correo);
+            if(r.error) throw new Error('Aspel: ' + r.error.message + ' (la lectura de Aspel solo la puede dar quien administra Supabase)');
+            quiereAspel ? _upAspel.add(correo) : _upAspel.delete(correo);
+        }
+        // 4) Hoja de permisos: lo que ve, responsabilidades, penalización
+        await upActualizar(uid, { ...flCambios, aplicaPenalizaciones: document.getElementById('up-penal-'+uid).checked,
+            permisosVer: document.getElementById('up-ve-'+uid).value.trim() || null, responsabilidades: document.getElementById('up-resp-'+uid).value.trim() || null }, 'Permisos de ' + upNombreDe(u) + ' guardados');
+    } catch(e){ alert('No se pudieron guardar los permisos: ' + (e.message||e)); }
+};
 
 // ── Etapa 2 (23-oct-2026): avisos por persona dentro de "Usuarios y permisos" ──
 // Usa las mismas tablas de "Quién recibe qué": notif_preferencias (qué módulos le avisan a la
@@ -4566,7 +4653,7 @@ function mostrarNavMobile(show, esVentas=false){
 // ── Módulo Marketing — cargado dinámicamente ──
 async function cargarModuloMarketing() {
     try {
-        const mod = await import('./marketing.js');
+        const mod = await import('./marketing.js?v=2');
         window.toggleMktDash = mod.toggleMktDash;
     } catch(e) {
         console.warn('[Marketing] No se pudo cargar marketing.js:', e.message);
@@ -4601,12 +4688,17 @@ cargarModuloMarketing();
     // Áreas que YA tienen su propia parrilla (Marketing) — no duplicar
     const AREAS_CON_PARRILLA_PROPIA = ['Marketing'];
 
+    // Firestore con el puente a Supabase: las colecciones ya migradas (parrilla, etc.) van a Supabase.
+    window.tcFSPuente = async () => {
+        const real = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        return window.tcOpsFS ? window.tcOpsFS(real) : real;
+    };
     async function getFirebaseAP(){
         const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
         const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
         const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = appMod.getApps()[0];
-        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
+        return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: await window.tcFSPuente() };
     }
     // Exponer globalmente para el panel de colaboración
     window.getFirebaseAP = getFirebaseAP;

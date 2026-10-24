@@ -46,6 +46,8 @@
   // las colecciones de otros módulos YA COPIADAS a Supabase (misma tabla ops_docs). Una colección
   // solo se agrega a esta lista después de correr su copia con tcMigrarColecciones().
   var RUTEADAS = {};
+  // 24-oct-2026: parrilla de contenido (Dashboard y Marketing), indicadores y solicitudes de Mercadotecnia.
+  // Se activa DESPUÉS de copiar sus datos: ['area_parrilla', 'mkt_parrilla', 'mkt_indicadores', 'mkt_solicitudes']
   [].forEach(function (c) { RUTEADAS[c] = 1; });
   window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
   function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
@@ -624,12 +626,28 @@
       resumen[n] = snap.size; snap.forEach(function (d) { empujar(n + '/' + d.id, d.data()); });
       console.log('[copiar] ' + n + ': ' + snap.size);
     }
+    // Subcolecciones: se leen padre por padre (las reglas de Firestore no permiten consultas de grupo).
+    // Formato: [padre, sub] o [padre, sub, ['nieta']] — ej. ['area_parrilla','adjuntos',['partes']]
     var subs = opc.subcolecciones || [];
     for (var j = 0; j < subs.length; j++) {
-      var padre = subs[j][0], sub = subs[j][1], cuenta = 0, sg = await fs.getDocs(fs.collectionGroup(db, sub));
-      sg.forEach(function (d) { if (d.ref.path.indexOf(padre + '/') === 0) { empujar(d.ref.path, d.data()); cuenta++; } });
-      resumen[padre + '/*/' + sub] = cuenta; console.log('[copiar] ' + padre + '/*/' + sub + ': ' + cuenta);
+      var padre = subs[j][0], sub = subs[j][1], nietas = subs[j][2] || [], cuenta = 0, cuentaN = 0;
+      var padres = filas.filter(function (f) { return f.coleccion === padre; }).map(function (f) { return f.doc_id; });
+      for (var q = 0; q < padres.length; q++) {
+        var ss = await fs.getDocs(fs.collection(db, padre, padres[q], sub));
+        for (var w = 0; w < ss.docs.length; w++) {
+          var d = ss.docs[w]; empujar(padre + '/' + padres[q] + '/' + sub + '/' + d.id, d.data()); cuenta++;
+          for (var z = 0; z < nietas.length; z++) {
+            var sn = await fs.getDocs(fs.collection(db, padre, padres[q], sub, d.id, nietas[z]));
+            sn.forEach(function (x) { empujar(padre + '/' + padres[q] + '/' + sub + '/' + d.id + '/' + nietas[z] + '/' + x.id, x.data()); cuentaN++; });
+          }
+        }
+        if (q % 50 === 49) console.log('[copiar] ' + padre + '/*/' + sub + ': revisados ' + (q + 1) + ' de ' + padres.length);
+      }
+      resumen[padre + '/*/' + sub] = cuenta; if (nietas.length) resumen[padre + '/*/' + sub + '/*/' + nietas.join(',')] = cuentaN;
+      console.log('[copiar] ' + padre + '/*/' + sub + ': ' + cuenta + (nietas.length ? ' (+' + cuentaN + ' partes)' : ''));
     }
+    var pesoTotal = filas.reduce(function (a, f) { return a + JSON.stringify(f.datos).length; }, 0);
+    resumen['peso aprox. (MB)'] = Math.round(pesoTotal / 1048576 * 10) / 10;
     if (opc.soloContar) { console.table(resumen); return resumen; }
     var lote = [], peso = 0, enviados = 0;
     async function enviar() {

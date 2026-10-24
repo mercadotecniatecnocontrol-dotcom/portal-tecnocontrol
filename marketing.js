@@ -9,6 +9,13 @@
 //     updateDoc, deleteDoc, query, where  (Firestore helpers)
 
 
+// Firestore o, para las colecciones ya pasadas a Supabase (parrilla, indicadores y solicitudes de
+// Mercadotecnia, 24-oct-2026), el puente con la misma forma que Firestore (operaciones-supabase.js).
+async function mktFS(){
+    if(window.tcFSPuente) return window.tcFSPuente();
+    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+}
+
 // Inyectar estilos CSS del módulo
 (function inyectarCSS() {
     if (document.getElementById('css-marketing')) return;
@@ -102,7 +109,9 @@
         .mkt-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
         #modal-parrilla{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:3500;align-items:center;justify-content:center;}
         #modal-preview-post{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(10px);z-index:3600;align-items:center;justify-content:center;}
-        .preview-box{background:#ffffff;border-radius:20px;width:820px;max-width:96vw;max-height:90vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.25);display:grid;grid-template-columns:1fr 1fr;}
+        .preview-box{background:#ffffff;border-radius:20px;width:1080px;max-width:96vw;max-height:90vh;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.25);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);}
+        /* 24-oct-2026: la imagen se veía recortada; ahora se ve completa (sin cortar) y con clic se abre en grande */
+        .preview-col-img .preview-img{width:100% !important;height:100% !important;max-height:90vh !important;object-fit:contain !important;display:block;cursor:zoom-in;background:#0f172a;}
         .preview-col-img{position:relative;background:#0f172a;display:flex;align-items:center;justify-content:center;min-height:400px;border-radius:20px 0 0 20px;overflow:hidden;}
         .preview-col-info{padding:28px;overflow-y:auto;max-height:90vh;display:flex;flex-direction:column;}
         .preview-empresa-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:14px;align-self:flex-start;}
@@ -320,7 +329,7 @@
     <div id="modal-preview-post">
         <div class="preview-box">
             <div class="preview-col-img">
-                <img id="preview-img" class="preview-img" style="display:none;" onerror="this.style.display='none'">
+                <img id="preview-img" class="preview-img" style="display:none;" onerror="this.style.display='none'" onclick="mktVerImagenGrande(this.src)" title="Clic para ver en grande">
                 <div id="preview-no-img" class="preview-no-img-inner">
                     <div style="font-size:48px;margin-bottom:8px;">🖼️</div>
                     <div style="font-size:12px;">Sin imagen adjunta</div>
@@ -487,7 +496,7 @@ window.setVistaParrilla = (vista) => {
 
 async function cargarParrilla(){
     try {
-        const fbP = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbP = await mktFS();
         const mesKey = `${parrillaAnio}-${String(parrillaMes+1).padStart(2,'0')}`;
         const snap = await fbP.getDocs(fbP.query(
             fbP.collection(db,'mkt_parrilla'),
@@ -729,7 +738,7 @@ window.guardarPostParrilla = async () => {
     const btn = document.querySelector('#modal-parrilla .mkt-add-btn');
     if(btn){ btn.textContent='Guardando...'; btn.disabled=true; }
     try {
-        const fbP = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbP = await mktFS();
         const editId = document.getElementById('parrilla-edit-id').value;
         if(editId){
             await fbP.updateDoc(fbP.doc(db,'mkt_parrilla',editId), docData);
@@ -746,7 +755,7 @@ window.guardarPostParrilla = async () => {
 window.eliminarPost = async (id) => {
     if(!confirm('¿Eliminar este post? No se puede deshacer.')) return;
     try {
-        const fbP = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbP = await mktFS();
         await fbP.deleteDoc(fbP.doc(db,'mkt_parrilla',id));
         window.mostrarPush('🗑 Post eliminado','','📣');
         cargarParrilla();
@@ -953,7 +962,7 @@ window.mktMesNext = () => { mktMes++; if(mktMes>11){mktMes=0;mktAnio++;} actuali
 async function cargarDatosMkt(){
     const key = mktKey(mktMes, mktAnio);
     try {
-        const fb = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fb = await mktFS();
         const d = { kpis:{}, canales:{}, presupuesto:{}, campanas:[] };
         for(const tipo of ['kpis','canales','presupuesto']){
             const ref = fb.doc(db,'mkt_indicadores',`${key}_${tipo}`);
@@ -1241,7 +1250,7 @@ window.guardarDatoMkt = async () => {
         const getNum = id => Number(get(id))||0;
         const getIfFilled = id => { const v=get(id); return v!==''?v:undefined; };
         const getNumIfFilled = id => { const v=getNum(id); return v!==0?v:undefined; };
-        const fb = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fb = await mktFS();
         const docId = `${key}_${mktTabActual}`;
         const docRef = fb.doc(db,'mkt_indicadores',docId);
         let newData = {...base, tipo:mktTabActual};
@@ -2020,6 +2029,7 @@ function msolBindPaso(n){
 
 // Folio automático (contador en Firestore)
 async function msolGenerarFolio(){
+    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     const anioActual = new Date().getFullYear();
     const ref = doc(db, 'contadores', 'mkt_solicitudes');
     const snap = await getDoc(ref);
@@ -2040,6 +2050,7 @@ async function msolGenerarFolio(){
 
 // Guardar borrador (sin folio, validación laxa)
 async function msolGuardarBorrador(){
+    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     msolGuardarPaso(msolPaso);
     try{
         const email = (auth.currentUser && auth.currentUser.email) || msolData.general?.correo || '';
@@ -2057,6 +2068,7 @@ async function msolGuardarBorrador(){
 
 // Guardar adjuntos en subcolección
 async function msolGuardarAdjuntos(solicitudId){
+    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     let orden = 0;
     for(const a of msolArchivos){
         await addDoc(collection(db,'mkt_solicitudes',solicitudId,'adjuntos'), {...a, categoria:'archivo', orden:orden++});
@@ -2068,6 +2080,7 @@ async function msolGuardarAdjuntos(solicitudId){
 
 // Envío final de la solicitud
 async function msolEnviarSolicitud(){
+    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     if(msolEnviando) return;
     if(!msolValidarPaso(1) ) { msolIrPaso(1); return; }
     if(!msolValidarPaso(2) ) { msolIrPaso(2); return; }
@@ -2115,6 +2128,7 @@ async function msolEnviarSolicitud(){
 
 // Panel de seguimiento (todos los empleados ven todas)
 async function msolCargarSeguimiento(){
+    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     const cont = document.getElementById('msol-track-lista');
     if(!cont) return;
     cont.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">Cargando...</div>`;
@@ -2183,3 +2197,10 @@ window.msolCargarSeguimiento = msolCargarSeguimiento;
 
 console.log('[Marketing.js] ✅ Módulo de Solicitudes de Mercadotecnia (Fase 1) cargado');
 console.log('[Marketing.js] ✅ Módulo cargado correctamente');
+// Ver la imagen de un post en grande (sirve también para imágenes guardadas como data:)
+window.mktVerImagenGrande = function (src) {
+    if (!src) return;
+    let v = document.getElementById('mkt-img-grande');
+    if (!v) { v = document.createElement('div'); v.id = 'mkt-img-grande'; v.style.cssText = 'position:fixed;inset:0;z-index:100050;background:rgba(2,6,23,.92);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;'; v.onclick = () => v.remove(); document.body.appendChild(v); }
+    v.innerHTML = '<img src="' + src.replace(/"/g, '&quot;') + '" style="max-width:96vw;max-height:94vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5);">';
+};
