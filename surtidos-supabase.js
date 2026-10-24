@@ -818,6 +818,51 @@
     return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error((que || 'Supabase') + ' tardó más de ' + Math.round(ms / 1000) + ' s')); }, ms); })]);
   }
 
+  // ── Catálogo maestro de estaciones (Supabase), con la forma de una consulta de Firestore ──
+  // (23-oct-2026) Almacén, logística y los PDFs leían estaciones_servicio de Firestore, una copia vieja.
+  // Ahora leen la tabla de Supabase (coordenadas de SUDI). Los id son los mismos (ej. CHIH-0344).
+  // Cada documento trae los campos en las dos formas: snake (razon_social) y camel (razonSocial).
+  function _aCamel(k) { return k.replace(/_([a-z0-9])/g, function (m, c) { return c.toUpperCase(); }); }
+  var _catEstProm = null, _catEstHasta = 0;
+  window.tcCatEstaciones = function (forzar) {
+    if (!forzar && _catEstProm && Date.now() < _catEstHasta) return _catEstProm;
+    _catEstHasta = Date.now() + 5 * 60000;
+    _catEstProm = cargarSupabase().then(async function (sb) {
+      var todos = [], desde = 0;
+      while (true) {
+        var r = await sb.from('estaciones_servicio').select('*').order('id').range(desde, desde + 999);
+        if (r.error) throw r.error;
+        todos = todos.concat(r.data || []);
+        if (!r.data || r.data.length < 1000) break;
+        desde += 1000;
+      }
+      return todos.filter(function (e) { return e.activo !== false; }).map(function (e) {
+        var o = {}; Object.keys(e).forEach(function (k) { if (k === 'geog') return; o[k] = e[k]; o[_aCamel(k)] = e[k]; });
+        o.ubicacionVerificada = !!e.ubicacion_verificada;
+        return o;
+      });
+    }).catch(function (e) { _catEstProm = null; throw e; });
+    return _catEstProm;
+  };
+  // Igual que fs.getDocs(collection(db,'estaciones_servicio')): { size, docs, forEach(d => d.id / d.data()) }
+  window.tcCatEstacionesSnap = function (forzar) {
+    return window.tcCatEstaciones(forzar).then(function (lista) {
+      var docs = lista.map(function (e) { return { id: e.id, exists: function () { return true; }, data: function () { return Object.assign({}, e); } }; });
+      return { docs: docs, size: docs.length, empty: !docs.length, forEach: function (fn) { docs.forEach(fn); } };
+    });
+  };
+  // Guarda cambios de ubicación de una estación (acepta nombres camel de Firestore).
+  var _MAPA_EST = { lat: 'lat', lng: 'lng', ubicacionVerificada: 'ubicacion_verificada', ubicacionCapturadaPor: 'ubicacion_por', ubicacionCapturadaEn: 'ubicacion_en',
+    ubicacionGeocodificadaEn: 'ubicacion_en', ubicacionFuente: 'ubicacion_fuente', mapsUrl: 'maps_url', referencia: 'referencia' };
+  window.tcCatEstacionActualizar = function (id, cambios) {
+    var fila = { actualizado_en: new Date().toISOString() };
+    Object.keys(cambios || {}).forEach(function (k) { var c = _MAPA_EST[k] || (/^[a-z_]+$/.test(k) ? k : null); if (c) fila[c] = cambios[k]; });
+    if (cambios && cambios.ubicacionGeocodificadaEn && !cambios.ubicacionFuente) fila.ubicacion_fuente = 'geocodificada';
+    if (cambios && cambios.ubicacionCapturadaPor && !cambios.ubicacionFuente) fila.ubicacion_fuente = 'pin_manual';
+    return cargarSupabase().then(function (sb) { return sb.from('estaciones_servicio').update(fila).eq('id', id); })
+      .then(function (r) { if (r.error) throw r.error; _catEstProm = null; return true; });
+  };
+
   window.tcSbDocs = {
     getDocs: function (tabla, filtro) {
       _chkTabla(tabla);

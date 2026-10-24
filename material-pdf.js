@@ -39,13 +39,13 @@
     if(_estacionesFallback) return Promise.resolve(_estacionesFallback);
     if(window.__tcModularFs){ // Kiosco (SDK modular)
       var mfs=window.__tcModularFs;
-      return mfs.getDocs(mfs.collection(window.db,'estaciones_servicio')).then(function(snap){
+      return (window.tcCatEstacionesSnap ? window.tcCatEstacionesSnap() : mfs.getDocs(mfs.collection(window.db,'estaciones_servicio'))).then(function(snap){
         var lista=[]; snap.forEach(function(d){ lista.push(Object.assign({id:d.id},d.data())); });
         _estacionesFallback=lista; return lista;
       }).catch(function(){ return []; });
     }
     if(!window.db) return Promise.resolve([]);
-    return window.db.collection('estaciones_servicio').get().then(function(snap){
+    return (window.tcCatEstacionesSnap ? window.tcCatEstacionesSnap() : window.db.collection('estaciones_servicio').get()).then(function(snap){
       var lista=[]; snap.forEach(function(d){ lista.push(Object.assign({id:d.id},d.data())); });
       _estacionesFallback=lista; return lista;
     }).catch(function(){ return []; });

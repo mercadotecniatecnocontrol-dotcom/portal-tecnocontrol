@@ -156,7 +156,7 @@
     if (_estacionesCache) return Promise.resolve(_estacionesCache);
     return cargarFirestore().then(function(fs){
       if (!window.db) return [];
-      return fs.getDocs(fs.collection(window.db,'estaciones_servicio')).then(function(snap){
+      return window.tcCatEstacionesSnap().then(function(snap){
         var lista = [];
         snap.forEach(function(d){ lista.push(Object.assign({ id: d.id }, d.data())); });
         _estacionesCache = lista;

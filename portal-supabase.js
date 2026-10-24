@@ -485,6 +485,8 @@
     var i = info || {};
     if (i.personal && pref.incluir_personales) return true;
     if (i.tipo && pref.incluir_acciones) { var t = nTipo(i.tipo); if (t && t.requiere_accion) return true; }
+    // Avisos especiales a los que la persona está suscrita con su correo: le llegan aunque no sean de sus módulos.
+    if (i.tipo && _nMatriz[i.tipo] && (_nMatriz[i.tipo].destinatarios || []).map(function (x) { return String(x).toLowerCase(); }).indexOf(String(correo || '').toLowerCase().trim()) >= 0) return true;
     return (pref.modulos || []).indexOf(i.modulo || 'Sin clasificar') >= 0;
   };
 

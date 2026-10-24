@@ -170,7 +170,7 @@
         cargarFirestore().then(function (fs) {
           if (!window.db) return [{ forEach: function () {} }, { forEach: function () {} }];
           return Promise.all([
-            fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).catch(function () { return { forEach: function () {} }; }),
+            window.tcCatEstacionesSnap().catch(function () { return { forEach: function () {} }; }),
             incluirClientes
               ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
               : Promise.resolve({ forEach: function () {} })
@@ -350,7 +350,7 @@
   window.__logGeocodificarPendientes = function () {
     return cargarFirestore().then(function (fs) {
       if (!window.db) { console.error('[logistica] Firestore no disponible.'); return; }
-      return fs.getDocs(fs.collection(window.db, 'estaciones_servicio')).then(function (snap) {
+      return window.tcCatEstacionesSnap(true).then(function (snap) {
         var pendientes = [];
         snap.forEach(function (d) {
           var e = d.data() || {};
@@ -371,12 +371,10 @@
           if (!direccion) { fail++; setTimeout(siguiente, 1100); return; }
           geocodificarDireccion(direccion).then(function (resultado) {
             if (!resultado.encontrado) { fail++; console.warn('[logistica] sin resultado: ' + (e.razonSocial || e.id) + ' — ' + direccion); setTimeout(siguiente, 1100); return; }
-            return cargarFirestore().then(function (fs2) {
-              return fs2.updateDoc(fs2.doc(window.db, 'estaciones_servicio', e.id), {
+            return window.tcCatEstacionActualizar(e.id, {
                 lat: resultado.lat, lng: resultado.lng,
                 ubicacionVerificada: false,
                 ubicacionGeocodificadaEn: new Date().toISOString()
-              });
             }).then(function () { ok++; setTimeout(siguiente, 1100); });
           }).catch(function (err) {
             fail++; console.warn('[logistica] error geocodificando ' + (e.razonSocial || e.id) + ':', err);
@@ -479,7 +477,7 @@
       Promise.all([
         cargarFirestore().then(function (fs) {
           if (!window.db) return { forEach: function () {} };
-          return fs.getDocs(fs.collection(window.db, 'estaciones_servicio'));
+          return window.tcCatEstacionesSnap();
         }).catch(function (e) { console.warn('[logistica] estaciones:', e); return { forEach: function () {} }; }),
         // recolecciones_locales ya vive en Supabase (oct-2026)
         window.tcSbDocs.getDocs('recolecciones_locales', { estado: ['pendiente', 'recogido'] })
@@ -909,7 +907,9 @@
       ? window.tcSbActualizarSurtido(id, datosGuardar)
       : (coleccion === 'recolecciones_locales')
         ? window.tcSbDocs.updateDoc('recolecciones_locales', id, datosGuardar)
-        : cargarFirestore().then(function (fs) { return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar); });
+        : (coleccion === 'estaciones_servicio')
+          ? window.tcCatEstacionActualizar(id, datosGuardar)
+          : cargarFirestore().then(function (fs) { return fs.updateDoc(fs.doc(window.db, coleccion, id), datosGuardar); });
 
     guardarPromesa.then(function () {
       // Refleja el cambio también en la caché en memoria de este módulo — usando

@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
-    <script src="portal-supabase.js?v=4"></script>
+    <script src="portal-supabase.js?v=5"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -3237,6 +3237,7 @@ window.abrirUsuariosPermisos = async () => {
     try {
         const snap = await getDocs(collection(db,'usuarios'));
         _upUsuarios = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>(a.nombre||a.correo||'').localeCompare(b.nombre||b.correo||'','es'));
+        await upCargarAvisos();
         upRender();
     } catch(e){ document.getElementById('up-lista').innerHTML = `<div style="padding:20px;color:#b91c1c;">No se pudo cargar: ${upEsc(e.message)}</div>`; }
 };
@@ -3262,6 +3263,8 @@ function upRender(){
           <div style="margin-top:8px;font-size:11.5px;color:#475569;font-weight:700;">También entra a:</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;">${DEPTOS.map(d=>{const fijo=fijos.includes(d);return `<label style="font-size:12px;display:inline-flex;gap:4px;align-items:center;${fijo?'color:#94a3b8;':''}" title="${fijo?'Dado en el código del portal':''}"><input type="checkbox" class="up-ext-${u.uid}" value="${upEsc(d)}" ${extra.includes(d)||fijo?'checked':''} ${fijo?'disabled':''}> ${d}</label>`;}).join('')}</div>
           <input id="up-nota-${u.uid}" value="${upEsc(u.notasPermisos||'')}" placeholder="Permisos especiales o notas (ej. puede ver datos de contacto de clientes)" style="width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;border-radius:7px;padding:6px 9px;font-size:12px;margin-top:8px;">
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;"><span style="font-size:11.5px;color:#7c3aed;font-weight:700;">🔔 ${upEsc(upResumenAvisos((u.correo||'').toLowerCase()))}</span><button onclick="upToggleAvisos('${u.uid}')" style="border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${_upAbierto===u.uid?'Ocultar avisos':'Editar avisos'}</button></div>
+          ${_upAbierto===u.uid ? upAvisosHTML(u) : ''}
           ${u.activo===false&&(u.bajaMotivo||u.bajaEn)?`<div style="font-size:11.5px;color:#991b1b;margin-top:6px;">Baja ${upEsc((u.bajaEn||'').slice(0,10))}: ${upEsc(u.bajaMotivo||'')}</div>`:''}
         </div>`;
     };
@@ -3314,6 +3317,68 @@ function upVigilarMiBaja(){
     } catch(e){ console.warn('[usuarios] vigilancia de baja:', e.message); }
 }
 window.upVigilarMiBaja = upVigilarMiBaja;
+
+// ── Etapa 2 (23-oct-2026): avisos por persona dentro de "Usuarios y permisos" ──
+// Usa las mismas tablas de "Quién recibe qué": notif_preferencias (qué módulos le avisan a la
+// persona) y notif_matriz (eventos puntuales a los que está suscrita, con su correo).
+let _upPrefs = {}, _upMatriz = [], _upAbierto = null;
+async function upCargarAvisos(){
+    try {
+        const c = await window.tcSb();
+        const [p, m] = await Promise.all([c.from('notif_preferencias').select('*'), c.from('notif_matriz').select('*').order('modulo')]);
+        _upPrefs = {}; (p.data||[]).forEach(x => { _upPrefs[String(x.correo).toLowerCase()] = x; });
+        _upMatriz = m.data || [];
+    } catch(e){ console.warn('[usuarios] avisos:', e.message); }
+}
+function upResumenAvisos(correo){
+    const p = _upPrefs[correo]; const ev = _upMatriz.filter(m => (m.destinatarios||[]).map(d=>String(d).toLowerCase()).includes(correo));
+    const base = !p || p.activo === false ? 'Recibe avisos de sus áreas (normal)' : p.modo === 'solo' ? 'Solo avisos de: ' + (p.modulos||[]).join(', ') : 'Recibe avisos de todo lo que le toca';
+    return base + (ev.length ? ' · suscrito a ' + ev.length + ' aviso(s) especial(es)' : '');
+}
+function upAvisosHTML(u){
+    const correo = (u.correo||'').toLowerCase(); const p = _upPrefs[correo] || { modo: 'normal', modulos: [], incluir_personales: true, incluir_acciones: true, activo: true };
+    const modo = p.activo === false ? 'normal' : (p.modo === 'solo' ? 'solo' : 'normal');
+    const porModulo = {}; _upMatriz.forEach(m => { (porModulo[m.modulo||'Otros'] = porModulo[m.modulo||'Otros'] || []).push(m); });
+    return `<div style="margin-top:10px;border-top:1px dashed #cbd5e1;padding-top:10px;">
+      <div style="font-size:12.5px;font-weight:800;color:#1D2E73;margin-bottom:6px;">Avisos que recibe</div>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:4px;"><input type="radio" name="up-modo-${u.uid}" value="normal" ${modo==='normal'?'checked':''}> Los de sus áreas (normal)</label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-bottom:4px;"><input type="radio" name="up-modo-${u.uid}" value="solo" ${modo==='solo'?'checked':''}> Solo los de estos módulos:</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin:2px 0 6px 22px;">${DEPTOS.map(d=>`<label style="font-size:12px;display:inline-flex;gap:4px;align-items:center;"><input type="checkbox" class="up-mod-${u.uid}" value="${upEsc(d)}" ${(p.modulos||[]).includes(d)?'checked':''}> ${d}</label>`).join('')}</div>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-left:22px;"><input type="checkbox" id="up-pers-${u.uid}" ${p.incluir_personales!==false?'checked':''}> Siempre lo que es para él/ella (menciones, tareas suyas)</label>
+      <label style="font-size:12px;display:flex;gap:6px;align-items:center;margin-left:22px;margin-bottom:8px;"><input type="checkbox" id="up-acc-${u.uid}" ${p.incluir_acciones!==false?'checked':''}> Siempre lo que necesita su firma o autorización</label>
+      <div style="font-size:12px;font-weight:700;color:#334155;margin:6px 0 4px;">Avisos especiales (le llegan aunque no sean de su área)</div>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px;">${Object.keys(porModulo).sort().map(mod=>`<div style="font-size:11px;font-weight:800;color:#64748b;margin:4px 0 2px;">${upEsc(mod)}</div>`+porModulo[mod].map(m=>`<label style="font-size:12px;display:flex;gap:6px;align-items:flex-start;padding:2px 0;"><input type="checkbox" class="up-ev-${u.uid}" value="${upEsc(m.evento)}" ${(m.destinatarios||[]).map(x=>String(x).toLowerCase()).includes(correo)?'checked':''} style="margin-top:2px;"> ${upEsc(m.descripcion||m.evento)}${m.activo===false?' <span style="color:#94a3b8;">(apagado)</span>':''}</label>`).join('')).join('') || '<div style="font-size:12px;color:#94a3b8;">No hay avisos especiales configurados.</div>'}</div>
+      <button onclick="upGuardarAvisos('${u.uid}')" style="margin-top:8px;border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">Guardar avisos</button>
+    </div>`;
+}
+window.upToggleAvisos = uid => { _upAbierto = _upAbierto === uid ? null : uid; upRender(); };
+window.upGuardarAvisos = async uid => {
+    const u = _upUsuarios.find(x=>x.uid===uid); if(!u) return;
+    const correo = (u.correo||'').toLowerCase(); if(!correo) return;
+    const modo = (document.querySelector(`input[name="up-modo-${uid}"]:checked`)||{}).value || 'normal';
+    const modulos = Array.from(document.querySelectorAll('.up-mod-'+uid+':checked')).map(c=>c.value);
+    if(modo === 'solo' && !modulos.length){ alert('Marca al menos un módulo, o elige "Los de sus áreas".'); return; }
+    const evMarcados = new Set(Array.from(document.querySelectorAll('.up-ev-'+uid+':checked')).map(c=>c.value));
+    const ahora = new Date().toISOString(), por = auth.currentUser?.email||'';
+    try {
+        const c = await window.tcSb();
+        const fila = { correo, nombre: u.nombre || correo, modo: modo === 'solo' ? 'solo' : 'todos', modulos: modo === 'solo' ? modulos : [],
+            incluir_personales: !!document.getElementById('up-pers-'+uid)?.checked, incluir_acciones: !!document.getElementById('up-acc-'+uid)?.checked,
+            activo: modo === 'solo', actualizado_por: por, actualizado_en: ahora };
+        const r1 = await c.from('notif_preferencias').upsert(fila, { onConflict: 'correo' }); if(r1.error) throw r1.error;
+        for(const m of _upMatriz){
+            const lista = (m.destinatarios||[]).map(x=>String(x).toLowerCase()); const tiene = lista.includes(correo), quiere = evMarcados.has(m.evento);
+            if(tiene === quiere) continue;
+            const nueva = quiere ? lista.concat([correo]) : lista.filter(x=>x!==correo);
+            const r2 = await c.from('notif_matriz').update({ destinatarios: nueva, actualizado_por: por, actualizado_en: ahora }).eq('evento', m.evento); if(r2.error) throw r2.error;
+            m.destinatarios = nueva;
+        }
+        _upPrefs[correo] = fila;
+        if(window.tcNotifRecargar) window.tcNotifRecargar();
+        if(window.mostrarToast) window.mostrarToast('✅ Avisos guardados', u.nombre||correo, '🔔');
+        _upAbierto = null; upRender();
+    } catch(e){ alert('No se pudieron guardar los avisos: ' + (e.message||e)); }
+};
 
 // ── Alta de usuarios nuevos (solo ADMIN_EMAILS) ──────────────
 window.abrirModalUsuario = () => {
@@ -5975,7 +6040,7 @@ window.irAlmacen = function(btn){
 <script src="flotilla-reglas.js"></script>
 <script src="roles-modulos.js"></script>
 <script src="pagos.js?v=paso1"></script>
-<script src="material-pdf.js?v=3"></script>
+<script src="material-pdf.js?v=4"></script>
 <script src="ventas.js?v=paso1"></script>
 <script src="contabilidad.js"></script>
 <script src="egresos.js"></script>
@@ -5985,13 +6050,13 @@ window.irAlmacen = function(btn){
 <script>document.write('<script src="flotilla.js?v='+Date.now()+'"><\/script>');</script>
 <script src="vehiculos.js"></script>
 <script src="rh.js"></script>
-<script src="surtidos-supabase.js?v=11"></script>
+<script src="surtidos-supabase.js?v=13"></script>
 <script src="almacen.js?v=7"></script>
-<script src="almacen-pdf.js?v=6"></script>
+<script src="almacen-pdf.js?v=7"></script>
 <script src="compras.js?v=pro2"></script>
 <script src="cobranza.js"></script>
 <script src="notif-matriz.js?v=1"></script>
-<script src="logistica.js"></script>
+<script src="logistica.js?v=2"></script>
 <script src="mis-pedidos.js?v=3"></script>
 <script src="gestoria.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
