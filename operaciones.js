@@ -18403,11 +18403,36 @@
         // Supabase por el mismo puente (oct-2026). Se deja la función para no tocar a quien la llama.
         void fn;
     }
+    // Crea en Supabase (ops_tecnicos) al técnico que falte, copiando sus datos del portal.
+    const opsSbTecnicosOk = new Set();
+    async function opsSbAsegurarTecnico(sb, tecId) {
+        if (!tecId || opsSbTecnicosOk.has(tecId)) return;
+        const { data } = await sb.from("ops_tecnicos").select("id").eq("id", tecId).maybeSingle();
+        if (!data) {
+            const t = cacheTec.find(x => x.id === tecId);
+            if (!t) throw new Error("El técnico o almacén elegido no existe. Recarga la página e inténtalo de nuevo.");
+            const fila = {
+                id: tecId, nombre: t.nombre || "Sin nombre", numero_operativo: t.numeroOperativo || null,
+                persona_id: t.personaId || null, puesto_id: t.puestoId || null, puesto: t.puesto || null,
+                departamento: t.departamento || null, estatus: t.estatus || "activo",
+                fecha_ingreso: t.fechaIngreso || null, fecha_baja: t.fechaBaja || null,
+                telefono: t.telefono || null, correo: t.correo || null, plaza: t.plaza || null,
+                es_personal_oficina: !!t.esPersonalOficina,
+            };
+            const { error } = await sb.from("ops_tecnicos").upsert(fila, { onConflict: "id" });
+            if (error) throw new Error("Supabase (alta de técnico): " + error.message);
+        }
+        opsSbTecnicosOk.add(tecId);
+    }
+
     async function opsSbHerrGuardar(id, obj) {
         const sb = await opsSb();
         const previo = cacheHerr.find(x => x.id === id) || {};
         const completo = { ...previo, ...obj };
         delete completo.id;
+        // 24-oct-2026: si el técnico/almacén existe en el portal pero todavía no en Supabase
+        // (ej. "Almacen Desarrollos"), se crea primero para que no truene la liga tecnico_actual_id.
+        if (completo.tecnicoActualId) await opsSbAsegurarTecnico(sb, completo.tecnicoActualId);
         const { error } = await sb.from("ops_herramientas").upsert(opsHerrAFila(id, completo), { onConflict: "id" });
         if (error) throw new Error("Supabase: " + error.message);
         opsMezclarEnCacheHerr(id, obj);
