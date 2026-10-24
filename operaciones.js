@@ -2720,8 +2720,21 @@
 
     function opsFragmentoVistaAlmacen() {
         const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && !h.almacenId && h.estado !== "baja");
-        const tecnicosActivos = opsTecOperativos();
-        const ubicaciones = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false);
+        // 24-oct-2026: el buscador ahora sí filtra las tarjetas (por nombre del almacén/técnico,
+        // N.° operativo, o folio/descripción de alguna pieza que tenga). También aparecen los
+        // técnicos dados de baja que todavía tienen herramienta, para poder recogérsela.
+        const q = (filtroHerr || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const norm = v => String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const coincide = (nombre, extra, piezas) => !q || norm(nombre).includes(q) || norm(extra).includes(q)
+            || piezas.some(h => norm(h.folio).includes(q) || norm(h.descripcion).includes(q));
+        const operativos = opsTecOperativos();
+        const conHerrSinOperar = cacheTec.filter(t => !operativos.includes(t) && cacheHerr.some(h => h.tecnicoActualId === t.id && h.estado !== "baja"));
+        const tecnicosActivos = [...operativos, ...conHerrSinOperar]
+            .filter(t => coincide(t.nombre, t.numeroOperativo, cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja")))
+            .sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es"));
+        const ubicaciones = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false)
+            .filter(a => coincide(a.nombre, "", cacheHerr.filter(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja")));
+        const mostrarGeneral = coincide("Almacén General", "", enGeneral);
         return `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                 <div style="font-size:11px;color:#94a3b8;">${ubicaciones.length} ubicación(es) física(s) además del almacén general y los de técnico.</div>
@@ -2731,15 +2744,16 @@
                     <a href="javascript:void(0)" onclick="opsBackfillAlmacenes()" style="font-size:11px;color:#94a3b8;text-decoration:underline;">Verificar/crear almacenes faltantes</a>
                 </div>
             </div>
+            ${q && !mostrarGeneral && !ubicaciones.length && !tecnicosActivos.length ? `<div style="padding:30px;text-align:center;color:#94a3b8;">Ningún almacén o técnico coincide con la búsqueda.</div>` : ""}
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;">
-                <div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
+                ${mostrarGeneral ? `<div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
                     <div style="font-size:13.5px;font-weight:700;color:#1e293b;">Almacén General</div>
                     <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Sin técnico asignado</div>
                     <div style="display:flex;align-items:baseline;gap:5px;">
                         <span style="font-size:22px;font-weight:800;color:#1D2E73;">${enGeneral.length}</span>
                         <span style="font-size:11px;color:#64748b;">pieza(s)</span>
                     </div>
-                </div>
+                </div>` : ""}
                 ${ubicaciones.map(a => {
                     const n = cacheHerr.filter(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja").length;
                     return `<div onclick="opsAbrirAlmacenPiezas('${a.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #E7402B;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
@@ -2755,7 +2769,7 @@
                     const n = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").length;
                     return `<div onclick="opsAbrirAlmacenPiezas('${t.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
-                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)}${t.estatus !== "activo" ? ` · <span style="color:#E7402B;font-weight:700;">Baja — recoger herramienta</span>` : ""}</div>
                         <div style="display:flex;align-items:baseline;gap:5px;">
                             <span style="font-size:22px;font-weight:800;color:#1e293b;">${n}</span>
                             <span style="font-size:11px;color:#64748b;">pieza(s)</span>
