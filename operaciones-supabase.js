@@ -42,7 +42,13 @@
   }
 
   // ───────────── utilidades ─────────────
-  function esOps(ruta) { return /^ops_/.test(String(ruta || '').split('/')[0]); }
+  // Migración general fuera de Firebase (23-oct-2026): además de las "ops_", aquí se van agregando
+  // las colecciones de otros módulos YA COPIADAS a Supabase (misma tabla ops_docs). Una colección
+  // solo se agrega a esta lista después de correr su copia con tcMigrarColecciones().
+  var RUTEADAS = {};
+  [].forEach(function (c) { RUTEADAS[c] = 1; });
+  window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
+  function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
   function autoId() {
     var c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', s = '';
     var a = (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(new Uint8Array(20)) : null;
@@ -579,6 +585,75 @@
     'ops_guardias_programadas', 'ops_herramienta_traspasos', 'ops_historial_puesto', 'ops_notificaciones', 'ops_personas', 'ops_puestos',
     'ops_revisiones_herramienta', 'ops_servicios_catalogo', 'ops_tarifas_personal', 'ops_tecnico_ausencias', 'ops_tecnicos', 'ops_vehiculo_asignaciones'];
   var OPS_SUBCOLECCIONES = [['ops_folios', 'comentarios'], ['ops_servicios_catalogo', 'historial'], ['ops_revisiones_herramienta', 'fotos']];
+  // ───────────── copia general de cualquier colección (Etapa A, 23-oct-2026) ─────────────
+  // Inventario barato: cuenta documentos con el conteo del servidor (1 lectura por cada 1,000).
+  //   await tcFirestoreInventario()
+  var INVENTARIO = ['flotilla_vehiculos', 'fl_usuarios', 'fl_colaboradores', 'flotilla_transferencias', 'flotilla_usos', 'flotilla_tareas', 'flotilla_eventos',
+    'flotilla_config', 'flotilla_llantas', 'flotilla_siniestros', 'flotilla_comisiones', 'flotilla_ubicaciones', 'flotilla_gps', 'flotilla_checklist_semanal',
+    'flotilla_notificaciones', 'usuarios', 'colaboradores', 'config_organigrama', 'empresas_requisicion', 'crm_oportunidades', 'cotizaciones', 'actividades_cliente',
+    'ventas_checkins', 'checkins', 'ventas_metas', 'formularios_servicio', 'formularios_poliza', 'formularios_remision', 'formularios_vehicular', 'calibraciones_jomar',
+    'mkt_indicadores', 'mkt_parrilla', 'mkt_solicitudes', 'area_parrilla', 'rh_indicadores', 'conta_registros', 'egresos_registros', 'pagos_cuentas_por_pagar',
+    'pagos_registros', 'cuentas_por_cobrar', 'estaciones_servicio', 'ventas_clientes', 'productos_catalogo', 'inventarios_herramientas', 'inventarios_refacciones',
+    'inv_herramientas', 'inv_refacciones', 'catalogo'];
+  window.tcFirestoreInventario = async function (lista) {
+    var fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    var db = window.db; if (!db) throw new Error('Abre el portal con sesión iniciada (window.db no existe).');
+    var res = {}, total = 0;
+    for (var i = 0; i < (lista || INVENTARIO).length; i++) {
+      var n = (lista || INVENTARIO)[i];
+      try { var r = await fs.getCountFromServer(fs.collection(db, n)); res[n] = r.data().count; total += res[n]; }
+      catch (e) { res[n] = 'error: ' + (e.code || e.message); }
+    }
+    res.TOTAL = total;
+    console.table(res);
+    return res;
+  };
+  // Copia colecciones completas (y subcolecciones indicadas) de Firestore a Supabase, sin duplicar
+  // (si se corre dos veces, actualiza). Ejemplos:
+  //   await tcMigrarColecciones(['flotilla_vehiculos'], { soloContar: true })
+  //   await tcMigrarColecciones(['flotilla_vehiculos', 'fl_usuarios'], { subcolecciones: [['flotilla_vehiculos', 'historial']] })
+  window.tcMigrarColecciones = async function (lista, opc) {
+    opc = opc || {};
+    if (!Array.isArray(lista) || !lista.length) throw new Error('Indica la lista de colecciones a copiar.');
+    var fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    var db = window.db; if (!db) throw new Error('Abre el portal con sesión iniciada (window.db no existe).');
+    var c = await sb(), resumen = {}, filas = [];
+    function empujar(ruta, datos) { var s = ruta.split('/'); filas.push({ ruta: ruta, coleccion: s.slice(0, -1).join('/'), doc_id: s[s.length - 1], datos: aJSON(datos) || {}, actualizado_en: ahora() }); }
+    for (var i = 0; i < lista.length; i++) {
+      var n = lista[i], snap = await fs.getDocs(fs.collection(db, n));
+      resumen[n] = snap.size; snap.forEach(function (d) { empujar(n + '/' + d.id, d.data()); });
+      console.log('[copiar] ' + n + ': ' + snap.size);
+    }
+    var subs = opc.subcolecciones || [];
+    for (var j = 0; j < subs.length; j++) {
+      var padre = subs[j][0], sub = subs[j][1], cuenta = 0, sg = await fs.getDocs(fs.collectionGroup(db, sub));
+      sg.forEach(function (d) { if (d.ref.path.indexOf(padre + '/') === 0) { empujar(d.ref.path, d.data()); cuenta++; } });
+      resumen[padre + '/*/' + sub] = cuenta; console.log('[copiar] ' + padre + '/*/' + sub + ': ' + cuenta);
+    }
+    if (opc.soloContar) { console.table(resumen); return resumen; }
+    var lote = [], peso = 0, enviados = 0;
+    async function enviar() {
+      if (!lote.length) return;
+      var r = await c.from('ops_docs').upsert(lote, { onConflict: 'ruta' });
+      if (r.error) throw new Error('Supabase: ' + r.error.message + ' (lote desde ' + lote[0].ruta + ')');
+      enviados += lote.length; console.log('[copiar] enviados ' + enviados + ' de ' + filas.length);
+      lote = []; peso = 0;
+    }
+    for (var k = 0; k < filas.length; k++) {
+      var t = JSON.stringify(filas[k].datos).length;
+      if (lote.length && (peso + t > 1500000 || lote.length >= 300)) await enviar();
+      lote.push(filas[k]); peso += t;
+    }
+    await enviar();
+    // Comprobación: cuántos quedaron en Supabase por colección
+    for (var m = 0; m < lista.length; m++) {
+      var cnt = await c.from('ops_docs').select('ruta', { count: 'exact', head: true }).eq('coleccion', lista[m]);
+      resumen[lista[m] + ' (en Supabase)'] = cnt.count;
+    }
+    resumen.total = enviados;
+    console.table(resumen);
+    return resumen;
+  };
   window.tcMigrarOperaciones = async function (opc) {
     opc = opc || {};
     var fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
