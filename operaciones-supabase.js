@@ -47,8 +47,8 @@
   // solo se agrega a esta lista después de correr su copia con tcMigrarColecciones().
   var RUTEADAS = {};
   // 24-oct-2026: parrilla de contenido (Dashboard y Marketing), indicadores y solicitudes de Mercadotecnia.
-  // Se activa DESPUÉS de copiar sus datos: ['area_parrilla', 'mkt_parrilla', 'mkt_indicadores', 'mkt_solicitudes']
-  [].forEach(function (c) { RUTEADAS[c] = 1; });
+  // 25-oct-2026: copiadas (761 documentos, conteos iguales) y activadas.
+  ['area_parrilla', 'mkt_parrilla', 'mkt_indicadores', 'mkt_solicitudes'].forEach(function (c) { RUTEADAS[c] = 1; });
   window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
   function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
   function autoId() {

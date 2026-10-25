@@ -1202,7 +1202,7 @@
         if (_opsPuenteProm) return _opsPuenteProm;
         _opsPuenteProm = new Promise((ok, ko) => {
             const s = document.createElement("script");
-            s.src = "operaciones-supabase.js?v=ops3";
+            s.src = "operaciones-supabase.js?v=ops4";
             s.onload = () => ok(); s.onerror = () => { _opsPuenteProm = null; ko(new Error("No se pudo cargar operaciones-supabase.js")); };
             document.head.appendChild(s);
         });
