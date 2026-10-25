@@ -3227,10 +3227,11 @@ window.abrirUsuariosPermisos = async () => {
         document.body.appendChild(m);
     }
     m.style.display = 'flex';
-    m.innerHTML = `<div style="background:#fff;border-radius:16px;width:980px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;font-family:inherit;color:#1e293b;">
+    m.innerHTML = `<div style="background:#fff;border-radius:16px;width:1400px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;font-family:inherit;color:#1e293b;">
         <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
             <div style="flex:1;min-width:220px;"><div style="font-size:17px;font-weight:800;color:#1D2E73;">Usuarios y permisos</div>
             <div style="font-size:12px;color:#64748b;">Departamento, áreas a las que entra cada persona, altas y bajas. Los cambios aplican al recargar su portal; una baja la saca al momento.</div></div>
+            <div style="display:flex;gap:4px;background:#f1f5f9;border-radius:9px;padding:3px;"><button id="up-tab-personas" onclick="upCambiarVista('personas')" style="border:none;border-radius:7px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;background:#1D2E73;color:#fff;">Por persona</button><button id="up-tab-tabla" onclick="upCambiarVista('tabla')" style="border:none;border-radius:7px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;background:transparent;color:#334155;">Tabla de permisos (Excel)</button></div>
             <input id="up-buscar" placeholder="Buscar nombre o correo…" oninput="upFiltrar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;width:220px;">
             <button onclick="document.getElementById('modal-usuarios-permisos').style.display='none'" style="border:none;background:#f1f5f9;border-radius:8px;padding:8px 12px;cursor:pointer;font-weight:700;">Cerrar</button>
         </div>
@@ -3246,6 +3247,9 @@ window.abrirUsuariosPermisos = async () => {
 window.upFiltrar = v => { _upFiltro = (v||'').toLowerCase(); upRender(); };
 function upRender(){
     const cont = document.getElementById('up-lista'); if(!cont) return;
+    const tp = document.getElementById('up-tab-personas'), tt = document.getElementById('up-tab-tabla');
+    if(tp && tt){ tp.style.background = _upVista==='personas'?'#1D2E73':'transparent'; tp.style.color = _upVista==='personas'?'#fff':'#334155'; tt.style.background = _upVista==='tabla'?'#1D2E73':'transparent'; tt.style.color = _upVista==='tabla'?'#fff':'#334155'; }
+    if(_upVista === 'tabla'){ cont.innerHTML = upTablaHTML(); return; }
     const lista = _upUsuarios.filter(u => !_upFiltro || ((u.nombre||'')+' '+(u.correo||'')+' '+(u.departamento||'')).toLowerCase().includes(_upFiltro));
     const activos = lista.filter(u=>u.activo!==false), bajas = lista.filter(u=>u.activo===false);
     const fila = u => {
@@ -3320,6 +3324,108 @@ function upVigilarMiBaja(){
     } catch(e){ console.warn('[usuarios] vigilancia de baja:', e.message); }
 }
 window.upVigilarMiBaja = upVigilarMiBaja;
+
+// ── Tabla de permisos tal como el Excel "PERMISOS DE LA PLATAFORMA NUEVA" (25-oct-2026) ──
+// Columnas: Área · Usuario · Permisos · Alarmas · Qué debe ver · Penalizaciones · Responsabilidades.
+// Se guarda en Supabase (portal_permisos_matriz). Cada renglón se puede ligar a la cuenta de la persona:
+// al guardar, sus "qué debe ver", responsabilidades, penalización y permisos pasan también a su ficha.
+let _upVista = 'personas', _upMatriz2 = [];
+const UP_COLS = [['permisos','Permisos'],['alarmas','Alarmas'],['que_ve','Qué debe ver'],['responsabilidades','Responsabilidades']];
+window.upCambiarVista = async v => {
+    _upVista = v;
+    if(v === 'tabla') await upCargarMatriz2();
+    upRender();
+};
+async function upCargarMatriz2(){
+    const c = await window.tcSb();
+    const r = await c.from('portal_permisos_matriz').select('*').order('area').order('orden');
+    _upMatriz2 = r.data || [];
+}
+function upTablaHTML(){
+    const areas = [...new Set(_upMatriz2.map(x=>x.area))];
+    const cuentas = _upUsuarios.filter(u=>u.correo && u.activo!==false);
+    const ta = 'width:100%;min-height:58px;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:5px 6px;font-size:11.5px;font-family:inherit;resize:vertical;';
+    const th = 'background:#1D2E73;color:#fff;font-size:11.5px;font-weight:800;padding:8px;text-align:left;position:sticky;top:0;z-index:1;';
+    return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <button onclick="upFilaNueva()" style="border:none;background:#1D2E73;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">+ Agregar renglón</button>
+        <label style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">Importar Excel<input type="file" accept=".xlsx,.xls" onchange="upImportarExcel(this.files[0]);this.value=''" style="display:none;"></label>
+        <button onclick="upExportarExcel()" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:800;cursor:pointer;">Descargar Excel</button>
+        <span style="font-size:11.5px;color:#64748b;">Mismo formato que tu hoja. Liga cada renglón a la cuenta de la persona para que se aplique en su ficha.</span>
+      </div>
+      <div style="overflow:auto;max-height:64vh;border:1px solid #e2e8f0;border-radius:10px;">
+      <table style="border-collapse:collapse;width:100%;min-width:1150px;">
+        <thead><tr><th style="${th}width:110px;">Área</th><th style="${th}width:150px;">Usuario</th>${UP_COLS.map(c=>`<th style="${th}">${c[1]}</th>`).join('')}<th style="${th}width:90px;">Penalizaciones</th><th style="${th}width:80px;"></th></tr></thead>
+        <tbody>${areas.map(a => _upMatriz2.filter(x=>x.area===a).map((x,k) => `<tr style="border-top:${k===0?'2px solid #1D2E73':'1px solid #f1f5f9'};vertical-align:top;">
+          <td style="padding:6px;">${k===0?`<input id="upm-area-${x.id}" value="${upEsc(x.area)}" style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:5px;font-size:12px;font-weight:800;color:#1D2E73;">`:`<input id="upm-area-${x.id}" value="${upEsc(x.area)}" style="width:100%;border:none;padding:5px;font-size:11px;color:#94a3b8;">`}</td>
+          <td style="padding:6px;"><input id="upm-usuario-${x.id}" value="${upEsc(x.usuario)}" style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:6px;padding:5px;font-size:12px;font-weight:700;">
+            <select id="upm-correo-${x.id}" style="width:100%;margin-top:4px;border:1px solid ${x.correo?'#86efac':'#fcd34d'};border-radius:6px;padding:4px;font-size:11px;"><option value="">— ligar a cuenta —</option>${cuentas.map(u=>`<option value="${upEsc(u.correo)}" ${String(x.correo||'').toLowerCase()===String(u.correo).toLowerCase()?'selected':''}>${upEsc(upNombreDe(u))}</option>`).join('')}</select></td>
+          ${UP_COLS.map(c=>`<td style="padding:6px;"><textarea id="upm-${c[0]}-${x.id}" style="${ta}">${upEsc(x[c[0]]||'')}</textarea></td>`).join('')}
+          <td style="padding:6px;"><select id="upm-pen-${x.id}" style="border:1px solid #e2e8f0;border-radius:6px;padding:5px;font-size:12px;font-weight:800;color:${x.penalizaciones?'#b91c1c':'#15803d'};"><option value="1" ${x.penalizaciones?'selected':''}>SÍ</option><option value="0" ${!x.penalizaciones?'selected':''}>NO</option></select></td>
+          <td style="padding:6px;"><button onclick="upFilaGuardar(${x.id})" style="width:100%;border:none;background:#15803d;color:#fff;border-radius:6px;padding:5px;font-size:11px;font-weight:800;cursor:pointer;">Guardar</button><button onclick="upFilaBorrar(${x.id})" style="width:100%;margin-top:4px;border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:5px;font-size:11px;font-weight:800;cursor:pointer;">Borrar</button></td>
+        </tr>`).join('')).join('') || '<tr><td colspan="8" style="padding:20px;text-align:center;color:#94a3b8;">Sin renglones. Agrega uno o importa tu Excel.</td></tr>'}</tbody>
+      </table></div>`;
+}
+async function upMatrizEscribir(op){
+    const c = await (window.tcSbSesion ? window.tcSbSesion() : window.tcSb());
+    const r = await op(c); if(r && r.error) throw new Error(r.error.message + ' (solo los administradores totales pueden cambiar permisos)');
+    return r;
+}
+window.upFilaGuardar = async id => {
+    const v = k => (document.getElementById(`upm-${k}-${id}`)||{}).value;
+    const fila = { area: (v('area')||'').trim() || 'Sin área', usuario: (v('usuario')||'').trim() || 'Sin nombre', correo: v('correo') || null,
+        permisos: v('permisos')||null, alarmas: v('alarmas')||null, que_ve: v('que_ve')||null, responsabilidades: v('responsabilidades')||null,
+        penalizaciones: v('pen') === '1', actualizado_por: auth.currentUser?.email||'', actualizado_en: new Date().toISOString() };
+    try {
+        await upMatrizEscribir(c => c.from('portal_permisos_matriz').update(fila).eq('id', id));
+        // Si está ligado a una cuenta, se aplica también en su ficha de "Usuarios y permisos"
+        const u = fila.correo && _upUsuarios.find(x => String(x.correo||'').toLowerCase() === fila.correo.toLowerCase());
+        if(u) await upActualizar(u.uid, { permisosVer: fila.que_ve, responsabilidades: fila.responsabilidades, aplicaPenalizaciones: fila.penalizaciones, notasPermisos: fila.permisos, alarmasTexto: fila.alarmas }, 'Permisos de ' + fila.usuario + ' guardados');
+        else if(window.mostrarToast) window.mostrarToast('✅ Guardado', fila.usuario, '📋');
+        await upCargarMatriz2(); upRender();
+    } catch(e){ alert('No se pudo guardar: ' + e.message); }
+};
+window.upFilaNueva = async () => {
+    const area = prompt('¿De qué área? (ej. Gestoría, Contabilidad, Flotilla)', ''); if(!area) return;
+    const usuario = prompt('¿Nombre de la persona o puesto?', ''); if(!usuario) return;
+    try { await upMatrizEscribir(c => c.from('portal_permisos_matriz').insert({ area: area.trim(), usuario: usuario.trim(), orden: Date.now() % 100000, actualizado_por: auth.currentUser?.email||'' }));
+        await upCargarMatriz2(); upRender(); } catch(e){ alert(e.message); }
+};
+window.upFilaBorrar = async id => {
+    const x = _upMatriz2.find(r=>r.id===id); if(!x || !confirm(`¿Borrar el renglón de ${x.usuario} (${x.area})?`)) return;
+    try { await upMatrizEscribir(c => c.from('portal_permisos_matriz').delete().eq('id', id)); await upCargarMatriz2(); upRender(); } catch(e){ alert(e.message); }
+};
+// Importa el Excel con el mismo formato (A Área · B Usuario · C Permisos · D Alarmas · E Qué debe ver · F Penalizaciones · G Responsabilidades)
+window.upImportarExcel = async file => {
+    if(!file || !window.XLSX) return;
+    try {
+        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        const filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
+        const t = v => { const s = v == null ? '' : String(v).trim(); return s && s !== '*' ? s : null; };
+        let area = null; const nuevas = [];
+        filas.slice(1).forEach((r, i) => {
+            if(!r || !r.some(x => x != null && String(x).trim())) return;
+            if(t(r[0])) area = t(r[0]);
+            if(!t(r[1])) return;
+            nuevas.push({ area: area || 'Sin área', usuario: t(r[1]), permisos: t(r[2]), alarmas: t(r[3]), que_ve: t(r[4]), penalizaciones: String(r[5]||'').trim().toUpperCase().startsWith('S'), responsabilidades: t(r[6]), orden: i, actualizado_por: auth.currentUser?.email||'' });
+        });
+        if(!nuevas.length){ alert('No encontré renglones con usuario en la columna B.'); return; }
+        if(!confirm(`Se encontraron ${nuevas.length} renglones. ¿Reemplazar la tabla actual con este Excel? (Las cuentas ya ligadas se conservan cuando el área y el usuario coinciden.)`)) return;
+        nuevas.forEach(n => { const ant = _upMatriz2.find(x => x.area.toLowerCase() === n.area.toLowerCase() && x.usuario.toLowerCase() === n.usuario.toLowerCase()); if(ant && ant.correo) n.correo = ant.correo; });
+        await upMatrizEscribir(c => c.from('portal_permisos_matriz').delete().gt('id', 0));
+        await upMatrizEscribir(c => c.from('portal_permisos_matriz').insert(nuevas));
+        await upCargarMatriz2(); upRender();
+        if(window.mostrarToast) window.mostrarToast('✅ Excel importado', nuevas.length + ' renglones', '📋');
+    } catch(e){ alert('No se pudo importar: ' + e.message); }
+};
+window.upExportarExcel = () => {
+    if(!window.XLSX) return;
+    const aoa = [['ÁREA','USUARIO','PERMISOS','ALARMAS','QUE DEBE VER','PENALIZACIONES','RESPONSABILIDADES','CUENTA LIGADA']];
+    let ant = null;
+    _upMatriz2.forEach(x => { aoa.push([x.area !== ant ? x.area.toUpperCase() : '', x.usuario.toUpperCase(), x.permisos||'', x.alarmas||'', x.que_ve||'', x.penalizaciones?'SI':'NO', x.responsabilidades||'', x.correo||'']); ant = x.area; });
+    const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{wch:16},{wch:18},{wch:60},{wch:40},{wch:50},{wch:14},{wch:50},{wch:30}];
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Permisos');
+    XLSX.writeFile(wb, 'PERMISOS_DE_LA_PLATAFORMA_' + new Date().toISOString().slice(0,10) + '.xlsx');
+};
 
 // ── Etapa 3 (24-oct-2026): TODOS los permisos de cada persona en un solo lugar ──
 // Reúne lo que antes estaba disperso: rol en Operaciones (ops_config_permisos), rol y acciones de
