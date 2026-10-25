@@ -118,6 +118,23 @@
   window.tcAspelCatalogo = function () {
     return cargarSupabase().then(function () { return _catAspel; });
   };
+  // Buscador de productos reales de Aspel (clave o palabras de la descripción), 25-oct-2026.
+  window.tcAspelBuscar = function (texto, max) {
+    var q = String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+    if (q.length < 2) return Promise.resolve([]);
+    var palabras = q.split(/\s+/).filter(Boolean);
+    return window.tcAspelCatalogo().then(function (cat) {
+      var res = [];
+      if (!cat) return res;
+      cat.forEach(function (a) {
+        if (a.status && String(a.status).toUpperCase() === 'B') return;
+        var t = (String(a.clave) + ' ' + String(a.desc || '')).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+        if (palabras.every(function (w) { return t.indexOf(w) >= 0; })) res.push({ clave: a.clave, desc: a.desc, unidad: a.unidad || 'pza', exacta: String(a.clave).toUpperCase() === q });
+      });
+      res.sort(function (x, y) { return (y.exacta - x.exacta) || String(x.desc).length - String(y.desc).length; });
+      return res.slice(0, max || 12);
+    });
+  };
   window.tcAspelDescripcion = function (clave) {
     var a = _catAspel && _catAspel.get(_normClave(clave));
     return a ? a.desc : '';

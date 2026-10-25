@@ -7051,7 +7051,8 @@
         const enEjecucionHoy = foliosVista.filter(f => opsFolioCubreDia(f, hoyISO)).length;
         const programadosSemana = foliosVista.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
         const sinFecha = foliosVista.filter(f => !f.fechaProgramada && !f.fechaSolucion);
-        const atrasados = foliosVista.filter(f => ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
+        // Los servicios "por reasignar" (no se terminaron, p. ej. por falta de material) no cuentan como atrasados.
+        const atrasados = foliosVista.filter(f => !(f.pendienteReasignar && !f.fechaSolucion) && ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
         const tecActivos = opsTecOperativos();
         const disponiblesHoy = tecActivos.filter(t => opsCalTecnicoDisponible(t.id, hoyISO)).length;
         const choques = opsCalDetectarChoques();
@@ -7126,7 +7127,7 @@
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
             ${opsCalFull || opsAccFiltroEmpresa() ? "" : opsTurnoFoliosBannerHTML()}
-            ${opsCalFull || opsAccFiltroEmpresa() ? "" : '<div id="ops-cal-pedidos-ventas"></div>'}
+            ${opsCalFull || opsAccFiltroEmpresa() ? "" : '<div id="ops-cal-por-reasignar"></div><div id="ops-cal-pedidos-ventas"></div>'}
             <div id="ops-cal-body"></div>
           ${opsCalFull ? "</div>" : ""}
 
@@ -7348,7 +7349,56 @@
         return d <= 0 ? "Hoy" : d === 1 ? "Hace 1 día" : `Hace ${d} días`;
     }
     window.opsCalPintarPedidosVentas = function () { opsCalPintarPedidosVentas(); };
+    // ── Servicios que el técnico dejó sin terminar (25-oct-2026): quedan para reasignar y, si faltó
+    // material, Operaciones aprueba aquí las piezas (claves reales de Aspel) y se piden a Almacén. ──
+    function opsCalPintarPorReasignar() {
+        const box = document.getElementById("ops-cal-por-reasignar"); if (!box) return;
+        const l = cacheFolios.filter(f => f.pendienteReasignar && !f.fechaSolucion && !f.cancelado);
+        if (!l.length) { box.innerHTML = ""; return; }
+        const gestiona = opsPuedeGestionar();
+        box.innerHTML = `<div style="margin:0 0 10px;background:#fff;border-radius:14px;border:1px solid #fed7aa;border-left:5px solid #ea580c;padding:12px 16px;">
+            <div style="font-size:13px;font-weight:800;color:#9a3412;margin-bottom:6px;">Servicios por reasignar <span style="background:#ffedd5;border-radius:999px;padding:1px 8px;">${l.length}</span>
+            <span style="font-weight:500;color:#9a3412;font-size:11.5px;"> · El técnico no lo terminó. No cuentan como atrasados mientras se reasignan.</span></div>
+            ${l.map(f => { const p = f.pendienteReasignar || {}; const mfs = (f.materialFaltante || []).map((m, i) => ({ ...m, i }));
+              return `<div style="border-top:1px dashed #fed7aa;padding:8px 0;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><b style="font-size:12.5px;">${opsEsc(f.estacion || "")}</b><span style="font-size:11.5px;color:#64748b;">${opsEsc(f.categoriaServicio || f.tareaFolio || "")} · ${opsEsc(p.por || "")} · ${opsEsc(opsFmtFechaCorta(p.en))}</span>
+                  ${gestiona ? `<span style="margin-left:auto;display:flex;gap:6px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#1D2E73;color:#fff;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Abrir y reprogramar</button><button onclick="opsReasignadoListo('${f.id}')" style="border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Ya quedó reasignado</button></span>` : ""}</div>
+                <div style="font-size:12px;color:#7c2d12;margin-top:2px;">${opsEsc(p.motivo || "")}${p.detalle ? " — " + opsEsc(p.detalle) : ""}</div>
+                ${mfs.map(m => `<div style="margin-top:6px;background:${m.estatus === "por_aprobar" ? "#fff7ed" : "#f8fafc"};border:1px solid #fed7aa;border-radius:8px;padding:7px 9px;font-size:12px;">
+                    <b>Material que pidió el técnico:</b> ${m.items.map(it => `${opsEsc(it.cantidad)} × ${it.clave ? "<b>" + opsEsc(it.clave) + "</b> " : ""}${opsEsc(it.descripcion)}`).join(" · ")}
+                    ${m.foto ? ` · <a href="#" onclick="event.preventDefault();opsVerArchivoFirmado('${m.foto.bucket}','${m.foto.ruta}')">ver foto</a>` : ""}
+                    <div style="margin-top:5px;">${m.estatus === "por_aprobar" ? (gestiona ? `<button onclick="opsMaterialFaltanteResolver('${f.id}',${m.i},true)" style="border:none;background:#15803d;color:#fff;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar y pedir a Almacén</button> <button onclick="opsMaterialFaltanteResolver('${f.id}',${m.i},false)" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Rechazar</button>` : `<span style="color:#b45309;font-weight:700;">Por aprobar</span>`) : m.estatus === "aprobado" ? `<span style="color:#15803d;font-weight:700;">Aprobado · pedido ${opsEsc(m.pedidoFolio || "")}</span>` : `<span style="color:#b91c1c;font-weight:700;">Rechazado</span>`}</div>
+                </div>`).join("")}
+              </div>`; }).join("")}
+        </div>`;
+    }
+    window.opsVerArchivoFirmado = async function (bucket, ruta) {
+        try { const sb = await opsSb(); const r = await sb.storage.from(bucket).createSignedUrl(ruta, 3600); if (r.error) throw r.error; window.open(r.data.signedUrl, "_blank"); }
+        catch (e) { alert("No se pudo abrir: " + (e.message || e)); }
+    };
+    window.opsReasignadoListo = async function (id) {
+        if (!confirm("¿Ya quedó reasignado o reprogramado? Sale de esta lista.")) return;
+        await opsTDActualizar(COL_FOLIOS, id, { pendienteReasignar: null, reasignadoEn: new Date().toISOString(), reasignadoPor: opsNombreActual() }, "Reasignado", "Servicio reasignado tras quedar sin terminar");
+        opsCalPintarPorReasignar();
+    };
+    window.opsMaterialFaltanteResolver = async function (id, i, aprobar) {
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const lista = (f.materialFaltante || []).slice(); const m = lista[i]; if (!m || m.estatus !== "por_aprobar") return;
+        try {
+            let pedidoFolio = null;
+            if (aprobar) {
+                const items = m.items.map(it => ({ desc: (it.clave ? it.clave + " " : "") + it.descripcion, clave: it.clave || null, cant: Number(it.cantidad) || 1, unidad: it.unidad || "pza", tipo: "material" }));
+                const r = await opsNecCrearPedido(f, items, { nota: `Material que faltó para terminar el servicio (pedido por ${m.por || "el técnico"}).` });
+                pedidoFolio = r && (r.folio || r) || null;
+            }
+            lista[i] = { ...m, estatus: aprobar ? "aprobado" : "rechazado", resueltoPor: opsNombreActual(), resueltoEn: new Date().toISOString(), pedidoFolio: typeof pedidoFolio === "string" ? pedidoFolio : null };
+            await opsTDActualizar(COL_FOLIOS, id, { materialFaltante: lista }, aprobar ? "Material aprobado" : "Material rechazado", aprobar ? "Se pidió a Almacén el material que faltó" : "Se rechazó el material que pidió el técnico");
+            if (m.correo) opsTDAvisarTecnico(m.correo, aprobar ? `Se aprobó el material que pediste para ${f.estacion || "tu servicio"} y ya se pidió a Almacén.` : `No se aprobó el material que pediste para ${f.estacion || "tu servicio"}.`);
+            opsCalPintarPorReasignar();
+        } catch (e) { alert("No se pudo: " + (e.message || e)); }
+    };
     function opsCalPintarPedidosVentas() {
+        try { opsCalPintarPorReasignar(); } catch (e) { console.warn("[por reasignar]", e); }
         const box = document.getElementById("ops-cal-pedidos-ventas");
         if (!box) return;
         if (!opsElimCargados) { opsElimCargados = true; opsCargarEliminados().then(() => opsCalPintarPedidosVentas()); }
@@ -12743,6 +12793,22 @@
         opsNecForm = { id, items: items.length ? items : [{ desc: "", cant: 1, unidad: "pza", tipo: "material" }], req: loc(req), nota: "", msg: "" };
         opsNecPintarForm();
     };
+    // Sugerencias de piezas reales de Aspel al escribir (25-oct-2026)
+    let _opsNecSugT = null;
+    window.opsNecSugerir = function (i, v) {
+        clearTimeout(_opsNecSugT);
+        const box = document.getElementById("ops-nec-sug-" + i); if (!box) return;
+        if (!v || v.trim().length < 2 || !window.tcAspelBuscar) { box.innerHTML = ""; return; }
+        _opsNecSugT = setTimeout(() => window.tcAspelBuscar(v, 8).then(r => {
+            window.__opsNecSug = r;
+            box.innerHTML = r.length ? `<div style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 20px rgba(15,23,42,.15);max-height:220px;overflow:auto;">${r.map((p, k) => `<div onmousedown="event.preventDefault();opsNecElegir(${i},${k})" style="padding:6px 9px;font-size:12px;cursor:pointer;border-bottom:1px solid #f1f5f9;"><b>${opsEsc(p.clave)}</b> · ${opsEsc(p.desc)}</div>`).join("")}</div>` : "";
+        }), 220);
+    };
+    window.opsNecElegir = function (i, k) {
+        const p = (window.__opsNecSug || [])[k]; if (!p || !opsNecForm) return;
+        const it = opsNecForm.items[i]; it.desc = p.clave + " " + p.desc; it.clave = p.clave; if (p.unidad) it.unidad = String(p.unidad).toLowerCase();
+        opsNecPintarForm();
+    };
     function opsNecPintarForm() {
         const n = opsNecForm; if (!n) return; const f = cacheFolios.find(x => x.id === n.id); if (!f) return;
         const inp = "border:1px solid #cbd5e1;border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:inherit;box-sizing:border-box;";
@@ -12752,7 +12818,7 @@
             <div style="font-size:15px;font-weight:800;color:#1D2E73;">Pedir a Almacén · ${opsEsc(f.estacion || "")}</div>
             <div style="font-size:11.5px;color:#64748b;margin:3px 0 12px;line-height:1.45;">Llega al tablero de Almacén como pedido de Operaciones con la fecha en que se necesita. Si Almacén no lo tiene, lo pasa a Compras y aquí verás cuándo llega. Para herramienta que solo se presta, empieza la descripción con "HERRAMIENTA".</div>
             ${n.items.map((it, i) => `<div style="display:grid;grid-template-columns:1fr 80px 80px 30px;gap:6px;margin-bottom:6px;">
-                <input value="${opsEsc(it.desc)}" placeholder="Descripción (ej. Tubería primaria 2&quot;)" onchange="opsNecItem(${i},'desc',this.value)" style="${inp}">
+                <div style="position:relative;"><input value="${opsEsc(it.desc)}" placeholder="Busca en Aspel: clave o nombre (ej. sensor de líquidos)" oninput="opsNecSugerir(${i},this.value)" onchange="opsNecItem(${i},'desc',this.value)" style="${inp}width:100%;"><div id="ops-nec-sug-${i}" style="position:absolute;left:0;right:0;top:100%;z-index:5;"></div>${it.clave ? `<div style="font-size:10.5px;color:#15803d;font-weight:700;">Aspel ${opsEsc(it.clave)}</div>` : ""}</div>
                 <input type="number" min="0" step="0.01" value="${opsEsc(it.cant)}" onchange="opsNecItem(${i},'cant',this.value)" style="${inp}">
                 <input value="${opsEsc(it.unidad)}" onchange="opsNecItem(${i},'unidad',this.value)" style="${inp}">
                 <button onclick="opsNecQuitar(${i})" style="border:none;background:#fef2f2;color:#E7402B;border-radius:7px;cursor:pointer;font-weight:800;">×</button></div>`).join("")}

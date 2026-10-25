@@ -6927,7 +6927,7 @@ async function fmOpsServCargar(){
     _unsubOpsServ=opsDb().collection(OPS_COL_FOLIOS).onSnapshot(function(snap){
       const todos=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       misOpsServ=todos
-        .filter(function(f){return opsSvEsMio(f,correo)&&!_fmColaIds.has(f.id);})
+        .filter(function(f){return opsSvEsMio(f,correo)&&!_fmColaIds.has(f.id)&&!(f.pendienteReasignar&&!f.fechaSolucion);})
         .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
       const hace7=new Date(Date.now()-7*86400000).toISOString();
       misOpsMovidos=todos.filter(function(f){
@@ -7440,6 +7440,29 @@ var OPS_CANDADO_VISTAS_LIBRES=['tareas','notif']; // var: setContent la lee y pu
 // Paloma Pinedo e Idaly Ruiz). Los pendientes se siguen mostrando como aviso en Tareas, sin bloquear.
 var OPS_CANDADO_ACTIVO=false;
 function fmHoyLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// ── Material faltante desde el cierre "no se terminó" (25-oct-2026) ──
+window.__fmMf=[]; let _fmMfT=null;
+window.fmMfBuscar=function(v){
+  clearTimeout(_fmMfT); const box=document.getElementById('fm-mf-res'); if(!box)return;
+  if(!v||v.trim().length<2){box.innerHTML='';return;}
+  _fmMfT=setTimeout(function(){
+    if(!window.tcAspelBuscar){box.innerHTML='<div style="font-size:11.5px;color:#9A3412;padding:4px">Catálogo de Aspel no disponible; escribe la pieza y toca Agregar.</div>';return;}
+    window.tcAspelBuscar(v,8).then(function(r){
+      const libre='<div onclick="fmMfAgregar(null,\''+opsSvEsc(v).replace(/'/g,'')+'\')" style="padding:7px 9px;font-size:12px;color:#9A3412;cursor:pointer;border-top:1px dashed #FED7AA">+ Agregar "'+opsSvEsc(v)+'" (no está en Aspel)</div>';
+      box.innerHTML='<div style="background:#fff;border:1px solid #FED7AA;border-radius:10px;margin-top:4px;max-height:220px;overflow:auto">'+r.map(function(p,i){return '<div onclick="fmMfAgregar('+i+')" style="padding:7px 9px;font-size:12px;cursor:pointer;border-bottom:1px solid #FFF7ED"><b>'+opsSvEsc(p.clave)+'</b> · '+opsSvEsc(p.desc)+'</div>';}).join('')+libre+'</div>';
+      window.__fmMfRes=r;
+    });
+  },250);
+};
+window.fmMfAgregar=function(i,libre){
+  const p=i==null?{clave:null,desc:String(libre||'').trim(),unidad:'pza'}:(window.__fmMfRes||[])[i]; if(!p||!p.desc)return;
+  window.__fmMf.push({clave:p.clave,descripcion:p.desc,unidad:p.unidad||'pza',cantidad:1});
+  document.getElementById('fm-mf-res').innerHTML=''; document.getElementById('fm-mf-busca').value=''; fmMfPintar();
+};
+window.fmMfPintar=function(){
+  const el=document.getElementById('fm-mf-lista'); if(!el)return;
+  el.innerHTML=window.__fmMf.map(function(m,i){return '<div style="display:flex;gap:6px;align-items:center;background:#fff;border:1px solid #FED7AA;border-radius:9px;padding:6px 8px;margin-bottom:4px;font-size:12px"><div style="flex:1">'+(m.clave?'<b>'+opsSvEsc(m.clave)+'</b> · ':'')+opsSvEsc(m.descripcion)+'</div><input type="number" min="1" value="'+m.cantidad+'" onchange="window.__fmMf['+i+'].cantidad=Math.max(1,Number(this.value)||1)" style="width:54px;padding:5px;border:1px solid #FDBA74;border-radius:7px"><button onclick="window.__fmMf.splice('+i+',1);fmMfPintar()" style="border:none;background:#FEE2E2;color:#B91C1C;border-radius:7px;padding:5px 8px;font-weight:900">×</button></div>';}).join('');
+};
 function fmOpsPendientesCierre(){
   const hoy=fmHoyLocal();
   return misOpsServ.filter(function(f){
@@ -7826,7 +7849,7 @@ async function fmTareaExtraHecha(f){
 window.fmOpsServTerminar=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   if(f.esTareaExtra)return fmTareaExtraHecha(f);
-  window.__fmEv={orden_servicio:[],foto:[],pausa:[]};
+  window.__fmEv={orden_servicio:[],foto:[],pausa:[]}; window.__fmMf=[];
   window.__fmTermVideo=null; window.__fmTermMat=null;
   let sinOrden=false; try{sinOrden=await fmEvSinOrden(f);}catch(e){}
   window.__fmTermSinOrden=sinOrden;
@@ -7873,7 +7896,14 @@ window.fmOpsServTerminar=async function(id){
         '<button type="button" data-r="no_finalizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#B45309">No: se atendió, falta terminar</button>'+
         '<button type="button" data-r="no_realizado" onclick="fmOpsTermRes(this)" style="padding:11px 4px;border-radius:10px;border:1.5px solid #CBD5E1;background:#fff;font-family:inherit;font-size:12px;font-weight:800;color:#64748B">No: no se pudo realizar</button>'+
       '</div>'+
-      '<div id="fm-term-nofin" style="display:none">'+fmTermTit('11','Si tu respuesta fue no, ¿por qué?',true)+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+'</div>'+
+      '<div id="fm-term-nofin" style="display:none">'+fmTermTit('11','Si tu respuesta fue no, ¿por qué?',true)+chips(OPS_NO_FIN_MOTIVOS,'fm-term-motivos')+
+        '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:10px 12px;margin:8px 0 12px">'+
+          '<div style="font-size:12.5px;font-weight:900;color:#9A3412">¿Faltó material? Pídelo aquí (opcional)</div>'+
+          '<div style="font-size:11.5px;color:#9A3412;margin:2px 0 6px">Busca la pieza por nombre o clave (catálogo real de Aspel). Operaciones la aprueba y se pide a Almacén. El servicio queda para reasignar: no te bloquea ni cuenta como atrasado.</div>'+
+          '<input id="fm-mf-busca" placeholder="Ej. sensor de líquidos, regleta, 3433…" oninput="fmMfBuscar(this.value)" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #FDBA74;border-radius:10px;font-family:inherit;font-size:13px">'+
+          '<div id="fm-mf-res"></div><div id="fm-mf-lista" style="margin-top:6px"></div>'+
+          '<label style="display:block;margin-top:6px;font-size:12px;font-weight:800;color:#9A3412">Foto de la pieza (opcional) <input type="file" accept="image/*" id="fm-mf-foto" style="font-size:11.5px;margin-top:3px"></label>'+
+        '</div></div>'+
       '<div id="fm-term-noreal" style="display:none">'+fmTermTit('11','Si tu respuesta fue no, ¿por qué?',true)+chips(OPS_NO_REAL_MOTIVOS,'fm-term-motivos2')+'</div>'+
       '<div id="fm-term-bloq-fotos">'+fmEvPickerHTML('foto',fmTermTitTxt('12','Evidencia del servicio realizado',!esPol),'Fotos del trabajo: antes y después, lo que se cambió o reparó, placas y precintos. Sube todas las que necesites.')+'</div>'+
       fmTermTit('13','Video de evidencia',false)+
@@ -7967,7 +7997,7 @@ window.fmOpsServGuardarTermino=async function(id){
   }
   if(faltan.length&&!confirm('Le falta esto al cierre:\n\n• '+faltan.join('\n• ')+'\n\n¿Cerrar de todos modos? Operaciones verá lo que faltó y te lo puede pedir después.'))return;
   const P={id:id,res:res,motivo:mb?mb.getAttribute('data-m'):null,txt:txt,osNum:osNum,esPol:esPol,extra:extra,idFolio:idFolio,idExc:idExc,
-    ev:{orden_servicio:(ev.orden_servicio||[]).slice(),foto:(ev.foto||[]).slice()},faltantes:faltan.slice(),
+    ev:{orden_servicio:(ev.orden_servicio||[]).slice(),foto:(ev.foto||[]).slice()},faltantes:faltan.slice(),materialFaltante:res==='no_finalizado'?(window.__fmMf||[]).slice():[],fotoMf:res==='no_finalizado'?((document.getElementById('fm-mf-foto')||{}).files||[])[0]||null:null,
     video:window.__fmTermVideo?{blob:window.__fmTermVideo.blob,nombre:window.__fmTermVideo.nombre,mime:window.__fmTermVideo.mime}:null,
     polizaApp:window.__fmTermPolizaApp||null,titulo:opsSvTitulo(f),capturadoEn:new Date().toISOString(),hecho:{},ub:null};
   if(btn){btn.disabled=true;btn.textContent='Leyendo ubicación…';}
@@ -8048,6 +8078,16 @@ async function fmCierreSubir(P,prog){
   }else{
     cambios.iniciadoEn=null;
     cambios.ultimoNoFinalizado={resultado:res,motivo:visita.motivo,detalle:P.txt,por:quien,en:ahora};
+    // 25-oct-2026: si no se terminó, el servicio queda "por reasignar": ya no aparece como pendiente del técnico
+    // ni cuenta como atrasado; Operaciones decide quién y cuándo lo termina (puede ser el mismo técnico).
+    if(res==='no_finalizado'){
+      cambios.pendienteReasignar={motivo:visita.motivo||null,detalle:P.txt||null,por:quien,correo:correo,en:ahora,tecnicoId:_opsServTecId||null};
+      if(P.materialFaltante&&P.materialFaltante.length){
+        let fotoMf=null;
+        try{ if(P.fotoMf&&window.tcSupabase){ const ruta='ops/material-faltante/'+id+'/'+Date.now()+'.jpg'; const up=await window.tcSupabase.storage.from('ops-evidencias').upload(ruta,P.fotoMf,{contentType:P.fotoMf.type||'image/jpeg'}); if(!up.error)fotoMf={bucket:'ops-evidencias',ruta:ruta}; } }catch(e){}
+        cambios.materialFaltante=(f.materialFaltante||[]).concat([{items:P.materialFaltante,foto:fotoMf,por:quien,correo:correo,en:ahora,estatus:'por_aprobar'}]);
+      }
+    }
   }
   await fmConTiempo(opsDb().collection(OPS_COL_FOLIOS).doc(id).update(cambios),30000);
   await marcar('folio');
