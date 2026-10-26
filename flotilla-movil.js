@@ -6206,9 +6206,10 @@ async function _reqCargarEmpresas(){
 async function _reqCargarClientes(){
   if(_reqClientesCache)return _reqClientesCache;
   try{
-    const snap=await db.collection('ventas_clientes').get();
+    // 25-oct-2026: los clientes ya viven en Supabase (catálogo ventas_clientes), no en Firebase.
     const nombres=new Set();
-    snap.forEach(d=>{ const n=(d.data()||{}).nombre; if(n)nombres.add(n); });
+    if(window.tcSupabase){ const r=await window.tcSupabase.from('ventas_clientes').select('nombre').limit(5000); (r.data||[]).forEach(x=>{ if(x.nombre)nombres.add(x.nombre); }); }
+    else { const snap=await db.collection('ventas_clientes').get(); snap.forEach(d=>{ const n=(d.data()||{}).nombre; if(n)nombres.add(n); }); }
     _reqClientesCache=Array.from(nombres).sort();
   }catch(e){ _reqClientesCache=[]; }
   return _reqClientesCache;

@@ -288,9 +288,7 @@ window.guardarCliente = async () => {
                 const r1 = await sb.from('estaciones_servicio').insert(fila);
                 if (r1.error) throw r1.error;
                 data.estacionCatalogoId = estId;
-                sb.from('ventas_clientes').insert({ nombre, direccion: data.direccion || null, ciudad: data.ciudad || null, estado: data.estado || null, lat: data.lat, lng: data.lng,
-                    contacto: data.contacto || null, tel: data.tel || null, sector: data.sector || null, visitas: data.visitas || 0, estacion_catalogo_id: estId,
-                    origen: 'ventas', actualizado_por: data.actualizadoPor, creado_en: ahoraC, actualizado_en: ahoraC, notas: data.notas || null }).then(()=>{}, ()=>{});
+                // 25-oct-2026: ya no se inserta aquí; el cliente que guarda Ventas se copia solo al catálogo ventas_clientes (espejo en Supabase).
                 if (window.vssOlvidarCatalogo) window.vssOlvidarCatalogo();
             } else {
                 const cam = { actualizado_en: ahoraC };

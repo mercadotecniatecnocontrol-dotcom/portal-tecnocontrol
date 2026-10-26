@@ -49,6 +49,9 @@
   // 24-oct-2026: parrilla de contenido (Dashboard y Marketing), indicadores y solicitudes de Mercadotecnia.
   // 25-oct-2026: copiadas (761 documentos, conteos iguales) y activadas.
   ['area_parrilla', 'mkt_parrilla', 'mkt_indicadores', 'mkt_solicitudes'].forEach(function (c) { RUTEADAS[c] = 1; });
+  // 25-oct-2026: Ventas y administrativos (1,375 documentos copiados, conteos iguales).
+  ['crm_oportunidades', 'cotizaciones', 'actividades_cliente', 'ventas_checkins', 'ventas_metas', 'ventas_clientes', 'rh_indicadores', 'rh_config',
+   'conta_registros', 'egresos_registros', 'pagos_cuentas_por_pagar', 'pagos_registros', 'cuentas_por_cobrar'].forEach(function (c) { RUTEADAS[c] = 1; });
   window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
   function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
   function autoId() {

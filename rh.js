@@ -273,7 +273,7 @@ window.rhMesNext = () => { rhSemanaOffset++; if(rhSemanaOffset>0) rhSemanaOffset
 async function cargarDatosRH(){
     const key = rhKey();
     try {
-        const fbRH = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbRH = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         window._rhDeleteDoc = (id) => fbRH.deleteDoc(fbRH.doc(db,'rh_indicadores',id));
         window._rhUpdate    = (id, data) => fbRH.updateDoc(fbRH.doc(db,'rh_indicadores',id), data);
 
@@ -774,7 +774,7 @@ window.guardarRHInline = async () => {
     console.log('[RH Inline] Guardando:', docData);
 
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const ref = await fs.addDoc(fs.collection(db,'rh_indicadores'), docData);
         console.log('[RH Inline] ✅ ID:', ref.id);
         cerrarRHInline();
@@ -918,7 +918,7 @@ window.guardarDatoRH = async () => {
 
     try {
         // Reimportar Firestore para asegurar disponibilidad
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         if(rhEditandoId){
             await fs.updateDoc(fs.doc(db,'rh_indicadores', rhEditandoId), docData);
             rhEditandoId = null;
@@ -1136,7 +1136,7 @@ window.initRH360 = async function(){
 
 async function rhCargarColaboradores(){
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await fs.getDocs(fs.collection(db,'colaboradores'));
         rhColabs = snap.docs.map(d=>({id:d.id, ...d.data()}));
         console.log('[RH] '+rhColabs.length+' colaboradores cargados');
@@ -1323,7 +1323,7 @@ window.rhNuevoColaborador = async function(){
     const id = tieneCorreo ? correoNorm :
         ('sinCorreo_'+nombre.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_'));
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const data = {
             colaboradorId: id, nombre: nombre.trim(), correo: tieneCorreo ? correoNorm : null,
             sinCorreo: !tieneCorreo, estatus: 'activo',
@@ -1502,7 +1502,7 @@ window.rhGuardarDatos = async function(id){
         if(el) data[f.key] = el.value.trim();
     });
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         data.actualizadoEn = new Date().toISOString();
         await fs.updateDoc(fs.doc(db,'colaboradores',id), data);
         const c = rhColabs.find(x=>x.id===id);
@@ -1535,7 +1535,7 @@ window.rhEditarDoc = async function(id, key){
     const val = prompt('Estado de "'+d.label+'":\n• Fecha de vencimiento (AAAA-MM-DD)\n• O escribe "vigente" si no vence\n• Vacío para borrar el dato', actual);
     if(val===null) return;
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const campo = {}; campo['doc_'+key] = val.trim();
         campo.actualizadoEn = new Date().toISOString();
         await fs.updateDoc(fs.doc(db,'colaboradores',id), campo);
@@ -1560,7 +1560,7 @@ window.rhAgregarHistorial = async function(id){
     const fecha = prompt('Fecha (AAAA-MM-DD):', new Date().toISOString().slice(0,10));
     if(!fecha) return;
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const c = rhColabs.find(x=>x.id===id);
         const historial = Array.isArray(c.historial) ? [...c.historial] : [];
         historial.push({fecha: fecha.trim(), texto: texto.trim()});
@@ -1597,7 +1597,7 @@ window.rhSubirFoto = function(id){
         });
         document.body.removeChild(inp);
         try {
-            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             await fs.updateDoc(fs.doc(db,'colaboradores',id), {foto:b64, actualizadoEn:new Date().toISOString()});
             const c = rhColabs.find(x=>x.id===id);
             if(c) c.foto = b64;
@@ -1611,7 +1611,7 @@ window.rhSubirFoto = function(id){
 window.rhEliminarFoto = async function(id){
     if(!confirm('¿Eliminar la foto de este colaborador?')) return;
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await fs.updateDoc(fs.doc(db,'colaboradores',id), {foto:null, actualizadoEn:new Date().toISOString()});
         const c = rhColabs.find(x=>x.id===id);
         if(c) c.foto = null;
@@ -1721,7 +1721,7 @@ window.rhAplicarOCR = async function(colaboradorId, claves){
         return;
     }
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         data.actualizadoEn = new Date().toISOString();
         await fs.updateDoc(fs.doc(db, 'colaboradores', colaboradorId), data);
         const c = rhColabs.find(x => x.id === colaboradorId);
@@ -1738,7 +1738,7 @@ window.rhEliminarColaborador = async function(id){
     const confirmacion = prompt('Para confirmar, escribe ELIMINAR:');
     if(confirmacion !== 'ELIMINAR'){ alert('Cancelado — no se escribió "ELIMINAR" exactamente.'); return; }
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await fs.deleteDoc(fs.doc(db,'colaboradores',id));
         rhColabs = rhColabs.filter(x=>x.id!==id);
         rhPerfilId = null;
@@ -1981,7 +1981,7 @@ function rhAbrirRevisionOCR(id, campos, imagenes){
         const btn = modal.querySelector('#rh-ocr-aplicar');
         btn.textContent = 'Guardando…'; btn.disabled = true;
         try {
-            const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             datos.actualizadoEn = new Date().toISOString();
             await fs.updateDoc(fs.doc(db,'colaboradores',id), datos);
             // El documento en sí se guarda aparte, en subcolección (una entrada
@@ -2012,7 +2012,7 @@ window.rhAsignarCorreo = async function(idViejo){
     const correoNorm = correo.trim().toLowerCase();
     if(!correoNorm.includes('@')){ alert('Correo inválido.'); return; }
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const refNuevo = fs.doc(db,'colaboradores',correoNorm);
         const existente = await fs.getDoc(refNuevo);
         const base = existente.exists() ? existente.data() : {};
@@ -2030,7 +2030,7 @@ window.rhAsignarCorreo = async function(idViejo){
 // ── Actividad cruzada: Flotilla + Operaciones, solo lectura ────
 async function rhCargarActividadCruzada(correo){
     const resultado = { vehiculo:null, herramientas:[] };
-    const fsBase = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const fsBase = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
     // fl_usuarios y flotilla_vehiculos viven en Supabase desde oct-2026
     const fs = window.tcFlDocsShim ? window.tcFlDocsShim(fsBase) : fsBase;
 

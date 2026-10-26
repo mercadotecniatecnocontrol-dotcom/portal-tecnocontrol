@@ -172,7 +172,7 @@
           return Promise.all([
             window.tcCatEstacionesSnap().catch(function () { return { forEach: function () {} }; }),
             incluirClientes
-              ? fs.getDocs(fs.collection(window.db, 'ventas_clientes')).catch(function () { return { forEach: function () {} }; })
+              ? (window.tcFSPuente ? window.tcFSPuente().then(function (F) { return F.getDocs(F.collection(window.db, 'ventas_clientes')); }) : fs.getDocs(fs.collection(window.db, 'ventas_clientes'))).catch(function () { return { forEach: function () {} }; })
               : Promise.resolve({ forEach: function () {} })
           ]);
         }).catch(function () { return [{ forEach: function () {} }, { forEach: function () {} }]; }),

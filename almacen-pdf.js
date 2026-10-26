@@ -1129,7 +1129,7 @@
     if (_clientesOficinasCache) return Promise.resolve(_clientesOficinasCache);
     return cargarFirestore().then(function(fs){
       if (!window.db) return [];
-      return fs.getDocs(fs.collection(window.db,'ventas_clientes')).then(function(snap){
+      return (window.tcFSPuente ? window.tcFSPuente().then(function(F){ return F.getDocs(F.collection(window.db,'ventas_clientes')); }) : fs.getDocs(fs.collection(window.db,'ventas_clientes'))).then(function(snap){
         var lista = [];
         snap.forEach(function(d){
           var c = d.data()||{};
