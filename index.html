@@ -20,7 +20,7 @@
     <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
     <script src="portal-supabase.js?v=5"></script>
     <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
-    <script src="operaciones-supabase.js?v=ops5"></script>
+    <script src="operaciones-supabase.js?v=ops6"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -3204,11 +3204,17 @@ window.fusionarUsuarioEnMapas = fusionarUsuarioEnMapas;
 
 async function cargarUsuariosFirestore(){
     try {
-        const snap = await getDocs(collection(db,'usuarios'));
+        const snap = await (async F => F.getDocs(F.collection(db,'usuarios')))(await fsUsuarios());
         snap.forEach(d => fusionarUsuarioEnMapas(d.data()));
     } catch(e){ console.warn('[USUARIOS] No se pudo cargar la colección usuarios:', e.message); }
 }
 window.cargarUsuariosFirestore = cargarUsuariosFirestore;
+// 'usuarios' por el puente: cuando se active en operaciones-supabase.js se lee/guarda en Supabase;
+// mientras tanto todo sigue yendo a Firebase igual que antes.
+async function fsUsuarios(){
+    if(window.tcFSPuente) return window.tcFSPuente();
+    return { getDocs, collection, doc, updateDoc, setDoc, onSnapshot };
+}
 
 // ══════════════════════════════════════════════════════════════
 // USUARIOS Y PERMISOS — un solo lugar (Etapa 1, 23-oct-2026)
@@ -3238,7 +3244,7 @@ window.abrirUsuariosPermisos = async () => {
         <div id="up-lista" style="overflow-y:auto;padding:12px 20px 20px;"><div style="padding:30px;text-align:center;color:#94a3b8;">Cargando usuarios…</div></div>
     </div>`;
     try {
-        const snap = await getDocs(collection(db,'usuarios'));
+        const snap = await (async F => F.getDocs(F.collection(db,'usuarios')))(await fsUsuarios());
         _upUsuarios = snap.docs.map(d=>({uid:d.id, ...d.data()})).sort((a,b)=>((a.correo?0:1)-(b.correo?0:1)) || upNombreDe(a).localeCompare(upNombreDe(b),'es'));
         await Promise.all([upCargarAvisos(), upCargarPermisos()]);
         upRender();
@@ -3283,7 +3289,7 @@ async function upActualizar(uid, cambios, msg){
     const u = _upUsuarios.find(x=>x.uid===uid); if(!u) return;
     const datos = { ...cambios, actualizadoPor: auth.currentUser?.email||'', actualizadoEn: new Date().toISOString() };
     try {
-        await updateDoc(doc(db,'usuarios',uid), datos);
+        await (async F => F.updateDoc(F.doc(db,'usuarios',uid), datos))(await fsUsuarios());
         Object.assign(u, datos);
         fusionarUsuarioEnMapas(u);
         if(typeof renderSidebarAreas === 'function') renderSidebarAreas();
@@ -3314,13 +3320,13 @@ function upVigilarMiBaja(){
     try {
         const yo = auth.currentUser; if(!yo || window._upVigilando) return;
         window._upVigilando = true;
-        onSnapshot(collection(db,'usuarios'), snap => {
+        fsUsuarios().then(F => F.onSnapshot(F.collection(db,'usuarios'), snap => {
             const mio = snap.docs.map(d=>d.data()).find(u => (u.correo||'').toLowerCase() === (auth.currentUser?.email||'').toLowerCase());
             if(mio && mio.activo === false){
                 alert('Tu acceso al portal fue dado de baja. Si es un error, habla con Administración.');
                 signOut(auth);
             }
-        }, ()=>{});
+        }, ()=>{}));
     } catch(e){ console.warn('[usuarios] vigilancia de baja:', e.message); }
 }
 window.upVigilarMiBaja = upVigilarMiBaja;
@@ -3615,7 +3621,7 @@ window.guardarUsuarioNuevo = async () => {
             creadoPor: auth.currentUser?.email || '',
             creadoEn: new Date().toISOString()
         };
-        await setDoc(doc(db,'usuarios', uid), datosUsuario);
+        await (async F => F.setDoc(F.doc(db,'usuarios', uid), datosUsuario))(await fsUsuarios());
 
         fusionarUsuarioEnMapas(datosUsuario);
         if(window.actualizarEncargados) window.actualizarEncargados();
@@ -3676,7 +3682,7 @@ window.abrirModalRolesFlotilla = async () => {
     document.getElementById('rf-lista').innerHTML = '<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px;grid-column:1/-1">Cargando usuarios...</div>';
     document.getElementById('rf-sin-cuenta').style.display = 'none';
     try {
-        const snap = await getDocs(collection(db,'usuarios'));
+        const snap = await (async F => F.getDocs(F.collection(db,'usuarios')))(await fsUsuarios());
         _rfUsuarios = snap.docs
             .map(d=>({uid:d.id, ...d.data()}))
             .sort((a,b)=>(a.nombre||a.correo||'').localeCompare(b.nombre||b.correo||''));
@@ -3756,7 +3762,7 @@ window.rfSetEspecial = async (uid, cual, marcado) => {
     if(!u) return;
     const nuevoRol = marcado ? cual : '';
     try {
-        await updateDoc(doc(db,'usuarios', uid), { rolFlotilla: nuevoRol || null });
+        await (async F => F.updateDoc(F.doc(db,'usuarios', uid), { rolFlotilla: nuevoRol || null }))(await fsUsuarios());
         u.rolFlotilla = nuevoRol;
         if(window.mostrarToast) window.mostrarToast('✅ Actualizado', u.nombre||u.correo, '🚚');
         rfRender(_rfUsuarios.filter(x=>{
@@ -3774,7 +3780,7 @@ window.rfTogglePermiso = async (uid, accion, marcado) => {
     let permisos = Array.isArray(u.permisosFlotilla) ? [...u.permisosFlotilla] : (FL_ACCIONES_LEGADO_UI[u.rolFlotilla||''] || []).slice();
     permisos = marcado ? [...new Set([...permisos, accion])] : permisos.filter(p=>p!==accion);
     try {
-        await updateDoc(doc(db,'usuarios', uid), { permisosFlotilla: permisos, rolFlotilla: null });
+        await (async F => F.updateDoc(F.doc(db,'usuarios', uid), { permisosFlotilla: permisos, rolFlotilla: null }))(await fsUsuarios());
         u.permisosFlotilla = permisos;
         u.rolFlotilla = null;
         if(window.mostrarToast) window.mostrarToast('✅ Permiso actualizado', u.nombre||u.correo, '🚚');
