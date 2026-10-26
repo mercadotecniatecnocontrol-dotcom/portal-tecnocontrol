@@ -350,6 +350,94 @@ if ('serviceWorker' in navigator) {
 
 })();
 </script>
+<script>
+/* ===== Selector Cámara / Galería para inputs de foto y video (Flotilla) ===== */
+(function () {
+  if (window.__tcPickerInit) return;
+  window.__tcPickerInit = true;
 
+  var st = document.createElement('style');
+  st.textContent =
+    '#tcPickOv{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483000;display:flex;align-items:flex-end;justify-content:center}' +
+    '#tcPickOv .tcHoja{width:100%;max-width:520px;background:#1e2430;border-radius:18px 18px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 24px rgba(0,0,0,.4);font-family:inherit}' +
+    '#tcPickOv .tcTit{color:#9aa4b2;font-size:13px;text-align:center;margin:2px 0 12px}' +
+    '#tcPickOv button{display:flex;align-items:center;gap:12px;width:100%;padding:15px 16px;margin:0 0 8px;border:0;border-radius:12px;background:#2b3342;color:#fff;font-size:16px;font-weight:600;text-align:left;cursor:pointer}' +
+    '#tcPickOv button:active{background:#37415a}' +
+    '#tcPickOv button.tcCan{background:transparent;color:#9aa4b2;justify-content:center;margin:4px 0 0}' +
+    '#tcPickOv .tcIco{font-size:22px;width:28px;text-align:center}';
+  document.head.appendChild(st);
+
+  function cerrar() {
+    var ov = document.getElementById('tcPickOv');
+    if (ov) ov.remove();
+  }
+
+  function lanzar(inp, accept, camara) {
+    var accOrig = inp.getAttribute('accept');
+    var capOrig = inp.getAttribute('capture');
+    inp.setAttribute('accept', accept);
+    if (camara) inp.setAttribute('capture', 'environment');
+    else inp.removeAttribute('capture');
+    inp.dataset.tcBypass = '1';
+    cerrar();
+    inp.click();
+    setTimeout(function () {
+      if (accOrig === null) inp.removeAttribute('accept'); else inp.setAttribute('accept', accOrig);
+      if (capOrig === null) inp.removeAttribute('capture'); else inp.setAttribute('capture', capOrig);
+      inp.dataset.tcBypass = '';
+    }, 1500);
+  }
+
+  function abrirMenu(inp, img, vid, acc) {
+    cerrar();
+    var ov = document.createElement('div');
+    ov.id = 'tcPickOv';
+    var hoja = document.createElement('div');
+    hoja.className = 'tcHoja';
+    var tit = document.createElement('div');
+    tit.className = 'tcTit';
+    tit.textContent = '¿De dónde quieres tomar el archivo?';
+    hoja.appendChild(tit);
+
+    var ops = [];
+    if (img) ops.push(['📷', 'Tomar foto', function () { lanzar(inp, 'image/*', true); }]);
+    if (vid) ops.push(['🎥', 'Grabar video', function () { lanzar(inp, 'video/*', true); }]);
+    ops.push(['🖼️', 'Elegir de galería', function () { lanzar(inp, acc, false); }]);
+
+    ops.forEach(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span class="tcIco">' + o[0] + '</span><span>' + o[1] + '</span>';
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); o[2](); });
+      hoja.appendChild(b);
+    });
+
+    var can = document.createElement('button');
+    can.type = 'button';
+    can.className = 'tcCan';
+    can.textContent = 'Cancelar';
+    can.addEventListener('click', function (ev) { ev.stopPropagation(); cerrar(); });
+    hoja.appendChild(can);
+
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) cerrar(); });
+    ov.appendChild(hoja);
+    document.body.appendChild(ov);
+  }
+
+  document.addEventListener('click', function (e) {
+    var inp = e.target;
+    if (!inp || inp.tagName !== 'INPUT' || inp.type !== 'file') return;
+    if (inp.dataset.tcBypass === '1') return;
+    var acc = (inp.getAttribute('accept') || '').toLowerCase();
+    var img = acc.indexOf('image') > -1;
+    var vid = acc.indexOf('video') > -1;
+    if (!img && !vid) return; // PDFs u otros documentos: comportamiento normal
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    abrirMenu(inp, img, vid, acc);
+  }, true);
+})();
+</script>
+  
 </body>
 </html>
