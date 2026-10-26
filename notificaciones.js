@@ -71,7 +71,7 @@
     if (document.getElementById('tcn-css')) return;
     var s = document.createElement('style'); s.id = 'tcn-css';
     s.textContent = [
-      '#tcn-pila{position:fixed;right:18px;bottom:78px;z-index:99990;display:flex;flex-direction:column-reverse;gap:8px;width:350px;max-width:calc(100vw - 28px);pointer-events:none;font-family:inherit}',
+      '#tcn-pila{position:fixed;right:18px;bottom:78px;z-index:100050;display:flex;flex-direction:column-reverse;gap:8px;width:350px;max-width:calc(100vw - 28px);pointer-events:none;font-family:inherit}',
       '.tcn-card{pointer-events:auto;display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid #cbd5e1;border-left:4px solid #185FA5;padding:10px 12px;box-shadow:0 8px 24px rgba(15,23,42,.16);cursor:pointer;animation:tcnIn .18s ease}',
       '.tcn-card.urgente{border:2px solid #D85A30;border-radius:8px}',
       '.tcn-card.sacude{animation:tcnSac 1.6s ease-in-out 3}',

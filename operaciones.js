@@ -7796,28 +7796,24 @@
     const OPS_PALETA_NUEVOS = ["#0ea5e9", "#a855f7", "#f97316", "#14b8a6", "#e11d48", "#84cc16", "#6366f1", "#d97706", "#0891b2", "#be185d", "#16a34a", "#7c3aed"];
     function opsColorPorNombre(t) { let h = 0; for (const ch of String(t || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return OPS_PALETA_NUEVOS[h % OPS_PALETA_NUEVOS.length]; }
     function opsNomServ(t) { return opsAsNorm(String(t || "").replace(/\s+/g, " ").trim()); }
+    // 26-oct-2026 (Glen): YA NO se crean recetas con el texto que escribe el vendedor (llenaba el catálogo de
+    // "servicios" falsos: "TLS 450 NO FUNCIONA…", "SERVICIO"…). Se busca la receta por la descripción de Aspel
+    // de la partida; si no hay, la partida queda "por elegir" y Operaciones la escoge del catálogo.
+    // Lo que escribió el vendedor (espec) se queda en los comentarios como "lo que pide el cliente".
     async function opsServiciosDesdePedido(p) {
         const lineas = (p.productos || []).filter(x => x.tipo === "servicio");
         const out = [];
+        const activas = cacheServiciosCatalogo.filter(c => c.activo !== false);
         for (const x of lineas) {
-            const nombre = String(x.espec || x.desc || x.clave || "").trim() || "Servicio";
+            const nombre = String(x.desc || x.clave || "").trim() || "Servicio";
             const n = opsNomServ(nombre);
-            let r = cacheServiciosCatalogo.find(c => c.activo !== false && opsNomServ(c.nombre) === n)
-                || cacheServiciosCatalogo.find(c => c.activo !== false && n.length > 8 && (opsNomServ(c.nombre).includes(n) || n.includes(opsNomServ(c.nombre))));
-            if (!r) {
-                try {
-                    const { db, fs } = await opsGetFB();
-                    const nuevo = { nombre: nombre.slice(0, 140), categoria: "Desde Ventas", activo: true, colorCalendario: opsColorPorNombre(nombre), horasEjecucion: 0,
-                        creadoDesde: "Pedido " + (p.folio || "") + " (" + (p.cliente || "") + ")", creadoPor: opsNombreActual(), creadoEn: opsFechaHora() };
-                    const ref = await fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO), nuevo);
-                    r = { id: ref.id, ...nuevo }; cacheServiciosCatalogo.push(r);
-                } catch (e) { console.warn("[catálogo] no se pudo dar de alta", nombre, e.message); }
-            }
+            const r = activas.find(c => opsNomServ(c.nombre) === n)
+                || activas.find(c => n.length > 8 && opsNomServ(c.nombre).length > 8 && (opsNomServ(c.nombre).includes(n) || n.includes(opsNomServ(c.nombre))));
             const cant = Math.max(1, Number(x.cant) || 1);
             if (r) {
                 const ya = out.find(o => o.id === r.id);
                 if (ya) ya.cantidad += cant; else out.push({ clave: "rec:" + r.id, tipo: "receta", id: r.id, nombre: r.nombre, horas: Number(r.horasEjecucion) || 0, grupo: r.categoria || "Catálogo", cantidad: cant });
-            } else out.push({ clave: "otro:" + Date.now() + out.length, tipo: "otro", id: null, nombre, horas: 0, grupo: "Otro", cantidad: cant });
+            } else out.push({ clave: "otro:" + Date.now() + out.length, tipo: "otro", id: null, nombre, horas: 0, grupo: "Por elegir del catálogo", cantidad: cant, porElegir: true, pideCliente: String(x.espec || "").trim() || null });
         }
         return out;
     }
@@ -15173,6 +15169,10 @@
         const s = opsAS;
         return `
             <div style="margin-top:12px;">
+                ${(s.servicios || []).some(x => x.porElegir) ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ea580c;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#7c2d12;">
+                    <b>Elige del catálogo lo que vendió Ventas.</b> Estas partidas no coinciden con ninguna receta; búscala abajo, márcala y quita la de texto con la ✕:
+                    ${(s.servicios || []).map((x, i) => x.porElegir ? `<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span><b>${opsEsc(x.nombre)}</b>${x.pideCliente ? ` — <i>lo que pide el cliente: ${opsEsc(x.pideCliente)}</i>` : ""}</span><button type="button" class="opsas-ghost" style="padding:3px 9px;font-size:11px;" onclick="opsAS.servBusca=${opsEsc(JSON.stringify(String(x.nombre).split(/\s+/).slice(0, 2).join(" ")))};opsAsPintar()">Buscar en catálogo</button></div>` : "").join("")}
+                </div>` : ""}
                 <label class="opsas-lb">Servicios que incluye esta programación (puedes elegir varios · opcional)</label>
                 <input class="opsas-in" placeholder="Buscar servicio o norma…" value="${opsEsc(s.servBusca)}" oninput="opsAS.servBusca=this.value;opsAsPintarParcial('opsas-prog-chips',opsAsProgChipsHTML())">
                 <div id="opsas-prog-chips" style="margin-top:8px;">${opsAsProgChipsHTML()}</div>
@@ -17739,6 +17739,69 @@
         }
     };
 
+    // ── Catálogo: buscar, filtrar y revisar (26-oct-2026) ──
+    let opsRecBusca = "", opsRecCategoria = "", opsRecVerInactivas = false, opsRecRevisar = false;
+    function opsRecVisibles() {
+        const q = opsAsNorm(opsRecBusca);
+        return cacheServiciosCatalogo
+            .filter(r => opsRecVerInactivas || r.activo !== false)
+            .filter(r => !opsRecCategoria || (r.categoria || "Sin categoría") === opsRecCategoria)
+            .filter(r => !q || opsAsNorm([r.nombre, r.categoria].join(" ")).includes(q))
+            .sort((a, b) => opsAsAlfa(a.nombre || "", b.nombre || ""));
+    }
+    function opsRecFiltrosHTML(gestion) {
+        const cats = [...new Set(cacheServiciosCatalogo.map(r => r.categoria || "Sin categoría"))].sort((a, b) => opsAsAlfa(a, b));
+        const st = "border:1px solid #e2e8f0;background:#fff;border-radius:8px;padding:8px 10px;font-size:12px;";
+        const nIn = cacheServiciosCatalogo.filter(r => r.activo === false).length;
+        return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            <input id="ops-rec-busca" value="${opsEsc(opsRecBusca)}" oninput="opsRecFiltrar('busca',this.value)" placeholder="Buscar servicio…" style="${st}flex:1;min-width:200px;">
+            <select onchange="opsRecFiltrar('categoria',this.value)" style="${st}"><option value="">Todas las categorías</option>${cats.map(c => `<option ${c === opsRecCategoria ? "selected" : ""}>${opsEsc(c)}</option>`).join("")}</select>
+            ${nIn ? `<label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:5px;"><input type="checkbox" ${opsRecVerInactivas ? "checked" : ""} onchange="opsRecFiltrar('inactivas',this.checked)"> Ver desactivadas (${nIn})</label>` : ""}
+            ${gestion ? `<button onclick="opsRecFiltrar('revisar',${!opsRecRevisar})" style="${st}cursor:pointer;font-weight:700;color:#9a3412;border-color:#fed7aa;background:#fff7ed;">${opsRecRevisar ? "Cerrar revisión" : "Revisar catálogo"}</button>` : ""}
+        </div>`;
+    }
+    window.opsRecFiltrar = function (k, v) {
+        if (k === "busca") opsRecBusca = v; else if (k === "categoria") opsRecCategoria = v; else if (k === "inactivas") opsRecVerInactivas = !!v; else if (k === "revisar") opsRecRevisar = !!v;
+        opsRenderCatalogoRecetas();
+        if (k === "busca") { const i = document.getElementById("ops-rec-busca"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+    };
+    // Recetas sospechosas: creadas con el texto de Ventas y vacías, o con nombre repetido.
+    function opsRecSospechosas() {
+        const act = cacheServiciosCatalogo.filter(r => r.activo !== false);
+        const vacia = r => !(r.herramientaRequerida || []).length && !(r.materiales || []).length;
+        const usos = id => cacheFolios.filter(f => f.servicioCatalogoId === id || (f.serviciosProgramados || []).some(x => x.id === id)).length;
+        const desdeVentas = act.filter(r => r.categoria === "Desde Ventas" && vacia(r)).map(r => ({ r, motivo: "Se creó con el texto de un pedido de Ventas y no tiene herramienta ni materiales", usos: usos(r.id) }));
+        const grupos = {};
+        act.forEach(r => { const k = opsNomServ(r.nombre).replace(/\b(de|del|la|el|en|a)\b/g, "").replace(/\s+/g, " ").trim(); (grupos[k] = grupos[k] || []).push(r); });
+        const repetidas = Object.values(grupos).filter(g => g.length > 1).flatMap(g => g.map(r => ({ r, motivo: "Nombre repetido con: " + g.filter(x => x !== r).map(x => x.nombre).join(" / "), usos: usos(r.id) })));
+        const vistos = new Set(); return desdeVentas.concat(repetidas).filter(x => !vistos.has(x.r.id) && vistos.add(x.r.id))
+            .sort((a, b) => opsAsAlfa(a.r.nombre || "", b.r.nombre || ""));
+    }
+    function opsRecRevisarHTML() {
+        const l = opsRecSospechosas();
+        return `<div style="background:#fff;border:1px solid #fed7aa;border-left:5px solid #ea580c;border-radius:14px;padding:14px 16px;margin-bottom:14px;">
+            <div style="font-size:13px;font-weight:800;color:#9a3412;">Revisar catálogo <span style="background:#ffedd5;border-radius:999px;padding:1px 8px;">${l.length}</span></div>
+            <div style="font-size:11.5px;color:#7c2d12;margin:4px 0 10px;line-height:1.45;">"Desactivar" la quita de las listas para programar, pero <b>no borra nada</b>: los servicios ya programados con ella se quedan igual y la puedes reactivar cuando quieras ("Ver desactivadas").</div>
+            ${l.length ? l.map(x => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px dashed #fed7aa;padding:8px 0;">
+                <div style="flex:1;min-width:220px;"><div style="font-size:12.5px;font-weight:700;color:#1e293b;">${opsEsc(x.r.nombre || "")}</div>
+                <div style="font-size:11px;color:#9a3412;">${opsEsc(x.motivo)} · usada en ${x.usos} servicio(s)</div></div>
+                <button onclick="opsAbrirFichaServicio('${x.r.id}')" style="border:1px solid #e2e8f0;background:#fff;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir</button>
+                <button onclick="opsRecActivar('${x.r.id}',false)" style="border:none;background:#9a3412;color:#fff;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Desactivar</button>
+            </div>`).join("") : `<div style="font-size:12px;color:#15803d;font-weight:700;">Todo en orden: no hay recetas sospechosas.</div>`}
+        </div>`;
+    }
+    window.opsRecActivar = async function (id, activo) {
+        const r = cacheServiciosCatalogo.find(x => x.id === id); if (!r) return;
+        if (!confirm((activo ? "¿Reactivar" : "¿Desactivar") + " la receta \"" + (r.nombre || "") + "\"?" + (activo ? "" : "\n\nYa no saldrá al programar. No se borra nada y la puedes reactivar después."))) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, COL_SERVICIOS_CATALOGO, id), { activo: !!activo }, { merge: true });
+            fs.addDoc(fs.collection(db, COL_SERVICIOS_CATALOGO, id, "historial"), { usuario: opsNombreActual(), usuarioEmail: opsUsuarioActual(), fecha: opsFechaHora(), resumen: activo ? "Receta reactivada" : "Receta desactivada (revisión del catálogo)" }).catch(() => {});
+            r.activo = !!activo;
+            if (window.tcNotif && window.tcNotif.aviso) window.tcNotif.aviso((activo ? "Reactivada: " : "Desactivada: ") + (r.nombre || ""), "ok", "Catálogo de servicios");
+            opsRenderCatalogoRecetas();
+        } catch (e) { alert("No se pudo: " + (e.message || e)); }
+    };
     function opsRenderCatalogoRecetas() {
         const el = document.getElementById("ops-catalogo-recetas-contenido");
         if (!el) return;
@@ -17763,14 +17826,17 @@
                 </div>
                 <div style="font-size:10px;color:#94a3b8;margin-top:8px;">Calculado del Excel de Paloma (sueldo + IMSS patrón + INFONAVIT/2, entre 30 días) — es un punto de partida, no un valor fijo de nómina.</div>
             </div>` : ""}
+            ${opsRecFiltrosHTML(gestion)}
+            ${opsRecRevisar && gestion ? opsRecRevisarHTML() : ""}
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">
-                ${cacheServiciosCatalogo.length ? cacheServiciosCatalogo.map(s => `
+                ${opsRecVisibles().length ? opsRecVisibles().map(s => `
                     <div onclick="opsAbrirFichaServicio('${s.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;line-height:1.3;display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${s.colorCalendario || opsCalFamiliaDeTexto(s.nombre || "", false).color};"></span>${opsEsc(s.nombre)}</div>
                         <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">${opsEsc(s.categoria || "Sin categoría")} · ${s.tipoServicio === "externo" ? "Externo" : (s.tipoServicio === "interno" ? "Interno" : "Interno/Externo")}</div>
                         <div style="font-size:11px;color:#334155;">${(s.personal || []).map(p => `${p.cantidad} ${p.rol.replace("_", " ")}`).join(" · ")}</div>
                         <div style="font-size:11px;color:#334155;margin-top:3px;">${(s.materiales || []).length} materiales · ${(s.herramientaRequerida || []).length} herramientas</div>
-                    </div>`).join("") : `<div style="grid-column:1/-1;padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin servicios en el catálogo todavía.${gestion ? ' Usa "Importar recetas reales".' : ""}</div>`}
+                        ${s.activo === false ? `<div style="margin-top:8px;font-size:10.5px;font-weight:800;color:#64748b;background:#f1f5f9;border-radius:6px;padding:2px 8px;display:inline-block;">DESACTIVADA · no sale al programar</div>` : ""}
+                    </div>`).join("") : opsRecBusca || opsRecCategoria ? `<div style="grid-column:1/-1;padding:30px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Ningún servicio coincide con la búsqueda.</div>` : `<div style="grid-column:1/-1;padding:40px;text-align:center;color:#94a3b8;background:#fff;border-radius:14px;border:1px solid #e2e8f0;">Sin servicios en el catálogo todavía.${gestion ? ' Usa "Importar recetas reales".' : ""}</div>`}
             </div>`;
     }
 
@@ -17872,7 +17938,21 @@
         for (let i = 0; i < partes.length - 1; i++) obj = obj[partes[i]];
         obj[partes[partes.length - 1]] = valor;
     }
-    window.opsServCampo = function (ruta, valor, esNumero) { opsServSet(ruta, esNumero ? Number(valor) || 0 : valor); };
+    window.opsServCampo = function (ruta, valor, esNumero) { opsServSet(ruta, esNumero ? Number(valor) || 0 : valor); opsServPintarEstado(); };
+    // 26-oct-2026: la receta avisa si hay cambios sin guardar y no deja cerrar sin preguntar.
+    function opsServHayCambios() {
+        return !!servicioEditDraft && !!servicioOriginalSnapshot && JSON.stringify(servicioEditDraft) !== JSON.stringify(servicioOriginalSnapshot);
+    }
+    function opsServPintarEstado(texto, color) {
+        const e = document.getElementById("ops-serv-estado"); if (!e) return;
+        const hay = opsServHayCambios();
+        e.textContent = texto || (hay ? "Hay cambios sin guardar" : "Sin cambios pendientes");
+        e.style.color = color || (hay ? "#b45309" : "#94a3b8");
+    }
+    window.opsServCerrarFicha = function () {
+        if (opsServHayCambios() && opsPuedeGestionar() && !confirm("Esta receta tiene cambios SIN GUARDAR.\n\n¿Cerrar y perder los cambios?\n(Para conservarlos: Cancelar y luego “Guardar cambios”)")) return;
+        document.getElementById("ops-panel-wrap").innerHTML = ""; servicioEditDraft = null; dispoServicioActual = null;
+    };
     window.opsServColorAuto = function () { if (!servicioEditDraft) return; delete servicioEditDraft.colorCalendario; opsRenderFichaServicio(); };
 
     window.opsServAgregarFila = function (lista, plantilla) {
@@ -17898,6 +17978,11 @@
     window.opsGuardarServicio = async function () {
         const btn = document.getElementById("ops-serv-btn-guardar");
         if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        if (!opsServHayCambios()) {
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
+            opsServPintarEstado("No hay cambios que guardar: todo está guardado", "#15803d");
+            return;
+        }
         try {
             const { db, fs } = await opsGetFB();
             const { id, ...datos } = servicioEditDraft;
@@ -17910,7 +17995,9 @@
             servicioOriginalSnapshot = JSON.parse(JSON.stringify(servicioEditDraft));
             servicioHistorialCache = null; // se recarga la próxima vez que se abra esa pestaña
             if (btn) { btn.disabled = false; btn.textContent = "Guardar cambios"; }
-            window.mostrarPush ? mostrarPush("Planeación", "Receta de servicio guardada.", ICON.check) : alert("Guardado.");
+            const c = cacheServiciosCatalogo.find(x => x.id === id); if (c) Object.assign(c, JSON.parse(JSON.stringify(servicioEditDraft)));
+            opsServPintarEstado("Guardado " + new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + ": " + resumen, "#15803d");
+            if (window.tcNotif && window.tcNotif.aviso) window.tcNotif.aviso("Se guardó: " + (servicioEditDraft.nombre || "receta"), "ok", "Receta guardada");
         } catch (err) {
             console.error("[operaciones.js] error al guardar servicio:", err);
             alert("No se pudo guardar: " + err.message);
@@ -18208,14 +18295,14 @@
         const contenidoTab = { resumen: tabResumen, materiales: tabMateriales, herramienta: tabHerramienta, historial: tabHistorial }[fichaServTabActual];
 
         wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:26px;" onclick="if(event.target===this){document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;}">
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:26px;" onclick="if(event.target===this){opsServCerrarFicha();}">
             <div style="background:#fff;width:640px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:16px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
                     <div style="flex:1;">
                         ${inp(s.nombre, "nombre", false, "Nombre del servicio", "100%")}
-                        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${opsEsc(s.categoria || "")}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${opsEsc(s.categoria || "")}${s.activo === false ? ` · <b style="color:#64748b;">DESACTIVADA</b>${gestion ? ` <button onclick="opsServCerrarFicha();opsRecActivar('${s.id}',true)" style="border:none;background:#15803d;color:#fff;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:800;cursor:pointer;">Reactivar</button>` : ""}` : ""}</div>
                     </div>
-                    <button onclick="document.getElementById('ops-panel-wrap').innerHTML='';servicioEditDraft=null;dispoServicioActual=null;" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;margin-left:8px;">${ICON.close}</button>
+                    <button onclick="opsServCerrarFicha()" title="Cerrar" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;margin-left:8px;">${ICON.close}</button>
                 </div>
 
                 <div style="display:flex;gap:6px;margin:12px 0 4px;">
@@ -18236,7 +18323,7 @@
                 ${fichaServTabActual !== "historial" && s.notaImportacion ? `<div style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:11px;color:#92400e;">${opsEsc(s.notaImportacion)}</div>` : ""}
                 ${fichaServTabActual !== "historial" ? `<div style="margin-top:10px;font-size:10px;color:#cbd5e1;">${opsEsc(s.origenImportacion || "")}</div>` : ""}
 
-                ${gestion && fichaServTabActual !== "historial" ? `<div style="margin-top:18px;text-align:right;"><button id="ops-serv-btn-guardar" onclick="opsGuardarServicio()" class="mkt-add-btn" style="background:#1D2E73;">Guardar cambios</button></div>` : ""}
+                ${gestion && fichaServTabActual !== "historial" ? `<div style="position:sticky;bottom:-26px;margin:18px -26px -26px;padding:12px 26px;background:#fff;border-top:1px solid #e2e8f0;display:flex;align-items:center;justify-content:flex-end;gap:10px;border-radius:0 0 16px 16px;"><span id="ops-serv-estado" style="font-size:11.5px;font-weight:700;color:${opsServHayCambios() ? "#b45309" : "#94a3b8"};">${opsServHayCambios() ? "Hay cambios sin guardar" : "Sin cambios pendientes"}</span><button id="ops-serv-btn-guardar" onclick="opsGuardarServicio()" class="mkt-add-btn" style="background:#1D2E73;">Guardar cambios</button></div>` : ""}
             </div>
         </div>`;
     }
