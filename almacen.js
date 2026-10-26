@@ -1449,7 +1449,7 @@
       + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
       + ((p.evidenciasCliente||[]).length ? ('<div class="alm-destino"><button type="button" class="alm-destino-chip" onclick="window.__almVerEvidVentas(\''+p.id+'\',0)" style="background:#1D2E731a;color:#1D2E73;border-color:#1D2E7355;cursor:pointer;font-weight:700;">'
       +   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
-      +   'Ver '+p.evidenciasCliente.length+' foto(s) de Ventas</button></div>') : '')
+      +   'Ver '+p.evidenciasCliente.length+' archivo(s) de Ventas</button></div>') : '')
       + (p.entregaObservaciones ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#F26B211c;color:#F26B21;border-color:#F26B2155;">⚠ '+esc(p.entregaObservaciones)+'</span></div>') : '')
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   (total?('<span><b>'+piezas(p)+'</b> pzas</span>'):'')+'</div>'
@@ -1832,13 +1832,20 @@
     cargarSupabaseStorage().then(function(sb){ return sb.storage.from(x.bucket||'ops-evidencias').createSignedUrl(x.ruta, 3600); }).then(function(r){
       if(r.error) throw r.error;
       var url=r.data.signedUrl;
-      var media = x.tipo==='video' ? '<video src="'+esc(url)+'" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>'
-                                   : '<img src="'+esc(url)+'" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">';
-      fondo.innerHTML='<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">'+esc(p.folio||'')+' · '+(x.tipo==='video'?'Video':'Foto')+' '+(i+1)+' de '+lista.length+'</div>'+media
+      // Documentos (26-oct-2026): PDF se ve aquí mismo; Word/Excel/PowerPoint de hasta 10 MB con el visor de Microsoft; lo demás se descarga.
+      var ext=String(x.ext||String(x.ruta||x.nombre||'').split('.').pop()||'').toLowerCase();
+      var marco='width:min(1100px,94vw);height:78vh;border:none;border-radius:10px;background:#fff;';
+      var office=/^(docx?|xlsx?|pptx?)$/.test(ext), media;
+      if(x.tipo==='video') media='<video src="'+esc(url)+'" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>';
+      else if(x.tipo!=='documento') media='<img src="'+esc(url)+'" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">';
+      else if(ext==='pdf') media='<iframe src="'+esc(url)+'" style="'+marco+'"></iframe>';
+      else if(office && x.tam && x.tam<=10*1048576) media='<iframe src="https://view.officeapps.live.com/op/embed.aspx?src='+encodeURIComponent(url)+'" style="'+marco+'"></iframe>';
+      else media='<div style="background:#fff;border-radius:12px;padding:22px 26px;max-width:420px;text-align:center;color:#334155;font-size:13px;line-height:1.5;"><div style="font-size:26px;font-weight:800;color:#1D2E73;text-transform:uppercase;">'+esc(ext||'archivo')+'</div><b>'+esc(x.nombre||'')+'</b>'+(x.tam?(' · '+(x.tam/1048576).toFixed(1)+' MB'):'')+'<br>'+(office?'Pesa más de 10 MB y no se puede ver aquí. Descárgalo para abrirlo.':'Este tipo de archivo no se puede ver aquí. Descárgalo para abrirlo.')+'</div>';
+      fondo.innerHTML='<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">'+esc(p.folio||'')+' · '+esc(x.nombre||(x.tipo==='video'?'Video':'Foto'))+' · '+(i+1)+' de '+lista.length+'</div>'+media
         +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center;">'
         +(i>0?'<button style="'+bs+'" onclick="window.__almVerEvidVentas(\''+id+'\','+(i-1)+')">‹ Anterior</button>':'')
         +(i<lista.length-1?'<button style="'+bs+'" onclick="window.__almVerEvidVentas(\''+id+'\','+(i+1)+')">Siguiente ›</button>':'')
-        +'<a href="'+esc(url)+'" target="_blank" rel="noopener" style="'+bs+'">Abrir aparte</a>'+cerrar+'</div>';
+        +'<a href="'+esc(url)+'" target="_blank" rel="noopener" download="'+esc(x.nombre||'')+'" style="'+bs+'">Descargar / abrir aparte</a>'+cerrar+'</div>';
     }).catch(function(e){ fondo.innerHTML='<div style="color:#fff;font-weight:700;margin-bottom:10px;">No se pudo abrir: '+esc(e.message||e)+'</div>'+cerrar; });
   };
   window.__almVerFirma = function(id, cual){

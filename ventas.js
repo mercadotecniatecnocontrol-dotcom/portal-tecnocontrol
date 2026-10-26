@@ -7006,9 +7006,9 @@ function vssPintar(){
             <div>${lbl('Prioridad')}<select onchange="vssCampo('prioridad',this.value)" style="${inp}">${[['normal','Normal'],['alta','Alta'],['urgente','Urgente']].map(([v,t])=>`<option value="${v}" ${f.prioridad===v?'selected':''}>${t}</option>`).join('')}</select></div>
             <div>${campo('fechaSugerida','Fecha que pide el cliente',false,'','date')}</div>
           </div>
-          ${lbl('4. Fotos o video de la falla (opcional)')}
-          <input type="file" accept="image/*,video/*,.heic,.heif" multiple onchange="vssArchivos(this.files)" style="${inp}">
-          <div id="vss-arch" style="font-size:11.5px;color:#475569;margin:-4px 0 8px;">${(vss.archivos||[]).length ? (vss.archivos.length+' archivo(s) listos: '+vss.archivos.map(a=>vssEsc(a.name)).join(', ')) : 'Hasta 6 fotos o un video de máximo 50 MB. Se mandan a Operaciones y el técnico los ve en su app.'}</div>
+          ${lbl('4. Fotos, video o documentos del cliente (opcional)')}
+          <input type="file" accept="image/*,video/*,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" multiple onchange="vssArchivos(this.files,this)" style="${inp}">
+          <div id="vss-arch" style="font-size:11.5px;color:#475569;margin:-4px 0 8px;"></div>
           ${lbl('5. ¿Se necesita vehículo?')}
           <select onchange="vssCampo('vehiculoTamano',this.value)" style="${inp}">${[['','No sé / lo decide Operaciones'],['chico','Chico (auto)'],['mediano','Mediano (pickup / camioneta)'],['grande','Grande (camión / 3.5 ton)']].map(([v,t])=>`<option value="${v}" ${(f.vehiculoTamano||'')===v?'selected':''}>${t}</option>`).join('')}</select>
           <div id="vss-viat" style="margin-top:10px;font-size:12px;color:#334155;border-radius:8px;padding:8px 10px;"></div>` : ''}
@@ -7020,30 +7020,45 @@ function vssPintar(){
         </div>
       </div>
     </div>`;
-    vssPintarViaticos();
+    vssPintarViaticos(); vssPintarArchivos();
     const bi = document.getElementById('vss-busca'); if(bi){ bi.focus(); }
 }
 
-// Fotos/video que manda Ventas con la petición (22-oct-2026). Máximo 6 archivos, video hasta 50 MB.
-// 26-oct-2026: antes los archivos que el navegador no reconocía (HEIC, sin tipo) se descartaban sin avisar
-// y si la subida fallaba la petición se mandaba igual sin fotos. Ahora se avisa siempre qué pasó.
+// Evidencias que manda Ventas con la petición (22-oct-2026).
+// 26-oct-2026: se avisa siempre qué pasó con cada archivo, y ahora también se aceptan DOCUMENTOS
+// (PDF, Word, Excel, PowerPoint) porque los clientes casi siempre mandan los hallazgos en PDF.
+// Hasta 10 archivos; cada uno de máximo 50 MB. Cada vez que eligen archivos se SUMAN a los que ya estaban.
 const VSS_EXT_IMG = /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif)$/i, VSS_EXT_VID = /\.(mp4|mov|m4v|webm|3gp)$/i;
-function vssEsImg(f){ return /^image\//.test(f.type||'') || (!f.type && VSS_EXT_IMG.test(f.name||'')); }
-function vssEsVid(f){ return /^video\//.test(f.type||'') || (!f.type && VSS_EXT_VID.test(f.name||'')); }
-window.vssArchivos = function(lista){
+const VSS_EXT_DOC = { pdf:'application/pdf', doc:'application/msword', docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls:'application/vnd.ms-excel', xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt:'application/vnd.ms-powerpoint', pptx:'application/vnd.openxmlformats-officedocument.presentationml.presentation', txt:'text/plain', csv:'text/csv', zip:'application/zip' };
+const VSS_MAX_ARCH = 10, VSS_MAX_MB = 50;
+function vssExt(f){ return (String(f.name||'').split('.').pop()||'').toLowerCase(); }
+function vssEsImg(f){ return /^image\//.test(f.type||'') || VSS_EXT_IMG.test(f.name||''); }
+function vssEsVid(f){ return /^video\//.test(f.type||'') || VSS_EXT_VID.test(f.name||''); }
+function vssEsDoc(f){ return !!VSS_EXT_DOC[vssExt(f)]; }
+function vssPintarArchivos(avisos){
+    const d = document.getElementById('vss-arch'); if(!d) return;
+    const arr = (vss && vss.archivos) || [];
+    d.innerHTML = (arr.length ? '<b style="color:#15803d;">'+arr.length+' archivo(s) listos:</b> '+arr.map(a=>vssEsc(a.name)+' <span style="color:#94a3b8;">('+(a.size/1048576).toFixed(1)+' MB)</span>').join(', ')
+            +' <a href="#" onclick="event.preventDefault();vss.archivos=[];vssPintarArchivos();" style="color:#b91c1c;font-weight:700;margin-left:4px;">Quitar todos</a>'
+          : 'Fotos, video o documentos (PDF, Word, Excel, PowerPoint). Hasta '+VSS_MAX_ARCH+' archivos de máximo '+VSS_MAX_MB+' MB cada uno. Se mandan a Operaciones y el técnico los ve en su app.')
+        + ((avisos||[]).length ? '<div style="color:#b91c1c;font-weight:700;margin-top:3px;">'+vssEsc(avisos.join(' '))+'</div>' : '');
+}
+window.vssPintarArchivos = vssPintarArchivos;
+window.vssArchivos = function(lista, input){
     if(!vss) return;
-    const todos = Array.from(lista||[]);
-    const fuera = todos.filter(f=>!vssEsImg(f) && !vssEsVid(f));
-    const arr = todos.filter(f=>vssEsImg(f) || vssEsVid(f)).slice(0,6);
-    const grande = arr.find(f=>vssEsVid(f) && f.size > 50*1024*1024);
-    if(grande){ alert('El video '+grande.name+' pesa más de 50 MB. Recórtalo o manda uno más corto.'); return; }
-    vss.archivos = arr;
-    const avisos = [];
-    if(fuera.length) avisos.push('No se pueden mandar (no son foto ni video): '+fuera.map(a=>a.name).join(', '));
-    if(todos.length - fuera.length > 6) avisos.push('Solo se mandan las primeras 6.');
-    const d = document.getElementById('vss-arch');
-    if(d) d.innerHTML = (arr.length ? '<b style="color:#15803d;">'+arr.length+' archivo(s) listos:</b> '+arr.map(a=>vssEsc(a.name)).join(', ') : '')
-        + (avisos.length ? '<div style="color:#b91c1c;font-weight:700;margin-top:3px;">'+vssEsc(avisos.join(' '))+'</div>' : '');
+    const todos = Array.from(lista||[]), avisos = [];
+    const fuera = todos.filter(f=>!vssEsImg(f) && !vssEsVid(f) && !vssEsDoc(f));
+    const grandes = todos.filter(f=>f.size > VSS_MAX_MB*1024*1024);
+    if(fuera.length) avisos.push('Ese tipo de archivo no se puede mandar: '+fuera.map(a=>a.name).join(', ')+'.');
+    if(grandes.length) avisos.push('Pesan más de '+VSS_MAX_MB+' MB (guárdalos como PDF o recórtalos): '+grandes.map(a=>a.name).join(', ')+'.');
+    const ya = (vss.archivos||[]).slice();
+    todos.filter(f=>fuera.indexOf(f)<0 && grandes.indexOf(f)<0).forEach(f=>{ if(!ya.some(x=>x.name===f.name && x.size===f.size)) ya.push(f); });
+    if(ya.length > VSS_MAX_ARCH) avisos.push('Solo se mandan los primeros '+VSS_MAX_ARCH+'.');
+    vss.archivos = ya.slice(0, VSS_MAX_ARCH);
+    if(input) input.value = '';
+    vssPintarArchivos(avisos);
 };
 function vssEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Las fotos se pasan a JPEG de máximo 1920 px antes de subirlas (el espacio de evidencias solo acepta JPEG
@@ -7068,13 +7083,14 @@ async function vssSubirEvidencias(sb, carpeta, archivos, btn){
     for(const [i, a] of archivos.entries()){
         if(btn) btn.textContent = 'Subiendo '+(i+1)+' de '+archivos.length+'…';
         try{
-            const esVid = vssEsVid(a);
-            const arch = esVid ? a : await vssAJpeg(a);
-            const ext = esVid ? ((String(a.name).split('.').pop()||'mp4').toLowerCase().replace(/[^a-z0-9]/g,'')) : 'jpg';
+            const esDoc = vssEsDoc(a) && !vssEsImg(a), esVid = !esDoc && vssEsVid(a);
+            const arch = (esDoc || esVid) ? a : await vssAJpeg(a);
+            const ext = (esDoc || esVid) ? (vssExt(a).replace(/[^a-z0-9]/g,'') || 'bin') : 'jpg';
+            const tipoMime = esDoc ? (VSS_EXT_DOC[ext] || a.type) : (arch.type || (esVid ? 'video/mp4' : 'image/jpeg'));
             const ruta = carpeta+'/'+Date.now()+'_'+(i+1)+'.'+ext;
-            const up = await sb.storage.from('ops-evidencias').upload(ruta, arch, { contentType: arch.type || (esVid ? 'video/mp4' : 'image/jpeg'), upsert:false });
+            const up = await sb.storage.from('ops-evidencias').upload(ruta, arch, { contentType: tipoMime, upsert:false });
             if(up.error) throw up.error;
-            ev.push({ bucket:'ops-evidencias', ruta, tipo: esVid ? 'video' : 'foto', nombre:a.name });
+            ev.push({ bucket:'ops-evidencias', ruta, tipo: esDoc ? 'documento' : (esVid ? 'video' : 'foto'), nombre:a.name, ext, tam:arch.size });
         }catch(e){ console.warn('[vss] evidencia', a.name, e); fallas.push(a.name+': '+(e.message||e)); }
     }
     return { ev, fallas };
@@ -7105,8 +7121,8 @@ window.vssEnviar = async function(){
             evidencias = r.ev;
             if(r.fallas.length){
                 const seguir = confirm('No se pudieron subir '+r.fallas.length+' de '+vss.archivos.length+' archivo(s):\n\n- '+r.fallas.join('\n- ')
-                    +'\n\nAceptar = mandar la petición '+(evidencias.length ? 'con las que sí subieron' : 'sin fotos')+'.\nCancelar = no mandar todavía (puedes elegir otras fotos).');
-                if(!seguir){ vss.enviando = false; if(btn){ btn.disabled=false; btn.textContent='Enviar a Operaciones'; } const m=document.getElementById('vss-msg'); if(m) m.textContent='No se mandó. Elige otras fotos (JPG o PNG) e inténtalo de nuevo.'; return; }
+                    +'\n\nAceptar = mandar la petición '+(evidencias.length ? 'con los que sí subieron' : 'sin archivos')+'.\nCancelar = no mandar todavía (puedes elegir otras fotos).');
+                if(!seguir){ vss.enviando = false; if(btn){ btn.disabled=false; btn.textContent='Enviar a Operaciones'; } const m=document.getElementById('vss-msg'); if(m) m.textContent='No se mandó. Quita o cambia los archivos que fallaron e inténtalo de nuevo.'; return; }
             }
             if(btn) btn.textContent = 'Enviando…';
         }

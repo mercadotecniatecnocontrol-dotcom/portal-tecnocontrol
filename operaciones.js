@@ -13754,19 +13754,29 @@
         return `<div class="opsas-note" style="margin-top:8px;"><b>Ventas pidió vehículo ${OPS_VEH_TAM[s.vehiculoTamano]}.</b> ${delTam.length ? "Libres en esas fechas:" : `<span style="color:#b45309;">No hay de ese tamaño libre en esas fechas.</span> Otras unidades libres:`}<div>${(delTam.length ? delTam : otros).slice(0, 8).map(btn).join("") || "<i>Ninguna libre: confírmalo con Flotilla.</i>"}</div>${s.vehiculo ? `<div style="margin-top:4px;">Elegido: <b>${opsEsc(s.vehiculo)}</b> (se le avisa a Flotilla al guardar).</div>` : ""}</div>`;
     }
     window.opsAsVehTamanoHTML = opsAsVehTamanoHTML;
-    // Evidencias que manda Ventas (fotos/video del cliente). 26-oct-2026: se ven en miniatura dentro de la
-    // tarjeta, se abren en grande sin salir del portal, y Operaciones puede agregar fotos que llegaron por fuera.
+    // Evidencias que manda Ventas (fotos, video y documentos del cliente). 26-oct-2026: se ven en miniatura
+    // dentro de la tarjeta, se abren en grande sin salir del portal (PDF incluido), y Operaciones puede
+    // agregar archivos que llegaron por fuera (WhatsApp, correo).
+    const OPS_EV_DOC = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", txt: "text/plain", csv: "text/csv", zip: "application/zip" };
+    const opsEvExt = x => String(x.ext || (String(x.ruta || x.nombre || "").split(".").pop()) || "").toLowerCase();
+    const opsEvColor = e => e === "pdf" ? "#E7402B" : /^docx?$/.test(e) ? "#2563eb" : /^xlsx?$|^csv$/.test(e) ? "#15803d" : /^pptx?$/.test(e) ? "#c2410c" : "#475569";
     function opsPedEvidenciasHTML(p) {
         const ev = p.evidenciasCliente || [];
-        const agregar = opsPuedeGestionar() ? `<button type="button" onclick="opsPedEvAgregar('${p.id}')" title="Subir fotos o video que mandó el vendedor o el cliente por otro medio" style="background:#fff;color:#1D2E73;border:1px dashed #94a3b8;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;">+ Agregar fotos</button>` : "";
-        if (!ev.length) return p.tipoSolicitud === "peticion_diagnostico" ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:#94a3b8;">Sin fotos de Ventas ${agregar}</div>` : "";
+        const agregar = opsPuedeGestionar() ? `<button type="button" onclick="opsPedEvAgregar('${p.id}')" title="Subir fotos, video o documentos que mandó el vendedor o el cliente por otro medio" style="background:#fff;color:#1D2E73;border:1px dashed #94a3b8;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;">+ Agregar archivos</button>` : "";
+        if (!ev.length) return p.tipoSolicitud === "peticion_diagnostico" ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:#94a3b8;">Sin archivos de Ventas ${agregar}</div>` : "";
         setTimeout(() => opsPedEvCargar(p.id), 0);
         return `<div style="font-size:11px;color:#334155;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;"><b>Fotos de Ventas (${ev.length})</b>${agregar}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;"><b>Archivos de Ventas (${ev.length})</b>${agregar}</div>
             <div id="ops-ped-ev-${p.id}" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px;">
-                ${ev.map((x, i) => `<button type="button" onclick="opsPedVerEvidencia('${p.id}',${i})" title="${opsEsc(x.nombre || "")}" style="position:relative;aspect-ratio:1;border:1px solid #e2e8f0;border-radius:8px;background:#f1f5f9;padding:0;overflow:hidden;cursor:pointer;">
-                    ${x.tipo === "video" ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1D2E73" style="position:absolute;inset:0;margin:auto;"><polygon points="6 4 20 12 6 20 6 4"/></svg>` : `<img data-ev="${i}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .2s;">`}
-                </button>`).join("")}
+                ${ev.map((x, i) => {
+                    const e = opsEvExt(x);
+                    const dentro = x.tipo === "video" ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1D2E73" style="position:absolute;inset:0;margin:auto;"><polygon points="6 4 20 12 6 20 6 4"/></svg>`
+                        : x.tipo === "documento" ? `<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${opsEvColor(e)}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="font-size:9.5px;font-weight:800;color:${opsEvColor(e)};text-transform:uppercase;">${opsEsc(e)}</span></div>`
+                        : `<img data-ev="${i}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .2s;">`;
+                    return `<button type="button" onclick="opsPedVerEvidencia('${p.id}',${i})" title="${opsEsc(x.nombre || "")}" style="position:relative;aspect-ratio:1;border:1px solid #e2e8f0;border-radius:8px;background:#f1f5f9;padding:0;overflow:hidden;cursor:pointer;">${dentro}</button>`;
+                }).join("")}
             </div></div>`;
     }
     async function opsPedEvCargar(id) {
@@ -13787,31 +13797,42 @@
             fondo.addEventListener("click", e => { if (e.target === fondo) fondo.remove(); });
             document.body.appendChild(fondo);
         }
-        const x = lista[i], btn = "background:#fff;color:#1D2E73;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;";
+        const x = lista[i], e = opsEvExt(x), btn = "background:#fff;color:#1D2E73;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;";
         fondo.innerHTML = `<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">Cargando…</div>`;
         let url = "";
-        try { url = await opsUrlFirmada(x.bucket || "ops-evidencias", x.ruta); } catch (e) { fondo.innerHTML = `<div style="color:#fff;font-weight:700;">No se pudo abrir: ${opsEsc(e.message || e)}</div><button style="${btn}margin-top:10px;" onclick="document.getElementById('ops-ev-visor').remove()">Cerrar</button>`; return; }
-        const media = x.tipo === "video" ? `<video src="${url}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>` : `<img src="${url}" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">`;
-        fondo.innerHTML = `<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">${opsEsc(p.folio || "")} · ${x.tipo === "video" ? "Video" : "Foto"} ${i + 1} de ${lista.length}</div>${media}
+        try { url = await opsUrlFirmada(x.bucket || "ops-evidencias", x.ruta); } catch (er) { fondo.innerHTML = `<div style="color:#fff;font-weight:700;">No se pudo abrir: ${opsEsc(er.message || er)}</div><button style="${btn}margin-top:10px;" onclick="document.getElementById('ops-ev-visor').remove()">Cerrar</button>`; return; }
+        // Word/Excel/PowerPoint se ven con el visor gratuito de Microsoft (solo archivos de hasta 10 MB); si pesa más, se descarga.
+        const office = /^(docx?|xlsx?|pptx?)$/.test(e), officeChico = office && x.tam && x.tam <= 10 * 1048576;
+        const marco = "width:min(1100px,94vw);height:78vh;border:none;border-radius:10px;background:#fff;";
+        let media;
+        if (x.tipo === "video") media = `<video src="${url}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>`;
+        else if (x.tipo !== "documento") media = `<img src="${url}" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">`;
+        else if (e === "pdf") media = `<iframe src="${url}" style="${marco}"></iframe>`;
+        else if (officeChico) media = `<iframe src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}" style="${marco}"></iframe>`;
+        else media = `<div style="background:#fff;border-radius:12px;padding:22px 26px;max-width:420px;text-align:center;color:#334155;font-size:13px;line-height:1.5;"><div style="font-size:28px;font-weight:800;color:${opsEvColor(e)};text-transform:uppercase;">${opsEsc(e || "archivo")}</div><b>${opsEsc(x.nombre || "")}</b>${x.tam ? ` · ${(x.tam / 1048576).toFixed(1)} MB` : ""}<br>${office ? "Este archivo pesa más de 10 MB y no se puede ver aquí. Descárgalo para abrirlo." : "Este tipo de archivo no se puede ver aquí. Descárgalo para abrirlo."}</div>`;
+        fondo.innerHTML = `<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">${opsEsc(p.folio || "")} · ${opsEsc(x.nombre || (x.tipo === "video" ? "Video" : "Foto"))} · ${i + 1} de ${lista.length}</div>${media}
             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center;">
                 ${i > 0 ? `<button style="${btn}" onclick="opsPedVerEvidencia('${id}',${i - 1})">‹ Anterior</button>` : ""}
                 ${i < lista.length - 1 ? `<button style="${btn}" onclick="opsPedVerEvidencia('${id}',${i + 1})">Siguiente ›</button>` : ""}
-                <a href="${url}" target="_blank" rel="noopener" style="${btn}text-decoration:none;">Abrir aparte</a>
+                <a href="${url}" target="_blank" rel="noopener" download="${opsEsc(x.nombre || "")}" style="${btn}">Descargar / abrir aparte</a>
                 <button style="${btn}color:#b91c1c;" onclick="document.getElementById('ops-ev-visor').remove()">Cerrar</button>
             </div>`;
     };
     window.opsPedEvAgregar = function (id) {
         const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
-        const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = "image/*,video/*";
+        const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip";
         inp.onchange = async () => {
             const files = Array.from(inp.files || []); if (!files.length) return;
             const nuevas = [], fallas = [];
             for (const f of files) {
                 try {
-                    const esVid = /^video\//.test(f.type || "");
-                    const arch = esVid ? f : await opsPedEvAJpeg(f);
+                    if (f.size > 50 * 1048576) throw new Error("pesa más de 50 MB");
+                    const ext = (String(f.name || "").split(".").pop() || "").toLowerCase();
+                    const esDoc = !!OPS_EV_DOC[ext], esVid = !esDoc && /^video\//.test(f.type || "");
+                    if (!esDoc && !esVid && !/^image\//.test(f.type || "")) throw new Error("ese tipo de archivo no se puede subir");
+                    const arch = esDoc ? new File([f], f.name, { type: OPS_EV_DOC[ext] }) : (esVid ? f : await opsPedEvAJpeg(f));
                     const r = await opsSubirArchivo("diagnosticos/" + String(p.folio || p.id).replace(/[^\w-]+/g, "_"), arch);
-                    nuevas.push({ bucket: r.bucket, ruta: r.ruta, tipo: esVid ? "video" : "foto", nombre: f.name, subioOps: opsNombreActual() });
+                    nuevas.push({ bucket: r.bucket, ruta: r.ruta, tipo: esDoc ? "documento" : (esVid ? "video" : "foto"), nombre: f.name, ext: esDoc ? ext : (esVid ? ext : "jpg"), tam: arch.size, subioOps: opsNombreActual() });
                 } catch (e) { fallas.push(f.name + ": " + (e.message || e)); }
             }
             if (nuevas.length) {
@@ -14664,7 +14685,7 @@
         <div class="opsas-sec ${lock(listo3)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Comentarios</div><div class="opsas-hint">Opcional</div></div>
             <textarea class="opsas-in" style="min-height:60px;resize:vertical;" oninput="opsAS.comentarios=this.value" placeholder="Indicaciones para el técnico, accesos, horarios de la estación…">${opsEsc(s.comentarios)}</textarea>
-            ${s.evidenciasCliente && s.evidenciasCliente.length ? `<div class="opsas-note" style="margin-top:8px;">Ventas mandó ${s.evidenciasCliente.length} foto(s)/video del cliente: pasan al servicio y el técnico las ve en su app.</div>` : ""}
+            ${s.evidenciasCliente && s.evidenciasCliente.length ? `<div class="opsas-note" style="margin-top:8px;">Ventas mandó ${s.evidenciasCliente.length} archivo(s) del cliente (fotos, video o documentos): pasan al servicio y el técnico los ve en su app.</div>` : ""}
             ${s.tipo === "programacion" && s.vehiculoTamano ? `<div style="margin-top:8px;"><label class="opsas-lb">Vehículo</label><select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()"><option value="">— Por definir —</option>${((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja").map(v => { const val = "ECO " + v.Eco + " · " + (v.Unidad || ""); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${opsEsc(val)} (${OPS_VEH_TAM[opsVehTamano(v)]})</option>`; }).join("")}</select></div>` : ""}
             ${opsAsVehTamanoHTML()}
             ${s.tipo !== "programacion" ? (s.masFac ? `
