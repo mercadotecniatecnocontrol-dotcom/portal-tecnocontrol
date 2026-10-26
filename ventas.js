@@ -240,8 +240,8 @@ window.previewFotoLocal = (input) => {
 
 // Actualizar guardarCliente para incluir foto y hacer lat/lng opcional
 window.guardarCliente = async () => {
-    const nombre = document.getElementById('cl-nombre').value.trim();
-    if(!nombre){ alert('Escribe el nombre del cliente'); return; }
+    // 26-oct-2026: ningún dato es obligatorio; sin nombre queda marcado para completarlo después.
+    const nombre = document.getElementById('cl-nombre').value.trim() || 'SIN NOMBRE (COMPLETAR)';
     const lat = parseFloat(document.getElementById('cl-lat').value) || null;
     const lng = parseFloat(document.getElementById('cl-lng').value) || null;
     const data = {
@@ -7037,42 +7037,37 @@ window.vssEnviar = async function(){
     if(!vss || vss.enviando) return;
     const f = vss.f, falta = [];
     const pl = String(f.permiso||'').replace(/\s+/g,'').toUpperCase();
-    if(!String(f.razon||'').trim()) falta.push('razón social');
-    if(!vssPLValido(pl)) falta.push('PL completo (ej. PL/4055/EXP/ES/2015)');
-    if(!String(f.direccion||'').trim()) falta.push('dirección (sin dirección no se calculan los viáticos)');
-    if(!String(f.municipio||'').trim()) falta.push('municipio o ciudad');
-    if(!(f.lat && f.lng)) falta.push('ubicación');
-    if(!String(f.contactoNombre||'').trim()) falta.push('nombre del contacto');
-    if(String(f.contactoTel||'').replace(/\D/g,'').length < 10) falta.push('teléfono del contacto (10 dígitos)');
-    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.contactoCorreo||'').trim())) falta.push('correo del contacto');
+    // 26-oct-2026 (Glen): los datos de la estación y del contacto ya no son obligatorios; solo se pide qué necesita el cliente.
     if(String(f.descripcion||'').trim().length < 8) falta.push('qué pide el cliente');
     if(falta.length){ vss.msg = 'Falta: ' + falta.join(', ') + '.'; const m=document.getElementById('vss-msg'); if(m){ m.textContent=vss.msg; m.scrollIntoView({block:'nearest'}); } return; }
     const yo = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
     if(!yo){ alert('Tu sesión no está disponible: recarga el portal.'); return; }
     const solicitante = (window.nombreUsuario ? window.nombreUsuario(yo) : '') || yo;
     vss.enviando = true; const btn = document.getElementById('vss-enviar'); if(btn){ btn.disabled=true; btn.textContent='Enviando…'; }
-    const ahora = new Date().toISOString(), rs = String(f.razon).trim().toUpperCase(), nc = String(f.nombre||'').trim();
+    const ahora = new Date().toISOString(), rsCapt = String(f.razon||'').trim().toUpperCase(), nc = String(f.nombre||'').trim();
+    const rs = rsCapt || nc.toUpperCase() || 'SIN NOMBRE (COMPLETAR)';
     const dir = vssDirCompleta({ direccion:f.direccion, colonia:f.colonia, cp:f.cp });
-    const contacto = { nombre:String(f.contactoNombre).trim(), telefono:String(f.contactoTel).replace(/\D/g,'').slice(-10), correo:String(f.contactoCorreo).trim().toLowerCase() };
+    const contacto = { nombre:String(f.contactoNombre||'').trim(), telefono:String(f.contactoTel||'').replace(/\D/g,'').slice(-10), correo:String(f.contactoCorreo||'').trim().toLowerCase() };
     const aplicaViaticos = !vssEsCuu(f.municipio);
     try{
         const sb = await vssSb();
         // 1) Cliente (razón social) en clientes_catalogo: se busca y se completa, o se da de alta
-        let cli = (vssClientes||[]).find(x=>vssNormRS(x.razon_social)===vssNormRS(rs)) || null;
+        // Sin razón social capturada no se busca ni se crea cliente (se liga después).
+        let cli = rsCapt ? ((vssClientes||[]).find(x=>vssNormRS(x.razon_social)===vssNormRS(rsCapt)) || null) : null;
         if(vss.est && vss.est.cliente_id) cli = (vssClientes||[]).find(x=>String(x.id)===String(vss.est.cliente_id)) || cli;
         const contactoCat = { nombre:contacto.nombre, tel:contacto.telefono, correo:contacto.correo, puesto:'Encargado de la estación', estacion:nc||rs, origen:'ventas', en:ahora };
         if(cli){
             const lista = Array.isArray(cli.contactos) ? cli.contactos.slice() : [];
-            const ya = lista.some(x=>x && ((x.correo||'').toLowerCase()===contacto.correo || String(x.tel||x.telefono||'').replace(/\D/g,'').slice(-10)===contacto.telefono));
+            const ya = !(contacto.nombre || contacto.telefono || contacto.correo) || lista.some(x=>x && ((contacto.correo && (x.correo||'').toLowerCase()===contacto.correo) || (contacto.telefono && String(x.tel||x.telefono||'').replace(/\D/g,'').slice(-10)===contacto.telefono)));
             const cambios = { actualizado_en:ahora, actualizado_por:yo };
             if(!ya){ lista.push(contactoCat); cambios.contactos = lista; }
-            if(!cli.representante) cambios.representante = contacto.nombre;
-            if(!cli.telefono) cambios.telefono = contacto.telefono;
-            if(!cli.correo) cambios.correo = contacto.correo;
+            if(!cli.representante && contacto.nombre) cambios.representante = contacto.nombre;
+            if(!cli.telefono && contacto.telefono) cambios.telefono = contacto.telefono;
+            if(!cli.correo && contacto.correo) cambios.correo = contacto.correo;
             const r = await sb.from('clientes_catalogo').update(cambios).eq('id', cli.id); if(r.error) console.warn('[vss] cliente', r.error.message);
-        } else {
-            const r = await sb.from('clientes_catalogo').insert({ razon_social:rs, nombre_comercial:nc||null, representante:contacto.nombre, telefono:contacto.telefono, correo:contacto.correo,
-                contactos:[contactoCat], normas:[], empresas:['Tecnocontrol'], palabras_clave:[], activo:true, origen:'ventas', creado_en:ahora, actualizado_en:ahora, actualizado_por:yo }).select('id').single();
+        } else if(rsCapt) {
+            const r = await sb.from('clientes_catalogo').insert({ razon_social:rs, nombre_comercial:nc||null, representante:contacto.nombre||null, telefono:contacto.telefono||null, correo:contacto.correo||null,
+                contactos:(contacto.nombre||contacto.telefono||contacto.correo)?[contactoCat]:[], normas:[], empresas:['Tecnocontrol'], palabras_clave:[], activo:true, origen:'ventas', creado_en:ahora, actualizado_en:ahora, actualizado_por:yo }).select('id').single();
             if(r.error) console.warn('[vss] alta cliente', r.error.message); else cli = { id:r.data.id, razon_social:rs };
         }
         // 2) Estación en el catálogo maestro: se corrige/completa, o se da de alta
@@ -7081,23 +7076,23 @@ window.vssEnviar = async function(){
         if(vss.est){
             const e = vss.est, cambios = { actualizado_en:ahora };
             const pon = (col, val, actual) => { if(String(val||'').trim() && String(val).trim() !== String(actual||'').trim()) cambios[col] = String(val).trim(); };
-            pon('razon_social', rs, e.razon_social); pon('nombre_comercial', nc, e.nombre_comercial); pon('permiso', pl, e.permiso);
+            pon('razon_social', rsCapt, e.razon_social); pon('nombre_comercial', nc, e.nombre_comercial); pon('permiso', pl, e.permiso);
             pon('direccion_normalizada', dir, e.direccion_normalizada); pon('municipio', f.municipio, e.municipio); pon('estado', f.estado, e.estado);
-            if(!e.encargado) cambios.encargado = contacto.nombre;
+            if(!e.encargado && contacto.nombre) cambios.encargado = contacto.nombre;
             if(vss.ubiCambio && !(e.ubicacion_verificada && !verif)){ Object.assign(cambios, { lat:f.lat, lng:f.lng, ubicacion_verificada:verif, ubicacion_fuente:'ventas_'+vss.ubiFuente, ubicacion_por:yo, ubicacion_en:ahora }); }
             if(!e.cliente_id && cli) cambios.cliente_id = String(cli.id);
             if(Object.keys(cambios).length > 1){ const r = await sb.from('estaciones_servicio').update(cambios).eq('id', e.id); if(r.error) console.warn('[vss] estación', r.error.message); else Object.assign(e, cambios); }
         } else {
             const ABC='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', rnd=new Uint8Array(20); crypto.getRandomValues(rnd);
             estId = Array.from(rnd, x=>ABC[x%ABC.length]).join('');
-            const fila = { id:estId, razon_social:rs, nombre_comercial:nc||null, permiso:pl, direccion_normalizada:dir, domicilio_raw:dir, colonia:f.colonia||null, codigo_postal:f.cp||null,
-                municipio:String(f.municipio).trim(), estado:String(f.estado||'').trim()||null, lat:f.lat, lng:f.lng, ubicacion_verificada:verif, ubicacion_fuente:'ventas_'+(vss.ubiFuente||'manual'),
-                ubicacion_por:yo, ubicacion_en:ahora, encargado:contacto.nombre, cliente_id:cli?String(cli.id):null, activo:true, fuente_datos:'ventas_solicitud', creado_en:ahora, actualizado_en:ahora };
+            const fila = { id:estId, razon_social:rs, nombre_comercial:nc||null, permiso:pl||null, direccion_normalizada:dir||null, domicilio_raw:dir||null, colonia:f.colonia||null, codigo_postal:f.cp||null,
+                municipio:String(f.municipio||'').trim()||null, estado:String(f.estado||'').trim()||null, lat:f.lat||null, lng:f.lng||null, ubicacion_verificada:verif && !!(f.lat && f.lng), ubicacion_fuente:'ventas_'+(vss.ubiFuente||'manual'),
+                ubicacion_por:yo, ubicacion_en:ahora, encargado:contacto.nombre||null, cliente_id:cli?String(cli.id):null, activo:true, fuente_datos:'ventas_solicitud', creado_en:ahora, actualizado_en:ahora };
             const r = await sb.from('estaciones_servicio').insert(fila); if(r.error) throw new Error('No se pudo dar de alta la estación: '+r.error.message);
             vssCatalogo.push(fila);
             await sb.from('ventas_clientes').insert({ nombre: rs+' — '+[dir, f.municipio].filter(Boolean).join(', '), direccion:dir, ciudad:f.municipio, estado:f.estado||null, lat:f.lat, lng:f.lng,
-                contacto:contacto.nombre, tel:contacto.telefono, permiso:pl, estacion_catalogo_id:estId, visitas:0, origen:'ventas', actualizado_por:yo, creado_en:ahora, actualizado_en:ahora,
-                notas:['Estación: '+(nc||rs), 'PL: '+pl, 'Correo: '+contacto.correo, 'Alta desde Solicitud de servicio de Ventas'].join(' · ') }).then(()=>{}, ()=>{});
+                contacto:contacto.nombre||null, tel:contacto.telefono||null, permiso:pl||null, estacion_catalogo_id:estId, visitas:0, origen:'ventas', actualizado_por:yo, creado_en:ahora, actualizado_en:ahora,
+                notas:['Estación: '+(nc||rs), pl?'PL: '+pl:'', contacto.correo?'Correo: '+contacto.correo:'', 'Alta desde Solicitud de servicio de Ventas'].filter(Boolean).join(' · ') }).then(()=>{}, ()=>{});
         }
         // 3) La ficha del cliente en Ventas también se completa
         if(vss.clienteVentasId){
@@ -7106,8 +7101,8 @@ window.vssEnviar = async function(){
                 const c = (window.clientesDB||[]).find(x=>x.id===vss.clienteVentasId) || {};
                 const cam = { actualizadoEn:ahora, actualizadoPor:yo };
                 if(!c.estacionCatalogoId || String(c.estacionCatalogoId)!==String(estId)) cam.estacionCatalogoId = estId;
-                if(!c.contacto) cam.contacto = contacto.nombre; if(!c.tel) cam.tel = contacto.telefono; if(!c.permiso) cam.permiso = pl;
-                if(!c.direccion) cam.direccion = dir; if(!c.ciudad) cam.ciudad = f.municipio; if(!(c.lat && c.lng)){ cam.lat = f.lat; cam.lng = f.lng; }
+                if(!c.contacto && contacto.nombre) cam.contacto = contacto.nombre; if(!c.tel && contacto.telefono) cam.tel = contacto.telefono; if(!c.permiso && pl) cam.permiso = pl;
+                if(!c.direccion && dir) cam.direccion = dir; if(!c.ciudad && f.municipio) cam.ciudad = f.municipio; if(!(c.lat && c.lng) && f.lat && f.lng){ cam.lat = f.lat; cam.lng = f.lng; }
                 await updateDoc(doc(window.db,'ventas_clientes',vss.clienteVentasId), cam); Object.assign(c, cam);
             }catch(e){ console.warn('[vss] ficha de Ventas', e.message); }
         }

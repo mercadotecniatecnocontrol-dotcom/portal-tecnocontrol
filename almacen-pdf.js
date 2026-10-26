@@ -806,11 +806,11 @@
     if (f.nueva) {
       var n = f.nueva, c = function (k, ph) { return '<input placeholder="' + ph + '" value="' + esc(n[k] || '') + '" oninput="window.__almFichaNueva(\'' + k + '\',this.value)" style="' + inp + '">'; };
       return '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 9px;margin-top:3px;font-weight:500;">'
-        + '<div style="font-size:11px;color:#92400e;margin-bottom:2px;"><b>No está en SUDI:</b> captura todo para que Operaciones pueda calcular viáticos. <a href="#" onclick="event.preventDefault();window.__almFichaEstQuitar()" style="color:#5b21b6;">Buscar de nuevo</a></div>'
-        + c('razon', 'Razón social *') + c('nombre', 'Nombre comercial (como le dicen)') + c('permiso', 'PL * (ej. PL/4055/EXP/ES/2015)') + c('direccion', 'Dirección: calle, número y colonia *') + c('municipio', 'Municipio / ciudad *')
-        + '<input placeholder="Ubicación *: liga de Google Maps o coordenadas" onchange="window.__almFichaUbic(this.value)" style="' + inp + '">'
+        + '<div style="font-size:11px;color:#92400e;margin-bottom:2px;"><b>No está en SUDI:</b> captura lo que tengas (nada es obligatorio); con dirección y ubicación Operaciones puede calcular viáticos. <a href="#" onclick="event.preventDefault();window.__almFichaEstQuitar()" style="color:#5b21b6;">Buscar de nuevo</a></div>'
+        + c('razon', 'Razón social') + c('nombre', 'Nombre comercial (como le dicen)') + c('permiso', 'PL (ej. PL/4055/EXP/ES/2015)') + c('direccion', 'Dirección: calle, número y colonia') + c('municipio', 'Municipio / ciudad')
+        + '<input placeholder="Ubicación: liga de Google Maps o coordenadas" onchange="window.__almFichaUbic(this.value)" style="' + inp + '">'
         + (f.lat ? '<div style="font-size:11px;color:#15803d;">Ubicación: ' + f.lat + ', ' + f.lng + '</div>' : '<div style="font-size:11px;color:#b91c1c;">Sin ubicación todavía.</div>')
-        + c('contacto', 'Contacto: nombre *') + c('tel', 'Teléfono del contacto * (10 dígitos)') + c('correo', 'Correo del contacto')
+        + c('contacto', 'Contacto: nombre') + c('tel', 'Teléfono del contacto (10 dígitos)') + c('correo', 'Correo del contacto')
         + '</div>';
     }
     return '<input id="alm-ficha-busca" autocomplete="off" placeholder="Busca por PL, nombre o razón social…" oninput="window.__almFichaBuscar(this.value)" style="' + inp + '" value="' + esc(f.busca || '') + '">'
@@ -849,14 +849,7 @@
     var falta = [];
     if (fc.est) { if (!(fc.lat && fc.lng)) falta.push('la ubicación de la estación (liga de Google Maps)'); }
     else if (fc.nueva) {
-      var n = fc.nueva;
-      if (!String(n.razon || '').trim()) falta.push('razón social');
-      if (!/^PL\/\d+\/[A-Z]+\/[A-Z]+\/\d{4}$/i.test(String(n.permiso || '').replace(/\s+/g, ''))) falta.push('PL completo');
-      if (!String(n.direccion || '').trim()) falta.push('dirección');
-      if (!String(n.municipio || '').trim()) falta.push('municipio');
-      if (!(fc.lat && fc.lng)) falta.push('ubicación');
-      if (!String(n.contacto || '').trim()) falta.push('nombre del contacto');
-      if (String(n.tel || '').replace(/\D/g, '').length < 10) falta.push('teléfono del contacto');
+      // 26-oct-2026 (Glen): la estación nueva se da de alta sin datos obligatorios.
     } else falta.push('la estación (búscala en el catálogo o captúrala si no está)');
     return falta;
   }
@@ -866,15 +859,20 @@
     if (!ficha || !fc) return Promise.resolve();
     if (fc.est) { ficha.estacionCatalogoId = fc.est.id; ficha.estacionPermiso = estPL(fc.est) || null; ficha.direccion = estDir(fc.est) || null; ficha.lat = fc.lat; ficha.lng = fc.lng; return Promise.resolve(); }
     if (!fc.nueva || typeof window.tcSbSesion !== 'function') return Promise.resolve();
-    var n = fc.nueva, pl = String(n.permiso).replace(/\s+/g, '').toUpperCase();
-    ficha.estacion = String(n.nombre || n.razon).trim(); ficha.estacionPermiso = pl; ficha.direccion = String(n.direccion).trim() + ', ' + String(n.municipio).trim(); ficha.lat = fc.lat; ficha.lng = fc.lng;
-    ficha.contacto = { nombre: String(n.contacto).trim(), telefono: String(n.tel).replace(/\D/g, '').slice(-10), correo: String(n.correo || '').trim().toLowerCase() || null };
+    var n = fc.nueva, pl = String(n.permiso || '').replace(/\s+/g, '').toUpperCase();
+    var razon = String(n.razon || '').trim(), nom = String(n.nombre || '').trim(), dirN = String(n.direccion || '').trim(), mun = String(n.municipio || '').trim();
+    ficha.estacion = nom || razon || 'SIN NOMBRE (COMPLETAR)'; ficha.estacionPermiso = pl || null; ficha.direccion = [dirN, mun].filter(Boolean).join(', ') || null; ficha.lat = fc.lat; ficha.lng = fc.lng;
+    ficha.contacto = { nombre: String(n.contacto || '').trim(), telefono: String(n.tel || '').replace(/\D/g, '').slice(-10), correo: String(n.correo || '').trim().toLowerCase() || null };
+    // Si no se capturó nada de la estación, no se crea un registro vacío en el catálogo.
+    if (!(razon || nom || pl || dirN || mun || (fc.lat && fc.lng))) return Promise.resolve();
     return window.tcSbSesion().then(function (sb) {
-      return sb.from('estaciones_servicio').select('id').eq('permiso', pl).limit(1).then(function (r) {
+      // Sin PL no se busca duplicado por PL (si no, se ligaría a cualquier estación sin PL).
+      var buscar = pl ? sb.from('estaciones_servicio').select('id').eq('permiso', pl).limit(1) : Promise.resolve({ data: [] });
+      return buscar.then(function (r) {
         if (r.data && r.data.length) { ficha.estacionCatalogoId = r.data[0].id; return sb.from('estaciones_servicio').update({ lat: fc.lat, lng: fc.lng, ubicacion_fuente: 'ventas_pedido', actualizado_en: new Date().toISOString() }).eq('id', r.data[0].id).is('lat', null); }
-        return sb.from('estaciones_servicio').insert({ razon_social: String(n.razon).trim().toUpperCase(), nombre_comercial: String(n.nombre || '').trim() || null, permiso: pl,
-          direccion_normalizada: String(n.direccion).trim(), municipio: String(n.municipio).trim(), estado: 'Chihuahua', lat: fc.lat, lng: fc.lng, activo: true,
-          fuente_datos: 'ventas', ubicacion_fuente: 'ventas_pedido', ubicacion_verificada: false, encargado: String(n.contacto).trim() }).select('id').single()
+        return sb.from('estaciones_servicio').insert({ razon_social: (razon || nom || 'SIN NOMBRE (COMPLETAR)').toUpperCase(), nombre_comercial: nom || null, permiso: pl || null,
+          direccion_normalizada: dirN || null, municipio: mun || null, estado: 'Chihuahua', lat: fc.lat || null, lng: fc.lng || null, activo: true,
+          fuente_datos: 'ventas', ubicacion_fuente: 'ventas_pedido', ubicacion_verificada: false, encargado: String(n.contacto || '').trim() || null }).select('id').single()
           .then(function (r2) { if (r2.data) { ficha.estacionCatalogoId = r2.data.id; if (window.__almInvalidarCacheEstaciones) window.__almInvalidarCacheEstaciones(); } });
       });
     }).catch(function (e) { console.warn('[almacen-pdf] alta de estación:', e); });
