@@ -1447,6 +1447,9 @@
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
       + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
+      + ((p.evidenciasCliente||[]).length ? ('<div class="alm-destino"><button type="button" class="alm-destino-chip" onclick="window.__almVerEvidVentas(\''+p.id+'\',0)" style="background:#1D2E731a;color:#1D2E73;border-color:#1D2E7355;cursor:pointer;font-weight:700;">'
+      +   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+      +   'Ver '+p.evidenciasCliente.length+' foto(s) de Ventas</button></div>') : '')
       + (p.entregaObservaciones ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#F26B211c;color:#F26B21;border-color:#F26B2155;">⚠ '+esc(p.entregaObservaciones)+'</span></div>') : '')
       + '<div class="alm-meta"><span>⏱ <span class="alm-timer" data-id="'+p.id+'" style="color:'+ac+'">'+fmt(now()-p.createdAt)+'</span></span>'
       +   (total?('<span><b>'+piezas(p)+'</b> pzas</span>'):'')+'</div>'
@@ -1813,6 +1816,31 @@
     if(m) m.classList.remove('show');
   };
 
+  // Fotos/video que mandó Ventas con una petición de servicio (26-oct-2026): se ven en grande sin salir del portal.
+  window.__almVerEvidVentas = function(id, i){
+    var p=buscarP(id); var lista=(p && p.evidenciasCliente) || []; var x=lista[i]; if(!x) return;
+    var fondo=document.getElementById('alm-ev-visor');
+    if(!fondo){
+      fondo=document.createElement('div'); fondo.id='alm-ev-visor';
+      fondo.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+      fondo.addEventListener('click', function(e){ if(e.target===fondo) fondo.remove(); });
+      document.body.appendChild(fondo);
+    }
+    var bs='background:#fff;color:#1D2E73;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;';
+    var cerrar='<button style="'+bs+'color:#b91c1c;" onclick="document.getElementById(\'alm-ev-visor\').remove()">Cerrar</button>';
+    fondo.innerHTML='<div style="color:#fff;font-weight:700;">Cargando…</div>';
+    cargarSupabaseStorage().then(function(sb){ return sb.storage.from(x.bucket||'ops-evidencias').createSignedUrl(x.ruta, 3600); }).then(function(r){
+      if(r.error) throw r.error;
+      var url=r.data.signedUrl;
+      var media = x.tipo==='video' ? '<video src="'+esc(url)+'" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>'
+                                   : '<img src="'+esc(url)+'" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">';
+      fondo.innerHTML='<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">'+esc(p.folio||'')+' · '+(x.tipo==='video'?'Video':'Foto')+' '+(i+1)+' de '+lista.length+'</div>'+media
+        +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center;">'
+        +(i>0?'<button style="'+bs+'" onclick="window.__almVerEvidVentas(\''+id+'\','+(i-1)+')">‹ Anterior</button>':'')
+        +(i<lista.length-1?'<button style="'+bs+'" onclick="window.__almVerEvidVentas(\''+id+'\','+(i+1)+')">Siguiente ›</button>':'')
+        +'<a href="'+esc(url)+'" target="_blank" rel="noopener" style="'+bs+'">Abrir aparte</a>'+cerrar+'</div>';
+    }).catch(function(e){ fondo.innerHTML='<div style="color:#fff;font-weight:700;margin-bottom:10px;">No se pudo abrir: '+esc(e.message||e)+'</div>'+cerrar; });
+  };
   window.__almVerFirma = function(id, cual){
     var p=buscarP(id); if(!p) return;
     var src = (cual==='entrega') ? p.firmaEntrega : p.firma;

@@ -13754,11 +13754,84 @@
         return `<div class="opsas-note" style="margin-top:8px;"><b>Ventas pidió vehículo ${OPS_VEH_TAM[s.vehiculoTamano]}.</b> ${delTam.length ? "Libres en esas fechas:" : `<span style="color:#b45309;">No hay de ese tamaño libre en esas fechas.</span> Otras unidades libres:`}<div>${(delTam.length ? delTam : otros).slice(0, 8).map(btn).join("") || "<i>Ninguna libre: confírmalo con Flotilla.</i>"}</div>${s.vehiculo ? `<div style="margin-top:4px;">Elegido: <b>${opsEsc(s.vehiculo)}</b> (se le avisa a Flotilla al guardar).</div>` : ""}</div>`;
     }
     window.opsAsVehTamanoHTML = opsAsVehTamanoHTML;
+    // Evidencias que manda Ventas (fotos/video del cliente). 26-oct-2026: se ven en miniatura dentro de la
+    // tarjeta, se abren en grande sin salir del portal, y Operaciones puede agregar fotos que llegaron por fuera.
     function opsPedEvidenciasHTML(p) {
-        const ev = p.evidenciasCliente || []; if (!ev.length) return "";
-        return `<div style="font-size:11px;color:#334155;"><b>Evidencias de Ventas (${ev.length}):</b> ${ev.map((x, i) => `<a href="#" onclick="event.preventDefault();opsPedVerEvidencia('${p.id}',${i})" style="color:#1D2E73;font-weight:700;">${x.tipo === "video" ? "video" : "foto"} ${i + 1}</a>`).join(" · ")}</div>`;
+        const ev = p.evidenciasCliente || [];
+        const agregar = opsPuedeGestionar() ? `<button type="button" onclick="opsPedEvAgregar('${p.id}')" title="Subir fotos o video que mandó el vendedor o el cliente por otro medio" style="background:#fff;color:#1D2E73;border:1px dashed #94a3b8;border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;">+ Agregar fotos</button>` : "";
+        if (!ev.length) return p.tipoSolicitud === "peticion_diagnostico" ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:#94a3b8;">Sin fotos de Ventas ${agregar}</div>` : "";
+        setTimeout(() => opsPedEvCargar(p.id), 0);
+        return `<div style="font-size:11px;color:#334155;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;"><b>Fotos de Ventas (${ev.length})</b>${agregar}</div>
+            <div id="ops-ped-ev-${p.id}" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px;">
+                ${ev.map((x, i) => `<button type="button" onclick="opsPedVerEvidencia('${p.id}',${i})" title="${opsEsc(x.nombre || "")}" style="position:relative;aspect-ratio:1;border:1px solid #e2e8f0;border-radius:8px;background:#f1f5f9;padding:0;overflow:hidden;cursor:pointer;">
+                    ${x.tipo === "video" ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="#1D2E73" style="position:absolute;inset:0;margin:auto;"><polygon points="6 4 20 12 6 20 6 4"/></svg>` : `<img data-ev="${i}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .2s;">`}
+                </button>`).join("")}
+            </div></div>`;
     }
-    window.opsPedVerEvidencia = async function (id, i) { const p = (cacheSurtidos || []).find(x => x.id === id); const x = p && (p.evidenciasCliente || [])[i]; if (!x) return; try { window.open(await opsUrlFirmada(x.bucket, x.ruta), "_blank"); } catch (e) { alert("No se pudo abrir: " + (e.message || e)); } };
+    async function opsPedEvCargar(id) {
+        const caja = document.getElementById("ops-ped-ev-" + id); if (!caja) return;
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        for (const img of caja.querySelectorAll("img[data-ev]")) {
+            const x = (p.evidenciasCliente || [])[Number(img.dataset.ev)]; if (!x || img.src) continue;
+            try { img.onload = () => { img.style.opacity = 1; }; img.src = await opsUrlFirmada(x.bucket || "ops-evidencias", x.ruta); }
+            catch (e) { img.replaceWith(Object.assign(document.createElement("span"), { textContent: "No abre", style: "font-size:9.5px;color:#b91c1c;font-weight:700;" })); }
+        }
+    }
+    window.opsPedVerEvidencia = async function (id, i) {
+        const p = (cacheSurtidos || []).find(x => x.id === id); const lista = (p && p.evidenciasCliente) || []; if (!lista[i]) return;
+        let fondo = document.getElementById("ops-ev-visor");
+        if (!fondo) {
+            fondo = document.createElement("div"); fondo.id = "ops-ev-visor";
+            fondo.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;";
+            fondo.addEventListener("click", e => { if (e.target === fondo) fondo.remove(); });
+            document.body.appendChild(fondo);
+        }
+        const x = lista[i], btn = "background:#fff;color:#1D2E73;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;";
+        fondo.innerHTML = `<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">Cargando…</div>`;
+        let url = "";
+        try { url = await opsUrlFirmada(x.bucket || "ops-evidencias", x.ruta); } catch (e) { fondo.innerHTML = `<div style="color:#fff;font-weight:700;">No se pudo abrir: ${opsEsc(e.message || e)}</div><button style="${btn}margin-top:10px;" onclick="document.getElementById('ops-ev-visor').remove()">Cerrar</button>`; return; }
+        const media = x.tipo === "video" ? `<video src="${url}" controls autoplay style="max-width:100%;max-height:78vh;border-radius:10px;background:#000;"></video>` : `<img src="${url}" alt="" style="max-width:100%;max-height:78vh;border-radius:10px;background:#fff;">`;
+        fondo.innerHTML = `<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:8px;">${opsEsc(p.folio || "")} · ${x.tipo === "video" ? "Video" : "Foto"} ${i + 1} de ${lista.length}</div>${media}
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center;">
+                ${i > 0 ? `<button style="${btn}" onclick="opsPedVerEvidencia('${id}',${i - 1})">‹ Anterior</button>` : ""}
+                ${i < lista.length - 1 ? `<button style="${btn}" onclick="opsPedVerEvidencia('${id}',${i + 1})">Siguiente ›</button>` : ""}
+                <a href="${url}" target="_blank" rel="noopener" style="${btn}text-decoration:none;">Abrir aparte</a>
+                <button style="${btn}color:#b91c1c;" onclick="document.getElementById('ops-ev-visor').remove()">Cerrar</button>
+            </div>`;
+    };
+    window.opsPedEvAgregar = function (id) {
+        const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
+        const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = "image/*,video/*";
+        inp.onchange = async () => {
+            const files = Array.from(inp.files || []); if (!files.length) return;
+            const nuevas = [], fallas = [];
+            for (const f of files) {
+                try {
+                    const esVid = /^video\//.test(f.type || "");
+                    const arch = esVid ? f : await opsPedEvAJpeg(f);
+                    const r = await opsSubirArchivo("diagnosticos/" + String(p.folio || p.id).replace(/[^\w-]+/g, "_"), arch);
+                    nuevas.push({ bucket: r.bucket, ruta: r.ruta, tipo: esVid ? "video" : "foto", nombre: f.name, subioOps: opsNombreActual() });
+                } catch (e) { fallas.push(f.name + ": " + (e.message || e)); }
+            }
+            if (nuevas.length) {
+                const lista = (p.evidenciasCliente || []).concat(nuevas);
+                try { await window.tcSbActualizarSurtido(id, { evidenciasCliente: lista }); p.evidenciasCliente = lista; opsCalPintarPedidosVentas(); }
+                catch (e) { fallas.push("Guardar en el pedido: " + (e.message || e)); }
+            }
+            if (fallas.length) alert("No se pudieron subir:\n\n- " + fallas.join("\n- "));
+        };
+        inp.click();
+    };
+    async function opsPedEvAJpeg(file) {
+        if ((file.type || "") === "image/jpeg" && file.size <= 1.5 * 1024 * 1024) return file;
+        const src = await createImageBitmap(file).catch(() => { throw new Error("este navegador no puede abrir ese formato; mándala como JPG o PNG"); });
+        const k = Math.min(1, 1920 / Math.max(src.width, src.height)), cv = document.createElement("canvas");
+        cv.width = Math.round(src.width * k); cv.height = Math.round(src.height * k);
+        const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(src, 0, 0, cv.width, cv.height);
+        const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.82)); if (!blob) throw new Error("no se pudo convertir");
+        return new File([blob], String(file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+    }
     window.opsCalPedidoCancelar = async function (id) {
         const p = (cacheSurtidos || []).find(x => x.id === id); if (!p) return;
         const motivo = prompt(`Cancelar ${p.folio || "el pedido"} de ${p.cliente || ""}.\n\n¿Cuál es la razón? (le llega al vendedor)`, ""); if (!motivo || !motivo.trim()) return;

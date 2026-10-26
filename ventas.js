@@ -7007,8 +7007,8 @@ function vssPintar(){
             <div>${campo('fechaSugerida','Fecha que pide el cliente',false,'','date')}</div>
           </div>
           ${lbl('4. Fotos o video de la falla (opcional)')}
-          <input type="file" accept="image/*,video/*" multiple onchange="vssArchivos(this.files)" style="${inp}">
-          <div id="vss-arch" style="font-size:11.5px;color:#475569;margin:-4px 0 8px;">${(vss.archivos||[]).length ? (vss.archivos.length+' archivo(s) listos: '+vss.archivos.map(a=>a.name).join(', ')) : 'Se mandan a Operaciones y el técnico los ve en su app.'}</div>
+          <input type="file" accept="image/*,video/*,.heic,.heif" multiple onchange="vssArchivos(this.files)" style="${inp}">
+          <div id="vss-arch" style="font-size:11.5px;color:#475569;margin:-4px 0 8px;">${(vss.archivos||[]).length ? (vss.archivos.length+' archivo(s) listos: '+vss.archivos.map(a=>vssEsc(a.name)).join(', ')) : 'Hasta 6 fotos o un video de máximo 50 MB. Se mandan a Operaciones y el técnico los ve en su app.'}</div>
           ${lbl('5. ¿Se necesita vehículo?')}
           <select onchange="vssCampo('vehiculoTamano',this.value)" style="${inp}">${[['','No sé / lo decide Operaciones'],['chico','Chico (auto)'],['mediano','Mediano (pickup / camioneta)'],['grande','Grande (camión / 3.5 ton)']].map(([v,t])=>`<option value="${v}" ${(f.vehiculoTamano||'')===v?'selected':''}>${t}</option>`).join('')}</select>
           <div id="vss-viat" style="margin-top:10px;font-size:12px;color:#334155;border-radius:8px;padding:8px 10px;"></div>` : ''}
@@ -7024,15 +7024,61 @@ function vssPintar(){
     const bi = document.getElementById('vss-busca'); if(bi){ bi.focus(); }
 }
 
-// Fotos/video que manda Ventas con la petición (22-oct-2026). Máximo 6 archivos, video hasta 60 MB.
+// Fotos/video que manda Ventas con la petición (22-oct-2026). Máximo 6 archivos, video hasta 50 MB.
+// 26-oct-2026: antes los archivos que el navegador no reconocía (HEIC, sin tipo) se descartaban sin avisar
+// y si la subida fallaba la petición se mandaba igual sin fotos. Ahora se avisa siempre qué pasó.
+const VSS_EXT_IMG = /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif)$/i, VSS_EXT_VID = /\.(mp4|mov|m4v|webm|3gp)$/i;
+function vssEsImg(f){ return /^image\//.test(f.type||'') || (!f.type && VSS_EXT_IMG.test(f.name||'')); }
+function vssEsVid(f){ return /^video\//.test(f.type||'') || (!f.type && VSS_EXT_VID.test(f.name||'')); }
 window.vssArchivos = function(lista){
     if(!vss) return;
-    const arr = Array.from(lista||[]).slice(0,6).filter(f=>/^(image|video)\//.test(f.type||''));
-    const grande = arr.find(f=>f.size > 60*1024*1024);
-    if(grande){ alert('El archivo '+grande.name+' pesa más de 60 MB. Recorta el video o manda otro.'); return; }
+    const todos = Array.from(lista||[]);
+    const fuera = todos.filter(f=>!vssEsImg(f) && !vssEsVid(f));
+    const arr = todos.filter(f=>vssEsImg(f) || vssEsVid(f)).slice(0,6);
+    const grande = arr.find(f=>vssEsVid(f) && f.size > 50*1024*1024);
+    if(grande){ alert('El video '+grande.name+' pesa más de 50 MB. Recórtalo o manda uno más corto.'); return; }
     vss.archivos = arr;
-    const d = document.getElementById('vss-arch'); if(d) d.textContent = arr.length ? (arr.length+' archivo(s) listos: '+arr.map(a=>a.name).join(', ')) : '';
+    const avisos = [];
+    if(fuera.length) avisos.push('No se pueden mandar (no son foto ni video): '+fuera.map(a=>a.name).join(', '));
+    if(todos.length - fuera.length > 6) avisos.push('Solo se mandan las primeras 6.');
+    const d = document.getElementById('vss-arch');
+    if(d) d.innerHTML = (arr.length ? '<b style="color:#15803d;">'+arr.length+' archivo(s) listos:</b> '+arr.map(a=>vssEsc(a.name)).join(', ') : '')
+        + (avisos.length ? '<div style="color:#b91c1c;font-weight:700;margin-top:3px;">'+vssEsc(avisos.join(' '))+'</div>' : '');
 };
+function vssEsc(t){ return String(t==null?'':t).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Las fotos se pasan a JPEG de máximo 1920 px antes de subirlas (el espacio de evidencias solo acepta JPEG
+// y pesa mucho menos). Si el navegador no puede abrir la foto (ej. HEIC en Windows) se avisa con su nombre.
+async function vssAJpeg(file){
+    if(/^image\/jpeg$/.test(file.type||'') && file.size <= 1.5*1024*1024) return file;
+    let fuente = null;
+    try{ fuente = await createImageBitmap(file); }
+    catch(e){
+        fuente = await new Promise((ok, mal)=>{ const u = URL.createObjectURL(file), im = new Image(); im.onload=()=>{ URL.revokeObjectURL(u); ok(im); }; im.onerror=()=>{ URL.revokeObjectURL(u); mal(new Error('formato no compatible')); }; im.src = u; });
+    }
+    const w = fuente.width || fuente.naturalWidth, h = fuente.height || fuente.naturalHeight, k = Math.min(1, 1920/Math.max(w,h));
+    const cv = document.createElement('canvas'); cv.width = Math.round(w*k); cv.height = Math.round(h*k);
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0,0,cv.width,cv.height); cx.drawImage(fuente, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(ok=>cv.toBlob(ok, 'image/jpeg', 0.82));
+    if(!blob) throw new Error('no se pudo convertir');
+    return new File([blob], String(file.name||'foto').replace(/\.[^.]+$/,'')+'.jpg', { type:'image/jpeg' });
+}
+// Sube las fotos/video. Regresa { ev:[...], fallas:['nombre: motivo', ...] }.
+async function vssSubirEvidencias(sb, carpeta, archivos, btn){
+    const ev = [], fallas = [];
+    for(const [i, a] of archivos.entries()){
+        if(btn) btn.textContent = 'Subiendo '+(i+1)+' de '+archivos.length+'…';
+        try{
+            const esVid = vssEsVid(a);
+            const arch = esVid ? a : await vssAJpeg(a);
+            const ext = esVid ? ((String(a.name).split('.').pop()||'mp4').toLowerCase().replace(/[^a-z0-9]/g,'')) : 'jpg';
+            const ruta = carpeta+'/'+Date.now()+'_'+(i+1)+'.'+ext;
+            const up = await sb.storage.from('ops-evidencias').upload(ruta, arch, { contentType: arch.type || (esVid ? 'video/mp4' : 'image/jpeg'), upsert:false });
+            if(up.error) throw up.error;
+            ev.push({ bucket:'ops-evidencias', ruta, tipo: esVid ? 'video' : 'foto', nombre:a.name });
+        }catch(e){ console.warn('[vss] evidencia', a.name, e); fallas.push(a.name+': '+(e.message||e)); }
+    }
+    return { ev, fallas };
+}
 window.vssEnviar = async function(){
     if(!vss || vss.enviando) return;
     const f = vss.f, falta = [];
@@ -7051,6 +7097,19 @@ window.vssEnviar = async function(){
     const aplicaViaticos = !vssEsCuu(f.municipio);
     try{
         const sb = await vssSb();
+        // 0) Primero las fotos/video: si alguna no sube, se avisa ANTES de mandar la petición (26-oct-2026).
+        let evidencias = [];
+        if((vss.archivos||[]).length){
+            const carpeta = 'diagnosticos/'+new Date().toISOString().slice(0,10)+'_'+Math.random().toString(36).slice(2,10);
+            const r = await vssSubirEvidencias(sb, carpeta, vss.archivos, btn);
+            evidencias = r.ev;
+            if(r.fallas.length){
+                const seguir = confirm('No se pudieron subir '+r.fallas.length+' de '+vss.archivos.length+' archivo(s):\n\n- '+r.fallas.join('\n- ')
+                    +'\n\nAceptar = mandar la petición '+(evidencias.length ? 'con las que sí subieron' : 'sin fotos')+'.\nCancelar = no mandar todavía (puedes elegir otras fotos).');
+                if(!seguir){ vss.enviando = false; if(btn){ btn.disabled=false; btn.textContent='Enviar a Operaciones'; } const m=document.getElementById('vss-msg'); if(m) m.textContent='No se mandó. Elige otras fotos (JPG o PNG) e inténtalo de nuevo.'; return; }
+            }
+            if(btn) btn.textContent = 'Enviando…';
+        }
         // 1) Cliente (razón social) en clientes_catalogo: se busca y se completa, o se da de alta
         // Sin razón social capturada no se busca ni se crea cliente (se liga después).
         let cli = rsCapt ? ((vssClientes||[]).find(x=>vssNormRS(x.razon_social)===vssNormRS(rsCapt)) || null) : null;
@@ -7123,18 +7182,7 @@ window.vssEnviar = async function(){
             createdAt: ahora,
         };
         if(f.vehiculoTamano) data.vehiculoTamano = f.vehiculoTamano;
-        if((vss.archivos||[]).length){
-            if(btn) btn.textContent = 'Subiendo fotos/video…';
-            const ev = [];
-            for(const [i, a] of vss.archivos.entries()){
-                const ext = (String(a.name).split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
-                const ruta = 'diagnosticos/'+String(folioInfo.folio).replace(/[^\w-]+/g,'_')+'/'+Date.now()+'_'+(i+1)+'.'+ext;
-                const up = await sb.storage.from('ops-evidencias').upload(ruta, a, { contentType:a.type||undefined, upsert:false });
-                if(up.error){ console.warn('[vss] evidencia', up.error.message); continue; }
-                ev.push({ bucket:'ops-evidencias', ruta, tipo: /^video/.test(a.type||'') ? 'video' : 'foto', nombre:a.name });
-            }
-            if(ev.length) data.evidenciasCliente = ev;
-        }
+        if(evidencias.length) data.evidenciasCliente = evidencias;
         await window.tcSbCrearSurtido(data);
         document.getElementById('ventas-modal-servicio').innerHTML = '';
         if(window.tcNotif) window.tcNotif.agregar({ titulo:'Petición enviada a Operaciones', texto: folioInfo.folio+' · '+(nc||rs)+'. Te avisaremos cuando se programe.', nivel:'normal', modulo:'Ventas' });
