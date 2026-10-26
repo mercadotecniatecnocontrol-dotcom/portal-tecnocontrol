@@ -7044,37 +7044,12 @@
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
 
-        const hoyISO = opsCalFechaISO(new Date());
-        const inicioSemana = opsCalInicioSemana(new Date());
-        const finSemana = opsCalSumarDias(inicioSemana, 6);
+        // 26-oct-2026 (Glen): se quitaron las tarjetas de conteo de arriba del calendario; no se usaban.
         const foliosVista = opsCalFoliosFiltrados();
-        const enEjecucionHoy = foliosVista.filter(f => opsFolioCubreDia(f, hoyISO)).length;
-        const programadosSemana = foliosVista.filter(f => { const d = opsCalDatosFolio(f); if (!d) return false; const fd = new Date(d.fecha + "T00:00:00"); return fd >= inicioSemana && fd <= finSemana; }).length;
         const sinFecha = foliosVista.filter(f => !f.fechaProgramada && !f.fechaSolucion);
-        // Los servicios "por reasignar" (no se terminaron, p. ej. por falta de material) no cuentan como atrasados.
-        const atrasados = foliosVista.filter(f => !(f.pendienteReasignar && !f.fechaSolucion) && ["naranja", "rojo"].includes(opsCalcularSemaforoFolio(f).semaforo)).length;
-        const tecActivos = opsTecOperativos();
-        const disponiblesHoy = tecActivos.filter(t => opsCalTecnicoDisponible(t.id, hoyISO)).length;
-        const choques = opsCalDetectarChoques();
-
-        const ICONOS_TARJETA = {
-            play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
-            calendario: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
-            reloj: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
-            alerta: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-            equipo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-            choque: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-2 2.5h3L12 7"/><path d="M6.5 12 3 15l3.5 3"/><path d="M17.5 12 21 15l-3.5 3"/><path d="M9 12h6"/></svg>',
-        };
-        function tarjeta(valor, label, color, icono) {
-            const oscuro = opsTonoOscuro(color);
-            return `<div style="background:${opsPastel(color)};border:1px solid ${opsMezclaColor(color, "#ffffff", 0.55)};border-radius:12px;padding:8px 12px;display:flex;align-items:center;gap:10px;min-width:0;">
-                <div style="width:30px;height:30px;border-radius:8px;background:#ffffffcc;color:${oscuro};display:flex;align-items:center;justify-content:center;flex-shrink:0;">${icono}</div>
-                <div style="min-width:0;">
-                    <div style="font-size:18px;font-weight:800;color:${oscuro};letter-spacing:-.2px;line-height:1.05;">${valor}</div>
-                    <div style="font-size:9.5px;color:${oscuro};opacity:.8;font-weight:700;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
-                </div>
-            </div>`;
-        }
+        // Avisos del turno de folios/guardia: antes era una franja arriba; ahora los técnicos llevan su
+        // etiqueta en el calendario y aquí solo sale un aviso cuando falta alguien.
+        const avisosTurno = opsAccFiltroEmpresa() ? "" : opsCalAvisosTurnoHTML();
 
         const btnIcono = (onclick, titulo, svg, activo) => `<button onclick="${onclick}" title="${titulo}" style="background:${activo ? "#E9ECF5" : "#f8fafc"};border:1px solid ${activo ? "#1D2E73" : "#e2e8f0"};color:${activo ? "#1D2E73" : "#475569"};width:34px;height:34px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${svg}</button>`;
         const svgOjo = opsCalVerLeyenda
@@ -7084,17 +7059,8 @@
             ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>'
             : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
 
-        el.innerHTML = `
+        el.innerHTML = `${opsCalEstilosLado()}
           <div id="ops-cal-root" style="${opsCalFull ? "position:fixed;inset:0;z-index:9000;background:#f4f6f9;padding:12px 16px;overflow:auto;box-sizing:border-box;" : ""}">
-            ${opsCalFull ? "" : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:10px;">
-                ${tarjeta(enEjecucionHoy, "En ejecución hoy", "#579bfc", ICONOS_TARJETA.play)}
-                ${tarjeta(programadosSemana, "Programados esta semana", "#a25ddc", ICONOS_TARJETA.calendario)}
-                ${tarjeta(sinFecha.length, "Sin fecha programada", "#fdab3d", ICONOS_TARJETA.reloj)}
-                ${tarjeta(opsPedidosVentasPendientes().length, "Vendidos por programar", "#7c3aed", ICONOS_TARJETA.calendario)}
-                ${tarjeta(atrasados, "Atrasados / por vencer", "#e2445c", ICONOS_TARJETA.alerta)}
-                ${tarjeta(disponiblesHoy + "/" + tecActivos.length, "Técnicos disponibles hoy", "#00c875", ICONOS_TARJETA.equipo)}
-                ${tarjeta(choques, "Choques detectados", choques ? "#e2445c" : "#4eccc6", ICONOS_TARJETA.choque)}
-            </div>`}
 
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;background:#fff;border-radius:12px;padding:7px 10px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 2px 8px rgba(15,23,42,.04);">
                 <div style="display:flex;gap:4px;background:#f1f5f9;padding:3px;border-radius:10px;">
@@ -7102,13 +7068,14 @@
                         return `<button onclick="opsCalCambiarVista('${id}')" style="border:none;background:${on ? "#1D2E73" : "transparent"};color:${on ? "#fff" : "#475569"};padding:7px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:background .15s;box-shadow:${on ? "0 1px 3px rgba(29,46,115,.3)" : "none"};">${label}</button>`;
                     }).join("")}
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <button onclick="opsCalMover(-1)" style="background:#f8fafc;border:1px solid #e2e8f0;width:30px;height:30px;border-radius:8px;cursor:pointer;color:#475569;">‹</button>
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;min-width:180px;text-align:center;text-transform:capitalize;">${opsCalEtiquetaFecha()}</div>
                     <button onclick="opsCalMover(1)" style="background:#f8fafc;border:1px solid #e2e8f0;width:30px;height:30px;border-radius:8px;cursor:pointer;color:#475569;">›</button>
                     <button onclick="opsCalHoy()" style="background:#eef2f7;border:1px solid #dbe3f0;color:#1D2E73;padding:6px 13px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:700;margin-left:4px;">Hoy</button>
+                    ${avisosTurno}
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;">
                     <select onchange="opsCalFiltrarTipo(this.value)" style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;color:#334155;">
                         <option value="todos" ${opsCalFiltroTipo === "todos" ? "selected" : ""}>Todo</option>
                         <option value="servicio" ${opsCalFiltroTipo === "servicio" ? "selected" : ""}>Solo servicio</option>
@@ -7126,9 +7093,10 @@
 
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
-            ${opsCalFull || opsAccFiltroEmpresa() ? "" : opsTurnoFoliosBannerHTML()}
-            ${opsCalFull || opsAccFiltroEmpresa() ? "" : '<div id="ops-cal-por-reasignar"></div><div id="ops-cal-pedidos-ventas"></div>'}
-            <div id="ops-cal-body"></div>
+            <div class="ops-cal-layout">
+                ${opsCalFull || opsAccFiltroEmpresa() ? "" : `<aside id="ops-cal-lado" class="ops-cal-lado${opsPedVentasAbierto ? "" : " cerrado"}"><div id="ops-cal-por-reasignar"></div><div id="ops-cal-pedidos-ventas"></div></aside>`}
+                <div class="ops-cal-principal"><div id="ops-cal-body"></div></div>
+            </div>
           ${opsCalFull ? "</div>" : ""}
 
             ${sinFecha.length && !opsCalFull ? `
@@ -7152,7 +7120,33 @@
     // servicio o viáticos llegan aquí hasta que Operaciones los programa o los da por
     // gestionados. Si el servicio lleva piezas, se muestra cómo va Almacén surtiéndolas.
     const OPS_EMP_CORTA = { TECNOCONTROL: "Tecnocontrol", JOMAR: "JOMAR", TECNOLAB: "TecnoLab", AKURIS: "Akuris", VH: "VH" };
-    let opsPedVentasAbierto = true;
+    // 26-oct-2026 (Glen): el panel vive en una columna a la izquierda del calendario; se oculta/muestra
+    // y cada computadora recuerda cómo lo dejó.
+    let opsPedVentasAbierto = (() => { try { return localStorage.getItem("ops_cal_lado") !== "0"; } catch (e) { return true; } })();
+    function opsCalEstilosLado() {
+        return `<style>
+            .ops-cal-layout{display:flex;gap:10px;align-items:flex-start;}
+            .ops-cal-principal{flex:1;min-width:0;}
+            .ops-cal-lado{width:330px;flex-shrink:0;position:sticky;top:0;max-height:max(340px, calc(100vh - 230px));overflow-y:auto;overflow-x:hidden;}
+            .ops-cal-lado.cerrado{width:44px;overflow:visible;}
+            .ops-cal-lado.cerrado #ops-cal-por-reasignar{display:none;}
+            .ops-cal-tira{writing-mode:vertical-rl;transform:rotate(180deg);}
+            @media (max-width: 900px){
+                .ops-cal-layout{flex-direction:column;align-items:stretch;}
+                .ops-cal-lado,.ops-cal-lado.cerrado{width:100%;position:static;max-height:none;}
+                .ops-cal-tira{writing-mode:horizontal-tb;transform:none;}
+                #ops-cal-pedidos-ventas > button{min-height:0 !important;}
+            }
+        </style>`;
+    }
+    // Oculta la columna si no tiene nada que mostrar y le pone el estado abierto/cerrado.
+    function opsCalAjustarLado() {
+        const lado = document.getElementById("ops-cal-lado"); if (!lado) return;
+        const r = document.getElementById("ops-cal-por-reasignar"), p = document.getElementById("ops-cal-pedidos-ventas");
+        const hay = (r && r.innerHTML.trim()) || (p && p.innerHTML.trim());
+        lado.style.display = hay ? "" : "none";
+        lado.classList.toggle("cerrado", !opsPedVentasAbierto);
+    }
     let opsPedVerGestionados = false; // lista de pedidos ya gestionados / servicios cancelados o eliminados (oct-2026)
     // ── Avisos a Ventas del estatus de su servicio (20-oct-2026, Glen) ─────────
     // El vendedor que mandó el pedido o la petición recibe una notificación en su campanita
@@ -7354,7 +7348,7 @@
     function opsCalPintarPorReasignar() {
         const box = document.getElementById("ops-cal-por-reasignar"); if (!box) return;
         const l = cacheFolios.filter(f => f.pendienteReasignar && !f.fechaSolucion && !f.cancelado);
-        if (!l.length) { box.innerHTML = ""; return; }
+        if (!l.length) { box.innerHTML = ""; opsCalAjustarLado(); return; }
         const gestiona = opsPuedeGestionar();
         box.innerHTML = `<div style="margin:0 0 10px;background:#fff;border-radius:14px;border:1px solid #fed7aa;border-left:5px solid #ea580c;padding:12px 16px;">
             <div style="font-size:13px;font-weight:800;color:#9a3412;margin-bottom:6px;">Servicios por reasignar <span style="background:#ffedd5;border-radius:999px;padding:1px 8px;">${l.length}</span>
@@ -7371,6 +7365,7 @@
                 </div>`).join("")}
               </div>`; }).join("")}
         </div>`;
+        opsCalAjustarLado();
     }
     window.opsVerArchivoFirmado = async function (bucket, ruta) {
         try { const sb = await opsSb(); const r = await sb.storage.from(bucket).createSignedUrl(ruta, 3600); if (r.error) throw r.error; window.open(r.data.signedUrl, "_blank"); }
@@ -7404,7 +7399,19 @@
         if (!opsElimCargados) { opsElimCargados = true; opsCargarEliminados().then(() => opsCalPintarPedidosVentas()); }
         const lista = opsPedidosVentasPendientes();
         const gestionados = opsPedidosVentasGestionados();
-        if (!lista.length && !gestionados.length) { box.innerHTML = ""; return; }
+        const nReasignar = cacheFolios.filter(f => f.pendienteReasignar && !f.fechaSolucion && !f.cancelado).length;
+        if (!opsPedVentasAbierto) {
+            // Panel oculto: tira angosta vertical con los conteos; un clic lo vuelve a abrir.
+            box.innerHTML = (lista.length || nReasignar) ? `<button onclick="opsCalTogglePedidosVentas()" title="Mostrar servicios por programar" style="width:100%;min-height:220px;background:#fff;border:1px solid #ede9fe;border-top:3px solid #7c3aed;border-radius:12px;cursor:pointer;padding:10px 0;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);">
+                <span class="ops-cal-tira" style="display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:#5b21b6;white-space:nowrap;">
+                    <span style="font-size:15px;">\u00bb</span> Por programar
+                    <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;font-size:11px;">${lista.length}</span>
+                    ${nReasignar ? `<span title="Por reasignar" style="background:#ea580c;color:#fff;border-radius:99px;padding:1px 8px;font-size:11px;">${nReasignar}</span>` : ""}
+                </span></button>` : "";
+            opsCalAjustarLado();
+            return;
+        }
+        if (!lista.length && !gestionados.length) { box.innerHTML = ""; opsCalAjustarLado(); return; }
         const gestiona = opsPuedeGestionar();
         const tarjetas = lista.map(p => {
             const est = opsPedVentasEstadoPiezas(p);
@@ -7449,11 +7456,12 @@
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
                 <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
-                <span style="color:#7c3aed;font-weight:800;font-size:16px;">${opsPedVentasAbierto ? "\u2212" : "+"}</span>
+                <span title="Ocultar panel" style="color:#7c3aed;font-weight:800;font-size:16px;">\u00ab</span>
             </div>
             ${(opsPedVentasAbierto && lista.length ? (setTimeout(() => lista.forEach(p => opsPedAspelPintar(p)), 0), "") : "")}
-            ${opsPedVentasAbierto ? ((lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 14px 14px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
+            ${opsPedVentasAbierto ? ((lista.length ? `<div style="display:flex;flex-direction:column;gap:10px;padding:0 10px 12px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
+        opsCalAjustarLado();
     }
     // ── Aviso discreto de servicio nuevo (oct-2026) ──
     // Cuando Ventas sube un pedido de servicio mientras Operaciones tiene el portal
@@ -7537,7 +7545,12 @@
         setTimeout(cerrar, 15000);
     }
 
-    window.opsCalTogglePedidosVentas = function () { opsPedVentasAbierto = !opsPedVentasAbierto; opsCalPintarPedidosVentas(); };
+    window.opsCalTogglePedidosVentas = function () {
+        opsPedVentasAbierto = !opsPedVentasAbierto;
+        try { localStorage.setItem("ops_cal_lado", opsPedVentasAbierto ? "1" : "0"); } catch (e) {}
+        opsCalPintarPedidosVentas();
+        opsCalAjustarLado();
+    };
     window.opsCalVerPdfPedido = function (id) {
         const w = window.open("", "_blank");
         if (w) w.document.write('<p style="font-family:sans-serif;padding:20px;">Cargando PDF…</p>');
@@ -7915,6 +7928,8 @@
     function opsCalRenderBody() {
         const cont = document.getElementById("ops-cal-body");
         if (!cont) return;
+        // Turno de folios y guardia del día que se ve (Día) o de hoy (Semana/Mes), para las etiquetas de cada técnico.
+        try { opsCalTurnoCache = opsTurnoFolios(opsCalVista === "dia" ? opsCalFechaISO(opsCalFecha) : opsHoyLocal()); } catch (e) { opsCalTurnoCache = null; }
         if (opsCalVista === "dia") cont.innerHTML = opsCalRenderDia();
         else if (opsCalVista === "semana") cont.innerHTML = opsCalRenderSemana();
         else cont.innerHTML = opsCalRenderMes();
@@ -7960,13 +7975,29 @@
         </style>`;
     }
     // Celda izquierda con la foto y datos del técnico (compartida por las vistas Día y Semana).
+    var opsCalTurnoCache = null; // var: se usa desde opsCalRenderBody, que está más arriba en el archivo
+    // Avisos compactos junto a "Hoy" — solo cuando falta alguien en folios/guardia o hay folios sin técnico.
+    function opsCalAvisosTurnoHTML() {
+        let t; try { t = opsTurnoFolios(opsHoyLocal()); } catch (e) { return ""; }
+        const sinTec = cacheFolios.filter(f => opsEsFolioCliente(f) && !f.fechaSolucion && opsFolioSinTecnico(f)).length;
+        const chip = (txt, fondo, color, titulo) => `<span title="${titulo}" style="background:${fondo};color:${color};border-radius:8px;padding:6px 10px;font-size:11px;font-weight:800;white-space:nowrap;">${txt}</span>`;
+        return (t.dia.length ? "" : chip("Nadie en folios hoy", "#fef3c7", "#92400e", `Nadie programado en Atención a folios (${OPS_TURNO_INI} a ${OPS_TURNO_FIN})`))
+            + (t.guardia.length ? "" : chip("Guardia sin asignar", "#f3e8ff", "#6b21a8", "Nadie en guardia hoy"))
+            + (sinTec ? `<button onclick="opsCambiarTab('folios')" title="Ir a Folios" style="background:#E7402B;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;">${sinTec} folio(s) sin técnico</button>` : "");
+    }
     function opsCalCeldaTecnico(t, guardia) {
+        const tu = opsCalTurnoCache || { dia: [], guardia: [] };
+        const enFolios = tu.dia.some(x => x.tec && x.tec.id === t.id);
+        const enGuardia = !!guardia || tu.guardia.some(x => x.tec && x.tec.id === t.id);
+        const etq = (txt, fondo, titulo) => `<span title="${titulo}" style="display:inline-flex;align-items:center;background:${fondo};color:#fff;font-size:9px;font-weight:800;letter-spacing:.3px;padding:1px 7px;border-radius:999px;white-space:nowrap;">${txt}</span>`;
+        const etiquetas = (enFolios ? etq("EN FOLIOS", "#0e7490", `En folios de ${OPS_TURNO_INI} a ${OPS_TURNO_FIN}: no moverlo sin cubrir los folios`) : "")
+            + (enGuardia ? etq("GUARDIA", "#6b21a8", "Técnico en guardia") : "");
         return `<div onclick="opsAbrirFichaTecnico('${t.id}')" title="Abrir perfil de ${opsEsc(t.nombre)}" style="width:${OPS_CAL_ANCHO_TEC}px;min-width:${OPS_CAL_ANCHO_TEC}px;flex-shrink:0;position:sticky;left:0;z-index:4;background:#fff;padding:5px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;border-right:1px solid #e8edf3;box-sizing:border-box;">
             ${opsTecAvatarHTML(t, 28)}
             <div style="min-width:0;flex:1;">
                 <div style="font-size:11.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(t.nombre)}</div>
                 <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;">${opsEsc(t.puesto || "Sin puesto")}</div>
-                <div style="display:flex;gap:4px;margin-top:3px;align-items:center;flex-wrap:nowrap;overflow:hidden;">${opsTecBadgeTipo(t)}${guardia ? `<span title="En guardia" style="display:inline-flex;align-items:center;background:#f3e8ff;color:#6b21a8;font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap;">Guardia</span>` : ""}</div>
+                <div style="display:flex;gap:4px;margin-top:3px;align-items:center;flex-wrap:nowrap;overflow:hidden;">${etiquetas}${opsTecBadgeTipo(t)}</div>
             </div>
         </div>`;
     }
@@ -7983,21 +8014,11 @@
 
     // ── Filtros (fila debajo de la barra principal) ──
     function opsCalHTMLFiltros() {
-        const est = "border:1px solid #e2e8f0;background:#fff;border-radius:8px;padding:7px 9px;font-size:11.5px;font-weight:600;color:#334155;max-width:190px;box-shadow:0 1px 2px rgba(15,23,42,.04);";
-        const sel = (clave, valor, opciones) => `<select onchange="opsCalSetFiltro('${clave}', this.value)" style="${est}${valor && valor !== "todos" && valor !== "todas" ? "border-color:#1D2E73;color:#1D2E73;" : ""}">${opciones.map(([v, l]) => `<option value="${opsEsc(v)}" ${String(v) === String(valor) ? "selected" : ""}>${opsEsc(l)}</option>`).join("")}</select>`;
-        const tecs = opsTecOperativos().sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
-        const clientes = [...new Set(cacheFolios.map(f => f.clienteNombre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
         const hayFiltros = opsCalFiltroTecnico || opsCalFiltroCliente || opsCalFiltroOrigen !== "todos" || opsCalFiltroEstado !== "todos" || opsCalFiltroCategoria !== "todas" || opsCalFiltroTipo !== "todos" || opsCalFiltroTexto;
-        return `${opsCalHTMLPlazas()}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 12px;">
-            <span style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-right:2px;">Filtrar</span>
-            ${sel("tecnico", opsCalFiltroTecnico, [["", "Todos los técnicos"], ...tecs.map(t => [t.id, t.nombre])])}
-            ${sel("cliente", opsCalFiltroCliente, [["", "Todos los clientes"], ...clientes.map(c => [c, c])])}
-            ${sel("origen", opsCalFiltroOrigen, [["todos", "JOMAR y Tecnocontrol"], ["jomar", "Solo JOMAR"], ["tecnocontrol", "Solo Tecnocontrol"]])}
-            ${sel("categoria", opsCalFiltroCategoria, [["todas", "Todas las categorías"], ["vencido", "Vencidos / críticos"], ["seguimiento", "Seguimiento"], ["facturar", "Listos para facturar"], ["visita", "Visitas / atenciones"], ["jomar", "JOMAR"], ["servicio", "Servicio Tecnocontrol"]])}
-            ${sel("estado", opsCalFiltroEstado, [["todos", "Cualquier estado"], ["abierto", "Abierto"], ["atencion", "En atención"], ["cerrado", "Cerrado"]])}
-            <input type="date" value="${opsCalFechaISO(opsCalFecha)}" onchange="opsCalIrAFecha(this.value)" title="Ir a una fecha" style="${est}">
-            ${hayFiltros ? `<button onclick="opsCalSetFiltro('todos')" style="background:none;border:none;color:#E7402B;font-size:11.5px;font-weight:700;cursor:pointer;padding:6px 8px;">Limpiar filtros</button>` : ""}
-        </div>`;
+        // 26-oct-2026 (Glen): se quitaron los filtros de técnico, cliente, empresa, categoría, estado y fecha
+        // porque el buscador ya encuentra técnico, estación, cliente, servicio u O.S. (la categoría se sigue
+        // filtrando con los chips de "Ver tipificaciones"). Si alguno quedó activo, se puede limpiar aquí.
+        return `${opsCalHTMLPlazas()}${hayFiltros ? `<div style="display:flex;justify-content:flex-end;margin:-6px 0 8px;"><button onclick="opsCalSetFiltro('todos')" style="background:none;border:none;color:#E7402B;font-size:11.5px;font-weight:700;cursor:pointer;padding:4px 8px;">Limpiar filtros</button></div>` : ""}`;
     }
 
     // ── Leyenda discreta (los chips también sirven para filtrar con un clic) ──

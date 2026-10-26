@@ -17,6 +17,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- P0-01 (26-oct-2026): librería de Supabase con versión fija + UN cliente con la sesión del usuario para todo el portal. Debe ir ANTES de portal-supabase.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok" crossorigin="anonymous"></script>
+    <script src="supabase-cliente.js?v=1"></script>
     <!-- Paso 1 migración: actividades, calendario y notificaciones en Supabase (va antes de todo el código del portal) -->
     <script src="portal-supabase.js?v=5"></script>
     <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
