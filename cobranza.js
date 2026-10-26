@@ -52,7 +52,7 @@
 
   function cargarFirestore(){
     if(_fs) return Promise.resolve(_fs);
-    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=m; return m; });
+    return (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js')).then(function(m){ _fs=m; return m; });
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }

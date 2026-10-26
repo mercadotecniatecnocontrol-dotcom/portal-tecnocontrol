@@ -14,7 +14,7 @@
 
     async function getFirebasePag(){
         const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fsMod = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = appMod.getApps()[0];
         return { db: fsMod.getFirestore(app), auth: authMod.getAuth(app), fs: fsMod };
@@ -418,7 +418,7 @@ let _cxpDatos = [];
 
 async function _cxpGetDB(){
   const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const fsMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const fsMod  = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
   const app = appMod.getApps()[0];
   return { db:fsMod.getFirestore(app), fs:fsMod };
 }
@@ -537,7 +537,7 @@ console.log('[PAGOS · Cuentas por pagar] ✅ listo (preparado para Aspel: campo
 
 async function _getDB(){
   const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const fsMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const fsMod  = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
   const authMod= await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
   const app = appMod.getApps()[0];
   // Las solicitudes vehiculares (flotilla_solicitudes, sus adjuntos y flotilla_notificaciones)

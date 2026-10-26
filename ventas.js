@@ -65,7 +65,7 @@ function inicializarMapa(){
 
 async function cargarClientes(){
     try {
-        const fbV = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbV = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await fbV.getDocs(fbV.collection(db,'ventas_clientes'));
         clientesDB = snap.docs.map(d=>({id:d.id,...d.data()}));
         window.clientesDB = clientesDB; // Exponer globalmente para VP
@@ -181,7 +181,7 @@ window.editarCliente = (id) => {
 window.eliminarCliente = async (id) => {
     if(!confirm('¿Eliminar este cliente del mapa?')) return false;
     try {
-        const { deleteDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { deleteDoc, doc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await deleteDoc(doc(window.db,'ventas_clientes',id));
         window.mostrarPush('🗑 Cliente eliminado','','📍');
         cargarClientes();
@@ -261,7 +261,7 @@ window.guardarCliente = async () => {
         actualizadoPor: window.auth?.currentUser?.email||''
     };
     try {
-        const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { addDoc, updateDoc, doc, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const editId = document.getElementById('cliente-edit-id').value;
         // Cliente que ya existe en ventas_clientes pero aún no tiene su doc
         // espejo en estaciones_servicio (p.ej. capturado antes de este fix).
@@ -330,7 +330,7 @@ window._alertasCliente = {};
 window.calcularAlertasClientes = async () => {
     try {
         const { getDocs, collection, query, where, orderBy } =
-            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const dbb = window.db; if(!dbb) return;
         const cache = {};
         try {
@@ -579,7 +579,7 @@ window.registrarCheckin = async () => {
         timestamp: ahora.toISOString()
     };
     try {
-        const { addDoc, updateDoc, doc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { addDoc, updateDoc, doc, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await addDoc(collection(window.db,'ventas_checkins'), checkin);
         // Incrementar contador de visitas del cliente
         if(cl){ await updateDoc(doc(window.db,'ventas_clientes',clienteId),{ visitas:(cl.visitas||0)+1 }); }
@@ -593,7 +593,7 @@ window.registrarCheckin = async () => {
 // Cargar check-ins recientes
 async function cargarCheckins(){
     try {
-        const fbC = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbC = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await fbC.getDocs(fbC.query(
             fbC.collection(db,'ventas_checkins'),
             fbC.orderBy('timestamp','desc'),
@@ -646,7 +646,7 @@ const MARTIN_EMAIL = 'm.delao@tecnocontrol.com.mx'; // Email real de Martín
 
 async function cargarMetas(checkins){
     try {
-        const fbM2 = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbM2 = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await fbM2.getDocs(fbM2.collection(db,'ventas_metas'));
         metasDB = {};
         snap.docs.forEach(d=>{ metasDB[d.id] = d.data(); });
@@ -713,7 +713,7 @@ window.guardarMetas = async () => {
         if(val > 0) metas[v] = val;
     });
     try {
-        const fbMe = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fbMe = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await fbMe.setDoc(fbMe.doc(db,'ventas_metas',mesKey), metas);
         metasDB[mesKey] = metas;
         document.getElementById('modal-metas').style.display='none';
@@ -1088,7 +1088,7 @@ window.guardarDatoRHInline = async () => {
     }
 
     try {
-        const fs = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const fs = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const ref = await fs.addDoc(fs.collection(db,'rh_indicadores'), data);
         console.log('[RH Inline] ✅ Guardado:', ref.id, rhPanelActual);
         cerrarRHPanel();
@@ -1113,7 +1113,7 @@ window.guardarDatoRHInline = async () => {
 
     async function getFBRot(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
@@ -1369,7 +1369,7 @@ window.guardarDatoRHInline = async () => {
 
     async function getFBComp(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
@@ -1590,7 +1590,7 @@ window.guardarDatoRHInline = async () => {
 
     async function getFBSrv(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
@@ -1924,7 +1924,7 @@ window.guardarDatoRHInline = async () => {
 }
     async function getFB(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
@@ -2274,7 +2274,7 @@ window.guardarDatoRHInline = async () => {
 
     async function getFBE(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};
@@ -2670,7 +2670,7 @@ window.guardarDatoRHInline = async () => {
         // Obtener instancias de Firebase
         async function getFirebase(){
             const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-            const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const fsMod = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
             const app = appMod.getApps()[0];
             return {
@@ -3139,7 +3139,7 @@ window.cerrarDetalleActividad = () => {
 window.cambiarEstatus = async (nuevoEstatus) => {
     if(!_detalleActId) return;
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await window.tcAct.actualizar(_detalleActId, {estatus: nuevoEstatus});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].estatus = nuevoEstatus;
@@ -3188,7 +3188,7 @@ window.agregarSubtarea = async () => {
     if(!r) return;
     const subtareas = [...(r.subtareas||[]), {texto, done:false, creadoEn:new Date().toISOString()}];
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
@@ -3205,7 +3205,7 @@ window.toggleSubtarea = async (subt_idx) => {
     const subtareas = [...(r.subtareas||[])];
     subtareas[subt_idx] = {...subtareas[subt_idx], done: !subtareas[subt_idx].done};
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
@@ -3220,7 +3220,7 @@ window.eliminarSubtarea = async (subt_idx) => {
     if(!r) return;
     const subtareas = (r.subtareas||[]).filter((_,i)=>i!==subt_idx);
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await window.tcAct.actualizar(_detalleActId, {subtareas});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].subtareas = subtareas;
@@ -3239,7 +3239,7 @@ window.toggleDescEdit = async () => {
         // Guardar
         const newDesc = descEdit.value.trim();
         if(_detalleActId) {
-            const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             window.tcAct.actualizar(_detalleActId, {descripcion: newDesc}).then(()=>{
                 const idx = localDB.findIndex(x=>x.id===_detalleActId);
                 if(idx>=0) localDB[idx].descripcion = newDesc;
@@ -3291,7 +3291,7 @@ window.enviarComentarioDetalle = async () => {
     const r = localDB.find(x=>x.id===_detalleActId);
     const comentarios = [...(r?.comentarios||[]), nuevo];
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await window.tcAct.actualizar(_detalleActId, {comentarios});
         const idx = localDB.findIndex(x=>x.id===_detalleActId);
         if(idx>=0) localDB[idx].comentarios = comentarios;
@@ -3338,7 +3338,7 @@ window.guardarTarea = async () => {
     const fechaLimite = document.getElementById('n-date')?.value || '';
     const subtareas = [..._formSubtareas];
 
-    const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const { addDoc, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
     await window.tcAct.crear({
         actividad: d, area, fechaLimite, fechaInicio, prioridad, origen,
         tipo, descripcion, subtareas,
@@ -3608,7 +3608,7 @@ window.gmailAsignarCliente = async function() {
 
     // Guardar como interacción en actividades_cliente
     try {
-        const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { addDoc, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await addDoc(collection(window.db, 'actividades_cliente'), {
             clienteId: cId,
             tipo: 'Email',
@@ -3686,7 +3686,7 @@ window.gmailEnviar = async function() {
         // Registrar en Firestore si hay clienteId
         if (clienteId) {
             try {
-                const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+                const { addDoc, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
                 await addDoc(collection(window.db, 'actividades_cliente'), {
                     clienteId,
                     tipo: 'Email',
@@ -3786,7 +3786,7 @@ window.portalCargarCot = async function() {
     const lista = document.getElementById('portal-cot-lista');
     if(lista) lista.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;">Cargando cotizaciones...</div>';
     try {
-        const { getDocs, collection, orderBy, query } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { getDocs, collection, orderBy, query } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const db = window.db;
         if(!db) throw new Error('Firebase no inicializado aún');
         const snap = await getDocs(query(collection(db, 'cotizaciones'), orderBy('creadoEn','desc')));
@@ -4087,7 +4087,7 @@ window.ncotGuardar = async function(folio) {
     const btn = document.querySelector('#modal-nueva-cot button[onclick*="ncotGuardar"]');
     if(btn) { btn.textContent = 'Guardando...'; btn.disabled = true; }
     try {
-        const {collection, addDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {collection, addDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const cotData = {
             folio, cliente: clienteNombre, clienteId, moneda, notas,
             items, productos: items, carrito: items,
@@ -4143,7 +4143,7 @@ window.portalCargarCRM = async function() {
     const kanban = document.getElementById('portal-crm-kanban');
     if(kanban) kanban.innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;font-size:13px;width:100%;">Cargando CRM...</div>';
     try {
-        const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { getDocs, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const db = window.db;
         if(!db) throw new Error('Firebase no inicializado aún');
         const snap = await getDocs(collection(db, 'crm_oportunidades'));
@@ -4651,7 +4651,7 @@ window.ventasCheckinDesdePortal = async function() {
     // Si clientesDB no tiene datos, cargar primero
     if(!window.clientesDB || window.clientesDB.length === 0) {
         try {
-            const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const { getDocs, collection } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             const db = window.db || (await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js').then(()=>window.db));
             if(!db) throw new Error('db no disponible');
             const snap = await getDocs(collection(db, 'ventas_clientes'));
@@ -4801,7 +4801,7 @@ window.abrirPerfilCliente = async function(clienteId) {
 async function portalCpCargarActividades(clienteId) {
     try {
         const { getDocs, collection, query, where, orderBy } =
-            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(query(
             collection(window.db, 'actividades_cliente'),
             where('clienteId', '==', clienteId),
@@ -4811,7 +4811,7 @@ async function portalCpCargarActividades(clienteId) {
     } catch(e) {
         try {
             const { getDocs, collection, query, where } =
-                await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+                await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             const snap = await getDocs(query(
                 collection(window.db, 'actividades_cliente'),
                 where('clienteId', '==', clienteId)
@@ -4825,7 +4825,7 @@ async function portalCpCargarActividades(clienteId) {
 async function portalCpCargarCotizaciones(clienteId) {
     try {
         const { getDocs, collection, query, where } =
-            await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(query(
             collection(window.db, 'cotizaciones'),
             where('clienteId', '==', clienteId)
@@ -5115,7 +5115,7 @@ window.guardarCpActividad = async function(clienteId, clienteNombre) {
     const btn = document.querySelector('#cp-act-modal button[onclick*="guardarCpActividad"]');
     if(btn){ btn.textContent = 'Guardando...'; btn.disabled = true; }
     try {
-        const {collection, addDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {collection, addDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const actData = {
             titulo, tipo: document.getElementById('cpa-tipo')?.value || 'Seguimiento',
             prioridad: document.getElementById('cpa-prio')?.value || 'Normal',
@@ -5153,7 +5153,7 @@ window.portalCpNuevaCot = function() {
 
 window.portalCpCambiarEstatus = async function(actividadId, nuevoEstatus, btn) {
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const { doc, updateDoc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await updateDoc(doc(window.db, 'actividades_cliente', actividadId), {
             estatus: nuevoEstatus,
             actualizadoEn: new Date().toISOString()
@@ -5381,7 +5381,7 @@ function vpRenderListaClientes() {
 var _vpFsPromise = null;
 function _vpCargarFirestore() {
     if (_vpFsPromise) return _vpFsPromise;
-    _vpFsPromise = import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    _vpFsPromise = (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
     return _vpFsPromise;
 }
 
@@ -5462,12 +5462,12 @@ window.vpVerCliente = async function(id) {
 
 async function vpCpCargarActividades(clienteId) {
     try {
-        const {getDocs,collection,query,where,orderBy} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {getDocs,collection,query,where,orderBy} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(query(collection(window.db,'actividades_cliente'),where('clienteId','==',clienteId),orderBy('creadoEn','desc')));
         vpCpActividades = snap.docs.map(d=>({id:d.id,...d.data()}));
     } catch(e) {
         try {
-            const {getDocs,collection,query,where} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const {getDocs,collection,query,where} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             const snap = await getDocs(query(collection(window.db,'actividades_cliente'),where('clienteId','==',clienteId)));
             vpCpActividades = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.creadoEn||'').localeCompare(a.creadoEn||''));
         } catch(e2) { vpCpActividades = []; }
@@ -5476,7 +5476,7 @@ async function vpCpCargarActividades(clienteId) {
 
 async function vpCpCargarCotizaciones(clienteId) {
     try {
-        const {getDocs,collection,query,where} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {getDocs,collection,query,where} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(query(collection(window.db,'cotizaciones'),where('clienteId','==',clienteId)));
         let cots = snap.docs.map(d=>({id:d.id,...d.data()}));
         const c = (window.clientesDB||[]).find(x=>x.id===clienteId);
@@ -5670,7 +5670,7 @@ async function vpCargarCRM() {
     if(kanbanWrap) kanbanWrap.style.display = 'flex';
 
     try {
-        const {getDocs,collection} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {getDocs,collection} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(collection(window.db,'crm_oportunidades'));
         vpCrmDB = snap.docs.map(d=>({id:d.id,...d.data()}));
         vpRenderCrmLista();
@@ -5842,7 +5842,7 @@ window.vpVerOportunidad = function(id) {
 
 window.vpCambiarEtapa = async function(id, nuevaEtapa) {
     try {
-        const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {doc, updateDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await updateDoc(doc(window.db,'crm_oportunidades',id), { etapa: nuevaEtapa });
         if(window.mostrarPush) window.mostrarPush('📊 Etapa actualizada', nuevaEtapa, '✅');
         document.getElementById('vp-op-modal').style.display='none';
@@ -5859,7 +5859,7 @@ window.vpNuevaOportunidad = async function(etapaInicial) {
     const etapa = etapaInicial || pipeline.etapas[0];
     const vendedor = window.auth?.currentUser?.email || '';
     try {
-        const {addDoc,collection} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {addDoc,collection} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await addDoc(collection(window.db,'crm_oportunidades'), {
             cliente, nombre:cliente, valor:parseFloat(valor)||0, servicio,
             etapa, pipeline:vpCrmPipelineActivo, vendedor,
@@ -5877,7 +5877,7 @@ async function vpCargarCotizaciones() {
     if(detWrap) detWrap.style.display = 'flex';
 
     try {
-        const {getDocs,collection,query,orderBy} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {getDocs,collection,query,orderBy} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const snap = await getDocs(query(collection(window.db,'cotizaciones'),orderBy('creadoEn','desc')));
         vpCotDB = snap.docs.map(d=>({id:d.id,...d.data()}));
         vpRenderCotStats();
@@ -6084,7 +6084,7 @@ window.vpNuevaActividad = function() {
 
 window.vpCambiarEstatusAct = async function(id, estatus) {
     try {
-        const {doc,updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {doc,updateDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await updateDoc(doc(window.db,'actividades_cliente',id),{estatus,actualizadoEn:new Date().toISOString()});
         const idx = vpCpActividades.findIndex(a=>a.id===id);
         if(idx>=0) { vpCpActividades[idx].estatus=estatus; vpCpTab('actividad',null); }
@@ -6162,7 +6162,7 @@ window.vpOpGuardarComentario = async function(opId) {
     const txt = document.getElementById('vp-op-nuevo-comentario')?.value?.trim();
     if(!txt) return;
     try {
-        const {doc, updateDoc, arrayUnion} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {doc, updateDoc, arrayUnion} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const comentario = { texto: txt, autor: (auth?.currentUser?.email||'').split('@')[0], fecha: new Date().toLocaleDateString('es-MX') };
         await updateDoc(doc(window.db,'crm_oportunidades',opId), { comentarios: arrayUnion(comentario) });
         document.getElementById('vp-op-nuevo-comentario').value = '';
@@ -6174,7 +6174,7 @@ window.vpOpGuardarComentario = async function(opId) {
 
 window.vpCambiarStatusCot = async function(id, nuevoStatus) {
     try {
-        const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {doc, updateDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         await updateDoc(doc(window.db,'cotizaciones',id), { statusCot: nuevoStatus });
         const cot = vpCotDB.find(x=>x.id===id);
         if(cot) cot.statusCot = nuevoStatus;
@@ -6242,7 +6242,7 @@ window.vpRenderCalendarioActividades = async function() {
     // Cargar actividades de Firestore
     let acts = [];
     try {
-        const {getDocs,collection,query,orderBy,limit} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const {getDocs,collection,query,orderBy,limit} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         // Supabase (Paso 1) — mismas actividades que antes: las que traen creadoEn (Ventas), últimas 200
         acts = (await window.tcAct.cargar()).filter(a => a.creadoEn).sort((a,b) => String(b.creadoEn).localeCompare(String(a.creadoEn))).slice(0, 200);
     } catch(e) { console.warn('Error cargando actividades:', e); }
@@ -6342,7 +6342,7 @@ window.vpRenderCalendarioActividades = async function() {
 
     window.vpCalCambiarEstatus = async function(id, estatus) {
         try {
-            const {doc, updateDoc} = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const {doc, updateDoc} = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             await window.tcAct.actualizar(id, { estatus });
             const a = acts.find(x=>x.id===id);
             if(a) a.estatus = estatus;
@@ -6389,7 +6389,7 @@ let ventasFirmaCtx = null, ventasFirmaDibujando = false, ventasFirmaHay = false,
 function ventasEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function ventasCargarCatalogoYTecnicos(){
-    const { getDoc, getDocs, doc, collection, query, where } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const { getDoc, getDocs, doc, collection, query, where } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
     if(!ventasCatalogoProductos.length){
         try{
             const snap = await getDoc(doc(window.db,'catalogo','productos'));
@@ -7104,7 +7104,7 @@ window.vssEnviar = async function(){
         // 3) La ficha del cliente en Ventas también se completa
         if(vss.clienteVentasId){
             try{
-                const { updateDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+                const { updateDoc, doc } = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
                 const c = (window.clientesDB||[]).find(x=>x.id===vss.clienteVentasId) || {};
                 const cam = { actualizadoEn:ahora, actualizadoPor:yo };
                 if(!c.estacionCatalogoId || String(c.estacionCatalogoId)!==String(estId)) cam.estacionCatalogoId = estId;

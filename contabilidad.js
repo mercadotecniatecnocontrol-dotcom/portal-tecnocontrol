@@ -23,7 +23,7 @@
 }
     async function getFB(){
         const a = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const f = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+        const f = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
         const au = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
         const app = a.getApps()[0];
         return {db:f.getFirestore(app), auth:au.getAuth(app), fs:f};

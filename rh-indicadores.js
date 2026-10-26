@@ -116,7 +116,7 @@
         // Obtener instancias de Firebase
         async function getFirebase(){
             const appMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-            const fsMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+            const fsMod = await (window.tcFSPuente ? window.tcFSPuente() : import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'));
             const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
             const app = appMod.getApps()[0];
             return {
