@@ -32,7 +32,7 @@
   var E = { tab: 'personas', prefs: [], matriz: [], tipos: [], retenidas: [], bitacora: [], busca: '', error: '', cargando: false };
 
   var CAMPOS_LEGIBLES = {
-    modo: 'modo', modulos: 'módulos', incluir_personales: 'lo personal', incluir_acciones: 'autorizaciones',
+    modo: 'modo', modulos: 'módulos', incluir_personales: 'lo personal', incluir_acciones: 'autorizaciones', voz: 'voz',
     activo: 'activo', nota: 'nota', destinatarios: 'destinatarios', modulo: 'módulo', requiere_accion: 'requiere firma',
     descripcion: 'descripción', nombre: 'nombre',
   };
@@ -113,7 +113,7 @@
     }
     var fila = {
       correo: p.correo, nombre: p.nombre || nombreDe(p.correo), modo: p.modo, modulos: p.modo === 'solo' ? p.modulos : [],
-      incluir_personales: !!p.incluir_personales, incluir_acciones: !!p.incluir_acciones, activo: !!p.activo,
+      incluir_personales: !!p.incluir_personales, incluir_acciones: !!p.incluir_acciones, activo: !!p.activo, voz: p.voz !== false,
       nota: p.nota || null, actualizado_por: yo(), actualizado_en: new Date().toISOString(),
     };
     window.tcSb().then(function (c) { return c.from('notif_preferencias').upsert(fila, { onConflict: 'correo' }); })
@@ -168,7 +168,7 @@
       var c = String((inp && inp.value) || '').toLowerCase().trim();
       if (!correoValido(c)) { alert('Escribe un correo completo, por ejemplo nombre@tecnocontrol.com.mx'); return; }
       if (E.prefs.some(function (p) { return p.correo === c; })) { alert(nombreDe(c) + ' ya tiene una regla en la lista.'); return; }
-      E.prefs.push({ correo: c, nombre: nombreDe(c), modo: 'solo', modulos: [], incluir_personales: true, incluir_acciones: true, activo: true, nota: '', _nuevo: true });
+      E.prefs.push({ correo: c, nombre: nombreDe(c), modo: 'solo', modulos: [], incluir_personales: true, incluir_acciones: true, activo: true, voz: true, nota: '', _nuevo: true });
       pintarCuerpo();
     },
     campoPersona: function (correo, campo, valor) {
@@ -334,6 +334,7 @@
         '<div style="display:grid;gap:6px;margin-top:10px">' +
           casilla(c, 'incluir_personales', p.incluir_personales, 'También lo personal: tareas asignadas a esta persona y cuando la mencionan') +
           casilla(c, 'incluir_acciones', p.incluir_acciones, 'También autorizaciones que esperan su firma, aunque sean de otro módulo') +
+          casilla(c, 'voz', p.voz !== false, 'Avisos con voz (servicios nuevos, programación, material). Si la apagas, solo ve la ventana y oye la campanita') +
           casilla(c, 'activo', p.activo, 'Regla activa (si la apagas, vuelve a recibir todo)') +
         '</div>' +
         '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +

@@ -7183,11 +7183,31 @@
                 const { db, fs } = await opsGetFB();
                 await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { ventasAvisoEstado: est.k, ventasAvisoEn: opsFechaHora() });
                 const pedTxt = peds.map(x => x.folio).filter(Boolean).join(", ");
+                const donde = f.estacion || f.clienteNombre || "la estación";
+                const esProg = est.k.startsWith("programado|");
+                const repro = esProg && String(f.ventasAvisoEstado || "").startsWith("programado|");
+                const texto = repro ? est.t.replace("quedó programado", "se reprogramó") : est.t;
                 for (const para of correos) await window.tcNotificar2(fs, db, {
                     tipo: "ventas_servicio_estado", para, folioId: f.id, modulo: "Ventas",
-                    mensaje: "Tu servicio " + (pedTxt ? "(" + pedTxt + ") " : "") + "en " + (f.estacion || f.clienteNombre || "la estación") + " " + est.t + ".",
+                    mensaje: "Tu servicio " + (pedTxt ? "(" + pedTxt + ") " : "") + "en " + donde + " " + texto + ".",
+                    voz: esProg ? "Operaciones " + (repro ? "reprogramó" : "programó") + " tu servicio de " + donde + "." : null,
                     leido: false, creadaEn: opsFechaHora(),
                 }).catch(() => {});
+                // Almacén: si el pedido lleva refacciones, a quién entregarlas, qué día y a qué hora (26-oct-2026).
+                if (esProg && window.tcNotificarEvento) {
+                    const conPiezas = peds.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean)
+                        .filter(p => p.clasificacion === "servicio_piezas" || (p.productos || []).some(it => it.tipo === "producto" || it.tipo === "pro"));
+                    if (conPiezas.length) {
+                        const tec = (f.tecnicosAsignadosNombres || []).filter(Boolean).join(", ") || f.tecnicoResponsableNombre || "técnico por asignar";
+                        const cuando = opsFmtFechaCorta(f.fechaProgramada);
+                        const folios = conPiezas.map(p => p.folio).filter(Boolean).join(", ");
+                        window.tcNotificarEvento("servicio_programado_almacen", {
+                            modulo: "Almacén", folioId: f.id,
+                            mensaje: (repro ? "Se reprogramó" : "Se programó") + " el servicio " + (folios ? "del pedido " + folios + " " : "") + "en " + donde + ": " + cuando + " · Entrega las refacciones a " + tec + ".",
+                            voz: "Almacén: refacciones del servicio en " + donde + " para " + tec + ", " + cuando + ".",
+                        }).catch(() => {});
+                    }
+                }
                 f.ventasAvisoEstado = est.k;
             } catch (e) { console.warn("[avisos a Ventas]", e); }
             finally { opsVentasAvisando.delete(f.id); }
@@ -7455,7 +7475,7 @@
                     <div style="font-size:12.5px;font-weight:800;color:#5b21b6;">Servicios vendidos por programar <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;margin-left:4px;font-size:11px;">${lista.length}</span></div>
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
-                <button onclick="event.stopPropagation();opsToggleVozServicios()" title="Aviso con voz cuando llega un servicio nuevo" style="background:${opsVozServicios ? '#f3e8ff' : '#f1f5f9'};color:${opsVozServicios ? '#6d28d9' : '#64748b'};border:none;border-radius:8px;padding:5px 9px;font-size:10.5px;font-weight:800;cursor:pointer;">${opsVozServicios ? "Voz activada" : "Voz silenciada"}</button>
+
                 <span title="Ocultar panel" style="color:#7c3aed;font-weight:800;font-size:16px;">\u00ab</span>
             </div>
             ${(opsPedVentasAbierto && lista.length ? (setTimeout(() => lista.forEach(p => opsPedAspelPintar(p)), 0), "") : "")}
@@ -7469,13 +7489,8 @@
     // en español en el equipo, "Nuevo servicio por programar". No abre ventanas ni
     // interrumpe lo que se esté capturando. Cada quien puede silenciar la voz.
     let opsServVistos = null;
-    let opsVozServicios = (function () { try { return localStorage.getItem("ops_voz_servicios") !== "off"; } catch (e) { return true; } })();
-    window.opsToggleVozServicios = function () {
-        opsVozServicios = !opsVozServicios;
-        try { localStorage.setItem("ops_voz_servicios", opsVozServicios ? "on" : "off"); } catch (e) {}
-        opsCalPintarPedidosVentas();
-        if (opsVozServicios) opsHablarServicio("Avisos de voz activados");
-    };
+    // 26-oct-2026: la voz ya no se prende/apaga aquí (era por computadora); ahora es por persona en
+    // "Quién recibe qué" → Personas → "Avisos con voz". opsHablarServicio usa el motor único del portal.
     function opsAvisarServiciosNuevos() {
         const pend = opsPedidosVentasPendientes();
         if (opsServVistos === null) { opsServVistos = new Set(pend.map(p => p.id)); return; }   // primera carga: no avisar lo que ya estaba
@@ -7484,7 +7499,7 @@
         if (!nuevos.length || !opsPuedeGestionar()) return;
         nuevos.forEach(opsToastServicio);
         opsCampanita();
-        if (opsVozServicios) setTimeout(() => opsHablarServicio(nuevos.length === 1 ? ("Nuevo servicio por programar de " + opsNombreVoz(nuevos[0].cliente)) : (nuevos.length + " servicios nuevos por programar")), 700);
+        setTimeout(() => opsHablarServicio(nuevos.length === 1 ? ("Nuevo servicio por programar de " + opsNombreVoz(nuevos[0].cliente)) : (nuevos.length + " servicios nuevos por programar")), 700);
     }
     function opsNombreVoz(t) { return String(t || "").toLowerCase().replace(/\b([a-záéíóúñ])/g, m => m.toUpperCase()).trim(); }
     let opsAudioCtx = null;
@@ -7504,6 +7519,7 @@
     }
     function opsHablarServicio(frase) {
         if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (window.tcHablar) { window.tcHablar(frase); return; } // motor único del portal (respeta "Avisos con voz" de la persona)
         try {
             if (!("speechSynthesis" in window)) return;
             const voces = window.speechSynthesis.getVoices().filter(v => /^es([-_]|$)/i.test(v.lang));
@@ -7564,21 +7580,8 @@
         if (folioOps) datos.opsFolioId = folioOps;
         await window.tcSbActualizarSurtido(id, datos);
         if (window.tcSbAgregarHistorial) window.tcSbAgregarHistorial(id, { por: opsNombreActual(), nota: nota || (folioOps ? "Programado en Operaciones" : "Gestionado por Operaciones") }).catch(() => {});
-        // Aviso al vendedor con ventana y VOZ: "Operaciones programó tu servicio" (22-oct-2026).
-        if (folioOps) {
-            try {
-                const pv = (cacheSurtidos || []).find(x => x.id === id) || {};
-                const fv = cacheFolios.find(x => x.id === folioOps) || {};
-                const para = pv.solicitanteEmail || null;
-                if (para && window.tcNotificar) {
-                    const cuando = fv.fechaProgramada ? new Date(fv.fechaProgramada).toLocaleString("es-MX", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "fecha por confirmar";
-                    const quien = (fv.tecnicosAsignadosNombres || []).join(", ") || fv.tecnicoResponsableNombre || "técnico por asignar";
-                    window.tcNotificar({ tipo: "ventas_servicio_programado", para, modulo: "Ventas", folioId: folioOps,
-                        mensaje: `Operaciones programó tu servicio ${pv.folio || ""} · ${pv.cliente || fv.estacion || ""}: ${cuando} con ${quien}.`,
-                        voz: `Operaciones programó tu servicio de ${pv.cliente || fv.estacion || "tu cliente"} para el ${cuando}.` }).catch(() => {});
-                }
-            } catch (e) { console.warn("[aviso a Ventas]", e); }
-        }
+        // 26-oct-2026: el aviso al vendedor (y a Almacén) ya NO se manda aquí: lo manda opsAvisarVentasEstado
+        // en cuanto el servicio queda ligado al pedido. Antes el vendedor recibía dos avisos del mismo cambio.
         // El servicio también guarda de qué pedido viene (para abrir el PDF de la venta desde el servicio).
         if (folioOps) {
             const ped = (cacheSurtidos || []).find(x => x.id === id);

@@ -307,6 +307,9 @@
       } catch (e) {}
     }
     window.tcHablar = function (frase) {
+      // 26-oct-2026: UN solo motor de voz para todo el portal. Habla solo si la persona tiene la voz
+      // encendida en "Quién recibe qué" → Personas (columna voz de notif_preferencias; sin regla = encendida).
+      if (window.tcVozPermitida && !window.tcVozPermitida()) return;
       frase = String(frase || '').replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '').trim(); if (!frase || cola.length > 4) return;
       cola.push(frase.slice(0, 220)); setTimeout(sig, 700);
     };
@@ -466,6 +469,12 @@
     return _nCarga;
   }
   window.tcNotifRecargar = nCargar;
+  // ¿Esta persona quiere avisos con voz? (26-oct-2026). Sin regla o sin cargar todavía = sí.
+  window.tcVozPermitida = function () {
+    var c = String((window.auth && window.auth.currentUser && window.auth.currentUser.email) || '').toLowerCase().trim();
+    var p = c ? _nPref[c] : null;
+    return !(p && p.voz === false);
+  };
   window.tcNotifConfig = function () {
     return { preferencias: Object.assign({}, _nPref), tipos: _nTipos.slice(), matriz: Object.assign({}, _nMatriz) };
   };
