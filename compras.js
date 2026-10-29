@@ -331,6 +331,7 @@
                 '<p style="font-size:11.5px;color:#5C7089;margin:2px 0 0">Solicitó: '+esc(nombrePorCorreo(d.solicitante)||'—')+' · Falta: <b>'+esc(quien)+'</b></p></div>' +
                 '<div style="display:flex;gap:6px;flex-shrink:0">' +
                 '<button onclick="window.__cpCopiarLigaFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:#F1F5F9;color:#0A1628;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Copiar liga</button>' +
+                '<button onclick="window.__cpWALigaFirma(\''+d.id+'\')" style="padding:7px 13px;background:#DCFCE7;color:#15803D;border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">WhatsApp</button>' +
                 '<button '+(destinos.length?'':'disabled')+' onclick="window.__cpReenviarFirma(\''+d.id+'\',this)" style="padding:7px 13px;background:'+(destinos.length?'#0A1628':'#E2E8F0')+';color:'+(destinos.length?'#fff':'#94A3B8')+';border:none;border-radius:8px;font-size:11.5px;font-weight:700;cursor:'+(destinos.length?'pointer':'default')+'">Reenviar aviso (in-app)</button>' +
                 '</div></div>';
             }).join('') : '<p style="font-size:12.5px;color:#94a3b8;text-align:center;padding:20px 0">No hay firmas pendientes. ¡Todo al día!</p>') + '</div>' +
@@ -346,6 +347,15 @@
       btn.textContent = '✓ Copiada'; btn.style.background = '#EAF3DE'; btn.style.color = '#3B6D11';
       setTimeout(function(){ btn.textContent = original; btn.style.background = '#F1F5F9'; btn.style.color = '#0A1628'; }, 1800);
     });
+  };
+  // 29-oct-2026: mandar la liga de autorización por WhatsApp (al teléfono de quien firma si lo tenemos).
+  window.__cpWALigaFirma = function(id){
+    var d=docs.find(function(x){ return x.id===id; }); if(!d) return;
+    var paso=(d.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; });
+    var dest=paso?_cpDestinatariosPaso(d,paso):[], tel='';
+    dest.forEach(function(p){ if(!tel&&p.telefono){ var t=String(p.telefono).replace(/\D/g,''); if(t.length===10) t='52'+t; if(t.length>=11) tel=t; } });
+    var liga=location.origin + location.pathname.replace(/[^\/]*$/,'') + 'firmar.html?id=' + encodeURIComponent(id);
+    window.open('https://wa.me/'+tel+'?text='+encodeURIComponent('Hola, te toca autorizar la requisición *'+(d.folio||'')+'*'+(paso?' ('+paso.label+')':'')+'. Autoriza aquí: '+liga),'_blank');
   };
   window.__cpReenviarFirma = function(id, btn){
     var d = docs.find(function(x){ return x.id===id; }); if(!d) return;
@@ -2638,6 +2648,109 @@
     });
   }
   window.__scPDF = function(id){ var sc=_scDocs.find(function(x){ return x.id===id; }); if(sc) _scPDF(sc); };
+  // ══ COMPARTIR UNA SOLICITUD DE COMPRA (29-oct-2026) ══
+  // Desde la ficha (Compras o quien la pidió): PDF completo con fotos, ligas de producto, precios (solo
+  // a quien los puede ver) y estado de la requisición; WhatsApp con resumen y ligas; y la liga de
+  // autorización (firmar.html?id=) para mandarla a quien le toca firmar. En el celular el PDF se manda
+  // directo a WhatsApp con el menú de compartir del teléfono.
+  function _scBaseURL(){ return location.origin + location.pathname.replace(/[^\/]*$/,''); }
+  function _scLigaFirma(req){ return req ? _scBaseURL()+'firmar.html?id='+encodeURIComponent(req.id) : ''; }
+  function _scPasoPend(req){ return req ? (req.flujoAutorizacion||[]).find(function(f){ return f.estatus==='pendiente'; }) : null; }
+  function _scResumenTexto(sc){
+    var req=_scReq(sc), paso=_scPasoPend(req), mejor=_scMejor(sc), ve=_scVePrecios(sc);
+    var t='*'+(sc.folio||'Solicitud de compra')+'* · '+(sc.empresa||'')+'\n'+_scEstadoTexto(sc)+'\n';
+    t+='Pidió: '+_cpTitulo((sc.solicitante&&sc.solicitante.nombre)||'—')+(sc.departamento?' ('+sc.departamento+')':'')+'\n';
+    if(sc.fechaRequerida) t+='Se necesita para: '+_scFmt(sc.fechaRequerida+'T12:00:00')+'\n';
+    if(sc.cliente) t+='Para: '+sc.cliente+'\n';
+    t+='\n*Qué se pide:*\n'+(sc.partidas||[]).map(function(p,i){ return (i+1)+'. '+p.cant+' '+(p.unidad||'')+' · '+p.desc+(p.marca?' · '+p.marca:'')+(p.link?'\n   '+p.link:''); }).join('\n');
+    if(sc.notas) t+='\n\nNotas: '+sc.notas;
+    if(ve&&mejor) t+='\n\nMejor precio: '+_cpMoney(mejor.precioTotal)+' '+(mejor.moneda||'')+(_scDetalleModo==='compras'||sc.mostrarProveedor?' · '+(mejor.proveedor||''):'');
+    if(req) t+='\n\nRequisición '+(req.folio||'')+': '+_cpEstadoAmigable(req).txt+(paso?'\nAutorizar aquí: '+_scLigaFirma(req):'');
+    t+='\n\nVer en el portal: '+_scBaseURL();
+    return t;
+  }
+  function _scImgADataURL(src){ return /^data:/.test(src||'') ? Promise.resolve(src) : fetch(src).then(function(r){ return r.blob(); }).then(function(b){ return new Promise(function(ok){ var fr=new FileReader(); fr.onload=function(){ ok(fr.result); }; fr.onerror=function(){ ok(null); }; fr.readAsDataURL(b); }); }).catch(function(){ return null; }); }
+  function _scPDFCompleto(sc){
+    if(!window.jspdf){ alert('No se cargó la librería de PDF. Recarga la página.'); return Promise.reject(new Error('sin jspdf')); }
+    var req=_scReq(sc), paso=_scPasoPend(req), ve=_scVePrecios(sc), verProv=_scDetalleModo==='compras'||sc.mostrarProveedor;
+    return Promise.all([cargarLogoEmpresa(sc.empresa).catch(function(){ return null; }),
+      cargarFirestore().then(function(fs){ return _cpGetDocsCache(fs, fs.collection(window.db,'solicitudes_cotizacion',sc.id,'fotos')); }).catch(function(){ return []; })])
+    .then(function(r){ var logo=r[0], fotos=r[1]||[];
+      var docu=new window.jspdf.jsPDF({unit:'mm', format:'letter'});
+      var PW=docu.internal.pageSize.getWidth(), PH=docu.internal.pageSize.getHeight(), ML=16, MR=16, y=18, AN=PW-ML-MR;
+      var salto=function(h){ if(y+h>PH-18){ docu.addPage(); y=20; } };
+      var txt=function(s,size,bold,color,x,w){ docu.setFont('helvetica',bold?'bold':'normal'); docu.setFontSize(size); docu.setTextColor.apply(docu,color||[15,23,42]); var l=docu.splitTextToSize(String(s||''), w||AN); salto(l.length*size*0.42); docu.text(l, x||ML, y); y+=l.length*size*0.42+1.5; };
+      var sec=function(t){ y+=3; salto(12); docu.setFillColor(29,46,115); docu.rect(ML,y-5,AN,7.5,'F'); docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9); docu.text(t.toUpperCase(), ML+3, y); y+=8; };
+      docu.setFillColor(29,46,115); docu.rect(0,0,PW,4,'F');
+      if(logo){ try{ docu.addImage(logo,'PNG',ML,9,38,16,undefined,'FAST'); }catch(e){} }
+      docu.setFont('helvetica','bold'); docu.setFontSize(15); docu.setTextColor(15,23,42); docu.text('SOLICITUD DE COMPRA', PW-MR, 16, {align:'right'});
+      docu.setFontSize(11); docu.setTextColor(231,64,43); docu.text(sc.folio||'', PW-MR, 22, {align:'right'});
+      docu.setFont('helvetica','normal'); docu.setFontSize(8.5); docu.setTextColor(100,116,139); docu.text('Generado el '+new Date().toLocaleString('es-MX'), PW-MR, 27, {align:'right'});
+      y=34; txt('Estado: '+_scEstadoTexto(sc), 10, true, [29,46,115]);
+      sec('Datos');
+      [['Empresa',sc.empresa],['Departamento',sc.departamento],['Pidió',_cpTitulo((sc.solicitante&&sc.solicitante.nombre)||'')],['Fecha de solicitud',_scFmt(sc.createdAt)],['Tipo',_cpCatLabel(sc.tipoCompra)],['Se necesita para',sc.fechaRequerida?_scFmt(sc.fechaRequerida+'T12:00:00'):''],['Para qué / cliente',sc.cliente],['Urgencia',sc.urgencia==='alta'?'ALTA'+(sc.urgenciaMotivo?' · '+sc.urgenciaMotivo:''):'']]
+        .filter(function(x){ return x[1]; }).forEach(function(x){ salto(6); docu.setFont('helvetica','bold'); docu.setFontSize(8); docu.setTextColor(100,116,139); docu.text(x[0].toUpperCase(), ML, y); docu.setFont('helvetica','normal'); docu.setFontSize(10); docu.setTextColor(15,23,42); var l=docu.splitTextToSize(String(x[1]), AN-48); docu.text(l, ML+48, y); y+=Math.max(6,l.length*4.4+1.5); });
+      sec('Qué se pide');
+      (sc.partidas||[]).forEach(function(p,i){ var conImg=p.miniatura&&/^data:image/.test(p.miniatura); salto(conImg?26:12); var y0=y;
+        if(conImg){ try{ docu.addImage(p.miniatura, /png/.test(p.miniatura.slice(0,30))?'PNG':'JPEG', ML, y-3, 20, 20, undefined, 'FAST'); }catch(e){} }
+        var x=conImg?ML+24:ML, w=AN-(conImg?24:0);
+        txt((i+1)+'. '+p.cant+' '+(p.unidad||'')+' · '+p.desc, 10, true, null, x, w);
+        var det=[p.numeroParte?'No. de parte: '+p.numeroParte:'', p.marca?'Marca: '+p.marca:'', p.modelo?'Modelo: '+p.modelo:'', p.tienda?'Tienda: '+p.tienda:'', p.precioVisto?'Precio visto: '+_cpMoney(p.precioVisto):''].filter(Boolean).join('   ');
+        if(det) txt(det, 8.5, false, [71,85,105], x, w); if(p.especificaciones) txt(p.especificaciones, 8.5, false, [71,85,105], x, w);
+        if(p.link){ salto(5); docu.setFontSize(8.5); docu.setTextColor(20,115,230); var lk=docu.splitTextToSize(p.link, w); docu.textWithLink(lk[0], x, y, {url:p.link}); y+=5; }
+        if(conImg) y=Math.max(y, y0+20); y+=2; docu.setDrawColor(226,232,240); docu.line(ML,y-2,PW-MR,y-2); y+=2; });
+      if(sc.notas){ sec('Notas'); txt(sc.notas, 9.5); }
+      var conFoto=fotos.filter(function(f){ return /^data:image/.test(f.src||''); });
+      if(conFoto.length){ sec('Fotos de referencia ('+conFoto.length+')'); var col=0, lado=(AN-12)/4;
+        conFoto.forEach(function(f){ if(col===0) salto(lado+4); try{ docu.addImage(f.src, /png/.test(f.src.slice(0,30))?'PNG':'JPEG', ML+col*(lado+4), y-3, lado, lado, undefined, 'FAST'); }catch(e){} col++; if(col===4){ col=0; y+=lado+4; } });
+        if(col) y+=lado+4; }
+      if(ve && (sc.respuestas||[]).length){ sec('Precios recibidos'); (sc.respuestas||[]).filter(function(r){ return r.estado!=='rechazada'; }).forEach(function(r){
+        txt((verProv?(r.proveedor||'Proveedor')+' · ':'')+_cpMoney(r.precioTotal)+' '+(r.moneda||'MXN')+(r.tiempoEntregaDias!=null?' · entrega '+r.tiempoEntregaDias+' día(s)':'')+(r.condiciones?' · '+r.condiciones:''), 9.5); }); }
+      if(req){ sec('Requisición y autorización'); txt('Requisición '+(req.folio||'')+': '+_cpEstadoAmigable(req).txt, 10, true);
+        (req.flujoAutorizacion||[]).forEach(function(f){ txt('• '+f.label+': '+(f.estatus==='aprobado'?'autorizado'+(f.firmadoPor?' por '+f.firmadoPor:''):f.estatus), 9, false, [71,85,105]); });
+        if(paso){ var lg=_scLigaFirma(req); salto(8); docu.setFont('helvetica','bold'); docu.setFontSize(9.5); docu.setTextColor(20,115,230); docu.textWithLink('Autorizar aquí: '+lg, ML, y, {url:lg}); y+=7; } }
+      docu.setFontSize(8); docu.setTextColor(148,163,184); docu.text('Portal Operativo Tecnocontrol · '+_scBaseURL(), ML, PH-10);
+      return docu;
+    });
+  }
+  window.__scCompartirMenu = function(id){
+    var sc=_scDocs.find(function(x){ return x.id===id; }); if(!sc) return;
+    var req=_scReq(sc), paso=_scPasoPend(req), dest=paso?_cpDestinatariosPaso(req,paso):[];
+    var ov=document.createElement('div'); ov.id='sc-share-ov'; ov.className='cp-scope';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:2300;display:flex;align-items:center;justify-content:center;padding:18px';
+    var b=function(fn,ico,t,s,c){ return '<button onclick="'+fn+'" style="display:flex;gap:12px;align-items:center;width:100%;text-align:left;border:1px solid #E2E8F0;background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-family:inherit"><span style="width:36px;height:36px;border-radius:10px;background:'+(c||'#EEF2FF')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ico+'</span><span><b style="font-size:13.5px;color:#0A1628;display:block">'+t+'</b><span style="font-size:11.5px;color:#5C7089">'+s+'</span></span></button>'; };
+    ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0;font-size:16px">Compartir '+esc(sc.folio||'')+'</h3><button onclick="document.getElementById(\'sc-share-ov\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>'+
+      b("window.__scCompartirAccion('"+id+"','pdfwa')", _cpIco('bajar'), 'Mandar PDF por WhatsApp', 'PDF completo con fotos, ligas y estado. En el celular se abre WhatsApp con el PDF; en la computadora se descarga y se abre WhatsApp con el resumen.', '#DCFCE7')+
+      b("window.__scCompartirAccion('"+id+"','wa')", _cpIco('persona'), 'Solo el resumen por WhatsApp', 'Texto con lo que se pide, estado, ligas de producto'+(paso?' y la liga para autorizar':'')+'.', '#DCFCE7')+
+      b("window.__scCompartirAccion('"+id+"','pdf')", _cpIco('bajar'), 'Descargar PDF completo', 'Para correo, imprimir o guardar.')+
+      (paso?b("window.__scCompartirAccion('"+id+"','firma')", _cpIco('firma'), 'Mandar liga de autorización', 'Le toca: '+esc(dest.map(function(p){ return p.nombre||p.correo; }).join(', ')||paso.label)+'. Se abre WhatsApp con la liga lista.', '#FEF3C7')+
+        b("window.__scCompartirAccion('"+id+"','copiarfirma')", _cpIco('firma'), 'Copiar liga de autorización', esc(_scLigaFirma(req))):'')+
+      b("window.__scCompartirAccion('"+id+"','copiar')", _cpIco('historial'), 'Copiar resumen', 'Para pegarlo donde quieras.')+
+      '</div>';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    document.body.appendChild(ov);
+  };
+  window.__scCompartirAccion = function(id, acc){
+    var sc=_scDocs.find(function(x){ return x.id===id; }); if(!sc) return;
+    var req=_scReq(sc), paso=_scPasoPend(req), texto=_scResumenTexto(sc), nombre='Solicitud_compra_'+(sc.folio||id)+'.pdf';
+    var cerrar=function(){ var o=document.getElementById('sc-share-ov'); if(o) o.remove(); };
+    var wa=function(t,tel){ window.open('https://wa.me/'+(tel||'')+'?text='+encodeURIComponent(t),'_blank'); };
+    if(acc==='wa'){ cerrar(); wa(texto); _scActualizar(id, {}, {tipo:'comentario', texto:'Compartió el resumen por WhatsApp'}).catch(function(){}); return; }
+    if(acc==='copiar'){ _cpCopiar(texto); cerrar(); toast('Resumen copiado'); return; }
+    if(acc==='copiarfirma'){ _cpCopiar(_scLigaFirma(req)); cerrar(); toast('Liga de autorización copiada'); return; }
+    if(acc==='firma'){ var dest=_cpDestinatariosPaso(req,paso), tel=''; dest.forEach(function(p){ if(!tel&&p.telefono) tel=_scTelWA(p.telefono); });
+      cerrar(); wa('Hola, te toca autorizar la requisición *'+(req.folio||'')+'* ('+(sc.folio||'')+' · '+(sc.empresa||'')+'): '+(sc.partidas||[]).map(function(p){ return p.cant+' '+p.desc; }).join(', ')+'.\nAutoriza aquí: '+_scLigaFirma(req), tel);
+      _scActualizar(id, {}, {tipo:'comentario', texto:'Mandó por WhatsApp la liga de autorización de '+(req.folio||'la requisición')}).catch(function(){}); return; }
+    toast('Armando el PDF…');
+    _scPDFCompleto(sc).then(function(docu){
+      if(acc==='pdf'){ docu.save(nombre); cerrar(); return; }
+      var blob=docu.output('blob'), file=null; try{ file=new File([blob], nombre, {type:'application/pdf'}); }catch(e){}
+      if(file && navigator.canShare && navigator.canShare({files:[file]})){ cerrar();
+        return navigator.share({files:[file], title:sc.folio||'Solicitud de compra', text:texto}).catch(function(){}); }
+      docu.save(nombre); cerrar(); wa(texto+'\n\n(Te mando el PDF '+nombre+' en seguida.)'); toast('PDF descargado: adjúntalo en el chat de WhatsApp que se abrió.');
+    }).catch(function(e){ alert('No se pudo armar el PDF: '+(e.message||e)); });
+  };
+
   // ══ DETALLE de una solicitud de cotización ══
   // modo 'compras' = lo ve Compras (proveedores, comparador, acciones);
   // modo 'solicitante' = lo ve quien pidió (estado, opciones, decidir).
@@ -2654,7 +2767,7 @@
     h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px"><div>' +
       '<h2 style="margin:0;font-size:18px;color:#0A1628;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+esc(sc.folio||'')+' '+_scChipEstado(sc)+(sc.urgencia==='alta'?'<span class="cp-chip" style="background:#FCEBEB;color:#B91C1C" title="'+esc(sc.urgenciaMotivo||'')+'">'+_cpIco('fuego')+'Urgente</span>':'')+'</h2>' +
       '<p style="margin:4px 0 0;font-size:12px;color:#5C7089">'+esc(sc.departamento||'—')+' · '+esc(_cpTitulo((sc.solicitante&&sc.solicitante.nombre)||'—'))+' · pedida el '+_scFmt(sc.createdAt)+'</p></div>' +
-      '<div style="display:flex;gap:6px;flex-shrink:0">'+(esCompras?'<button class="cp-btn" onclick="window.__scPDF(\''+id+'\')" title="PDF para mandar a proveedores">'+_cpIco('bajar')+'PDF para proveedores</button>':'') +
+      '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end"><button class="cp-btn prim" onclick="window.__scCompartirMenu(\''+id+'\')" title="PDF completo, WhatsApp y liga de autorización">'+_cpIco('persona')+'Compartir</button>'+(esCompras?'<button class="cp-btn" onclick="window.__scPDF(\''+id+'\')" title="PDF para mandar a proveedores">'+_cpIco('bajar')+'PDF para proveedores</button>':'') +
       '<button aria-label="Cerrar" onclick="document.getElementById(\'sc-overlay\').remove();window.__scCerrar()" style="background:#F1F5F9;border:none;border-radius:8px;width:32px;height:32px;cursor:pointer">✕</button></div></div>';
     h += _scTimelineHTML(sc);
     h += '<div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#0A1628"><b>Ahora:</b> '+esc(_scEstadoTexto(sc))+

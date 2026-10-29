@@ -1686,23 +1686,25 @@ const T=setInterval(()=>{ if(typeof window.verArea!=='function') return; clearIn
 console.log('[VIÁTICOS v2 en Pagos y Contabilidad] listo');
 })();
 
+
 // ══════════════════════════════════════════════════════════════════════
-// ACTIVIDADES DEL ÁREA EN PANEL LATERAL (29-oct-2026) — aplica a todas las áreas
-// La parrilla de actividades (Sin iniciar / En proceso / Completadas) ya no empuja el contenido de
-// cada área: queda una barra compacta con el resumen y un botón que la abre en un panel lateral.
-// No se mueve nada del HTML: el mismo bloque #area-actividades-wrap se muestra como panel, así que
-// filtros, buscador, editar, comentar y completar funcionan igual que antes.
+// ACTIVIDADES DEL ÁREA EN PANEL LATERAL (29-oct-2026, v2) — aplica a todas las áreas
+// En la página queda una barra compacta con el resumen (sin iniciar / en proceso / completadas)
+// y un botón "Ver actividades". Al abrir, el MISMO bloque #area-actividades-wrap se pasa a un
+// panel independiente pegado al <body> (así ningún efecto de la página lo esconde) y al cerrar
+// regresa a su lugar. Filtros, buscador, editar, comentar y completar funcionan igual.
 // ══════════════════════════════════════════════════════════════════════
 (function(){
 'use strict';
 if(window.__tcActDrawer) return; window.__tcActDrawer=true;
 function css(){ if(document.getElementById('act-dr-css')) return; const st=document.createElement('style'); st.id='act-dr-css'; st.textContent=`
-#area-actividades-wrap.act-dr{position:fixed;top:0;right:0;height:100vh;width:min(1180px,96vw);background:#f4f5f7;z-index:3000;overflow-y:auto;box-sizing:border-box;padding:0 22px 26px;
+#area-actividades-wrap.act-en-pagina{display:none!important}
+#act-dr{position:fixed;top:0;right:0;height:100vh;width:min(1180px,96vw);background:#f4f5f7;z-index:3000;overflow-y:auto;box-sizing:border-box;padding:0 22px 26px;
   box-shadow:-18px 0 50px rgba(15,23,42,.18);transform:translateX(104%);transition:transform .28s ease;visibility:hidden}
-#area-actividades-wrap.act-dr.abierto{transform:translateX(0);visibility:visible}
+#act-dr.abierto{transform:translateX(0);visibility:visible}
 #act-dr-fondo{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:2990;opacity:0;pointer-events:none;transition:opacity .2s}
 #act-dr-fondo.on{opacity:1;pointer-events:auto}
-.act-dr-hd{position:sticky;top:0;z-index:2;background:#f4f5f7;display:flex;align-items:center;gap:12px;padding:18px 0 14px;margin-bottom:6px;border-bottom:1px solid #e5e7eb}
+.act-dr-hd{position:sticky;top:0;z-index:2;background:#f4f5f7;display:flex;align-items:center;gap:12px;padding:18px 0 14px;margin-bottom:10px;border-bottom:1px solid #e5e7eb}
 .act-dr-hd b{font-size:19px;color:#111827}.act-dr-hd span{font-size:12.5px;color:#6b7280}
 .act-dr-x{margin-left:auto;width:38px;height:38px;border:1px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:#374151}
 .act-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 16px;margin:4px 0 18px;font-family:inherit}
@@ -1714,29 +1716,35 @@ function css(){ if(document.getElementById('act-dr-css')) return; const st=docum
 `; document.head.appendChild(st); }
 const ICO='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M7 11h4M7 15h7"/></svg>';
 const X='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+let lugar=null, abierto=false;
 function conteos(){ const el=document.getElementById('area-table')||{}; const t=el.innerText||el.textContent||''; const n=re=>{ const m=t.match(re); return m?Number(m[1]):null; };
-  return { sin:n(/SIN\s+INICIAR\s*\n?\s*(\d+)/i), proc:n(/EN\s+PROCESO\s*\n?\s*(\d+)/i), comp:n(/COMPLETADAS\s*\n?\s*(\d+)/i) }; }
-function area(){ const t=document.getElementById('area-title'); return t?String(t.innerText||t.textContent||'').trim():''; }
+  return { sin:n(/SIN\s+INICIAR\s*(\d+)/i), proc:n(/EN\s+PROCESO\s*(\d+)/i), comp:n(/COMPLETADAS\s*(\d+)/i) }; }
+function area(){ const t=document.getElementById('area-title'); return t?String(t.innerText||t.textContent||'').replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/,'').trim():''; }
 function preparar(){ const w=document.getElementById('area-actividades-wrap'); if(!w) return null; css();
-  if(!w.classList.contains('act-dr')){ w.classList.add('act-dr');
-    const hd=document.createElement('div'); hd.className='act-dr-hd'; hd.id='act-dr-hd'; hd.innerHTML='<div><b id="act-dr-tit">Actividades</b><br><span>Tareas y parrilla de documentos del área</span></div><button class="act-dr-x" title="Cerrar (Esc)" onclick="window.__actDr(false)">'+X+'</button>'; w.insertBefore(hd,w.firstChild);
-    const f=document.createElement('div'); f.id='act-dr-fondo'; f.onclick=()=>window.__actDr(false); document.body.appendChild(f);
+  if(!lugar){
+    lugar=document.createComment('lugar de actividades'); w.parentNode.insertBefore(lugar,w);
     const bar=document.createElement('div'); bar.id='act-bar'; bar.className='act-bar'; w.parentNode.insertBefore(bar,w);
-    new MutationObserver(()=>pintarBarra()).observe(document.getElementById('area-table')||w,{childList:true,subtree:true,characterData:true});
-    new MutationObserver(()=>pintarBarra()).observe(w,{attributes:true,attributeFilter:['style']});
-    document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&w.classList.contains('abierto')) window.__actDr(false); }); }
+    const dr=document.createElement('div'); dr.id='act-dr'; dr.innerHTML='<div class="act-dr-hd"><div><b id="act-dr-tit">Actividades</b><br><span>Tareas, parrilla de documentos y pendientes compartidos</span></div><button class="act-dr-x" title="Cerrar (Esc)" onclick="window.__actDr(false)">'+X+'</button></div><div id="act-dr-cuerpo"></div>'; document.body.appendChild(dr);
+    const f=document.createElement('div'); f.id='act-dr-fondo'; f.onclick=()=>window.__actDr(false); document.body.appendChild(f);
+    w.classList.add('act-en-pagina');
+    new MutationObserver(()=>pintarBarra()).observe(w,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['style']});
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&abierto) window.__actDr(false); });
+    console.log('[Actividades] barra lista');
+  }
   return w; }
 let pT=null;
 function pintarBarra(){ clearTimeout(pT); pT=setTimeout(()=>{ const w=document.getElementById('area-actividades-wrap'), bar=document.getElementById('act-bar'); if(!w||!bar) return;
-  bar.style.display=(w.style.display==='none')?'none':'flex'; const c=conteos(), a=area().replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/,'');
+  bar.style.display=(w.style.display==='none')?'none':'flex'; const c=conteos(), a=area();
   const tit=document.getElementById('act-dr-tit'); if(tit) tit.textContent='Actividades · '+(a||'área');
   const p=(t,n,c1,bg)=>n==null?'':'<span class="act-pill" style="color:'+c1+';background:'+bg+'"><i></i>'+t+' '+n+'</span>';
   bar.innerHTML='<div class="ico">'+ICO+'</div><div><div class="tt">Actividades del área</div><div class="ss">Tareas, parrilla de documentos y pendientes compartidos</div></div>'+
     p('Sin iniciar',c.sin,'#475569','#f1f5f9')+p('En proceso',c.proc,'#b45309','#fef3c7')+p('Completadas',c.comp,'#15803d','#dcfce7')+
     '<button class="act-btn" onclick="window.__actDr(true)">'+ICO+'Ver actividades</button>'; },120); }
-window.__actDr=function(abrir){ const w=preparar(); if(!w) return; const f=document.getElementById('act-dr-fondo');
-  w.classList.toggle('abierto',!!abrir); if(f) f.classList.toggle('on',!!abrir); document.body.style.overflow=abrir?'hidden':''; if(abrir) w.scrollTop=0; };
-const T=setInterval(()=>{ if(typeof window.verArea!=='function'||!document.getElementById('area-actividades-wrap')) return; clearInterval(T);
-  preparar(); pintarBarra(); const orig=window.verArea;
-  window.verArea=function(){ window.__actDr(false); const r=orig.apply(this,arguments); setTimeout(pintarBarra,150); setTimeout(pintarBarra,900); return r; }; },250);
+window.__actDr=function(abrir){ const w=preparar(); if(!w) return; const dr=document.getElementById('act-dr'), f=document.getElementById('act-dr-fondo'), cu=document.getElementById('act-dr-cuerpo');
+  if(abrir&&!abierto){ cu.appendChild(w); w.classList.remove('act-en-pagina'); w.style.display=''; }
+  if(!abrir&&abierto){ lugar.parentNode.insertBefore(w,lugar.nextSibling.nextSibling||null); w.classList.add('act-en-pagina'); }
+  abierto=!!abrir; dr.classList.toggle('abierto',abierto); f.classList.toggle('on',abierto); document.body.style.overflow=abierto?'hidden':''; if(abierto) dr.scrollTop=0; pintarBarra(); };
+function iniciar(){ if(!document.getElementById('area-actividades-wrap')) return false; preparar(); pintarBarra(); return true; }
+const T=setInterval(()=>{ if(typeof window.verArea!=='function'||!iniciar()) return; clearInterval(T); const orig=window.verArea;
+  window.verArea=function(){ if(abierto) window.__actDr(false); const r=orig.apply(this,arguments); setTimeout(pintarBarra,150); setTimeout(pintarBarra,900); return r; }; },250);
 })();
