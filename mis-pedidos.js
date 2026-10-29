@@ -31,6 +31,7 @@
   var _evidCache = {};
   var _histCache = {};
   var expandido = {};
+  var filtro = { q: '', tipo: 'todos' }; // buscador y filtros (29-oct-2026)
 
   function cargarFirestore(){
     if (_fs) return Promise.resolve(_fs);
@@ -93,7 +94,12 @@
     + '.mp-panel-box{background:#fff;border-radius:16px;max-width:760px;width:95%;max-height:88vh;overflow:auto;}'
     + '.mp-panel-head{position:sticky;top:0;background:#fff;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e6ebf2;font-size:15px;font-weight:800;color:#0f172a;}'
     + '.mp-panel-head button{border:none;background:#f1f5f9;color:#475569;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:15px;line-height:1;}'
-    + '.mp-panel-body{padding:18px 20px;}';
+    + '.mp-panel-body{padding:18px 20px;}'
+    + '.mp-filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:14px;}'
+    + '.mp-filtros input{flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:9px;padding:8px 11px;font-size:13px;font-family:inherit;}'
+    + '.mp-chip{border:1.5px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;}'
+    + '.mp-chip.on{background:#1D2E73;border-color:#1D2E73;color:#fff;}'
+    + '.mp-wa{display:inline-flex;align-items:center;gap:5px;border:none;background:#16a34a;color:#fff;border-radius:8px;font-size:11.5px;font-weight:800;padding:6px 12px;cursor:pointer;}';
     var st=document.createElement('style'); st.id='mp-css'; st.textContent=css; document.head.appendChild(st);
   }
 
@@ -220,6 +226,16 @@
   var PRO_TXT = { pendiente:'Por pedir al proveedor', pedido:'Pedido al proveedor', en_camino:'En camino', recibido:'Material recibido en almac\u00e9n' };
   function esPro(p){ return p.clasificacion==='pro' || p.clasificacion==='pro_mixto' || p.clasificacion==='sobre_stock'; }
   function esServ(p){ return p.clasificacion==='servicio' || p.clasificacion==='servicio_piezas'; }
+  // Estatus del servicio que deja Operaciones en el pedido (29-oct-2026): programado (día, hora y técnicos),
+  // en proceso, atendido sin terminar, terminado o cancelado.
+  var SERV_TXT = { programado:['Programado','#1D2E73'], en_proceso:['En proceso','#0e7490'], sin_terminar:['Atendido, sin terminar','#b45309'], terminado:['Terminado','#15803d'], cancelado:['Servicio cancelado','#b91c1c'] };
+  function fechaLarga(iso){ if(!iso) return ''; var d=new Date(iso+'T12:00:00'); return d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'}); }
+  function estServ(p){
+    var e = p.opsEstado;
+    if (e && SERV_TXT[e.k]) return { k:e.k, t:SERV_TXT[e.k][0], c:SERV_TXT[e.k][1], e:e };
+    if (p.opsGestionado) return { k:'programado', t:'Programado', c:'#7c3aed', e:null };
+    return { k:'por_programar', t:'Por programar', c:'#7c3aed', e:null };
+  }
   function bloqueArea(p){
     var html='';
     if (esPro(p)){
@@ -233,18 +249,54 @@
         + (det.length?('<span class="dt">'+det.join(' \u00b7 ')+'</span>'):'')+'</div>';
     }
     if (esServ(p)){
-      html += '<div class="mp-area" style="--c:#7c3aed"><span class="lb">Operaciones \u00b7 servicio</span><b>'
-        + (p.opsGestionado ? 'Programado por Operaciones' : 'Por programar')+'</b>'
-        + (p.clasificacion==='servicio_piezas' ? '<span class="dt">Lleva piezas que surte Almac\u00e9n</span>' : '')+'</div>';
+      var s = estServ(p), e = s.e, det = [];
+      if (e && (e.k==='programado' || e.k==='en_proceso' || e.k==='sin_terminar') && e.fecha){
+        det.push(fechaLarga(e.fecha) + (e.hora ? ' a las '+esc(e.hora) : '') + (e.fechaFin && e.fechaFin!==e.fecha ? ' (hasta el '+fechaLarga(e.fechaFin)+')' : ''));
+      }
+      if (e && e.tecnicos && e.tecnicos.length) det.push('T\u00e9cnico'+(e.tecnicos.length>1?'s':'')+': '+esc(e.tecnicos.join(', ')));
+      if (e && e.k==='sin_terminar') det.push(esc(e.texto||''));
+      if (p.clasificacion==='servicio_piezas') det.push('Lleva piezas que surte Almac\u00e9n');
+      html += '<div class="mp-area" style="--c:'+s.c+'"><span class="lb">Operaciones \u00b7 servicio</span><b>'+esc(s.t)+(e && e.folioNumero ? ' \u00b7 servicio N.\u00ba '+esc(e.folioNumero) : '')+'</b>'
+        + (det.length ? '<span class="dt" style="flex-basis:100%;">'+det.join('<br>')+'</span>' : (s.k==='programado' && !e ? '<span class="dt">Abre el detalle con Operaciones para ver fecha y t\u00e9cnico.</span>' : ''))+'</div>';
     }
     return html;
   }
   function estadoVisible(p){
-    if (p.clasificacion==='servicio') return { t: p.opsGestionado ? 'Programado' : 'En Operaciones', c: '#7c3aed' };
+    if (p.clasificacion==='servicio'){ var s = estServ(p); return { t: s.k==='por_programar' ? 'En Operaciones' : s.t, c: s.c }; }
     if (p.clasificacion==='pro' && p.compraEstado!=='recibido' && ['pendiente','en_preparacion'].indexOf(p.estado)!==-1) return { t:'En Compras', c:'#b45309' };
     if (p.clasificacion==='sobre_stock' && p.compraEstado!=='recibido' && ['pendiente','en_preparacion'].indexOf(p.estado)!==-1) return { t:'Sobre stock', c:'#be185d' };
     return { t: estadoLabel(p.estado), c: estadoColor(p.estado) };
   }
+  // Botón de WhatsApp a Compras (29-oct-2026): resumen del pedido con partidas PRO o sobre pedido.
+  // Abre WhatsApp con el texto listo; el vendedor elige a quién de Compras se lo manda.
+  function lineasPro(p){ return (p.productos||[]).filter(function(it){ return it.tipo==='pro' || p.clasificacion==='sobre_stock'; }); }
+  window.__mpWaCompras = function(id){
+    var p = null; [_pedidosVendedor,_pedidosSolicitante,_pedidosCreador].forEach(function(l){ l.forEach(function(x){ if(x.id===id) p=x; }); });
+    if (!p) return;
+    var lin = lineasPro(p); if (!lin.length) lin = p.productos||[];
+    var txt = 'Hola, Compras. ' + (p.clasificacion==='sobre_stock' ? 'Hay un pedido SOBRE STOCK (sin existencia)' : 'Hay un pedido con partidas PRO (sobre pedido)') + ':\n'
+      + 'Pedido: ' + (p.folio||'') + '\nCliente: ' + (p.cliente||'') + (p.empresa ? '\nEmpresa: '+p.empresa : '') + '\n'
+      + lin.map(function(it){ return '\u2022 ' + (Number(it.cant)||1) + ' \u00d7 ' + (it.clave ? it.clave+' ' : '') + (it.desc||'') + (it.espec ? ' ('+it.espec+')' : ''); }).join('\n')
+      + (p.compraEstado ? '\nEstatus en Compras: ' + (PRO_TXT[p.compraEstado]||p.compraEstado) : '')
+      + '\nVendedor: ' + (p.vendedor || yoNombre()) + '\nEst\u00e1 en el portal: Compras \u2192 Pedidos de Ventas.';
+    window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+  };
+  window.__mpFiltro = function(k, v){ filtro[k] = v; render(); if (k==='q'){ var i=document.getElementById('mp-q'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } } };
+  function norm(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+  function pasaFiltro(p){
+    var t = filtro.tipo;
+    if (t==='servicios' && !esServ(p)) return false;
+    if (t==='por_programar' && !(esServ(p) && estServ(p).k==='por_programar')) return false;
+    if (t==='programados' && !(esServ(p) && ['programado','en_proceso','sin_terminar'].indexOf(estServ(p).k)>=0)) return false;
+    if (t==='terminados' && !((esServ(p) && estServ(p).k==='terminado') || (!esServ(p) && (p.estado==='entregado'||p.estado==='finalizado')))) return false;
+    if (t==='compras' && !esPro(p)) return false;
+    if (t==='material' && esServ(p)) return false;
+    var q = norm(filtro.q).trim();
+    if (!q) return true;
+    var e = p.opsEstado || {};
+    return norm([p.folio,p.cliente,p.empresa,(p.productos||[]).map(function(it){ return (it.clave||'')+' '+(it.desc||''); }).join(' '),(e.tecnicos||[]).join(' '),e.estacion].join(' ')).indexOf(q) >= 0;
+  }
+
   window.__mpVerPdf = function(id){
     var w=window.open('','_blank'); if(w) w.document.write('<p style="font-family:sans-serif;padding:20px">Cargando PDF\u2026</p>');
     window.tcSbObtenerPdfOriginal(id).then(function(res){
@@ -296,6 +348,7 @@
       + bloqueArea(p) + destinoHtml + comentarioHtml + atencionHtml
       + '<button class="mp-btn" onclick="window.__mpToggle(\''+p.id+'\')">'+(abierta?'Ocultar detalle':'Ver seguimiento')+'</button>'
       + (p.tienePdfOriginal ? ' <button class="mp-btn" onclick="window.__mpVerPdf(\''+p.id+'\')">Ver PDF</button>' : '')
+      + (esPro(p) && p.compraEstado!=='recibido' ? ' <button class="mp-wa" onclick="window.__mpWaCompras(\''+p.id+'\')" title="Abre WhatsApp con el resumen del pedido para mandarlo a Compras">Avisar a Compras por WhatsApp</button>' : '')
       + detalle
       + '</div>';
   }
@@ -307,19 +360,25 @@
     _pedidosVendedor.forEach(function(p){ mapa[p.id]=p; });
     _pedidosSolicitante.forEach(function(p){ mapa[p.id]=p; });
     _pedidosCreador.forEach(function(p){ mapa[p.id]=p; });
-    var lista = Object.keys(mapa).map(function(k){ return mapa[k]; })
+    var todos = Object.keys(mapa).map(function(k){ return mapa[k]; })
       .filter(function(p){ return p.estado!=='cancelado'; })
       .sort(function(a,b){ return b.createdAt - a.createdAt; });
+    var lista = todos.filter(pasaFiltro);
+    var cuenta = function(t){ var g=filtro.tipo; filtro.tipo=t; var q=filtro.q; filtro.q=''; var n=todos.filter(pasaFiltro).length; filtro.tipo=g; filtro.q=q; return n; };
+    var chips = [['todos','Todos'],['servicios','Servicios'],['por_programar','Por programar'],['programados','Programados'],['terminados','Terminados / entregados'],['compras','Compras (PRO)'],['material','Material']];
+    var barra = '<div class="mp-filtros"><input id="mp-q" type="search" placeholder="Buscar folio, cliente, producto o t\u00e9cnico\u2026" value="'+esc(filtro.q)+'" oninput="window.__mpFiltro(\'q\',this.value)">'
+      + chips.map(function(c){ return '<button class="mp-chip'+(filtro.tipo===c[0]?' on':'')+'" onclick="window.__mpFiltro(\'tipo\',\''+c[0]+'\')">'+c[1]+' ('+cuenta(c[0])+')</button>'; }).join('')
+      + '</div>';
 
     var pendientesFirma = lista.filter(function(p){ return p.entregaPendienteFirma; }).length;
     var aviso = pendientesFirma
       ? ('<div class="mp-aviso">\u270d\ufe0f Tienes '+pendientesFirma+' pedido(s) esperando que alguien firme de recibido.</div>')
       : '';
 
-    cont.innerHTML = '<div class="mp-wrap">' + aviso
+    cont.innerHTML = '<div class="mp-wrap">' + aviso + (todos.length ? barra : '')
       + (lista.length
           ? ('<div class="mp-grid">'+lista.map(tarjeta).join('')+'</div>')
-          : '<div class="mp-empty">Todav\u00eda no tienes pedidos registrados a tu nombre.</div>')
+          : '<div class="mp-empty">'+(todos.length ? 'Ning\u00fan pedido coincide con la b\u00fasqueda o el filtro.' : 'Todav\u00eda no tienes pedidos registrados a tu nombre.')+'</div>')
       + '</div>';
   }
 
@@ -338,7 +397,8 @@
       clasificacion: d.clasificacion||'', empresa: d.empresa||'', tienePdfOriginal: !!d.tienePdfOriginal,
       compraEstado: d.compraEstado||'', compraProveedor: d.compraProveedor||'', compraFechaEstimada: d.compraFechaEstimada||'',
       compraGuia: d.compraGuia||'', compraNotas: d.compraNotas||'', compraRecibidoEn: d.compraRecibidoEn||'',
-      opsGestionado: !!d.opsGestionado, opsGestionadoEn: d.opsGestionadoEn||'', opsFolioId: d.opsFolioId||''
+      opsGestionado: !!d.opsGestionado, opsGestionadoEn: d.opsGestionadoEn||'', opsFolioId: d.opsFolioId||'',
+      opsEstado: d.opsEstado && typeof d.opsEstado==='object' ? d.opsEstado : null
     };
   }
 

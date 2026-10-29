@@ -7085,6 +7085,7 @@
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico, estación, servicio u O.S..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
                     ${opsPuedeCrear() && !opsAccFiltroEmpresa() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
+                    ${opsPuedeGestionar() ? `<button onclick="opsMvAbrir()" title="Buscar servicios y cambiar la fecha de varios a la vez" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Buscar y mover servicios</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsTareaExtraAbrir('${opsCalFechaISO(opsCalFecha)}')" title="Un favor o pendiente que solo necesita programarse (ej. llevar un sobre a una estación)" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Tarea extra</button>` : ""}
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
@@ -7165,50 +7166,78 @@
         }
         return null;
     }
+    // 29-oct-2026: el aviso se lleva POR PEDIDO (ventasAvisoPedidos = { idPedido: estatus avisado }).
+    // Antes se llevaba por servicio, y cuando un pedido con refacciones se ligaba a un servicio que ya
+    // estaba programado, ni el vendedor de ese pedido ni Almacén se enteraban (Almacén no había recibido
+    // ningún aviso). Además, el estatus queda escrito en el propio pedido (opsEstado) para que el vendedor
+    // lo vea en "Mis pedidos": fecha, hora y técnicos.
+    function opsVentasPedidosDe(f) {
+        return (f.pedidosVentas || []).length ? f.pedidosVentas : (f.pedidoVentasId ? [{ id: f.pedidoVentasId, folio: f.pedidoVentasFolio }] : []);
+    }
+    function opsVentasAvisadosDe(f) {
+        if (f.ventasAvisoPedidos && typeof f.ventasAvisoPedidos === "object") return { ...f.ventasAvisoPedidos };
+        // Servicios de antes de este cambio: lo que ya tenía ligado se da por avisado con el estatus de entonces.
+        const m = {}; if (f.ventasAvisoEstado) opsVentasPedidosDe(f).forEach(x => { m[x.id] = f.ventasAvisoEstado; });
+        return m;
+    }
     async function opsAvisarVentasEstado(folios) {
         if (!opsPuedeGestionar() || !window.tcNotificar2) return;
         const limite = Date.now() - 20 * 86400000;
         for (const f of folios) {
-            const peds = (f.pedidosVentas || []).length ? f.pedidosVentas : (f.pedidoVentasId ? [{ id: f.pedidoVentasId, folio: f.pedidoVentasFolio }] : []);
+            const peds = opsVentasPedidosDe(f);
             if (!peds.length || opsVentasAvisando.has(f.id)) continue;
             const est = opsVentasEstadoClave(f); if (!est) continue;
-            if (f.ventasAvisoEstado === est.k) continue;
+            const avisados = opsVentasAvisadosDe(f);
+            const pendientes = peds.filter(x => avisados[x.id] !== est.k);
+            if (!pendientes.length) continue;
             const ref = opsAFechaObj(f.fechaSolucion || f.fechaProgramada || f.creadoEn);
-            if (!f.ventasAvisoEstado && ref && ref.getTime() < limite) continue; // no avisar historial viejo al estrenar esto
-            const correos = [...new Set(peds.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean)
-                .map(p => String(p.solicitanteEmail || "").toLowerCase().trim()).filter(c => c.includes("@")))];
-            if (!correos.length) continue;
+            if (!f.ventasAvisoEstado && !f.ventasAvisoPedidos && ref && ref.getTime() < limite) continue; // no avisar historial viejo al estrenar esto
             opsVentasAvisando.add(f.id);
             try {
                 const { db, fs } = await opsGetFB();
-                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { ventasAvisoEstado: est.k, ventasAvisoEn: opsFechaHora() });
-                const pedTxt = peds.map(x => x.folio).filter(Boolean).join(", ");
+                const nuevos = { ...avisados }; pendientes.forEach(x => { nuevos[x.id] = est.k; });
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { ventasAvisoEstado: est.k, ventasAvisoPedidos: nuevos, ventasAvisoEn: opsFechaHora() });
                 const donde = f.estacion || f.clienteNombre || "la estación";
                 const esProg = est.k.startsWith("programado|");
-                const repro = esProg && String(f.ventasAvisoEstado || "").startsWith("programado|");
-                const texto = repro ? est.t.replace("quedó programado", "se reprogramó") : est.t;
-                for (const para of correos) await window.tcNotificar2(fs, db, {
-                    tipo: "ventas_servicio_estado", para, folioId: f.id, modulo: "Ventas",
-                    mensaje: "Tu servicio " + (pedTxt ? "(" + pedTxt + ") " : "") + "en " + donde + " " + texto + ".",
-                    voz: esProg ? "Operaciones " + (repro ? "reprogramó" : "programó") + " tu servicio de " + donde + "." : null,
-                    leido: false, creadaEn: opsFechaHora(),
-                }).catch(() => {});
-                // Almacén: si el pedido lleva refacciones, a quién entregarlas, qué día y a qué hora (26-oct-2026).
+                const tecs = (f.tecnicosAsignadosNombres || []).filter(Boolean);
+                const hora = String(f.fechaProgramada || "").slice(11, 16);
+                const pedsObj = pendientes.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean);
+                // Estatus en el propio pedido, para "Mis pedidos" de Ventas
+                const opsEstado = { k: est.k.split("|")[0], texto: est.t, fecha: (f.fechaProgramada || "").slice(0, 10) || null, hora: hora || null,
+                    fechaFin: opsFolioFechaFin(f) || null, tecnicos: tecs, folioNumero: f.folioNumero || null, estacion: donde, en: new Date().toISOString() };
+                for (const p of pedsObj) {
+                    try { await window.tcSbActualizarSurtido(p.id, { opsEstado }); p.opsEstado = opsEstado; }
+                    catch (e) { console.warn("[avisos a Ventas] estatus en el pedido:", e.message || e); }
+                }
+                for (const p of pedsObj) {
+                    const para = String(p.solicitanteEmail || "").toLowerCase().trim();
+                    if (!para.includes("@")) continue;
+                    const prevK = avisados[p.id] || "";
+                    const repro = esProg && String(prevK).startsWith("programado|");
+                    const texto = repro ? est.t.replace("quedó programado", "se reprogramó") : est.t;
+                    await window.tcNotificar2(fs, db, {
+                        tipo: "ventas_servicio_estado", para, folioId: f.id, modulo: "Ventas",
+                        mensaje: "Tu servicio " + (p.folio ? "(" + p.folio + ") " : "") + "en " + donde + " " + texto + (esProg && hora ? " a las " + hora : "") + ".",
+                        voz: esProg ? "Operaciones " + (repro ? "reprogramó" : "programó") + " tu servicio de " + donde + (tecs.length ? " con " + tecs.join(" y ") : "") + "." : null,
+                        leido: false, creadaEn: opsFechaHora(),
+                    }).catch(() => {});
+                }
+                // Almacén: si el pedido lleva refacciones, a quién entregarlas (traspaso a su almacén), qué día y a qué hora.
                 if (esProg && window.tcNotificarEvento) {
-                    const conPiezas = peds.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean)
-                        .filter(p => p.clasificacion === "servicio_piezas" || (p.productos || []).some(it => it.tipo === "producto" || it.tipo === "pro"));
+                    const conPiezas = pedsObj.filter(p => p.clasificacion === "servicio_piezas" || (p.productos || []).some(it => it.tipo === "producto" || it.tipo === "pro"));
                     if (conPiezas.length) {
-                        const tec = (f.tecnicosAsignadosNombres || []).filter(Boolean).join(", ") || f.tecnicoResponsableNombre || "técnico por asignar";
+                        const tec = tecs.join(", ") || f.tecnicoResponsableNombre || "técnico por asignar";
                         const cuando = opsFmtFechaCorta(f.fechaProgramada);
-                        const folios = conPiezas.map(p => p.folio).filter(Boolean).join(", ");
+                        const fol = conPiezas.map(p => p.folio).filter(Boolean).join(", ");
+                        const repro = conPiezas.some(p => String(avisados[p.id] || "").startsWith("programado|"));
                         window.tcNotificarEvento("servicio_programado_almacen", {
                             modulo: "Almacén", folioId: f.id,
-                            mensaje: (repro ? "Se reprogramó" : "Se programó") + " el servicio " + (folios ? "del pedido " + folios + " " : "") + "en " + donde + ": " + cuando + " · Entrega las refacciones a " + tec + ".",
-                            voz: "Almacén: refacciones del servicio en " + donde + " para " + tec + ", " + cuando + ".",
+                            mensaje: (repro ? "Se reprogramó" : "Se programó") + " el servicio " + (fol ? "del pedido " + fol + " " : "") + "en " + donde + ": " + cuando + (hora ? " a las " + hora : "") + ". Haz el traspaso de las refacciones al almacén de " + tec + ".",
+                            voz: "Almacén: traspasa las refacciones del servicio en " + donde + " al almacén de " + tec + ", " + cuando + ".",
                         }).catch(() => {});
                     }
                 }
-                f.ventasAvisoEstado = est.k;
+                f.ventasAvisoEstado = est.k; f.ventasAvisoPedidos = nuevos;
             } catch (e) { console.warn("[avisos a Ventas]", e); }
             finally { opsVentasAvisando.delete(f.id); }
         }
@@ -7589,6 +7618,8 @@
             const previos = (f && f.pedidosVentas) || (f && f.pedidoVentasId ? [{ id: f.pedidoVentasId, folio: f.pedidoVentasFolio || null }] : []);
             const pedidosVentas = previos.some(x => x.id === id) ? previos : previos.concat([{ id, folio: (ped && ped.folio) || null, cliente: (ped && ped.cliente) || null }]);
             const cambios = { pedidosVentas, ...(f && f.pedidoVentasId ? {} : { pedidoVentasId: id, pedidoVentasFolio: (ped && ped.folio) || null, pedidoVentasEmpresa: (ped && ped.empresa) || null }) };
+            if (f) cambios.ventasAvisoPedidos = opsVentasAvisadosDe(f); // el pedido nuevo NO está aquí → recibe su aviso
+            setTimeout(() => { const ff = cacheFolios.find(x => x.id === folioOps); if (ff) opsAvisarVentasEstado([ff]).catch(() => {}); }, 1500);
             try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, folioOps), cambios); if (f) Object.assign(f, cambios); }
             catch (e) { console.warn("[Ligar pedido] no se pudo guardar el pedido en el servicio:", e.message); }
         }
@@ -9871,6 +9902,110 @@
         event.dataTransfer.effectAllowed = "move";
     };
 
+    // ═══ Buscar servicios y cambiar la fecha de varios a la vez (29-oct-2026, retroalimentación de Operaciones) ═══
+    // Se busca por estación, técnico, O.S., número de servicio, cliente o tipo; se marcan los que se quieren
+    // mover y se elige el nuevo día. Cada uno conserva su hora (o se le pone una nueva) y, si duraba varios
+    // días, se recorre completo. Se pide UNA causa para todos y queda en el historial de cada servicio.
+    let opsMv = null;
+    window.opsMvAbrir = function () {
+        if (!opsPuedeGestionar()) { alert("Tu usuario es de solo lectura en Operaciones."); return; }
+        const hoy = opsCalFechaISO(new Date());
+        opsMv = { q: "", desde: opsDiaISOmas(hoy, -7), hasta: opsDiaISOmas(hoy, 45), sel: new Set(), nueva: "", conservarHora: true, hora: "08:00", verTerminados: false };
+        opsMvPintar();
+    };
+    function opsMvLista() {
+        const m = opsMv, q = opsAsNorm(m.q).trim();
+        return cacheFolios.filter(f => !f.cancelado && f.fechaProgramada && (m.verTerminados || !f.fechaSolucion))
+            .filter(f => { const d = f.fechaProgramada.slice(0, 10); return (!m.desde || d >= m.desde) && (!m.hasta || d <= m.hasta); })
+            .filter(f => !q || opsAsNorm([f.estacion, f.clienteNombre, f.estacionRazonSocial, f.folioOS, f.folioNumero, (f.tecnicosAsignadosNombres || []).join(" "), opsCalTipoTexto(f), f.plaza, f.estacionMunicipio].join(" ")).includes(q))
+            .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada)));
+    }
+    function opsMvPintar() {
+        const m = opsMv; if (!m) return;
+        let ov = document.getElementById("ops-mv-ov");
+        const scroll = ov ? (ov.querySelector("[data-mv-scroll]")?.scrollTop || 0) : 0;
+        if (!ov) { ov = document.createElement("div"); ov.id = "ops-mv-ov"; document.body.appendChild(ov); }
+        const lista = opsMvLista();
+        const visiblesSel = lista.filter(f => m.sel.has(f.id)).length;
+        const nom = d => new Date(d + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;";
+        ov.innerHTML = `
+        <div style="background:#fff;border-radius:16px;width:980px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #e2e8f0;">
+                <div><div style="font-size:16px;font-weight:800;color:#1e293b;">Buscar y mover servicios</div>
+                <div style="font-size:11.5px;color:#64748b;">Busca, marca los servicios que quieres cambiar de día y elige la nueva fecha abajo.</div></div>
+                <button onclick="opsMvCerrar()" style="margin-left:auto;background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:12px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                <div style="flex:1;min-width:240px;"><label class="opsas-lb">Buscar</label><input id="ops-mv-q" class="opsas-in" value="${opsEsc(m.q)}" placeholder="Estación, técnico, O.S., N.º de servicio, cliente…" oninput="opsMv.q=this.value;opsMvPintar();setTimeout(()=>{const i=document.getElementById('ops-mv-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)"></div>
+                <div><label class="opsas-lb">Desde</label><input type="date" class="opsas-in" value="${opsEsc(m.desde)}" onchange="opsMv.desde=this.value;opsMvPintar()"></div>
+                <div><label class="opsas-lb">Hasta</label><input type="date" class="opsas-in" value="${opsEsc(m.hasta)}" onchange="opsMv.hasta=this.value;opsMvPintar()"></div>
+                <label class="opsas-chk" style="padding-bottom:9px;"><input type="checkbox" ${m.verTerminados ? "checked" : ""} onchange="opsMv.verTerminados=this.checked;opsMvPintar()">Ver también terminados</label>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 20px;font-size:12px;color:#475569;">
+                <b>${lista.length}</b> servicio(s) encontrados · <b style="color:#1D2E73;">${m.sel.size}</b> marcados
+                ${lista.length ? `<button class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;" onclick="opsMvMarcarTodos(${visiblesSel < lista.length})">${visiblesSel < lista.length ? "Marcar todos los que se ven" : "Quitar marca a los que se ven"}</button>` : ""}
+                ${m.sel.size ? `<button class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;" onclick="opsMv.sel.clear();opsMvPintar()">Quitar todas las marcas</button>` : ""}
+            </div>
+            <div data-mv-scroll style="overflow-y:auto;padding:0 20px 10px;flex:1;">
+                ${lista.length ? lista.map(f => { const on = m.sel.has(f.id), fin = opsFolioFechaFin(f), ini = f.fechaProgramada.slice(0, 10);
+                    return `<label style="display:flex;gap:10px;align-items:flex-start;border:1.5px solid ${on ? "#1D2E73" : "#e2e8f0"};background:${on ? "#eef2ff" : "#fff"};border-radius:10px;padding:9px 12px;margin-bottom:6px;cursor:pointer;">
+                        <input type="checkbox" ${on ? "checked" : ""} onchange="opsMvMarcar('${f.id}',this.checked)" style="width:16px;height:16px;margin-top:2px;flex-shrink:0;">
+                        <div style="width:150px;flex-shrink:0;font-size:12px;font-weight:800;color:#1e293b;text-transform:capitalize;">${opsEsc(nom(ini))}${fin && fin !== ini ? ` <span style="font-weight:600;color:#64748b;">al ${opsEsc(nom(fin))}</span>` : ""}<div style="font-weight:600;color:#64748b;">${opsEsc(f.fechaProgramada.slice(11, 16) || "")}</div></div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:12.5px;font-weight:800;color:#1e293b;">${opsEsc(f.estacion || "Sin estación")}${f.folioNumero ? ` <span style="color:#94a3b8;font-weight:600;">· N.º ${opsEsc(f.folioNumero)}</span>` : ""}${f.folioOS ? ` <span style="color:#94a3b8;font-weight:600;">· O.S. ${opsEsc(f.folioOS)}</span>` : ""}</div>
+                            <div style="font-size:11.5px;color:#475569;">${opsEsc(opsCalTipoTexto(f))}${f.plaza ? " · " + opsEsc(f.plaza) : ""} · ${(f.tecnicosAsignadosNombres || []).length ? opsEsc(f.tecnicosAsignadosNombres.join(", ")) : `<span style="color:#b45309;">sin técnico</span>`}${f.fechaSolucion ? ` · <span style="color:#15803d;font-weight:700;">terminado</span>` : ""}</div>
+                        </div>
+                    </label>`; }).join("") : `<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;">No hay servicios con esa búsqueda en esas fechas.</div>`}
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:12px 20px;border-top:1px solid #e2e8f0;background:#fff;">
+                <div><label class="opsas-lb">Nueva fecha</label><input type="date" class="opsas-in" value="${opsEsc(m.nueva)}" onchange="opsMv.nueva=this.value;opsMvPintar()"></div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label class="opsas-chk" style="padding:0;"><input type="radio" name="ops-mv-h" ${m.conservarHora ? "checked" : ""} onchange="opsMv.conservarHora=true;opsMvPintar()">Cada uno conserva su hora</label>
+                    <label class="opsas-chk" style="padding:0;"><input type="radio" name="ops-mv-h" ${m.conservarHora ? "" : "checked"} onchange="opsMv.conservarHora=false;opsMvPintar()">Todos a las <input type="time" value="${opsEsc(m.hora)}" ${m.conservarHora ? "disabled" : ""} onchange="opsMv.hora=this.value" style="border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;font-size:12px;margin-left:4px;"></label>
+                </div>
+                <div style="margin-left:auto;display:flex;gap:8px;">
+                    <button class="opsas-btn" style="background:#fff;color:#475569;border:1px solid #cbd5e1;" onclick="opsMvCerrar()">Cerrar</button>
+                    <button id="ops-mv-btn" class="opsas-btn" style="background:${m.sel.size && m.nueva ? "#1D2E73" : "#94a3b8"};color:#fff;" onclick="opsMvAplicar()">${m.sel.size ? "Mover " + m.sel.size + " servicio(s)" + (m.nueva ? " al " + opsEsc(nom(m.nueva)) : "") : "Marca los servicios a mover"}</button>
+                </div>
+            </div>
+        </div>`;
+        const sc = ov.querySelector("[data-mv-scroll]"); if (sc) sc.scrollTop = scroll;
+    }
+    window.opsMvCerrar = function () { document.getElementById("ops-mv-ov")?.remove(); opsMv = null; };
+    window.opsMvMarcar = function (id, on) { if (!opsMv) return; if (on) opsMv.sel.add(id); else opsMv.sel.delete(id); opsMvPintar(); };
+    window.opsMvMarcarTodos = function (on) { if (!opsMv) return; opsMvLista().forEach(f => on ? opsMv.sel.add(f.id) : opsMv.sel.delete(f.id)); opsMvPintar(); };
+    window.opsMvAplicar = async function () {
+        const m = opsMv; if (!m) return;
+        if (!m.sel.size) { alert("Marca al menos un servicio."); return; }
+        if (!m.nueva) { alert("Elige la nueva fecha."); return; }
+        if (!m.conservarHora && !/^\d{2}:\d{2}$/.test(m.hora || "")) { alert("Escribe la hora."); return; }
+        const folios = [...m.sel].map(id => cacheFolios.find(f => f.id === id)).filter(Boolean);
+        const causa = await opsPedirCausaCambio("Reprogramar varios servicios", `${folios.length} servicio(s) pasan al ${new Date(m.nueva + "T12:00:00").toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}.`);
+        if (!causa) return;
+        const btn = document.getElementById("ops-mv-btn"); if (btn) { btn.disabled = true; btn.textContent = "Moviendo… no cierres esta ventana"; }
+        const { db, fs } = await opsGetFB();
+        let ok = 0; const fallas = [];
+        for (const f of folios) {
+            try {
+                const ini = f.fechaProgramada.slice(0, 10);
+                const hora = m.conservarHora ? (f.fechaProgramada.slice(11, 16) || "08:00") : m.hora;
+                const nueva = m.nueva + "T" + hora;
+                const delta = opsDiasEntre(ini, m.nueva);
+                const cambios = { fechaProgramada: nueva, ...opsCamposReprogramacion(f, nueva), ...opsCamposCausa(f, "reprogramacion", causa, f.fechaProgramada || "", nueva) };
+                if (f.fechaFinProgramada) cambios.fechaFinProgramada = opsDiaISOmas(f.fechaFinProgramada, delta);
+                if ((f.diasTraslado || []).length) cambios.diasTraslado = f.diasTraslado.map(d => opsDiaISOmas(d, delta));
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+                Object.assign(f, cambios);
+                fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `Reprogramado (junto con otros ${folios.length - 1}) para ${nueva.replace("T", " ")} · causa: ${opsTextoCausa(causa)}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: opsFechaHora() }).catch(() => {});
+                ok++;
+            } catch (e) { fallas.push((f.estacion || f.id) + ": " + (e.message || e)); }
+        }
+        opsMvCerrar();
+        opsRenderCalendario();
+        alert(`Listo: ${ok} de ${folios.length} servicio(s) movidos.` + (fallas.length ? "\n\nNo se pudieron mover:\n" + fallas.join("\n") : "") + "\n\nVentas recibe el aviso de la nueva fecha de sus servicios.");
+    };
+
     window.opsCalSoltarFolio = async function (event, tecnicoId) {
         event.preventDefault();
         event.currentTarget.style.background = "";
@@ -11829,6 +11964,33 @@
     };
 
     // ── Comisiones ──
+    // Conceptos de comisión guardados (29-oct-2026): lista desplegable que crece cuando alguien guarda uno nuevo.
+    const OPS_CONCEPTOS_COM_BASE = ["Apoyo", "Ayudante", "Guardia", "Inspector", "Líder de servicio", "Obra civil", "Servicio prestado", "Técnico"];
+    let cacheConceptosCom = OPS_CONCEPTOS_COM_BASE.slice(), opsConceptosComCargados = false;
+    async function opsCargarConceptosComision() {
+        if (opsConceptosComCargados) return;
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDoc(fs.doc(db, "ops_config_comisiones", "conceptos"));
+            const items = snap.exists() ? (snap.data().items || []) : [];
+            cacheConceptosCom = [...new Set(OPS_CONCEPTOS_COM_BASE.concat(items).map(x => String(x || "").trim()).filter(Boolean))].sort(opsAsAlfa);
+            opsConceptosComCargados = true;
+            if (opsAS && document.getElementById("opsas-conceptos")) opsAsPintar();
+        } catch (e) { console.warn("[Comisiones] conceptos:", e.message || e); }
+    }
+    window.opsAsGuardarConcepto = async function (i) {
+        const s = opsAS; if (!s || !s.comisiones[i]) return;
+        const c = String(s.comisiones[i].concepto || "").trim();
+        if (!c) { alert("Escribe primero el concepto."); return; }
+        if (cacheConceptosCom.some(x => opsAsNorm(x) === opsAsNorm(c))) { alert("Ese concepto ya está en la lista."); return; }
+        try {
+            const { db, fs } = await opsGetFB();
+            const nuevos = cacheConceptosCom.concat([c]).sort(opsAsAlfa);
+            await fs.setDoc(fs.doc(db, "ops_config_comisiones", "conceptos"), { items: nuevos.filter(x => !OPS_CONCEPTOS_COM_BASE.includes(x)), actualizadoPor: opsNombreActual(), actualizadoEn: opsFechaHora() }, { merge: true });
+            cacheConceptosCom = nuevos;
+            opsAsPintar();
+        } catch (e) { alert("No se pudo guardar el concepto: " + (e.message || e)); }
+    };
     function opsAsComisionesHTML(numero, cls) {
         const s = opsAS; const R = opsAsResumenPrecio();
         const tecs = cacheTec.filter(t => t.estatus === "activo").sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
@@ -11839,20 +12001,22 @@
         const porNorma = normasV.length > 1;
         if (porNorma) (s.comisiones || []).forEach(c => { if (!c.norma || !normasV.includes(c.norma)) c.norma = normasV[0]; });
         const filas = (s.comisiones || []).map((c, i) => `
-            <div style="display:grid;grid-template-columns:${porNorma ? "minmax(120px,1fr) " : ""}minmax(150px,1.4fr) minmax(120px,1.2fr) 92px 110px 110px 30px;gap:7px;align-items:end;margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:${porNorma ? "minmax(120px,1fr) " : ""}minmax(150px,1.4fr) minmax(150px,1.3fr) 92px 110px 96px 110px 30px;gap:7px;align-items:end;margin-bottom:8px;">
                 ${porNorma ? `<div><label class="opsas-lb">Norma</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].norma=this.value;opsAsPintar()">${normasV.map(n => `<option value="${opsEsc(n)}" ${c.norma === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}</select></div>` : ""}
                 <div><label class="opsas-lb">Persona</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].tecId=this.value;opsAsPintar()"><option value="">Selecciona…</option>${tecs.map(t => `<option value="${t.id}" ${c.tecId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}</select></div>
-                <div><label class="opsas-lb">Concepto</label><input class="opsas-in" value="${opsEsc(c.concepto)}" placeholder="Ej. Líder de servicio" oninput="opsAS.comisiones[${i}].concepto=this.value"></div>
+                <div><label class="opsas-lb">Concepto ${String(c.concepto || "").trim() && !cacheConceptosCom.some(x => opsAsNorm(x) === opsAsNorm(c.concepto)) ? `<a href="#" onclick="event.preventDefault();opsAsGuardarConcepto(${i})" style="color:#15803d;font-weight:700;">· guardar en la lista</a>` : ""}</label><input class="opsas-in" list="opsas-conceptos" value="${opsEsc(c.concepto)}" placeholder="Elige o escribe uno nuevo" oninput="opsAS.comisiones[${i}].concepto=this.value" onchange="opsAsPintar()"></div>
                 <div><label class="opsas-lb">Tipo</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].tipo=this.value;opsAsPintar()"><option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo</option><option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% precio</option></select></div>
-                <div><label class="opsas-lb">${c.tipo === "pct" ? "Porcentaje" : "Monto"}</label><input type="number" min="0" step="0.01" class="opsas-in" value="${opsEsc(c.valor)}" onchange="opsAS.comisiones[${i}].valor=this.value;opsAsPintar()"></div>
-                <div><label class="opsas-lb">A pagar</label><div style="padding:8px 4px;font-size:13px;font-weight:800;color:#1D2E73;">${opsDinero(opsAsComisionMonto(c, R.baseComision))}</div></div>
+                <div><label class="opsas-lb">${c.tipo === "pct" ? "Porcentaje" : "Monto"}</label><input type="number" min="0" step="0.01" class="opsas-in" ${c.pendienteMonto ? "disabled placeholder=\"Pendiente\"" : ""} value="${c.pendienteMonto ? "" : opsEsc(c.valor)}" onchange="opsAS.comisiones[${i}].valor=this.value;opsAsPintar()"></div>
+                <label title="Guarda a la persona y el concepto; el monto se llena después, cuando se revise" style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${c.pendienteMonto ? "#b45309" : "#64748b"};padding-bottom:9px;cursor:pointer;"><input type="checkbox" ${c.pendienteMonto ? "checked" : ""} onchange="opsAS.comisiones[${i}].pendienteMonto=this.checked;opsAsPintar()">Monto por revisar</label>
+                <div><label class="opsas-lb">A pagar</label><div style="padding:8px 4px;font-size:13px;font-weight:800;color:${c.pendienteMonto ? "#b45309" : "#1D2E73"};">${c.pendienteMonto ? "Pendiente" : opsDinero(opsAsComisionMonto(c, R.baseComision))}</div></div>
                 <button type="button" onclick="opsAS.comisiones.splice(${i},1);opsAsPintar()" title="Quitar" style="height:36px;background:#fef2f2;border:none;color:#E7402B;border-radius:8px;cursor:pointer;font-weight:800;">×</button>
             </div>`).join("");
         return `
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Comisiones al personal</div><div class="opsas-hint">Avisa a Pagos y RH al guardar y al finalizar</div></div>
             ${porNorma ? `<div class="opsas-note" style="margin:0 0 8px;">Esta visita lleva ${normasV.length} normas (${normasV.map(opsEsc).join(", ")}). Cada comisión se paga en el servicio de <b>su norma</b>; si es porcentaje, se calcula sobre el precio de esa norma.</div>` : ""}
-            ${filas || `<div class="opsas-note" style="margin:0 0 8px;">Sin comisiones capturadas.</div>`}
+            <datalist id="opsas-conceptos">${cacheConceptosCom.map(x => `<option value="${opsEsc(x)}"></option>`).join("")}</datalist>
+            ${filas ? `<div class="opsas-note" style="margin:0 0 8px;">El personal que eliges en la programación aparece aquí solo. Si todavía no sabes el monto, marca <b>"Monto por revisar"</b> y se llena después en Operaciones → Comisiones.</div>` + filas : `<div class="opsas-note" style="margin:0 0 8px;">Sin comisiones capturadas. Cuando elijas personal en la programación, aparece aquí solo.</div>`}
             ${(s.comisiones || []).some(c => c.tipo === "pct") && !R.precioVisita ? `<div class="opsas-box" style="margin:0 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                 <div style="flex:1;min-width:220px;font-size:12px;color:#92400e;">Este servicio todavía no tiene precio capturado, por eso el <b>%</b> salía en $0. Escribe el precio del servicio sobre el que se calcula la comisión:</div>
                 <input type="number" min="0" step="0.01" class="opsas-in" style="width:150px;" value="${opsEsc(s.baseComisionManual)}" placeholder="Precio $" onchange="opsAS.baseComisionManual=this.value;opsAsPintar()">
@@ -11917,7 +12081,7 @@
             if (error) throw error;
             const total = coms.reduce((a, c) => a + c.monto, 0);
             await opsNotificarComisiones("ops_comisiones_registradas",
-                `Comisiones registradas · ${datos.estacion} (${(datos.fechaProgramada || "").slice(0, 10)}): ${coms.map(c => c.nombre + " " + opsDinero(c.monto)).join(", ")}. Total ${opsDinero(total)}. Se pagan al finalizar el servicio.`, folioId);
+                `Comisiones registradas · ${datos.estacion} (${(datos.fechaProgramada || "").slice(0, 10)}): ${coms.map(c => c.nombre + " " + (c.montoPendiente ? "(monto por revisar)" : opsDinero(c.monto))).join(", ")}. Total ${opsDinero(total)}. Se pagan al finalizar el servicio.`, folioId);
         }
     }
     async function opsNotificarComisiones(tipo, mensaje, folioId) {
@@ -13757,21 +13921,41 @@
     // · Ventas pide un vehículo Chico / Mediano / Grande; al programar, el alta sugiere unidades de
     //   ese tamaño libres en esas fechas (y si no hay, de otro tamaño).
     // · Operaciones puede marcar el pedido como CANCELADO con su razón (Idaly, 22-oct-2026).
-    const OPS_VEH_TAM = { chico: "Chico", mediano: "Mediano", grande: "Grande" };
+    const OPS_VEH_TAM = { chico: "Chico", mediano: "Mediano", grande: "Grande", maquinaria: "Maquinaria" };
     function opsVehTamano(v) {
         const t = opsAsNorm([v.Unidad, v.Tipo].join(" "));
-        if (/camion|3\.?5|redilas|plataforma|torton|rabon|f.?350|f.?450|f.?550|nlr|npr|elf|hino|crafter|sprinter|canter|grua|tracto/.test(t)) return "grande";
+        if (/grua|retro|excavador|montacarga|minicargador|bobcat|compactador|maquinaria|remolque|generador|planta de luz|manlift|plataforma de elevacion/.test(t)) return "maquinaria";
+        if (/camion|3\.?5|redilas|plataforma|torton|rabon|f.?350|f.?450|f.?550|nlr|npr|elf|hino|crafter|sprinter|canter|tracto/.test(t)) return "grande";
         if (/aveo|versa|march|sentra|tsuru|sedan|spark|beat|vento|attitude|hatch|moto|onix|virtus|yaris|rio\b|city|mirage|swift|figo|ikon/.test(t)) return "chico";
         return "mediano";
     }
+    // 29-oct-2026: ya no solo cuando Ventas pide un tamaño. Al programar cualquier servicio se puede ver
+    // qué unidades están libres por tamaño (chico, mediano, grande o maquinaria), qué tipo son y quién
+    // las trae hoy, y elegir una con un clic.
     function opsAsVehTamanoHTML() {
-        const s = opsAS; if (!s || !s.vehiculoTamano) return "";
+        const s = opsAS; if (!s) return "";
         const flota = ((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja" && !v.EnTaller);
+        if (!flota.length) return `<div class="opsas-note">Cargando las unidades de Flotilla…</div>`;
+        const ver = s.vehTamSel || s.vehiculoTamano || "todos";
         const libres = flota.filter(v => !opsAsVehiculoOcupado(`ECO ${v.Eco} · ${v.Unidad || ""}`).length);
-        const delTam = libres.filter(v => opsVehTamano(v) === s.vehiculoTamano);
-        const otros = delTam.length ? [] : libres.filter(v => opsVehTamano(v) !== "chico" || s.vehiculoTamano === "chico").slice(0, 6);
-        const btn = v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; return `<button type="button" onclick="opsAS.vehiculo=${opsEsc(JSON.stringify(val))};opsAsPintar()" class="opsas-ghost" style="margin:3px 4px 0 0;padding:4px 9px;font-size:11.5px;${s.vehiculo === val ? "background:#1D2E73;color:#fff;" : ""}">${opsEsc(val)}${v.QuienLaTrae ? " · " + opsEsc(v.QuienLaTrae) : ""}</button>`; };
-        return `<div class="opsas-note" style="margin-top:8px;"><b>Ventas pidió vehículo ${OPS_VEH_TAM[s.vehiculoTamano]}.</b> ${delTam.length ? "Libres en esas fechas:" : `<span style="color:#b45309;">No hay de ese tamaño libre en esas fechas.</span> Otras unidades libres:`}<div>${(delTam.length ? delTam : otros).slice(0, 8).map(btn).join("") || "<i>Ninguna libre: confírmalo con Flotilla.</i>"}</div>${s.vehiculo ? `<div style="margin-top:4px;">Elegido: <b>${opsEsc(s.vehiculo)}</b> (se le avisa a Flotilla al guardar).</div>` : ""}</div>`;
+        const cuenta = k => libres.filter(v => opsVehTamano(v) === k).length;
+        const lista = (ver === "todos" ? libres : libres.filter(v => opsVehTamano(v) === ver))
+            .sort((a, b) => opsAsAlfa(a.Unidad, b.Unidad));
+        const chip = (k, t) => `<button type="button" onclick="opsAS.vehTamSel='${k}';opsAsPintar()" style="border:1.5px solid ${ver === k ? "#1D2E73" : "#e2e8f0"};background:${ver === k ? "#1D2E73" : "#fff"};color:${ver === k ? "#fff" : "#334155"};border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${t}</button>`;
+        const btn = v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; const on = s.vehiculo === val;
+            return `<button type="button" onclick="opsAS.vehiculo=${opsEsc(JSON.stringify(val))};opsAsPintar()" style="text-align:left;border:1.5px solid ${on ? "#1D2E73" : "#e2e8f0"};background:${on ? "#eef2ff" : "#fff"};border-radius:9px;padding:7px 9px;cursor:pointer;font-family:inherit;">
+                <div style="font-size:12px;font-weight:800;color:#1e293b;">ECO ${opsEsc(v.Eco)} · ${opsEsc(v.Unidad || "")}</div>
+                <div style="font-size:10.5px;color:#64748b;">${opsEsc(OPS_VEH_TAM[opsVehTamano(v)])}${v.Tipo ? " · " + opsEsc(v.Tipo) : ""} · ${v.QuienLaTrae ? "la trae " + opsEsc(v.QuienLaTrae) : "sin asignar"}</div></button>`; };
+        return `<div class="opsas-box" style="margin-top:8px;">
+            ${s.vehiculoTamano ? `<div style="font-size:12px;margin-bottom:6px;"><b>Ventas pidió vehículo ${opsEsc(OPS_VEH_TAM[s.vehiculoTamano] || s.vehiculoTamano)}.</b></div>` : ""}
+            <div style="font-size:11.5px;color:#64748b;font-weight:700;margin-bottom:6px;">Unidades libres en esas fechas, por tamaño:</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+                ${chip("todos", "Todas (" + libres.length + ")")}${["chico", "mediano", "grande", "maquinaria"].map(k => chip(k, OPS_VEH_TAM[k] + " (" + cuenta(k) + ")")).join("")}
+            </div>
+            ${lista.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;max-height:230px;overflow-y:auto;">${lista.map(btn).join("")}</div>`
+                : `<div class="opsas-note opsas-warn" style="margin:0;">No hay unidades ${ver === "todos" ? "" : "de tamaño " + opsEsc((OPS_VEH_TAM[ver] || ver).toLowerCase()) + " "}libres en esas fechas. Revisa otro tamaño o confírmalo con Flotilla.</div>`}
+            ${s.vehiculo ? `<div style="margin-top:6px;font-size:12px;">Elegido: <b>${opsEsc(s.vehiculo)}</b> (se le avisa a Flotilla al guardar).</div>` : ""}
+        </div>`;
     }
     window.opsAsVehTamanoHTML = opsAsVehTamanoHTML;
     // Evidencias que manda Ventas (fotos, video y documentos del cliente). 26-oct-2026: se ven en miniatura
@@ -14324,7 +14508,31 @@
         { k: "inspeccion", n: "Visita de inspección", d: "JOMAR · Anexo 21 y 22, ASEA, SCFI, calidad de petrolíferos, calibración.", c: "#0e7490" },
         { k: "laboratorio", n: "Laboratorio", d: "TecnoLab · avisa a Gestoría al guardar.", c: "#be185d" },
     ];
-    const OPS_AS_NORMA_MATERIAL = ["SCFI", "Calibración Medida Volumétrica", "Alto Flujo"]; // siempre llevan hologramas/precintos/distintivos/mangueras
+    const OPS_AS_NORMA_MATERIAL = ["SCFI", "Calibración Medida Volumétrica", "Alto Flujo"];
+    // Equipo de seguridad (29-oct-2026, retroalimentación de Operaciones): al dar de alta un servicio se
+    // marca solo lo que aplica. Cada pieza lleva la NOM de la STPS que la pide. Si es un servicio del
+    // catálogo, salen marcadas las que trae su receta.
+    const OPS_EQUIPO_SEGURIDAD = [
+        { n: "Arnés y línea de vida", nom: "NOM-009-STPS-2011 (trabajos en altura)" },
+        { n: "Botas de seguridad / dieléctricas", nom: "NOM-113-STPS-2009" },
+        { n: "Candados y tarjetas de bloqueo", nom: "NOM-004-STPS-1999 / NOM-029-STPS-2011" },
+        { n: "Casco", nom: "NOM-115-STPS-2009" },
+        { n: "Chaleco reflejante", nom: "NOM-017-STPS-2008" },
+        { n: "Conos, cinta y señalamientos", nom: "NOM-026-STPS-2008" },
+        { n: "Detector de gases (explosímetro)", nom: "NOM-033-STPS-2015 (espacios confinados)" },
+        { n: "Extintor", nom: "NOM-002-STPS-2010" },
+        { n: "Guantes", nom: "NOM-017-STPS-2008" },
+        { n: "Lentes de seguridad", nom: "NOM-017-STPS-2008" },
+        { n: "Protección auditiva", nom: "NOM-011-STPS-2001" },
+        { n: "Respirador para vapores", nom: "NOM-116-STPS-2009" },
+        { n: "Ropa de algodón / antiflama", nom: "NOM-017-STPS-2008" },
+    ];
+    let opsAsHorizontal = (() => { try { return localStorage.getItem("opsas-vista") !== "vertical"; } catch (e) { return true; } })();
+    window.opsAsCambiarVista = function () {
+        opsAsHorizontal = !opsAsHorizontal;
+        try { localStorage.setItem("opsas-vista", opsAsHorizontal ? "horizontal" : "vertical"); } catch (e) {}
+        opsAsPintar();
+    }; // siempre llevan hologramas/precintos/distintivos/mangueras
     const opsAsAlfa = (a, b) => String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" });
     function opsAsNorm(s) { return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
     // Clave de razón social para agrupar estaciones del mismo dueño aunque se hayan capturado
@@ -14376,6 +14584,11 @@
         .opsas-btn{border:none;border-radius:8px;padding:9px 15px;cursor:pointer;font-size:12.5px;font-weight:700;font-family:inherit}
         .opsas-ghost{background:none;border:1px dashed #cbd5e1;color:#475569;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit}
         .opsas-list{max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:9px;padding:4px 10px;background:#fff}
+        .opsas-cols{column-width:430px;column-gap:14px}
+        .opsas-cols .opsas-sec{display:inline-block;width:100%;box-sizing:border-box;break-inside:avoid;-webkit-column-break-inside:avoid}
+        .opsas-segchk{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#334155;padding:5px 7px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer}
+        .opsas-segchk input{margin-top:1px;width:15px;height:15px;flex-shrink:0}
+        .opsas-segchk small{display:block;color:#94a3b8;font-size:10.5px}
         `;
         document.head.appendChild(st);
     }
@@ -14402,7 +14615,10 @@
             multiEst: false, estaciones: [], semFin: "", reparto: "dias", // varias estaciones · varios días
             normasExtra: [], // Visita de inspección: otras normas en la misma visita (ej. ASEA + Anexo 21 y 22 + SCFI)
             preciosNorma: {}, precioEditorNorma: null, // precio de cada norma extra de la visita: { [norma]: { sel, pers } }
+            seguridad: [], seguridadDeReceta: null, segOtro: "", // equipo de seguridad que aplica (29-oct-2026)
+            vehTamSel: null, // tamaño de vehículo que se está viendo en las sugerencias (29-oct-2026)
         };
+        opsCargarConceptosComision().catch(() => {});
         // Flota real (Supabase) — la misma que usa Viáticos; se carga en segundo plano.
         if (typeof opsViaCargarFlota === "function") opsViaCargarFlota().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {});
         opsCargarContactos().catch(() => {});
@@ -14669,6 +14885,8 @@
             paso5 = `<div class="opsas-sec ${lock(listo3)}"><div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Laboratorio</div></div><div class="opsas-note" style="margin:0;">Al guardar se avisa a Gestoría por la campanita de Operaciones.</div></div>`;
         }
 
+        // ── Equipo de seguridad (29-oct-2026) ──
+        const pasoSeg = s.tipo ? opsAsSeguridadHTML(receta, num(), lock(listo3)) : "";
         // ── Contacto, O.S., comentarios ──
         const pasoContacto = s.tipo && s.tipo !== "programacion" && !multiEst ? `
         <div class="opsas-sec ${lock(listo3)}">
@@ -14706,8 +14924,8 @@
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Comentarios</div><div class="opsas-hint">Opcional</div></div>
             <textarea class="opsas-in" style="min-height:60px;resize:vertical;" oninput="opsAS.comentarios=this.value" placeholder="Indicaciones para el técnico, accesos, horarios de la estación…">${opsEsc(s.comentarios)}</textarea>
             ${s.evidenciasCliente && s.evidenciasCliente.length ? `<div class="opsas-note" style="margin-top:8px;">Ventas mandó ${s.evidenciasCliente.length} archivo(s) del cliente (fotos, video o documentos): pasan al servicio y el técnico los ve en su app.</div>` : ""}
-            ${s.tipo === "programacion" && s.vehiculoTamano ? `<div style="margin-top:8px;"><label class="opsas-lb">Vehículo</label><select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()"><option value="">— Por definir —</option>${((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja").map(v => { const val = "ECO " + v.Eco + " · " + (v.Unidad || ""); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${opsEsc(val)} (${OPS_VEH_TAM[opsVehTamano(v)]})</option>`; }).join("")}</select></div>` : ""}
-            ${opsAsVehTamanoHTML()}
+            ${s.tipo !== "receta" ? `<div style="margin-top:8px;"><label class="opsas-lb">Vehículo</label><select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()"><option value="">— Por definir —</option>${((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja").map(v => { const val = "ECO " + v.Eco + " · " + (v.Unidad || ""); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${opsEsc(val)} (${OPS_VEH_TAM[opsVehTamano(v)]})</option>`; }).join("")}</select></div>` : ""}
+            ${s.tipo !== "receta" ? opsAsVehTamanoHTML() : ""}
             ${s.tipo !== "programacion" ? (s.masFac ? `
             <div class="opsas-grid" style="margin-top:10px;">
                 <div><label class="opsas-lb">A quién se factura</label><input class="opsas-in" value="${opsEsc(s.facturarA || e?.razonSocial || "")}" oninput="opsAS.facturarA=this.value"></div>
@@ -14718,14 +14936,15 @@
 
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;">
-            <div style="background:#f4f6f9;border-radius:16px;width:860px;max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="background:#f4f6f9;border-radius:16px;width:${opsAsHorizontal ? "1400px" : "860px"};max-width:98vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
                 <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;background:#fff;border-bottom:1px solid #e2e8f0;">
                     <div style="font-weight:700;font-size:17px;color:#1e293b;">Nuevo servicio</div>
                     ${tipo ? `<span class="opsas-pill" style="background:${tipo.c}14;color:${tipo.c};">${opsEsc(tipo.n)}${receta ? " · " + opsEsc(receta.nombre) : ""}${s.tipo === "programacion" && s.servicios.length ? " · " + s.servicios.length + (s.servicios.length === 1 ? " servicio" : " servicios") : ""}</span>` : ""}
-                    <button onclick="opsAsCerrar()" style="margin-left:auto;background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
+                    <button onclick="opsAsCambiarVista()" title="${opsAsHorizontal ? "Ver los pasos uno debajo de otro" : "Ver los pasos en dos columnas, a lo ancho"}" style="margin-left:auto;background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:11.5px;font-weight:700;font-family:inherit;">${opsAsHorizontal ? "Ver en vertical" : "Ver a lo ancho"}</button>
+                    <button onclick="opsAsCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button>
                 </div>
-                <div data-opsas-scroll style="overflow-y:auto;padding:16px 20px;">
-                    ${paso1}${paso2}${paso3}${paso4}${paso5}${pasoContacto}${pasoViat}${pasoPrecio}${pasoComisiones}${pasoMas}
+                <div data-opsas-scroll class="${opsAsHorizontal ? "opsas-cols" : ""}" style="overflow-y:auto;padding:16px 20px;">
+                    ${paso1}${paso2}${paso3}${paso4}${paso5}${pasoSeg}${pasoContacto}${pasoViat}${pasoPrecio}${pasoComisiones}${pasoMas}
                 </div>
                 <div id="opsas-error" style="display:none;align-items:flex-start;gap:10px;padding:10px 20px;background:#FEF2F2;border-top:1px solid #FECACA;color:#991B1B;font-size:12.5px;line-height:1.45;"></div>
                 <div style="display:flex;align-items:center;gap:10px;padding:12px 20px;background:#fff;border-top:1px solid #e2e8f0;">
@@ -15726,8 +15945,23 @@
         const arr = slot === "libre" ? s.tecnicos : (s.porRol[slot] = s.porRol[slot] || []);
         const i = arr.indexOf(id);
         if (on && i < 0) arr.push(id); if (!on && i >= 0) arr.splice(i, 1);
+        opsAsSincronizarComisiones();
         opsAsPintar();
     };
+    // 29-oct-2026: quien se elige en la programación aparece solo en Comisiones (no se vuelve a capturar).
+    // Si se le quita del servicio y su fila de comisión sigue vacía, también se quita de ahí.
+    function opsAsSincronizarComisiones() {
+        const s = opsAS; if (!s) return;
+        s.comisiones = s.comisiones || [];
+        const equipo = opsAsTecsElegidos();
+        s.comisiones = s.comisiones.filter(c => !c.auto || equipo.includes(c.tecId) || String(c.valor || "") !== "" || c.pendienteMonto);
+        const normasV = opsAsNormasVisita().filter(Boolean);
+        equipo.forEach(id => {
+            if (s.comisiones.some(c => c.tecId === id)) return;
+            const rol = Object.entries(s.porRol || {}).find(([, a]) => (a || []).includes(id))?.[0];
+            s.comisiones.push({ tecId: id, concepto: rol ? ((OPS_TIPO_TECNICO[rol] || {}).nombre || rol) : "", tipo: "monto", valor: "", auto: true, ...(normasV.length > 1 ? { norma: normasV[0] } : {}) });
+        });
+    }
 
     // ── Lo que pide la receta del catálogo ──
     function opsAsRecetaHTML(r, numero, cls) {
@@ -15757,6 +15991,7 @@
             </div>
             ${r.vehiculos?.alternos?.length ? `<div class="opsas-note">${r.vehiculos.alternos.map(a => opsEsc(a.nombre + (a.condicion ? " — " + a.condicion : ""))).join(" · ")}</div>` : ""}
             ${r.requiereRemolque ? `<div class="opsas-note opsas-warn">Esta receta requiere remolque.</div>` : ""}
+            ${opsAsVehTamanoHTML()}
             ${(() => { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); return vv && vv.EnTaller ? `<div class="opsas-note opsas-warn">Esa unidad está EN TALLER según Flotilla. Elige otra o confírmalo con Flotilla.</div>` : (vv && vv.QuienLaTrae ? `<div class="opsas-note">La trae hoy: <b>${opsEsc(vv.QuienLaTrae)}</b>.</div>` : ""); })()}
             ${(() => { const oc = opsAsVehiculoOcupado(s.vehiculo); return oc.length ? `<div class="opsas-note opsas-warn">Ese vehículo ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")")).join(", ")}. Elige otro o confírmalo con Flotilla.</div>` : (s.vehiculo && /ECO/i.test(s.vehiculo) ? `<div class="opsas-note">Al guardar se le avisa a Flotilla que ese vehículo se necesita en esas fechas.</div>` : ""); })()}`;
 
@@ -15782,13 +16017,51 @@
             ${vehHTML}
             <div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Herramienta</div>
             ${herrHTML}
-            ${seg.length ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Equipo de seguridad</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${seg.map(x => `<span class="opsas-pill">${opsEsc(x.nombre)} · ${opsEsc(x.cantidad)}</span>`).join("")}</div>` : ""}
+            ${seg.length ? `<div class="opsas-note" style="margin-top:12px;">La receta pide ${seg.length} pieza(s) de equipo de seguridad: ya salen marcadas en la sección "Equipo de seguridad".</div>` : ""}
             ${mat.length ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Materiales para ${cant} ${cant === 1 ? "unidad" : "unidades"}</div>
             <div class="opsas-list" style="padding:0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">${mat.map(m => `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 10px;color:#334155;">${opsEsc(m.nombre)}${m.nota ? ` <small style="color:#94a3b8;">· ${opsEsc(m.nota)}</small>` : ""}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:700;">${fmtCant(m)} ${opsEsc(m.unidad || "")}</td></tr>`).join("")}</table></div>
             ${matTotal > 0 ? `<div class="opsas-note">Costo estimado de materiales: <strong>$${matTotal.toLocaleString("es-MX", { maximumFractionDigits: 0 })}</strong></div>` : ""}` : ""}
             ${(mat.length || herr.length > nOk) ? `<label class="opsas-chk" style="margin-top:12px;background:#eef2ff;border-radius:10px;padding:10px 12px;align-items:flex-start;"><input type="checkbox" ${s.pedirAlmacen !== false ? "checked" : ""} onchange="opsAS.pedirAlmacen=this.checked"><span><b>Al guardar, pedir a Almacén</b> ${mat.length ? "los materiales" : ""}${mat.length && herr.length > nOk ? " y " : ""}${herr.length > nOk ? "la herramienta no confirmada" : ""}, listos ${OPS_NEC_HORAS_ANTES} h antes del servicio. Si Almacén no tiene, lo pasa a Compras y te avisa si no llega a tiempo.</span></label>` : ""}
         </div>`;
     }
+    function opsAsSeguridadHTML(receta, numero, cls) {
+        const s = opsAS;
+        const deReceta = (receta && receta.equipoSeguridad) || [];
+        // Primera vez con esta receta: se marcan solas las piezas que pide.
+        const claveRec = receta ? receta.id : "";
+        if (s.seguridadDeReceta !== claveRec) {
+            s.seguridadDeReceta = claveRec;
+            deReceta.forEach(x => { const n = String(x.nombre || "").trim(); if (n && !s.seguridad.includes(n)) s.seguridad.push(n); });
+        }
+        const base = OPS_EQUIPO_SEGURIDAD.map(x => ({ ...x }));
+        deReceta.forEach(x => { const n = String(x.nombre || "").trim(); if (n && !base.some(b => opsAsNorm(b.n) === opsAsNorm(n))) base.push({ n, nom: "", cant: x.cantidad }); });
+        s.seguridad.forEach(n => { if (!base.some(b => b.n === n)) base.push({ n, nom: "" }); });
+        base.sort((a, b) => opsAsAlfa(a.n, b.n));
+        const cantDe = n => { const r = deReceta.find(x => opsAsNorm(x.nombre) === opsAsNorm(n)); return r && r.cantidad ? " × " + r.cantidad : ""; };
+        return `
+        <div class="opsas-sec ${cls}">
+            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Equipo de seguridad</div><div class="opsas-hint">${s.seguridad.length} marcado(s) · marca solo lo que aplica</div></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
+                ${base.map(b => `<label class="opsas-segchk"><input type="checkbox" ${s.seguridad.includes(b.n) ? "checked" : ""} data-n="${opsEsc(b.n)}" onchange="opsAsToggleSeg(this.dataset.n,this.checked)"><span>${opsEsc(b.n)}${cantDe(b.n)}${b.nom ? `<small>${opsEsc(b.nom)}</small>` : ""}</span></label>`).join("")}
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;max-width:420px;">
+                <input class="opsas-in" placeholder="Otro equipo que no está en la lista…" value="${opsEsc(s.segOtro)}" oninput="opsAS.segOtro=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsAgregarSeg();}">
+                <button type="button" class="opsas-ghost" style="white-space:nowrap;" onclick="opsAsAgregarSeg()">+ Agregar</button>
+            </div>
+        </div>`;
+    }
+    window.opsAsToggleSeg = function (n, on) {
+        const s = opsAS; if (!s) return;
+        s.seguridad = s.seguridad.filter(x => x !== n);
+        if (on) s.seguridad.push(n);
+        opsAsPintar();
+    };
+    window.opsAsAgregarSeg = function () {
+        const s = opsAS; if (!s) return;
+        const n = String(s.segOtro || "").trim(); if (!n) return;
+        if (!s.seguridad.includes(n)) s.seguridad.push(n);
+        s.segOtro = ""; opsAsPintar();
+    };
     window.opsAsTodaHerr = function (on) {
         const r = opsAsReceta(); if (!r || !opsAS) return;
         (r.herramientaRequerida || []).forEach(h => { opsAS.herrOk[h.descripcion] = !!on; });
@@ -15844,6 +16117,7 @@
             vehiculoTamanoPedido: s.vehiculoTamano || null,
             evidenciasCliente: s.evidenciasCliente || null,
             herramientaChecklist: herrLista,
+            equipoSeguridad: (s.seguridad || []).length ? s.seguridad.slice().sort(opsAsAlfa) : null,
             clienteId: cliente?.id || null, clienteNombre: cliente?.nombre || null, prioridad: s.tipo === "poliza" ? s.prioridad : null,
             fechaSolicitud: s.tipo === "poliza" ? s.fechaSolicitud : null, vencimiento,
             fechaAtencion: null, fechaSolucion: null,
@@ -15857,8 +16131,9 @@
                 const R = opsAsResumenPrecio(), ks = opsAsClaveServicio(), kc = opsAsClaveCliente();
                 const coms = (s.comisiones || []).filter(c => c.tecId).map(c => {
                     const tt = cacheTec.find(x => x.id === c.tecId);
+                    if (c.pendienteMonto) return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: [((c.concepto || "").trim()), "MONTO POR REVISAR"].filter(Boolean).join(" · "), tipo: "monto", valor: 0, monto: 0, montoPendiente: true };
                     return { tecnicoId: c.tecId, nombre: tt?.nombre || "", correo: tt?.correo || null, concepto: (c.concepto || "").trim() || null, tipo: c.tipo === "pct" ? "porcentaje" : "monto", valor: Number(c.valor) || 0, monto: opsAsComisionMonto(c, R.baseComision) };
-                }).filter(c => c.monto > 0);
+                }).filter(c => c.monto > 0 || c.montoPendiente);
                 return {
                     precioServicio: s.precioSel ? { servicioClave: ks?.clave || null, servicioNombre: ks?.nombre || null, clienteClave: kc?.clave || null, listaClave: s.precioSel, lista: R.lista, precioUnitario: R.unit, multiplicador: R.mult, precio: R.precio } : null,
                     costosServicio: s.tipo === "programacion" ? null : { materiales: R.materiales, personal: R.personal, viaticos: R.viaticos, herramienta: R.herramienta, otros: R.otros, comisiones: coms.reduce((a, c) => a + c.monto, 0), costoTotal: R.costoTotal, cobrarGastos: !!s.cobrarGastos, totalCobrar: R.totalCobrar, utilidad: R.utilidad },
@@ -16137,7 +16412,13 @@
                     ${fila("Fecha y hora", opsEsc(opsFmtFechaCorta(s.fecha)) + (rango ? ` · ${opsAsHoraTxt(rango.ini)}–${opsAsHoraTxt(rango.fin)}` : ""), true)}
                     ${fila("Duración", durH ? opsEsc(opsAsTxtHoras(durH)) + (trasH ? " + " + opsEsc(opsAsTxtHoras(trasH)) + " de traslado" : "") : "")}
                     ${fila("Técnico(s)", tecs.length ? opsEsc(tecs.map(t => t.nombre + (t.plaza ? " (" + t.plaza + ")" : "")).join(", ")) : `<span style="color:#B45309;">Sin asignar</span>`, true)}
+                    ${tecs.length ? fila("Herramienta que trae", tecs.map(t => {
+                        const hs = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").map(h => h.descripcion || h.nombre || h.folio || "").filter(Boolean).sort(opsAsAlfa);
+                        return `<div style="margin-bottom:6px;"><b>${opsEsc(t.nombre)}</b> <span style="color:#64748b;font-weight:600;">· ${hs.length} pieza(s)</span>${hs.length ? `<div style="font-weight:500;color:#475569;font-size:12px;line-height:1.45;">${opsEsc(hs.slice(0, 12).join(", "))}${hs.length > 12 ? ` <span style="color:#94a3b8;">y ${hs.length - 12} más</span>` : ""}</div>` : `<div style="font-weight:500;color:#b45309;font-size:12px;">No tiene herramienta asignada en el portal.</div>`}</div>`;
+                    }).join("")) : ""}
                     ${fila("Vehículo", opsEsc(s.vehiculo || ""))}
+                    ${fila("Equipo de seguridad", opsEsc((s.seguridad || []).slice().sort(opsAsAlfa).join(", ")))}
+                    ${fila("Comisiones", (s.comisiones || []).filter(c => c.tecId).map(c => opsEsc(((cacheTec.find(t => t.id === c.tecId) || {}).nombre || "") + (c.concepto ? " · " + c.concepto : "") + " · " + (c.pendienteMonto ? "monto por revisar" : opsDinero(opsAsComisionMonto(c, opsAsResumenPrecio().baseComision))))).join("<br>"))}
                     ${fila("Contacto", opsEsc([s.contacto, s.whatsapp || s.telefono].filter(Boolean).join(" · ")))}
                     ${s.tipo === "inspeccion" && OPS_AS_NORMA_MATERIAL.includes(s.norma) ? fila("Material SCFI", opsEsc([["Hologramas", s.hologramas], ["Precintos", s.precintos], ["Distintivos", s.distintivos], ["Mangueras", s.mangueras]].filter(x => x[1] !== "" && x[1] != null).map(x => x[0] + " " + x[1]).join(" · "))) : ""}
                     ${fila("Precio", opsEsc(precioTxt))}
