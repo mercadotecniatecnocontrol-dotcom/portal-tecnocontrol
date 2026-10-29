@@ -561,9 +561,20 @@ let _flFiltroStat = '';   // '' | 'vencida' | 'hoy' | 'proxima'
 let _comentModal  = null; // id de sol abierta en modal comentarios
 
 //  Render principal de la bandeja 
+// 29-oct-2026: el recuadro viejo ya no se dibuja; el tablero nuevo de Pagos (pestaña Flotilla) usa estos datos
+// y estos mismos botones (_pflRegistrarPago, _pflComentarios, _pflVerSol).
+window.__pflCargarDatos = async function(){
+  const { db, fs, auth } = await _getDB();
+  const yo = auth.currentUser?.email || '';
+  if(!(await _esUsuarioPagos(yo))) return null;
+  const snap = await fs.getDocs(fs.query(fs.collection(db, 'flotilla_solicitudes'), fs.where('estatus', '==', 'Pagos')));
+  _flSolsPago = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.fechaPagoProgramada||'').localeCompare(b.fechaPagoProgramada||''));
+  return _flSolsPago;
+};
+window.__pflSemaforo = function(s){ return _semaforo(s); };
 async function renderBandejaFlotilla(){
   const cont = document.getElementById('pfl-bandeja');
-  if(!cont) return;
+  if(!cont){ if(window.__vp2FlRefrescar) window.__vp2FlRefrescar(); return; }
 
   cont.innerHTML = '<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Cargando solicitudes...</div>';
 
@@ -1015,7 +1026,8 @@ const _CHECK_PFL = setInterval(()=>{
   window.verArea = function(area, btn){
     _origPfl(area, btn);
     // Inyectar el HTML de la bandeja la primera vez
-    if(area === 'Pagos'){
+    // 29-oct-2026: desactivado; Flotilla vive ahora como pestaña del tablero nuevo de Pagos.
+    if(false && area === 'Pagos'){
       let cont = document.getElementById('pfl-cont');
       if(!cont){
         cont = document.createElement('div');
@@ -1260,6 +1272,7 @@ window.__vp2Detalle=async function(id,desde){
         '</div></div>'+
       '<div class="vp2-sec" style="margin-top:16px">Historial</div><div class="vp2-tl">'+tl.map(a=>'<div style="--c:'+a[0]+'">'+a[1]+'</div>').join('')+'</div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">'+
+        (desde==='conta'&&s.estatus==='Pagada'&&!s.cierre?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2ComprobarUrgente('+s.id+')">'+IC.doc+' Comprobar por el técnico (urgencia)</button>':'')+
         (desde==='conta'&&ec&&ec.falta>0.5&&s.responsable_email&&!s.cierre?'<button class="vp2-btn dark" onclick="window.__vp2Recordar('+s.id+')">Recordarle al técnico</button>':'')+
         (s.estatus==='Pendiente'&&desde==='pagos'?'<button class="vp2-btn pri" onclick="window.__vp2Deposito('+s.id+')">'+IC.dinero+' Registrar depósito</button>':'')+
         '<button class="vp2-btn" onclick="window.__vp2Cerrar()">Cerrar</button></div>');
@@ -1297,7 +1310,7 @@ window.__vp2Cal=function(pref,acc,v){ const st=pref==='p'?P:C;
   (pref==='p'?pintarPagos:pintarConta)(); };
 
 // ═════════════ PAGOS ═════════════
-const P={ pend:[], pagados:[], extra:[], tab:'lista', filtro:'todos', q:'', empresa:'', mes:hoy().slice(0,7), dia:hoy(), vista:'semana', ocultos:{} };
+const P={ pend:[], pagados:[], extra:[], fl:null, tab:'lista', filtro:'todos', q:'', empresa:'', mes:hoy().slice(0,7), dia:hoy(), vista:'semana', ocultos:{} };
 function contPagos(){ css(); let p=document.getElementById('vp-pagos'); if(p) return p; const dash=document.getElementById('pagos-dashboard'); if(!dash||!dash.parentNode) return null;
   p=document.createElement('div'); p.id='vp-pagos'; dash.parentNode.insertBefore(p,dash); return p; }
 async function cargarPagos(){ tecnicos(); const p=contPagos(); if(!p) return; p.style.display='block'; if(!P.pend.length) p.innerHTML='<div class="vp2"><div class="vp2-empty">Cargando…</div></div>';
@@ -1305,8 +1318,31 @@ async function cargarPagos(){ tecnicos(); const p=contPagos(); if(!p) return; p.
     const [a,b,x]=await Promise.all([ c.from('ops_solicitudes_viaticos').select(COLS).eq('estatus','Pendiente').order('fecha_salida',{ascending:true}).limit(400),
       c.from('ops_solicitudes_viaticos').select(COLS).eq('estatus','Pagada').gte('entregado_en',desde).order('entregado_en',{ascending:false}).limit(400),
       c.from('ops_viaticos_extra').select('*').order('creado_en',{ascending:false}).limit(200) ]);
-    if(a.error) throw a.error; P.pend=a.data||[]; P.pagados=b.data||[]; P.extra=x.data||[]; pintarPagos(); }
+    if(a.error) throw a.error; P.pend=a.data||[]; P.pagados=b.data||[]; P.extra=x.data||[]; pintarPagos(); cargarFlotilla(); }
   catch(e){ p.innerHTML='<div class="vp2"><div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div></div>'; } }
+// ── Flotilla: solicitudes de vehículos que esperan pago (mismos datos y botones que la bandeja anterior) ──
+async function cargarFlotilla(){ try{ if(typeof window.__pflCargarDatos!=='function') return; const l=await window.__pflCargarDatos(); P.fl=l; }catch(e){ P.fl=[]; P.flErr=e.message||String(e); } if(document.getElementById('vp-pagos')) pintarPagos(); }
+window.__vp2FlRefrescar=()=>cargarFlotilla();
+const flMonto=s=>Number((s.cotizacion&&s.cotizacion.monto)||s.monto||s.montoAutorizado||0);
+const flTaller=s=>(s.cotizacion&&s.cotizacion.taller)||s.tallerNombre||s.taller||'—';
+function flEstado(s){ const x=typeof window.__pflSemaforo==='function'?window.__pflSemaforo(s):{label:'',tipo:''};
+  if(x.tipo==='vencida') return {k:'vencida',t:'Vencida '+x.label.replace('VENCIDA ',''),c:'#b91c1c',bg:'#fee2e2'}; if(x.tipo==='hoy') return {k:'hoy',t:'Pagar hoy',c:'#c2410c',bg:'#ffedd5'};
+  if(x.tipo==='proxima') return {k:'proxima',t:'Pagar '+x.label.toLowerCase(),c:'#a16207',bg:'#fef9c3'}; return s.fechaPagoProgramada?{k:'futuro',t:'Programado',c:'#1d4ed8',bg:'#dbeafe'}:{k:'sin',t:'Sin fecha de pago',c:'#475569',bg:'#f1f5f9'}; }
+window.__vp2FlDetalle=function(id){ const s=(P.fl||[]).find(x=>x.id===id); if(!s) return; const e=flEstado(s);
+  const f=(k,v)=>v===''||v==null?'':'<div class="vp2-f"><div class="vp2-k">'+k+'</div><div class="vp2-v">'+v+'</div></div>';
+  const coms=(s.comentariosPagos||[]);
+  const omit=new Set(['id','comentariosPagos','cotizacion','historial','fotos','adjuntos','evidencias']);
+  const extras=Object.keys(s).filter(k=>!omit.has(k)&&['string','number','boolean'].includes(typeof s[k])&&String(s[k]).length<160&&!/^https?:|^data:/.test(String(s[k])));
+  modal('<div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-size:12px;color:#6b7280;font-weight:700">Flotilla · ECO '+esc(s.vehiculoEco||'—')+'</div><div style="font-size:21px;font-weight:800;color:#111827">'+esc(s.tipo||'Servicio')+'</div><div style="font-size:13px;color:#4b5563">'+esc(s.vehiculo||s.unidad||'')+'</div></div>'+
+    '<div style="display:flex;gap:8px;align-items:center">'+pill(e.t,e.c,e.bg)+'<button class="vp2-ib" onclick="window.__vp2Cerrar()">'+IC.cerrar+'</button></div></div>'+
+    '<div class="vp2-gr">'+f('Monto autorizado','<span style="font-size:18px;color:#15803d;font-weight:800">'+din(flMonto(s))+'</span>')+f('Taller / proveedor',esc(flTaller(s)))+f('Fecha programada de pago',fl(s.fechaPagoProgramada))+
+      f('Factura',esc(s.facturaNum||'Pendiente'))+f('Solicitó',esc(s.creadoPorNombre||s.creadoPor||''))+f('Comprobante de pago',s.comprobantePago?'<a href="'+esc(s.comprobantePago)+'" target="_blank" style="color:#2563eb;font-weight:700">Ver comprobante</a>':'Pendiente')+'</div>'+
+    (s.cotizacion?'<div class="vp2-sec">Cotización</div><div class="vp2-gr">'+Object.keys(s.cotizacion).filter(k=>['string','number'].includes(typeof s.cotizacion[k])&&!/^https?:|^data:/.test(String(s.cotizacion[k]))).map(k=>f(esc(k),esc(s.cotizacion[k]))).join('')+'</div>':'')+
+    '<div class="vp2-sec">Comentarios con Pagos ('+coms.length+')</div>'+(coms.length?'<div class="vp2-tl">'+coms.map(c=>'<div style="--c:#7c3aed"><b>'+esc(c.autor||'')+'</b> · '+esc(String(c.fecha||'').slice(0,16).replace('T',' '))+'<br>'+esc(c.texto||'')+'</div>').join('')+'</div>':'<div style="font-size:12px;color:#9ca3af">Sin comentarios.</div>')+
+    '<details style="margin-top:12px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;font-weight:700">Todos los datos de la solicitud</summary><div class="vp2-gr">'+extras.map(k=>f(esc(k),esc(s[k]))).join('')+'</div></details>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap"><button class="vp2-btn" onclick="window.__vp2Cerrar();window._pflVerSol&&window._pflVerSol(\''+s.id+'\')">Abrir en Flotilla</button>'+
+    '<button class="vp2-btn" onclick="window.__vp2Cerrar();window._pflComentarios&&window._pflComentarios(\''+s.id+'\')">Comentarios</button>'+
+    '<button class="vp2-btn pri" onclick="window.__vp2Cerrar();window._pflRegistrarPago&&window._pflRegistrarPago(\''+s.id+'\')">'+IC.dinero+(s.comprobantePago?' Actualizar pago':' Registrar pago')+'</button></div>'); };
 function filaViatico(s,e,derecha,fn){ const t=s.tarifas||{}; const mismo=s.fecha_salida===s.fecha_regreso;
   return '<div class="vp2-row" onclick="'+fn+'"><div><div class="vp2-name">'+esc(s.integrantes||s.solicitante_nombre||'')+'</div><div class="vp2-meta"><span>'+esc(s.folio)+'</span><span>'+IC.persona+(s.personas||1)+'</span><span>'+esc(s.empresa_entrega||'')+'</span></div></div>'+
     '<div>'+pill(e.t,e.c,e.bg)+'</div>'+
@@ -1334,6 +1370,16 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
         '<div><div class="vp2-k">Monto</div><div class="vp2-saldo" style="color:#c2410c">'+din(x.monto)+'</div></div>'+
         '<div>'+(x.estatus==='Autorizada'?'<button class="vp2-btn pri" onclick="event.stopPropagation();window.__vp2ExtraPagar('+x.id+')">Ya se depositó</button>':x.referencia_pago?'<span style="font-size:11.5px;color:#6b7280">Ref. '+esc(x.referencia_pago)+'</span>':'')+'</div></div>'; }).join('')
       :'<div class="vp2-empty">No hay viático extra pendiente.</div>';
+  } else if(P.tab==='flotilla'){
+    const l=(P.fl||[]).filter(s=>!q||norm([s.vehiculoEco,s.tipo,s.vehiculo,flTaller(s),s.creadoPorNombre,s.facturaNum].join(' ')).includes(q));
+    cuerpo=P.fl===null?'<div class="vp2-empty">Cargando solicitudes de Flotilla…</div>':(l.length?l.map(s=>{ const e=flEstado(s);
+      return '<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 170px minmax(160px,1.1fr) minmax(150px,1fr) 140px 210px" onclick="window.__vp2FlDetalle(\''+s.id+'\')">'+
+        '<div><div class="vp2-name">'+esc(s.tipo||'Servicio')+' · ECO '+esc(s.vehiculoEco||'—')+'</div><div class="vp2-meta"><span>'+esc(s.vehiculo||s.unidad||'')+'</span><span>'+IC.persona+esc(s.creadoPorNombre||s.creadoPor||'')+'</span></div></div>'+
+        '<div>'+pill(e.t,e.c,e.bg)+'</div><div><div class="vp2-k">Taller</div><div class="vp2-v">'+esc(flTaller(s))+'</div></div>'+
+        '<div><div class="vp2-k">Pagar el</div><div class="vp2-v">'+fc(s.fechaPagoProgramada)+'</div><div style="font-size:11px;color:#9ca3af">Factura: '+esc(s.facturaNum||'pendiente')+'</div></div>'+
+        '<div><div class="vp2-k">Monto</div><div class="vp2-saldo" style="color:'+(e.k==='vencida'?'#dc2626':'#111827')+'"><i style="background:'+e.c+'"></i>'+din(flMonto(s))+'</div></div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="vp2-btn pri" style="height:32px" onclick="event.stopPropagation();window._pflRegistrarPago(\''+s.id+'\')">'+(s.comprobantePago?'Actualizar pago':'Registrar pago')+'</button><button class="vp2-note" onclick="event.stopPropagation();window.__vp2FlDetalle(\''+s.id+'\')">'+IC.nota+' Ver todo</button></div></div>'; }).join('')
+      :'<div class="vp2-empty">'+(P.flErr?'No se pudo cargar Flotilla: '+esc(P.flErr):'No hay solicitudes de Flotilla esperando pago.')+'</div>');
   } else if(P.tab==='pagados'){
     const l=pagMes.filter(pasa);
     cuerpo=l.length?l.map(s=>filaViatico(s,{t:'Pagado '+fc(s.entregado_en),c:'#15803d',bg:'#dcfce7'},'<div><div class="vp2-k">Depositado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.monto_entregado)+'</div></div>','window.__vp2Detalle('+s.id+',\'pagos\')')).join('')
@@ -1343,15 +1389,17 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
     P.pend.filter(pasa).forEach(s=>{ const e=E(s); if(s.fecha_salida) ev.push({d:s.fecha_salida,k:e.k==='hoy'?'atrasado':e.k,c:e.k==='atrasado'||e.k==='hoy'?'#ef4444':e.k==='semana'?'#f59e0b':'#6366f1',t:(s.integrantes||'').split(',')[0]+' · '+s.folio,s:s.destino||'',m:'Depositar '+din(depositoDe(s)),fn:'window.__vp2Detalle('+s.id+',\'pagos\')'}); });
     P.pagados.filter(pasa).forEach(s=>ev.push({d:String(s.entregado_en).slice(0,10),k:'pagado',c:'#16a34a',t:(s.integrantes||'').split(',')[0]+' · '+s.folio,s:s.destino||'',m:'Pagado '+din(s.monto_entregado),fn:'window.__vp2Detalle('+s.id+',\'pagos\')'}));
     P.extra.filter(x=>x.estatus==='Autorizada'||x.estatus==='Pendiente').forEach(x=>ev.push({d:String(x.autorizo_en||x.creado_en).slice(0,10),k:'extra',c:'#ea580c',t:'Extra · '+(x.tecnico_nombre||''),s:x.concepto||'',m:din(x.monto),fn:x.viatico_id?'window.__vp2Detalle('+x.viatico_id+',\'pagos\')':''}));
-    cuerpo=calendarioHTML(P,ev,[{k:'atrasado',t:'Ya salió / sale hoy',c:'#ef4444'},{k:'semana',t:'Sale esta semana',c:'#f59e0b'},{k:'futuro',t:'Por depositar',c:'#6366f1'},{k:'extra',t:'Viático extra',c:'#ea580c'},{k:'pagado',t:'Pagado',c:'#16a34a'}],'p');
+    (P.fl||[]).forEach(s=>{ if(s.fechaPagoProgramada) ev.push({d:s.fechaPagoProgramada,k:'flotilla',c:'#0891b2',t:'ECO '+(s.vehiculoEco||'')+' · '+(s.tipo||''),s:flTaller(s),m:'Pagar '+din(flMonto(s)),fn:'window.__vp2FlDetalle(\''+s.id+'\')'}); });
+    cuerpo=calendarioHTML(P,ev,[{k:'flotilla',t:'Flotilla',c:'#0891b2'},{k:'atrasado',t:'Ya salió / sale hoy',c:'#ef4444'},{k:'semana',t:'Sale esta semana',c:'#f59e0b'},{k:'futuro',t:'Por depositar',c:'#6366f1'},{k:'extra',t:'Viático extra',c:'#ea580c'},{k:'pagado',t:'Pagado',c:'#16a34a'}],'p');
   }
   const tab=(k,t,n,ico)=>'<button class="vp2-tab'+(P.tab===k?' on':'')+'" onclick="window.__vp2P(\'tab\',\''+k+'\')">'+ico+t+(n!=null?' <b>'+n+'</b>':'')+'</button>';
-  p.innerHTML='<div class="vp2"><div class="vp2-hd"><div><div class="vp2-t">Viáticos · Pagos</div><div class="vp2-s">Lo que hay que depositar, el viático extra autorizado y lo que ya se pagó. Haz clic en cualquier viático para ver toda su información.</div></div>'+
-    '<div class="vp2-tabs">'+tab('lista','Por depositar',P.pend.length,IC.lista)+tab('extra','Viático extra',extraAut.length+extraPend.length,IC.rayo)+tab('pagados','Pagados',pagMes.length,IC.ok)+tab('cal','Calendario',null,IC.cal)+'</div></div>'+
+  p.innerHTML='<div class="vp2"><div class="vp2-hd"><div><div class="vp2-t">Pagos</div><div class="vp2-s">Viáticos por depositar, viático extra, pagos de Flotilla y lo que ya se pagó. Haz clic en cualquier viático para ver toda su información.</div></div>'+
+    '<div class="vp2-tabs">'+tab('lista','Por depositar',P.pend.length,IC.lista)+tab('extra','Viático extra',extraAut.length+extraPend.length,IC.rayo)+(P.fl&&P.fl.length||P.tab==='flotilla'?tab('flotilla','Flotilla',(P.fl||[]).length,IC.ruta.replace(/20/g,'16')):(P.fl?tab('flotilla','Flotilla',0,IC.ruta.replace(/20/g,'16')):''))+tab('pagados','Pagados',pagMes.length,IC.ok)+tab('cal','Calendario',null,IC.cal)+'</div></div>'+
     '<div class="vp2-sec">Pendientes de atender</div><div class="vp2-cards">'+
       card({ico:IC.dinero,warn:atras.length?'Ya salieron sin depósito':'',wc:'#dc2626',num:din(tot(atras)),nc:atras.length?'#dc2626':'#111827',lbl:atras.length+' viático(s) atrasados o de hoy',fn:"window.__vp2P('ver','atrasado')"})+
       card({ico:IC.reloj,warn:sem.length?'Salen en los próximos 7 días':'',num:din(tot(sem)),lbl:sem.length+' viático(s) esta semana',fn:"window.__vp2P('ver','semana')"})+
       card({ico:IC.rayo,warn:extraAut.length?'Autorizado, falta depositar':extraPend.length?'Esperando autorización':'',num:din(extraAut.concat(extraPend).reduce((a,x)=>a+(Number(x.monto)||0),0)),lbl:(extraAut.length+extraPend.length)+' viático(s) extra',fn:"window.__vp2P('tab','extra')"})+
+      (P.fl?card({ico:IC.ruta.replace(/20/g,'18'),warn:(P.fl.filter(s=>['vencida','hoy'].includes(flEstado(s).k)).length?'Flotilla: vencidas o de hoy':''),wc:'#dc2626',num:din(P.fl.reduce((a,s)=>a+flMonto(s),0)),lbl:P.fl.length+' pago(s) de Flotilla',fn:"window.__vp2P('tab','flotilla')"}):'')+
       card({ico:IC.ok,num:din(pagMes.reduce((a,s)=>a+(Number(s.monto_entregado)||0),0)),nc:'#15803d',lbl:pagMes.length+' pagado(s) en '+MES(P.mes),fn:"window.__vp2P('tab','pagados')"})+
     '</div>'+
     (P.tab==='cal'?'':'<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-pq" class="vp2-in" style="min-width:260px" placeholder="Buscar folio, técnico, destino, cliente…" value="'+esc(P.q)+'" oninput="window.__vp2P(\'q\',this.value)">'+
@@ -1409,51 +1457,207 @@ window.__vp2ExtraPagar=async function(id){ const x=P.extra.find(v=>v.id===id); i
     x.estatus='Pagada'; x.referencia_pago=ref.trim()||null; pintarPagos(); toast('Viático extra marcado como depositado.'); }catch(e){ alert('No se pudo guardar: '+(e.message||e)); } };
 
 // ═════════════ CONTABILIDAD ═════════════
-const C={ lista:[], filtro:'pend', q:'', tab:'lista', mes:hoy().slice(0,7), dia:hoy(), vista:'mes', ocultos:{} };
+const C={ secc:'inicio', concil:null, cuentas:null, banco:null, urg:null, lista:[], filtro:'pend', q:'', tab:'lista', mes:hoy().slice(0,7), dia:hoy(), vista:'mes', ocultos:{} };
 function contConta(){ css(); let p=document.getElementById('vp-conta'); if(p) return p; const dash=document.getElementById('conta-dashboard'); if(!dash||!dash.parentNode) return null;
   p=document.createElement('div'); p.id='vp-conta'; dash.parentNode.insertBefore(p,dash); return p; }
 async function cargarConta(){ tecnicos(); const p=contConta(); if(!p) return; p.style.display='block'; if(!C.lista.length) p.innerHTML='<div class="vp2"><div class="vp2-empty">Cargando…</div></div>';
   try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select(COLS).eq('estatus','Pagada').order('entregado_en',{ascending:false}).limit(500);
     if(r.error) throw r.error; C.lista=r.data||[]; Object.keys(COMPS).forEach(k=>delete COMPS[k]);
     if(C.lista.length){ const k=await c.from('ops_viaticos_comprobantes').select('*').in('viatico_id',C.lista.map(s=>s.id)).order('creado_en',{ascending:true}); (k.data||[]).forEach(x=>{ (COMPS[x.viatico_id]=COMPS[x.viatico_id]||[]).push(x); }); }
-    pintarConta(); }
+    pintarConta(); if(C.concil===null) cargarConcil(); }
   catch(e){ p.innerHTML='<div class="vp2"><div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div></div>'; } }
-function pintarConta(){ const p=contConta(); if(!p) return; const q=norm(C.q);
+// ── Interfaz de Contabilidad (29-oct-2026): menú lateral + secciones, preparada para Aspel, CONTPAQi y bancos ──
+const C_SECC=[['inicio','Inicio','M3 12l9-9 9 9M5 10v10h14V10'],['viaticos','Viáticos','M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],['calendario','Calendario','M3 4h18v18H3zM16 2v4M8 2v4M3 10h18'],['bancos','Bancos · conciliación','M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z'],['polizas','Aspel / CONTPAQi','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8']];
+function svgP(d){ return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>'; }
+function cssConta(){ if(document.getElementById('vp2c-css')) return; const st=document.createElement('style'); st.id='vp2c-css'; st.textContent=`
+.vp2c{display:grid;grid-template-columns:230px 1fr;gap:0;background:#f4f5f7;border-radius:18px;overflow:hidden;margin-bottom:22px;min-height:640px}
+@media(max-width:1000px){.vp2c{grid-template-columns:1fr}}
+.vp2c-nav{background:#2f3a36;color:#e5e7eb;padding:18px 12px;display:flex;flex-direction:column;gap:3px}
+.vp2c-nav .marca{font-size:16px;font-weight:800;color:#fff;padding:2px 10px 14px;display:flex;gap:9px;align-items:center}
+.vp2c-nav .grp{font-size:10.5px;letter-spacing:.8px;color:#9ca3af;font-weight:700;padding:12px 10px 6px;text-transform:uppercase}
+.vp2c-nav button{display:flex;align-items:center;gap:10px;border:none;background:none;color:#e5e7eb;font-family:inherit;font-size:13px;font-weight:600;padding:9px 10px;border-radius:10px;cursor:pointer;text-align:left;width:100%}
+.vp2c-nav button:hover{background:rgba(255,255,255,.07)}.vp2c-nav button.on{background:#facc15;color:#111827}
+.vp2c-nav button b{margin-left:auto;background:#ef4444;color:#fff;border-radius:99px;font-size:10.5px;padding:1px 7px}
+.vp2c-nav .pie{margin-top:auto;border-top:1px solid rgba(255,255,255,.1);padding-top:10px;font-size:11px;color:#9ca3af;line-height:1.5;padding-left:10px}
+.vp2c-main{padding:20px 22px;min-width:0}
+.vp2c-int{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.vp2c-int>div{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px}
+.vp2c-tag{display:inline-block;font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 9px}
+.vp2c-tbl{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:12.5px}.vp2c-tbl th{text-align:left;font-size:10.5px;color:#9ca3af;text-transform:uppercase;font-weight:800;padding:0 10px}
+.vp2c-tbl td{background:#fff;padding:9px 10px;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}.vp2c-tbl td:first-child{border-left:1px solid #e5e7eb;border-radius:10px 0 0 10px}.vp2c-tbl td:last-child{border-right:1px solid #e5e7eb;border-radius:0 10px 10px 0}
+`; document.head.appendChild(st); }
+function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=norm(C.q);
+  if(!C.secc) C.secc='inicio';
   const todos=C.lista.map(s=>({s,e:estConta(s)})); const pasaF=(x,f)=>f==='todos'||(f==='pend'&&(x.e.k==='pend'||x.e.k==='vencido'))||x.e.k===f;
   const pasaQ=x=>!q||norm([x.s.folio,x.s.integrantes,x.s.responsable_nombre,x.s.destino,x.s.cliente,x.s.referencia_pago,x.s.empresa_entrega].join(' ')).includes(q);
   const cnt=f=>todos.filter(x=>pasaF(x,f)).length, falta=f=>todos.filter(x=>pasaF(x,f)).reduce((a,x)=>a+x.e.falta,0);
   const prox=todos.filter(x=>x.e.k==='pend'&&x.s.fecha_limite_comprobacion&&x.s.fecha_limite_comprobacion<=sumar(hoy(),7));
   const porRev=todos.reduce((a,x)=>a+x.e.porRev,0);
   const mesL=todos.filter(x=>String(x.s.entregado_en||'').slice(0,7)===C.mes);
-  let cuerpo='';
-  if(C.tab==='lista'){
+  const tarjetas='<div class="vp2-cards">'+
+      card({ico:IC.alerta.replace(/14/g,'18'),warn:cnt('vencido')?'Ya pasó su fecha límite':'',wc:'#dc2626',num:din(falta('vencido')),nc:cnt('vencido')?'#dc2626':'#111827',lbl:cnt('vencido')+' viático(s) vencido(s) sin comprobar',fn:"window.__vp2C('ver','vencido')"})+
+      card({ico:IC.reloj,warn:prox.length?'Vencen en los próximos 7 días':'',num:din(prox.reduce((a,x)=>a+x.e.falta,0)),lbl:prox.length+' por vencer',fn:"window.__vp2C('ver','pend')"})+
+      card({ico:IC.doc,warn:porRev?'Revisa los comprobantes':'',wc:'#2563eb',num:String(porRev),lbl:'comprobante(s) por revisar',fn:"window.__vp2C('ver','revisar')"})+
+      card({ico:IC.ok,num:din(mesL.reduce((a,x)=>a+x.e.dep,0)),nc:'#15803d',lbl:mesL.length+' viático(s) pagado(s) en '+MES(C.mes),fn:"window.__vp2C('ver','todos')"})+'</div>';
+  const barra=(conMes)=>'<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-cq" class="vp2-in" style="min-width:240px" placeholder="Buscar folio, técnico, referencia…" value="'+esc(C.q)+'" oninput="window.__vp2C(\'q\',this.value)">'+
+      (conMes?'<div class="vp2-mes"><button onclick="window.__vp2C(\'mes\',-1)">‹</button><span>'+IC.cal+MES(C.mes)+'</span><button onclick="window.__vp2C(\'mes\',1)">›</button></div>':'')+
+      '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2Recargar(\'c\')">↻ Actualizar</button><button class="vp2-btn" onclick="window.__vp2ExportC()">'+IC.exp+' Exportar a Excel</button></div>';
+  let cuerpo='', titulo='', sub='';
+  if(C.secc==='inicio'){
+    titulo='Contabilidad'; sub='Resumen de lo que requiere tu atención: comprobación de viáticos, conciliación bancaria y el puente con Aspel y CONTPAQi.';
+    const ult=(C.concil||[])[0];
+    cuerpo='<div class="vp2-sec">Pendientes en los próximos 7 días</div>'+tarjetas+
+      '<div class="vp2-sec">Conexiones contables</div><div class="vp2c-int">'+
+        '<div><div style="display:flex;justify-content:space-between;align-items:center"><b>Aspel SAE / COI</b><span class="vp2c-tag" style="background:#fef9c3;color:#a16207">Por archivo</span></div><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">El portal arma las pólizas de viáticos en un archivo para importar. Aspel sigue siendo la contabilidad oficial.</div><button class="vp2-btn" onclick="window.__vp2C(\'secc\',\'polizas\')">Ir a pólizas</button></div>'+
+        '<div><div style="display:flex;justify-content:space-between;align-items:center"><b>CONTPAQi</b><span class="vp2c-tag" style="background:#fef9c3;color:#a16207">Por archivo</span></div><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">Mismo archivo de pólizas, con el catálogo de cuentas que captures aquí.</div><button class="vp2-btn" onclick="window.__vp2C(\'secc\',\'polizas\')">Configurar cuentas</button></div>'+
+        '<div><div style="display:flex;justify-content:space-between;align-items:center"><b>Bancos</b><span class="vp2c-tag" style="background:'+(ult?'#dcfce7;color:#15803d':'#f1f5f9;color:#475569')+'">'+(ult?'Última: '+esc(ult.periodo||''):'Sin conciliar')+'</span></div><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">'+(ult?esc(ult.banco||'')+' · '+ult.conciliados+' conciliados, '+ult.sin_respaldo+' sin respaldo, '+ult.sin_banco+' sin movimiento en banco.':'Sube el estado de cuenta y el portal lo cruza contra lo que se pagó.')+'</div><button class="vp2-btn" onclick="window.__vp2C(\'secc\',\'bancos\')">Conciliar</button></div>'+
+      '</div>'+
+      '<div class="vp2-sec" style="margin-top:18px">Viáticos que más urgen</div>'+
+      (todos.filter(x=>x.e.k==='vencido'||x.e.k==='revisar').slice(0,5).map(({s,e})=>filaViatico(s,e,'<div><div class="vp2-k">Falta</div><div class="vp2-saldo" style="color:'+(e.k==='vencido'?'#dc2626':'#1d4ed8')+'"><i style="background:'+e.c+'"></i>'+din(e.falta)+'</div></div>','window.__vp2Detalle('+s.id+',\'conta\')')).join('')||'<div class="vp2-empty">Nada urgente. ¡Todo al corriente!</div>');
+  } else if(C.secc==='viaticos'){
+    titulo='Viáticos'; sub='Todo viático que Pagos deposita llega aquí con su evidencia. Revisa si el técnico ya comprobó, cuánto falta y si ya se venció. Si hay una urgencia, puedes comprobar tú desde la ficha del viático.';
     const l=todos.filter(x=>pasaF(x,C.filtro)&&pasaQ(x));
     const chip=(f,t)=>'<button class="vp2-chip'+(C.filtro===f?' on':'')+'" onclick="window.__vp2C(\'filtro\',\''+f+'\')">'+t+' ('+cnt(f)+')</button>';
-    cuerpo='<div class="vp2-chips">'+chip('pend','Pendientes')+chip('vencido','Vencidos')+chip('revisar','Por revisar')+chip('comprobado','Comprobados')+chip('cerrado','Cerrados')+chip('todos','Todos')+'</div>'+
+    cuerpo=tarjetas+barra(true)+'<div class="vp2-chips">'+chip('pend','Pendientes')+chip('vencido','Vencidos')+chip('revisar','Por revisar')+chip('comprobado','Comprobados')+chip('cerrado','Cerrados')+chip('todos','Todos')+'</div>'+
       (l.length?l.map(({s,e})=>filaViatico(s,e,'<div><div class="vp2-k">Falta comprobar</div><div class="vp2-saldo" style="color:'+(e.falta>0.5?(e.k==='vencido'?'#dc2626':'#111827'):'#15803d')+'"><i style="background:'+e.c+'"></i>'+din(e.falta)+'</div><div style="font-size:11px;color:#9ca3af">de '+din(e.dep)+' · límite '+fc(s.fecha_limite_comprobacion)+'</div></div>','window.__vp2Detalle('+s.id+',\'conta\')')).join('')
         :'<div class="vp2-empty">No hay viáticos en este filtro.</div>');
-  } else {
+  } else if(C.secc==='calendario'){
+    titulo='Calendario'; sub='Fechas límite de comprobación y días de pago. Haz clic en cualquier tarjeta para ver toda su información.';
     const ev=[]; todos.filter(pasaQ).forEach(({s,e})=>{ if(s.fecha_limite_comprobacion) ev.push({d:s.fecha_limite_comprobacion,k:e.k,c:e.c,t:(s.responsable_nombre||s.integrantes||'').split(',')[0]+' · '+s.folio,s:'Límite para comprobar',m:e.falta>0.5?'Falta '+din(e.falta):e.t,fn:'window.__vp2Detalle('+s.id+',\'conta\')'});
       if(s.entregado_en) ev.push({d:String(s.entregado_en).slice(0,10),k:'pagado',c:'#16a34a',t:'Pagado · '+s.folio,s:s.responsable_nombre||'',m:din(s.monto_entregado),fn:'window.__vp2Detalle('+s.id+',\'conta\')'}); });
     cuerpo=calendarioHTML(C,ev,[{k:'vencido',t:'Vencido sin comprobar',c:'#b91c1c'},{k:'pend',t:'Pendiente de comprobar',c:'#a16207'},{k:'revisar',t:'Por revisar',c:'#1d4ed8'},{k:'comprobado',t:'Comprobado',c:'#15803d'},{k:'cerrado',t:'Cerrado',c:'#15803d'},{k:'pagado',t:'Día en que se pagó',c:'#16a34a'}],'c');
-  }
-  const tab=(k,t,ico)=>'<button class="vp2-tab'+(C.tab===k?' on':'')+'" onclick="window.__vp2C(\'tab\',\''+k+'\')">'+ico+t+'</button>';
-  p.innerHTML='<div class="vp2"><div class="vp2-hd"><div><div class="vp2-t">Viáticos · Contabilidad</div><div class="vp2-s">Todo viático que Pagos deposita llega aquí con su evidencia. Revisa si el técnico ya comprobó (fotos o PDF de sus facturas), cuánto falta y si ya se venció. Haz clic en cualquiera para ver toda su información.</div></div>'+
-    '<div class="vp2-tabs">'+tab('lista','Seguimiento',IC.lista)+tab('cal','Calendario',IC.cal)+'</div></div>'+
-    '<div class="vp2-sec">Pendientes en los próximos 7 días</div><div class="vp2-cards">'+
-      card({ico:IC.alerta.replace('14','18').replace('14','18'),warn:cnt('vencido')?'Ya pasó su fecha límite':'',wc:'#dc2626',num:din(falta('vencido')),nc:cnt('vencido')?'#dc2626':'#111827',lbl:cnt('vencido')+' vencido(s) sin comprobar',fn:"window.__vp2C('ver','vencido')"})+
-      card({ico:IC.reloj,warn:prox.length?'Vencen en los próximos 7 días':'',num:din(prox.reduce((a,x)=>a+x.e.falta,0)),lbl:prox.length+' por vencer',fn:"window.__vp2C('ver','pend')"})+
-      card({ico:IC.doc,warn:porRev?'Revisa los comprobantes':'',wc:'#2563eb',num:String(porRev),lbl:'comprobante(s) por revisar',fn:"window.__vp2C('ver','revisar')"})+
-      card({ico:IC.ok,num:din(mesL.reduce((a,x)=>a+x.e.dep,0)),nc:'#15803d',lbl:mesL.length+' pagado(s) en '+MES(C.mes),fn:"window.__vp2C('ver','todos')"})+
-    '</div>'+
-    '<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-cq" class="vp2-in" style="min-width:260px" placeholder="Buscar folio, técnico, referencia…" value="'+esc(C.q)+'" oninput="window.__vp2C(\'q\',this.value)">'+
-      '<div class="vp2-mes"><button onclick="window.__vp2C(\'mes\',-1)">‹</button><span>'+IC.cal+MES(C.mes)+'</span><button onclick="window.__vp2C(\'mes\',1)">›</button></div>'+
-      '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2Recargar(\'c\')">↻ Actualizar</button><button class="vp2-btn" onclick="window.__vp2ExportC()">'+IC.exp+' Exportar a Excel</button></div>'+
-    cuerpo+'</div>';
+  } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
+  } else { titulo='Aspel / CONTPAQi'; sub='Pólizas de los viáticos listas para importar. Captura una vez tu catálogo de cuentas; el archivo sale con cargos y abonos cuadrados. Revisa siempre antes de importar.'; cuerpo=polizasHTML(); }
+  const pend=cnt('vencido')+porRev;
+  p.innerHTML='<div class="vp2c"><nav class="vp2c-nav"><div class="marca">'+svgP('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6')+'Contabilidad</div><div class="grp">Trabajo diario</div>'+
+    C_SECC.slice(0,3).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+(k==='viaticos'&&pend?'<b>'+pend+'</b>':'')+'</button>').join('')+
+    '<div class="grp">Cierre y auditoría</div>'+C_SECC.slice(3).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+'</button>').join('')+
+    '<div class="pie">Aspel es la contabilidad oficial. El portal captura, da seguimiento y entrega archivos listos para importar.</div></nav>'+
+    '<div class="vp2c-main vp2" style="margin:0;border-radius:0"><div class="vp2-hd"><div><div class="vp2-t">'+esc(titulo)+'</div><div class="vp2-s">'+esc(sub)+'</div></div></div>'+cuerpo+'</div></div>';
 }
 window.__vp2C=function(k,v){ if(k==='mes'){ const d=dObj(C.mes+'-01'); d.setMonth(d.getMonth()+v); C.mes=iso(d).slice(0,7); C.dia=C.mes+'-01'; }
-  else if(k==='ver'){ C.tab='lista'; C.filtro=v; } else C[k]=v;
+  else if(k==='ver'){ C.secc='viaticos'; C.filtro=v; } else C[k]=v;
+  if(k==='secc'&&(v==='bancos'||v==='inicio')) cargarConcil(); if(k==='secc'&&v==='polizas') cargarCuentas();
   pintarConta(); if(k==='q'){ const i=document.getElementById('vp2-cq'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } } };
+
+// ── Bancos: conciliación contra estado de cuenta ──
+async function cargarConcil(){ try{ const c=await sb(); const r=await c.from('conta_conciliaciones').select('id,banco,cuenta,periodo,archivo_nombre,movimientos,conciliados,sin_respaldo,sin_banco,hecho_por,creado_en').order('creado_en',{ascending:false}).limit(20); C.concil=r.data||[]; }catch(e){ C.concil=[]; } if(C.secc==='bancos'||C.secc==='inicio') pintarConta(); }
+function leerCSV(txt){ const filas=[]; let f=[],v='',q=false; for(let i=0;i<txt.length;i++){ const ch=txt[i];
+    if(q){ if(ch==='"'&&txt[i+1]==='"'){v+='"';i++;} else if(ch==='"') q=false; else v+=ch; }
+    else if(ch==='"') q=true; else if(ch===','||ch===';'||ch==='\t'){ f.push(v); v=''; } else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&txt[i+1]==='\n') i++; f.push(v); filas.push(f); f=[]; v=''; } else v+=ch; }
+  if(v!==''||f.length){ f.push(v); filas.push(f); } return filas.filter(r=>r.some(x=>String(x).trim()!=='')); }
+const numMX=v=>{ const t=String(v||'').replace(/[$\s]/g,''); if(!t) return 0; const n=Number(t.replace(/,/g,'')); return isNaN(n)?0:n; };
+function fechaMX(v){ const t=String(v||'').trim(); let m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m=t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if(m){ const y=m[3].length===2?'20'+m[3]:m[3]; return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'); }
+  const MESES={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12}; m=norm(t).match(/^(\d{1,2})[\s\/\-]([a-z]{3})[a-z]*[\s\/\-](\d{2,4})/); if(m&&MESES[m[2]]){ const y=m[3].length===2?'20'+m[3]:m[3]; return y+'-'+String(MESES[m[2]]).padStart(2,'0')+'-'+m[1].padStart(2,'0'); } return ''; }
+function bancosHTML(){ const b=C.banco||{};
+  let h='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">'+
+    '<label class="vp2-lb">Banco<input id="vp2b-banco" class="vp2-fi" style="margin-bottom:0;width:170px" value="'+esc(b.banco||'')+'" placeholder="Ej. BBVA, Banorte"></label>'+
+    '<label class="vp2-lb">Cuenta<input id="vp2b-cuenta" class="vp2-fi" style="margin-bottom:0;width:150px" value="'+esc(b.cuenta||'')+'" placeholder="Últimos 4 dígitos"></label>'+
+    '<label class="vp2-lb">Estado de cuenta (CSV)<input id="vp2b-file" type="file" accept=".csv,.txt,text/csv" class="vp2-fi" style="margin-bottom:0;padding:7px;width:260px" onchange="window.__vp2BLeer(this)"></label>'+
+    '<span style="font-size:11.5px;color:#6b7280;max-width:360px">Desde la banca en línea descarga los movimientos en CSV (o guarda tu Excel como CSV). Debe traer fecha, descripción y cargo/abono o importe.</span></div></div></div>';
+  if(b.filas){ const enc=b.filas[0]||[]; const op=i=>'<option value="">—</option>'+enc.map((x,j)=>'<option value="'+j+'" '+(i===j?'selected':'')+'>'+esc(x||('Columna '+(j+1)))+'</option>').join('');
+    h+='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1"><b style="font-size:13px">1. ¿Qué columna es cada dato?</b> <span style="font-size:12px;color:#6b7280">('+(b.filas.length-1)+' movimientos leídos de '+esc(b.nombre)+')</span><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">'+
+      [['fecha','Fecha'],['desc','Descripción'],['cargo','Cargo / retiro'],['abono','Abono / depósito'],['importe','Importe (si viene en una sola columna)'],['ref','Referencia']].map(([k,t])=>'<label class="vp2-lb">'+t+'<select class="vp2-fi" style="margin-bottom:0;width:180px" onchange="window.__vp2BCol(\''+k+'\',this.value)">'+op(b.col[k])+'</select></label>').join('')+
+      '</div><div style="margin-top:10px;display:flex;gap:8px"><button class="vp2-btn pri" onclick="window.__vp2BConciliar()">2. Conciliar</button><span style="font-size:11.5px;color:#6b7280;align-self:center">Se cruzan los retiros del banco contra depósitos de viáticos y viático extra (mismo monto, ±5 días; la referencia ayuda a confirmar).</span></div></div></div>';
+  }
+  if(b.res){ const r=b.res; const tabla=(tit,col,l,cols)=>'<div class="vp2-sec" style="color:'+col+'">'+tit+' ('+l.length+')</div>'+(l.length?'<table class="vp2c-tbl"><tr>'+cols.map(c=>'<th>'+c[0]+'</th>').join('')+'</tr>'+l.slice(0,300).map(x=>'<tr>'+cols.map(c=>'<td>'+c[1](x)+'</td>').join('')+'</tr>').join('')+'</table>':'<div class="vp2-empty" style="padding:14px">Ninguno.</div>');
+    h+='<div class="vp2-cards">'+card({ico:IC.ok,num:String(r.ok.length),nc:'#15803d',lbl:'movimientos conciliados'})+card({ico:IC.alerta.replace(/14/g,'18'),warn:r.sinResp.length?'Salió dinero sin registro en el portal':'',wc:'#dc2626',num:String(r.sinResp.length),nc:r.sinResp.length?'#dc2626':'#111827',lbl:'retiros sin respaldo · '+din(r.sinResp.reduce((a,x)=>a+x.monto,0))})+
+      card({ico:IC.reloj,warn:r.sinBanco.length?'Registrado pero no aparece en el banco':'',num:String(r.sinBanco.length),lbl:'pagos sin movimiento · '+din(r.sinBanco.reduce((a,x)=>a+x.monto,0))})+'</div>'+
+      '<div class="vp2-bar"><button class="vp2-btn pri" onclick="window.__vp2BGuardar()">Guardar conciliación</button><button class="vp2-btn" onclick="window.__vp2BExport()">'+IC.exp+' Exportar resultado</button></div>'+
+      tabla('Retiros del banco sin respaldo en el portal','#b91c1c',r.sinResp,[['Fecha',x=>fc(x.fecha)],['Descripción',x=>esc(x.desc)],['Referencia',x=>esc(x.ref)],['Monto',x=>'<b>'+din(x.monto)+'</b>']])+
+      tabla('Pagos registrados que no aparecen en el banco','#a16207',r.sinBanco,[['Folio',x=>'<a href="#" onclick="event.preventDefault();'+(x.viaId?'window.__vp2Detalle('+x.viaId+',\'conta\')':'')+'" style="color:#1d4ed8;font-weight:700">'+esc(x.folio)+'</a>'],['Para',x=>esc(x.quien)],['Pagado',x=>fc(x.fecha)],['Referencia',x=>esc(x.ref)],['Monto',x=>'<b>'+din(x.monto)+'</b>']])+
+      tabla('Conciliados','#15803d',r.ok,[['Banco',x=>fc(x.b.fecha)+' · '+esc(x.b.desc)],['Portal',x=>esc(x.p.folio)+' · '+esc(x.p.quien)],['Monto',x=>'<b>'+din(x.b.monto)+'</b>'],['Cómo',x=>esc(x.como)]]);
+  }
+  h+='<div class="vp2-sec" style="margin-top:18px">Conciliaciones guardadas</div>'+((C.concil||[]).length?'<table class="vp2c-tbl"><tr><th>Fecha</th><th>Banco</th><th>Periodo</th><th>Archivo</th><th>Conciliados</th><th>Sin respaldo</th><th>Sin banco</th><th>Hizo</th></tr>'+
+    C.concil.map(x=>'<tr><td>'+fh(x.creado_en)+'</td><td>'+esc(x.banco||'')+' '+esc(x.cuenta||'')+'</td><td>'+esc(x.periodo||'')+'</td><td>'+esc(x.archivo_nombre||'')+'</td><td>'+x.conciliados+'</td><td style="color:#b91c1c;font-weight:700">'+x.sin_respaldo+'</td><td style="color:#a16207;font-weight:700">'+x.sin_banco+'</td><td>'+esc(x.hecho_por||'')+'</td></tr>').join('')+'</table>':'<div class="vp2-empty" style="padding:14px">Todavía no hay conciliaciones guardadas.</div>');
+  return h; }
+window.__vp2BLeer=function(inp){ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ const filas=leerCSV(String(r.result||'')); if(filas.length<2){ alert('El archivo no trae movimientos.'); return; }
+    const enc=filas[0].map(norm), busca=re=>enc.findIndex(x=>re.test(x));
+    C.banco={ banco:document.getElementById('vp2b-banco').value, cuenta:document.getElementById('vp2b-cuenta').value, nombre:f.name, filas,
+      col:{ fecha:busca(/fecha/), desc:busca(/desc|concepto|movimiento|detalle/), cargo:busca(/cargo|retiro|debito|egreso/), abono:busca(/abono|deposito|credito|ingreso/), importe:busca(/^importe|^monto/), ref:busca(/refer|folio|clave/) } };
+    Object.keys(C.banco.col).forEach(k=>{ if(C.banco.col[k]<0) C.banco.col[k]=null; }); pintarConta(); };
+  r.readAsText(f,'utf-8'); };
+window.__vp2BCol=(k,v)=>{ C.banco.col[k]=v===''?null:Number(v); };
+window.__vp2BConciliar=async function(){ const b=C.banco; if(!b||!b.filas) return; const col=b.col; if(col.fecha==null||(col.cargo==null&&col.importe==null)){ alert('Indica al menos la columna de fecha y la de cargo (o importe).'); return; }
+  b.banco=document.getElementById('vp2b-banco').value; b.cuenta=document.getElementById('vp2b-cuenta').value;
+  const movs=b.filas.slice(1).map(r=>{ let m=col.cargo!=null?numMX(r[col.cargo]):0; if(!m&&col.importe!=null){ const x=numMX(r[col.importe]); m=x<0?-x:0; } return { fecha:fechaMX(r[col.fecha]), desc:col.desc!=null?r[col.desc]:'', ref:col.ref!=null?String(r[col.ref]||''):'', monto:Math.round(Math.abs(m)*100)/100 }; }).filter(x=>x.monto>0&&x.fecha);
+  if(!movs.length){ alert('No encontré retiros con fecha. Revisa qué columna es cada dato.'); return; }
+  const fechas=movs.map(x=>x.fecha).sort(), desde=sumar(fechas[0],-10), hasta=sumar(fechas[fechas.length-1],10);
+  const c=await sb(); const [v,x]=await Promise.all([ c.from('ops_solicitudes_viaticos').select('id,folio,responsable_nombre,integrantes,monto_entregado,entregado_en,referencia_pago').eq('estatus','Pagada').gte('entregado_en',desde).lte('entregado_en',hasta+'T23:59:59'),
+    c.from('ops_viaticos_extra').select('id,viatico_id,viatico_folio,tecnico_nombre,monto,pagado_en,referencia_pago').eq('estatus','Pagada').gte('pagado_en',desde).lte('pagado_en',hasta+'T23:59:59') ]);
+  const portal=(v.data||[]).map(s=>({tipo:'viatico',viaId:s.id,folio:s.folio,quien:s.responsable_nombre||s.integrantes||'',monto:Number(s.monto_entregado)||0,fecha:String(s.entregado_en).slice(0,10),ref:s.referencia_pago||''}))
+    .concat((x.data||[]).map(e=>({tipo:'extra',viaId:e.viatico_id,folio:(e.viatico_folio||'')+' (extra)',quien:e.tecnico_nombre||'',monto:Number(e.monto)||0,fecha:String(e.pagado_en).slice(0,10),ref:e.referencia_pago||''})));
+  const usados=new Set(), ok=[], sinResp=[]; const dias=(a,b2)=>Math.abs((dObj(a)-dObj(b2))/864e5);
+  movs.forEach(m=>{ const cand=portal.map((p,i)=>({p,i})).filter(o=>!usados.has(o.i)&&Math.abs(o.p.monto-m.monto)<0.51&&dias(o.p.fecha,m.fecha)<=5);
+    const conRef=cand.find(o=>o.p.ref&&(norm(m.desc+' '+m.ref).includes(norm(o.p.ref)))); const el=conRef||cand.sort((a,b2)=>dias(a.p.fecha,m.fecha)-dias(b2.p.fecha,m.fecha))[0];
+    if(el){ usados.add(el.i); ok.push({b:m,p:el.p,como:conRef?'Monto + referencia':'Monto y fecha ('+dias(el.p.fecha,m.fecha)+' día(s))'}); } else sinResp.push(m); });
+  const sinBanco=portal.filter((p,i)=>!usados.has(i)&&p.fecha>=fechas[0]&&p.fecha<=fechas[fechas.length-1]);
+  b.res={ok,sinResp,sinBanco,periodo:fc(fechas[0])+' a '+fc(fechas[fechas.length-1]),movs:movs.length}; pintarConta(); };
+window.__vp2BGuardar=async function(){ const b=C.banco; if(!b||!b.res) return; try{ const c=await sb(), u=yo(); const r=b.res;
+  const ins=await c.from('conta_conciliaciones').insert({banco:b.banco||null,cuenta:b.cuenta||null,periodo:r.periodo,archivo_nombre:b.nombre,movimientos:r.movs,conciliados:r.ok.length,sin_respaldo:r.sinResp.length,sin_banco:r.sinBanco.length,
+    resultado:{ok:r.ok.map(x=>({fecha:x.b.fecha,desc:x.b.desc,monto:x.b.monto,folio:x.p.folio,como:x.como})),sinRespaldo:r.sinResp,sinBanco:r.sinBanco},hecho_por:u.nombre||u.correo});
+  if(ins.error) throw ins.error; toast('Conciliación guardada.'); cargarConcil(); }catch(e){ alert('No se pudo guardar: '+(e.message||e)); } };
+window.__vp2BExport=function(){ const r=(C.banco||{}).res; if(!r) return;
+  csv('conciliacion_bancaria',[['Resultado','Fecha banco','Descripción banco','Referencia banco','Monto','Folio portal','Para','Fecha portal','Cómo']]
+    .concat(r.ok.map(x=>['Conciliado',x.b.fecha,x.b.desc,x.b.ref,x.b.monto,x.p.folio,x.p.quien,x.p.fecha,x.como]))
+    .concat(r.sinResp.map(x=>['Retiro sin respaldo en el portal',x.fecha,x.desc,x.ref,x.monto,'','','','']))
+    .concat(r.sinBanco.map(x=>['Pago del portal sin movimiento en banco','','','',x.monto,x.folio,x.quien,x.fecha,'']))); };
+
+// ── Pólizas para Aspel COI / CONTPAQi ──
+const CUENTAS_BASE={ bancos:{n:'Bancos',c:''}, deudores:{n:'Deudores diversos (técnicos)',c:''}, iva:{n:'IVA acreditable pagado',c:''}, alimentos:{n:'Gastos de viaje · alimentos',c:''}, hospedaje:{n:'Gastos de viaje · hospedaje',c:''}, gasolina:{n:'Combustibles',c:''}, casetas:{n:'Gastos de viaje · casetas',c:''}, transporte:{n:'Gastos de viaje · transporte',c:''}, otros:{n:'Otros gastos de viaje',c:''}, nodeducible:{n:'Gastos no deducibles',c:''} };
+async function cargarCuentas(){ if(C.cuentas) return; try{ const c=await sb(); const r=await c.from('conta_config').select('datos').eq('id','cuentas').maybeSingle(); C.cuentas=Object.assign(JSON.parse(JSON.stringify(CUENTAS_BASE)),(r.data&&r.data.datos)||{}); }catch(e){ C.cuentas=JSON.parse(JSON.stringify(CUENTAS_BASE)); } if(C.secc==='polizas') pintarConta(); }
+function polizasHTML(){ const cu=C.cuentas; if(!cu){ cargarCuentas(); return '<div class="vp2-empty">Cargando catálogo…</div>'; }
+  const falt=Object.keys(cu).filter(k=>!String(cu[k].c||'').trim()).length;
+  return '<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><b style="font-size:13.5px">Catálogo de cuentas</b>'+(falt?'<span class="vp2c-tag" style="background:#fef9c3;color:#a16207">Faltan '+falt+' cuenta(s)</span>':'<span class="vp2c-tag" style="background:#dcfce7;color:#15803d">Completo</span>')+'</div>'+
+    '<div style="font-size:12px;color:#6b7280;margin:4px 0 10px">Escribe el número de cuenta tal como está en tu catálogo de Aspel COI o CONTPAQi. Se guarda para todos.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 14px">'+Object.keys(cu).map(k=>'<label class="vp2-lb">'+esc(cu[k].n)+'<input class="vp2-fi" style="margin-bottom:6px" value="'+esc(cu[k].c||'')+'" placeholder="Ej. 107-01-000" onchange="window.__vp2Cuenta(\''+k+'\',this.value)"></label>').join('')+'</div>'+
+    '<button class="vp2-btn pri" onclick="window.__vp2GuardarCuentas()">Guardar catálogo</button></div></div>'+
+    '<div class="vp2c-int"><div><b>Pólizas de egreso · depósitos de viáticos</b><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">Una póliza por depósito: cargo a Deudores diversos (el técnico) y abono a Bancos.</div></div>'+
+    '<div><b>Pólizas de diario · comprobación aceptada</b><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">Cargo al gasto según su concepto (y al IVA cuando la factura trae XML), abono a Deudores diversos. Las facturas en foto o PDF van completas al gasto con la nota "IVA por desglosar".</div></div>'+
+    '<div><b>Archivo del mes</b><div style="font-size:12px;color:#6b7280;margin:6px 0 10px">Mes de '+MES(C.mes)+'. Cámbialo con las flechas.</div><div class="vp2-mes" style="margin-bottom:10px"><button onclick="window.__vp2C(\'mes\',-1)">‹</button><span>'+IC.cal+MES(C.mes)+'</span><button onclick="window.__vp2C(\'mes\',1)">›</button></div><button class="vp2-btn dark" onclick="window.__vp2Polizas()">'+IC.exp+' Descargar pólizas (Excel/CSV)</button></div></div>'+
+    '<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 12px;margin-top:12px">Este archivo es un borrador ordenado (fecha, póliza, cuenta, cargo, abono, concepto, UUID). Antes de importarlo a Aspel o CONTPAQi, ajusta el layout a la versión que usan y que lo revise Contabilidad.</div>'; }
+window.__vp2Cuenta=(k,v)=>{ C.cuentas[k].c=String(v).trim(); };
+window.__vp2GuardarCuentas=async function(){ try{ const c=await sb(), u=yo(); const r=await c.from('conta_config').upsert({id:'cuentas',datos:C.cuentas,actualizado_por:u.correo,actualizado_en:new Date().toISOString()}); if(r.error) throw r.error; toast('Catálogo guardado.'); pintarConta(); }catch(e){ alert('No se pudo guardar: '+(e.message||e)); } };
+window.__vp2Polizas=function(){ const cu=C.cuentas||CUENTAS_BASE, m=C.mes, filas=[['Tipo','Póliza','Fecha','Cuenta','Nombre de la cuenta','Cargo','Abono','Concepto','Referencia','UUID']]; let n=0;
+  const cta=k=>(cu[k]&&cu[k].c)||'('+((cu[k]&&cu[k].n)||k)+')', nom=k=>(cu[k]&&cu[k].n)||k;
+  C.lista.filter(s=>String(s.entregado_en||'').slice(0,7)===m).forEach(s=>{ n++; const f=String(s.entregado_en).slice(0,10), monto=Number(s.monto_entregado)||0, con='Viáticos '+s.folio+' · '+(s.responsable_nombre||'');
+    filas.push(['Egreso','E-'+n,f,cta('deudores'),nom('deudores')+' · '+(s.responsable_nombre||''),monto,'',con,s.referencia_pago||'','']); filas.push(['Egreso','E-'+n,f,cta('bancos'),nom('bancos'),'',monto,con,s.referencia_pago||'','']); });
+  let d=0; C.lista.forEach(s=>(COMPS[s.id]||[]).filter(x=>x.estatus==='Aceptado'&&String(x.revisado_en||x.creado_en||'').slice(0,7)===m).forEach(x=>{ d++; const f=String(x.fecha_comprobante||x.revisado_en||x.creado_en).slice(0,10);
+    const k=x.tipo==='no_deducible'?'nodeducible':(cu[x.categoria]?x.categoria:'otros'), tot=Number(x.total)||0, iva=x.tipo==='cfdi'?Number(x.iva)||0:0, con='Comprobación '+s.folio+' · '+(x.emisor_nombre||x.concepto||'')+(x.tipo==='factura_archivo'?' · IVA por desglosar':'');
+    filas.push(['Diario','D-'+d,f,cta(k),nom(k),Math.round((tot-iva)*100)/100,'',con,x.serie_folio||'',x.uuid||'']); if(iva) filas.push(['Diario','D-'+d,f,cta('iva'),nom('iva'),iva,'',con,'',x.uuid||'']);
+    filas.push(['Diario','D-'+d,f,cta('deudores'),nom('deudores')+' · '+(s.responsable_nombre||''),'',tot,con,'',x.uuid||'']); }));
+  if(filas.length===1){ alert('No hay depósitos ni comprobaciones aceptadas en '+MES(m)+'.'); return; } csv('polizas_viaticos_'+m,filas); };
+
+// ── Comprobación urgente: Contabilidad captura el comprobante por el técnico ──
+window.__vp2ComprobarUrgente=function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; C.urg={archivos:[]};
+  modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Comprobar por el técnico</div><div style="font-size:12.5px;color:#6b7280">'+esc(s.folio)+' · '+esc(s.responsable_nombre||'')+' · solo para urgencias; queda registrado que lo capturó Contabilidad.</div></div><button class="vp2-ib" onclick="window.__vp2Detalle('+s.id+',\'conta\')">'+IC.cerrar+'</button></div>'+
+    '<div class="vp2-lb" style="margin-top:12px">Tipo</div><div style="display:flex;gap:16px;margin:6px 0 11px"><label style="font-size:13px"><input type="radio" name="vp2u-tipo" value="factura_archivo" checked> Con factura</label><label style="font-size:13px"><input type="radio" name="vp2u-tipo" value="no_deducible"> Sin factura</label></div>'+
+    '<label class="vp2-lb">Concepto<select id="vp2u-cat" class="vp2-fi">'+Object.keys(CATS).map(k=>'<option value="'+k+'">'+CATS[k]+'</option>').join('')+'</select></label>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><label class="vp2-lb">Total<input id="vp2u-total" type="number" min="0" step="0.01" class="vp2-fi"></label><label class="vp2-lb">Fecha<input id="vp2u-fecha" type="date" class="vp2-fi" value="'+hoy()+'"></label></div>'+
+    '<label class="vp2-lb">Negocio o descripción<input id="vp2u-neg" class="vp2-fi" placeholder="Ej. Hotel Plaza"></label>'+
+    '<label class="vp2-lb">Fotos o PDF <span style="color:#dc2626">*</span><input id="vp2u-arch" type="file" multiple accept="image/*,application/pdf" class="vp2-fi" style="padding:7px"></label>'+
+    '<label class="vp2-lb">¿Por qué lo captura Contabilidad?<input id="vp2u-mot" class="vp2-fi" placeholder="Ej. el técnico no tiene señal; mandó fotos por WhatsApp"></label>'+
+    '<div id="vp2u-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="vp2-btn" onclick="window.__vp2Detalle('+s.id+',\'conta\')">Cancelar</button><button id="vp2u-btn" class="vp2-btn pri" onclick="window.__vp2GuardarUrgente('+s.id+')">Guardar comprobante</button></div>',true); };
+window.__vp2GuardarUrgente=async function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; const err=document.getElementById('vp2u-err'), btn=document.getElementById('vp2u-btn');
+  const tipo=(document.querySelector('input[name="vp2u-tipo"]:checked')||{}).value, cat=document.getElementById('vp2u-cat').value, total=Number(document.getElementById('vp2u-total').value)||0, fecha=document.getElementById('vp2u-fecha').value||null;
+  const neg=document.getElementById('vp2u-neg').value.trim(), mot=document.getElementById('vp2u-mot').value.trim(), files=[].slice.call(document.getElementById('vp2u-arch').files||[]);
+  if(!(total>0)){ err.textContent='Escribe el total.'; return; } if(!files.length){ err.textContent='Sube al menos una foto o PDF.'; return; } if(mot.length<5){ err.textContent='Escribe por qué lo capturas tú.'; return; }
+  if(files.some(f=>f.size>10*1024*1024)){ err.textContent='Algún archivo pesa más de 10 MB.'; return; }
+  btn.disabled=true; btn.textContent='Subiendo…';
+  try{ const c=await sb(), u=yo(), rutas=[];
+    for(let i=0;i<files.length;i++){ const f=files[i], ext=(String(f.name||'').split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin', ruta='viaticos/'+s.id+'/'+Date.now()+'_conta'+(i+1)+'.'+ext;
+      const up=await c.storage.from(BUCKET).upload(ruta,f,{contentType:f.type||undefined,upsert:false}); if(up.error) throw up.error; rutas.push(ruta); }
+    const pdfI=files.findIndex(f=>!/^image\//.test(f.type||'')), fotoI=files.findIndex(f=>/^image\//.test(f.type||''));
+    const fila={viatico_id:s.id,viatico_folio:s.folio,folio_servicio:s.folio_servicio||null,tecnico_email:s.responsable_email||null,tecnico_nombre:(s.responsable_nombre||'')+' (capturó Contabilidad)',categoria:cat,tipo,estatus:'Aceptado',
+      total,fecha_comprobante:fecha,emisor_nombre:tipo==='factura_archivo'?(neg||null):null,concepto:tipo==='no_deducible'?(neg||CATS[cat]):CATS[cat],pdf_path:pdfI>=0?rutas[pdfI]:null,foto_path:fotoI>=0?rutas[fotoI]:null,
+      revisado_por:u.nombre||u.correo,revisado_en:new Date().toISOString(),validacion:{archivos:rutas,capturadoPor:u.nombre||u.correo,motivoCaptura:mot,avisos:['Capturado por Contabilidad: '+mot].concat(tipo==='factura_archivo'?['Factura en foto o PDF: descargar el XML del SAT.']:[]),ok:[]}};
+    const r=await c.from('ops_viaticos_comprobantes').insert(fila).select().single(); if(r.error) throw r.error;
+    (COMPS[s.id]=COMPS[s.id]||[]).push(r.data);
+    if(s.responsable_email) avisoApp(s.responsable_email,'viat_tec_conta_captura','Contabilidad capturó por ti un comprobante de '+din(total)+' ('+CATS[cat]+') en tus viáticos '+s.folio+'.',s);
+    toast('Comprobante guardado y aceptado.'); await window.__vp2Detalle(s.id,'conta'); pintarConta();
+  }catch(e){ err.textContent='No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar comprobante'; } };
+
 window.__vp2ExportC=function(){ csv('viaticos_comprobacion',[['Folio','Responsable','Integrantes','Destino','Cliente','Empresa','Pagado el','Pagó','Forma','Referencia','Depositado','Comprobado','Falta','Límite','Estado','Comprobantes']]
   .concat(C.lista.map(s=>{ const e=estConta(s); return [s.folio,s.responsable_nombre,s.integrantes,s.destino,s.cliente,s.empresa_entrega,s.entregado_en?String(s.entregado_en).slice(0,10):'',s.pagado_por_nombre,FORMAS[s.forma_entrega]||s.forma_entrega,s.referencia_pago||'',e.dep,e.comprobado,e.falta,s.fecha_limite_comprobacion,e.t,e.n]; }))); };
 window.__vp2Revisar=async function(compId,viaId,est){ let mot=null; if(est==='Rechazado'){ mot=prompt('¿Por qué se rechaza? (le llega al técnico)',''); if(mot===null) return; mot=mot.trim(); if(!mot){ alert('Escribe el motivo.'); return; } }
@@ -1472,12 +1676,67 @@ const T=setInterval(()=>{ if(typeof window.verArea!=='function') return; clearIn
   window.verArea=function(area){ const r=orig.apply(this,arguments);
     setTimeout(()=>{
       const pp=document.getElementById('vp-pagos'), pc=document.getElementById('vp-conta');
-      if(area==='Pagos'){ cargarPagos(); } else if(pp) pp.style.display='none';
+      if(area==='Pagos'){ cargarPagos(); ['pagos-dashboard','pfl-cont'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; }); } else if(pp) pp.style.display='none';
       if(area==='Contabilidad'){ cargarConta(); OCULTAR_EN_CONTA.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; }); }
       else { if(pc) pc.style.display='none'; }
       if(area!=='Pagos'){ const pf=document.getElementById('pfl-cont'); if(pf) pf.style.display='none'; const cx=document.getElementById('pagos-cxp'); if(cx&&area!=='Pagos') cx.style.display='none'; }
-      else { const pf=document.getElementById('pfl-cont'); if(pf) pf.style.display=''; }
+
     },80);
     return r; }; },200);
 console.log('[VIÁTICOS v2 en Pagos y Contabilidad] listo');
+})();
+
+// ══════════════════════════════════════════════════════════════════════
+// ACTIVIDADES DEL ÁREA EN PANEL LATERAL (29-oct-2026) — aplica a todas las áreas
+// La parrilla de actividades (Sin iniciar / En proceso / Completadas) ya no empuja el contenido de
+// cada área: queda una barra compacta con el resumen y un botón que la abre en un panel lateral.
+// No se mueve nada del HTML: el mismo bloque #area-actividades-wrap se muestra como panel, así que
+// filtros, buscador, editar, comentar y completar funcionan igual que antes.
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+if(window.__tcActDrawer) return; window.__tcActDrawer=true;
+function css(){ if(document.getElementById('act-dr-css')) return; const st=document.createElement('style'); st.id='act-dr-css'; st.textContent=`
+#area-actividades-wrap.act-dr{position:fixed;top:0;right:0;height:100vh;width:min(1180px,96vw);background:#f4f5f7;z-index:3000;overflow-y:auto;box-sizing:border-box;padding:0 22px 26px;
+  box-shadow:-18px 0 50px rgba(15,23,42,.18);transform:translateX(104%);transition:transform .28s ease;visibility:hidden}
+#area-actividades-wrap.act-dr.abierto{transform:translateX(0);visibility:visible}
+#act-dr-fondo{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:2990;opacity:0;pointer-events:none;transition:opacity .2s}
+#act-dr-fondo.on{opacity:1;pointer-events:auto}
+.act-dr-hd{position:sticky;top:0;z-index:2;background:#f4f5f7;display:flex;align-items:center;gap:12px;padding:18px 0 14px;margin-bottom:6px;border-bottom:1px solid #e5e7eb}
+.act-dr-hd b{font-size:19px;color:#111827}.act-dr-hd span{font-size:12.5px;color:#6b7280}
+.act-dr-x{margin-left:auto;width:38px;height:38px;border:1px solid #e5e7eb;background:#fff;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:#374151}
+.act-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 16px;margin:4px 0 18px;font-family:inherit}
+.act-bar .ico{width:36px;height:36px;border-radius:10px;background:#eef2ff;color:#3730a3;display:flex;align-items:center;justify-content:center}
+.act-bar .tt{font-size:14px;font-weight:800;color:#111827}.act-bar .ss{font-size:12px;color:#6b7280}
+.act-pill{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:5px 11px;font-size:12px;font-weight:700}
+.act-pill i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.act-btn{margin-left:auto;height:38px;border:none;border-radius:10px;padding:0 16px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;background:#111827;color:#fff;display:inline-flex;align-items:center;gap:8px}
+`; document.head.appendChild(st); }
+const ICO='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M7 11h4M7 15h7"/></svg>';
+const X='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+function conteos(){ const el=document.getElementById('area-table')||{}; const t=el.innerText||el.textContent||''; const n=re=>{ const m=t.match(re); return m?Number(m[1]):null; };
+  return { sin:n(/SIN\s+INICIAR\s*\n?\s*(\d+)/i), proc:n(/EN\s+PROCESO\s*\n?\s*(\d+)/i), comp:n(/COMPLETADAS\s*\n?\s*(\d+)/i) }; }
+function area(){ const t=document.getElementById('area-title'); return t?String(t.innerText||t.textContent||'').trim():''; }
+function preparar(){ const w=document.getElementById('area-actividades-wrap'); if(!w) return null; css();
+  if(!w.classList.contains('act-dr')){ w.classList.add('act-dr');
+    const hd=document.createElement('div'); hd.className='act-dr-hd'; hd.id='act-dr-hd'; hd.innerHTML='<div><b id="act-dr-tit">Actividades</b><br><span>Tareas y parrilla de documentos del área</span></div><button class="act-dr-x" title="Cerrar (Esc)" onclick="window.__actDr(false)">'+X+'</button>'; w.insertBefore(hd,w.firstChild);
+    const f=document.createElement('div'); f.id='act-dr-fondo'; f.onclick=()=>window.__actDr(false); document.body.appendChild(f);
+    const bar=document.createElement('div'); bar.id='act-bar'; bar.className='act-bar'; w.parentNode.insertBefore(bar,w);
+    new MutationObserver(()=>pintarBarra()).observe(document.getElementById('area-table')||w,{childList:true,subtree:true,characterData:true});
+    new MutationObserver(()=>pintarBarra()).observe(w,{attributes:true,attributeFilter:['style']});
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&w.classList.contains('abierto')) window.__actDr(false); }); }
+  return w; }
+let pT=null;
+function pintarBarra(){ clearTimeout(pT); pT=setTimeout(()=>{ const w=document.getElementById('area-actividades-wrap'), bar=document.getElementById('act-bar'); if(!w||!bar) return;
+  bar.style.display=(w.style.display==='none')?'none':'flex'; const c=conteos(), a=area().replace(/^[^A-Za-zÁÉÍÓÚÑáéíóúñ]+/,'');
+  const tit=document.getElementById('act-dr-tit'); if(tit) tit.textContent='Actividades · '+(a||'área');
+  const p=(t,n,c1,bg)=>n==null?'':'<span class="act-pill" style="color:'+c1+';background:'+bg+'"><i></i>'+t+' '+n+'</span>';
+  bar.innerHTML='<div class="ico">'+ICO+'</div><div><div class="tt">Actividades del área</div><div class="ss">Tareas, parrilla de documentos y pendientes compartidos</div></div>'+
+    p('Sin iniciar',c.sin,'#475569','#f1f5f9')+p('En proceso',c.proc,'#b45309','#fef3c7')+p('Completadas',c.comp,'#15803d','#dcfce7')+
+    '<button class="act-btn" onclick="window.__actDr(true)">'+ICO+'Ver actividades</button>'; },120); }
+window.__actDr=function(abrir){ const w=preparar(); if(!w) return; const f=document.getElementById('act-dr-fondo');
+  w.classList.toggle('abierto',!!abrir); if(f) f.classList.toggle('on',!!abrir); document.body.style.overflow=abrir?'hidden':''; if(abrir) w.scrollTop=0; };
+const T=setInterval(()=>{ if(typeof window.verArea!=='function'||!document.getElementById('area-actividades-wrap')) return; clearInterval(T);
+  preparar(); pintarBarra(); const orig=window.verArea;
+  window.verArea=function(){ window.__actDr(false); const r=orig.apply(this,arguments); setTimeout(pintarBarra,150); setTimeout(pintarBarra,900); return r; }; },250);
 })();
