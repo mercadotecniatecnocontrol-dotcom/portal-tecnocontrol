@@ -366,6 +366,15 @@
     function opsTecOperativos() {
         return cacheTec.filter(t => t.estatus === "activo" && !opsEsAdministrativo(t));
     }
+    // Herramienta (29-oct-2026, Glen): a cualquiera de Operaciones se le puede asignar herramienta,
+    // también al personal administrativo. Lista en orden alfabético; el administrativo va marcado.
+    function opsPersonalHerramienta() {
+        return cacheTec.filter(t => (t.estatus || "activo") === "activo")
+            .sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es", { sensitivity: "base" }));
+    }
+    function opsPersonalHerrEtiqueta(t) {
+        return (t.nombre || "") + (t.numeroOperativo ? " (" + t.numeroOperativo + ")" : "") + (opsEsAdministrativo(t) ? " · administrativo" : "");
+    }
 
     // Tipo de técnico (badge chico junto al nombre) — sale de las habilidades ya capturadas en su ficha.
     const OPS_TIPO_TECNICO = {
@@ -2642,14 +2651,15 @@
         const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
         const zebra = i % 2 === 0 ? "#fff" : "#f8fafc";
         const pend = opsTraspasoPendientePara(h.id);
+        const pr = h.estado === "prestamo" ? opsPrestamoInfo(h) : null;
         return `<tr style="background:${zebra};border-bottom:1px solid #eef1f5;cursor:pointer;" onclick="opsAbrirFichaHerramienta('${h.id}')">
             <td style="padding:8px 10px;font-weight:600;color:#334155;">${opsEsc(h.folio)}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(h.descripcion)}${h.folioLegado ? ` <span style="color:#94a3b8;font-size:10.5px;">(ex ${opsEsc(h.folioLegado)})</span>` : ""}</td>
-            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span>${pend ? ` <span title="Traspaso pendiente de aceptación" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">${ICON.lock} pendiente</span>` : ""}</td>
+            <td style="padding:8px 10px;"><span style="background:${e.bg};color:${e.fg};font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:999px;">${e.label}</span>${pend ? ` <span title="Traspaso pendiente de aceptación" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;margin-left:4px;">${ICON.lock} pendiente</span>` : ""}${pr ? `<div style="margin-top:4px;font-size:10.5px;font-weight:700;color:${pr.vencido ? "#b91c1c" : "#3730a3"};">${ICON.lock} Bloqueada · prestada a ${opsEsc(pr.aNombre)} · ${pr.vencido ? "debió regresar el " : "regresa el "}${opsEsc(pr.hastaTxt)}</div>` : ""}</td>
             <td style="padding:8px 10px;color:#334155;">${opsEsc(opsNombreTecnico(h.tecnicoActualId))}</td>
             <td style="padding:8px 10px;color:#64748b;">${opsEsc(h.ubicacionActual || "—")}</td>
             <td style="padding:8px 10px;text-align:right;" onclick="event.stopPropagation()">
-                ${gestion && h.estado !== "baja" ? `<button onclick="opsAbrirModalMovimiento('${h.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${pend ? "Ver traspaso" : "Mover"}</button>` : ""}
+                ${gestion && h.estado !== "baja" ? `<button onclick="opsAbrirModalMovimiento('${h.id}')" style="background:#eef2f7;border:none;color:#1f2937;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${pend ? "Ver traspaso" : pr ? "Ver préstamo" : "Mover"}</button>` : ""}
             </td>
         </tr>`;
     }
@@ -3208,6 +3218,7 @@
             perdida: "Reportada como pérdida", danio: "Reportada con daño",
             baja: "Baja", transferencia: "Transferencia",
             traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento (servicio / factura)",
+            prestamo: "Préstamo", devolucion_prestamo: "Regresó del préstamo",
         }[m.tipo] || m.tipo;
         return `<div style="margin-bottom:14px;position:relative;">
             <div style="position:absolute;left:-19px;top:3px;width:8px;height:8px;border-radius:50%;background:#1f2937;"></div>
@@ -3224,11 +3235,18 @@
     // solo mientras el modal está abierto (igual que opsRevisionFotos).
     let opsRequisicionSeleccionada = null;
 
+    // Al elegir "almacén de una persona" en el alta: serie HT y se le asigna de inmediato (29-oct-2026).
+    window.opsAltaAlmacenCambio = function (sel) {
+        const v = sel.value || "", prev = document.getElementById("ops-folio-prev"), dest = document.getElementById("ops-in-tecnico-destino");
+        if (v.startsWith("tec:")) { if (prev) prev.textContent = "HT-######"; if (dest) dest.value = v.slice(4); }
+        else { if (prev) prev.textContent = opsPrefijoAlmacenPublico(v) + "-######"; if (dest && dest.value && sel.dataset.antes && sel.dataset.antes.startsWith("tec:")) dest.value = ""; }
+        sel.dataset.antes = v;
+    };
     window.opsAbrirModalPieza = function (id) {
         const h = id ? cacheHerr.find(x => x.id === id) : null;
         opsRequisicionSeleccionada = null;
         window.__opsFotoPiezaTmp = null; // se resetea cada vez que se abre el modal — no arrastra foto de una apertura anterior
-        const tecnicosActivos = opsTecOperativos();
+        const tecnicosActivos = opsPersonalHerramienta();
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
@@ -3276,9 +3294,12 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Uso / para qué sirve (opcional)</label>
                 <input id="ops-in-uso" value="${opsEsc(h?.uso || "")}" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 ${id ? "" : `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿En qué almacén entra? (define la serie del folio)</label>
-                <select id="ops-in-almacen-alta" onchange="document.getElementById('ops-folio-prev').textContent = opsPrefijoAlmacenPublico(this.value) + '-######'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                <select id="ops-in-almacen-alta" onchange="opsAltaAlmacenCambio(this)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
                     <option value="">Almacén General (HT)</option>
                     ${cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(a => `<option value="${opsEsc(a.id)}">${opsEsc(a.nombre)} (${opsEsc(opsPrefijoAlmacen(a.id))})${a.requiereAutorizacion ? " · requiere autorización" : ""}</option>`).join("")}
+                    <optgroup label="Almacén de una persona (se le asigna con responsiva)">
+                    ${tecnicosActivos.map(t => `<option value="tec:${opsEsc(t.id)}">${opsEsc(opsPersonalHerrEtiqueta(t))}</option>`).join("")}
+                    </optgroup>
                 </select>
                 <div style="font-size:10.5px;color:#64748b;margin:0 0 10px;">Folio que tendrá: <b id="ops-folio-prev">HT-######</b></div>`}
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin:0 0 10px;">
@@ -3324,7 +3345,7 @@
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Asignar de inmediato a técnico (opcional)</label>
                     <select id="ops-in-tecnico-destino" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
                         <option value="">— Sin asignar (queda disponible en almacén) —</option>
-                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})</option>`).join("")}
+                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(opsPersonalHerrEtiqueta(t))}</option>`).join("")}
                     </select>
 
                     <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:12px;color:#334155;cursor:pointer;">
@@ -3439,9 +3460,11 @@
                 return;
             }
 
-            const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || null;
+            const valAlmAlta = ((document.getElementById("ops-in-almacen-alta") || {}).value || "");
+            const tecnicoDestinoId = document.getElementById("ops-in-tecnico-destino").value || (valAlmAlta.startsWith("tec:") ? valAlmAlta.slice(4) : null) || null;
             const req = opsRequisicionSeleccionada ? { id: opsRequisicionSeleccionada.id, folio: opsRequisicionSeleccionada.folio } : null;
-            const almacenAltaId = ((document.getElementById("ops-in-almacen-alta") || {}).value || "") || null;
+            let almacenAltaId = ((document.getElementById("ops-in-almacen-alta") || {}).value || "") || null;
+            if (almacenAltaId && almacenAltaId.startsWith("tec:")) almacenAltaId = null; // almacén de una persona: serie HT y se le asigna
             const almAltaObj = almacenAltaId ? cacheAlmacenes.find(a => a.id === almacenAltaId) : null;
             if (almAltaObj && almAltaObj.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(almAltaObj.nombre + " requiere autorización: solo los autorizadores pueden dar de alta piezas ahí."); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Generar folio y guardar"; } return; }
             const pieza = {
@@ -3718,6 +3741,8 @@
         // saltar" la herramienta mientras el otro técnico no haya respondido.
         const pend = opsTraspasoPendientePara(herramientaId);
         if (pend) { return opsAbrirModalTraspasoPendiente(herramientaId, pend); }
+        // Prestada (29-oct-2026): bloqueada a nombre de quien la pidió hasta que la devuelva.
+        if (h.estado === "prestamo") { return opsAbrirModalPrestamo(herramientaId); }
 
         // Equipo que requiere autorización previa (ej. calibración TecnoLab):
         // si quien intenta moverlo no está en la lista, no ve el formulario —
@@ -3741,7 +3766,7 @@
             return;
         }
 
-        const tecnicosActivos = opsTecOperativos();
+        const tecnicosActivos = opsPersonalHerramienta();
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
@@ -3757,15 +3782,21 @@
                     <option value="perdida">Reportar pérdida</option>
                     <option value="danio">Reportar daño</option>
                     <option value="cambio_ubicacion">Cambio de ubicación (temporal)</option>
+                    ${h.estado === "asignada" || h.estado === "disponible" ? '<option value="prestamo">Préstamo (con fecha de regreso)</option>' : ""}
                 </select>
                 <div id="ops-ayuda-mov" style="font-size:11.5px;color:#1e3a8a;background:#eff6ff;border-radius:8px;padding:8px 10px;margin:-4px 0 12px;line-height:1.45;"></div>
 
                 <div id="ops-campo-tecnico" style="display:none;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Técnico</label>
                     <select id="ops-in-tecnico" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
-                        <option value="">Selecciona un técnico...</option>
-                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(t.nombre)} (${opsEsc(t.numeroOperativo)})${t.correo ? "" : " — sin correo"}</option>`).join("")}
+                        <option value="">Selecciona a la persona...</option>
+                        ${tecnicosActivos.map(t => `<option value="${t.id}">${opsEsc(opsPersonalHerrEtiqueta(t))}${t.correo ? "" : " — sin correo"}</option>`).join("")}
                     </select>
+                </div>
+
+                <div id="ops-campo-prestamo" style="display:none;">
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Cuándo la regresa?</label>
+                    <input type="date" id="ops-in-prestamo-hasta" min="${opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;box-sizing:border-box;">
                 </div>
 
                 <div id="ops-campo-transferencia-info" style="display:none;background:#EDF0F7;border:1px solid #C7CEE0;border-radius:8px;padding:9px 11px;font-size:11px;color:#1D2E73;margin-bottom:12px;line-height:1.5;">
@@ -3813,6 +3844,102 @@
     // Info de solo-lectura + botón para cancelar, cuando la pieza ya tiene un
     // traspaso pendiente de aceptación — así nadie más puede "brincarse" el
     // paso de que el receptor acepte.
+    // ═══ Préstamo de herramienta con fecha de regreso (29-oct-2026, Glen) ═══
+    // La pieza queda bloqueada a nombre de quien la pidió hasta que se registre la devolución.
+    // No cambia de almacén ni de responsable: sigue siendo de quien firmó la responsiva.
+    function opsPrestamoInfo(h) {
+        const p = (h && h.prestamo) || {};
+        const hasta = p.hasta || "";
+        const hastaTxt = hasta ? new Date(hasta + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "sin fecha";
+        return { ...p, aNombre: p.aNombre || "alguien", hastaTxt, vencido: !!hasta && hasta < opsHoy() };
+    }
+    async function opsRegistrarPrestamo(herramientaId, obs) {
+        const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
+        const btn = document.getElementById("ops-mov-btn-confirmar");
+        const aId = document.getElementById("ops-in-tecnico").value;
+        const hasta = (document.getElementById("ops-in-prestamo-hasta") || {}).value || "";
+        if (!aId) { alert("Elige a quién se la prestas."); return; }
+        if (aId === h.tecnicoActualId) { alert("Esa persona ya la tiene asignada: no es préstamo."); return; }
+        if (!hasta) { alert("Pon la fecha en que la regresa."); return; }
+        if (hasta < opsHoy()) { alert("La fecha de regreso no puede ser antes de hoy."); return; }
+        const a = cacheTec.find(t => t.id === aId);
+        if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        try {
+            const prestamo = { aId, aNombre: a ? a.nombre : "", aCorreo: (a && a.correo) || null, desde: opsHoy(), hasta,
+                estadoAnterior: h.estado, ubicacionAnterior: h.ubicacionActual || null, porNombre: opsNombreActual(), porCorreo: opsUsuarioActual(), en: opsFechaHora(), obs: obs || null };
+            await opsSbHerrActualizar(herramientaId, { estado: "prestamo", prestamo });
+            await opsRegistrarMovimiento({ herramientaId, tipo: "prestamo", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null,
+                ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
+                observaciones: `Prestada a ${prestamo.aNombre}; la regresa el ${hasta}.` + (obs ? " " + obs : "") });
+            const hastaTxt = opsPrestamoInfo({ prestamo }).hastaTxt;
+            const avisar = [a && a.correo, h.tecnicoActualId ? (cacheTec.find(t => t.id === h.tecnicoActualId) || {}).correo : null].filter(Boolean);
+            for (const para of [...new Set(avisar.map(x => String(x).toLowerCase()))]) {
+                try { await window.tcNotificar({ tipo: "ops_herramienta_prestamo", para, modulo: "Operaciones", mensaje: `Préstamo de herramienta: ${h.folio || ""} ${h.descripcion || ""} queda prestada a ${prestamo.aNombre} y se regresa el ${hastaTxt}. Mientras tanto nadie más la puede mover.` }); } catch (e) {}
+            }
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Herramientas", `${h.folio} prestada a ${prestamo.aNombre} hasta el ${hastaTxt}.`, ICON.lock);
+        } catch (e) {
+            alert("No se pudo registrar el préstamo: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; }
+        }
+    }
+    function opsAbrirModalPrestamo(herramientaId) {
+        const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
+        const p = opsPrestamoInfo(h);
+        const gestiona = opsPuedeGestionar();
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:14px;width:400px;max-width:92vw;padding:22px;">
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px;">${ICON.lock} Herramienta prestada</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:14px;">${opsEsc(h.folio)} · ${opsEsc(h.descripcion)}</div>
+                <div style="background:${p.vencido ? "#fef2f2" : "#eef2ff"};border:1px solid ${p.vencido ? "#fecaca" : "#c7d2fe"};border-radius:8px;padding:11px 13px;font-size:12.5px;color:${p.vencido ? "#991b1b" : "#3730a3"};line-height:1.7;margin-bottom:12px;">
+                    <div><strong>Prestada a:</strong> ${opsEsc(p.aNombre)}</div>
+                    <div><strong>Desde:</strong> ${opsEsc(p.desde || "—")}${p.porNombre ? " · la prestó " + opsEsc(p.porNombre) : ""}</div>
+                    <div><strong>${p.vencido ? "Debió regresar:" : "Regresa:"}</strong> ${opsEsc(p.hastaTxt)}${p.vencido ? " · <b>ATRASADA</b>" : ""}</div>
+                    <div><strong>Responsable (responsiva):</strong> ${opsEsc(opsNombreAlmacen(h.tecnicoActualId))}</div>
+                    ${p.obs ? `<div><strong>Notas:</strong> ${opsEsc(p.obs)}</div>` : ""}
+                    <div style="margin-top:4px;">Está bloqueada: no se puede asignar, traspasar ni mover hasta que se registre que la devolvió.</div>
+                </div>
+                ${gestiona ? `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿En qué condición regresó? (opcional)</label>
+                <textarea id="ops-in-prestamo-obs" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;resize:vertical;"></textarea>` : ""}
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cerrar</button>
+                    ${gestiona ? `<button onclick="opsPrestamoCambiarFecha('${h.id}')" style="background:#fff;border:1px solid #1D2E73;color:#1D2E73;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cambiar fecha de regreso</button>
+                    <button id="ops-prestamo-dev-btn" onclick="opsPrestamoDevolver('${h.id}')" style="background:#15803D;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Ya la devolvió</button>` : ""}
+                </div>
+            </div>
+        </div>`;
+    }
+    window.opsPrestamoCambiarFecha = async function (herramientaId) {
+        const h = cacheHerr.find(x => x.id === herramientaId); if (!h || !h.prestamo) return;
+        const v = prompt("Nueva fecha de regreso (AAAA-MM-DD):", h.prestamo.hasta || opsHoy());
+        if (v === null) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) { alert("Escribe la fecha como AAAA-MM-DD, por ejemplo 2026-11-05."); return; }
+        try {
+            await opsSbHerrActualizar(herramientaId, { prestamo: { ...h.prestamo, hasta: v.trim() } });
+            await opsRegistrarMovimiento({ herramientaId, tipo: "prestamo", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
+                observaciones: `Se cambió la fecha de regreso del préstamo a ${h.prestamo.aNombre}: antes ${h.prestamo.hasta || "—"}, ahora ${v.trim()}.` });
+            opsAbrirModalPrestamo(herramientaId);
+        } catch (e) { alert("No se pudo cambiar la fecha: " + (e.message || e)); }
+    };
+    window.opsPrestamoDevolver = async function (herramientaId) {
+        const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
+        const p = h.prestamo || {};
+        const obs = ((document.getElementById("ops-in-prestamo-obs") || {}).value || "").trim();
+        const btn = document.getElementById("ops-prestamo-dev-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        try {
+            const estado = p.estadoAnterior && p.estadoAnterior !== "prestamo" ? p.estadoAnterior : (h.tecnicoActualId ? "asignada" : "disponible");
+            await opsSbHerrActualizar(herramientaId, { estado, prestamo: null, ...(obs ? { observaciones: obs } : {}) });
+            await opsRegistrarMovimiento({ herramientaId, tipo: "devolucion_prestamo", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
+                observaciones: `${p.aNombre || "Quien la pidió"} devolvió la pieza prestada${p.hasta && p.hasta < opsHoy() ? " (con retraso; debía regresar el " + p.hasta + ")" : ""}.` + (obs ? " Condición: " + obs : "") });
+            document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Herramientas", `${h.folio} ya regresó del préstamo.`, ICON.check);
+        } catch (e) {
+            alert("No se pudo registrar la devolución: " + (e.message || e));
+            if (btn) { btn.disabled = false; btn.textContent = "Ya la devolvió"; }
+        }
+    };
+
     function opsAbrirModalTraspasoPendiente(herramientaId, pend) {
         const h = cacheHerr.find(x => x.id === herramientaId);
         const wrap = document.getElementById("ops-modal-wrap");
@@ -3873,7 +4000,8 @@
 
     window.opsToggleCamposMovimiento = function () {
         const tipo = document.getElementById("ops-in-tipomov").value;
-        document.getElementById("ops-campo-tecnico").style.display = (tipo === "asignacion" || tipo === "transferencia") ? "block" : "none";
+        document.getElementById("ops-campo-tecnico").style.display = (tipo === "asignacion" || tipo === "transferencia" || tipo === "prestamo") ? "block" : "none";
+        const cp = document.getElementById("ops-campo-prestamo"); if (cp) cp.style.display = tipo === "prestamo" ? "block" : "none";
         document.getElementById("ops-campo-ubicacion").style.display = (tipo === "cambio_ubicacion") ? "block" : "none";
         // Explicación sencilla de cada movimiento (22-oct-2026: "traspaso entre almacenes todavía no se sabe qué es").
         const ayuda = {
@@ -3885,6 +4013,7 @@
             retorno_reparacion: "<b>Regresa de reparación:</b> vuelve a estar disponible.",
             perdida: "<b>Pérdida:</b> no se encuentra. Queda marcada como extraviada.",
             danio: "<b>Daño:</b> se reporta dañada (después se repara o se da de baja).",
+            prestamo: "<b>Préstamo:</b> elige a quién se la prestas y cuándo la regresa. Mientras esté prestada queda <u>bloqueada</u> a nombre de esa persona: nadie la puede asignar, traspasar ni mover hasta que se registre que la devolvió. Sigue siendo responsabilidad de quien firmó la responsiva.",
             cambio_ubicacion: "<b>Cambio de ubicación (temporal):</b> la pieza está un tiempo en otro lugar (una estación, un vehículo, el taller) pero <u>sigue perteneciendo al mismo almacén</u>. Si cambia de almacén, usa Traspaso.",
         }[tipo] || "";
         const ay = document.getElementById("ops-ayuda-mov"); if (ay) { ay.innerHTML = ayuda; ay.style.display = ayuda ? "block" : "none"; }
@@ -3908,6 +4037,7 @@
         if (tipo === "transferencia") {
             return opsIniciarTraspasoDesdeOperaciones(herramientaId, obs);
         }
+        if (tipo === "prestamo") return opsRegistrarPrestamo(herramientaId, obs);
 
         if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
         try {
@@ -7126,12 +7256,16 @@
     let opsPedVentasAbierto = (() => { try { return localStorage.getItem("ops_cal_lado") !== "0"; } catch (e) { return true; } })();
     function opsCalEstilosLado() {
         return `<style>
-            .ops-cal-layout{display:flex;gap:10px;align-items:flex-start;}
+            /* 29-oct-2026 (Glen): el panel vuelve a ir ARRIBA del calendario, a lo ancho, con las tarjetas
+               en una fila que se recorre de lado; el calendario recupera todo su ancho. */
+            .ops-cal-layout{display:flex;flex-direction:column;gap:10px;align-items:stretch;}
             .ops-cal-principal{flex:1;min-width:0;}
-            .ops-cal-lado{width:330px;flex-shrink:0;position:sticky;top:0;max-height:max(340px, calc(100vh - 230px));overflow-y:auto;overflow-x:hidden;}
-            .ops-cal-lado.cerrado{width:44px;overflow:visible;}
+            .ops-cal-lado{width:100%;min-width:0;}
+            .ops-cal-lado.cerrado{width:100%;}
             .ops-cal-lado.cerrado #ops-cal-por-reasignar{display:none;}
-            .ops-cal-tira{writing-mode:vertical-rl;transform:rotate(180deg);}
+            .ops-cal-tira{writing-mode:horizontal-tb;}
+            .ops-ped-fila{display:flex;gap:10px;padding:0 12px 14px;overflow-x:auto;align-items:flex-start;scroll-snap-type:x proximity;}
+            .ops-ped-fila > div{flex:0 0 330px;max-width:330px;scroll-snap-align:start;}
             @media (max-width: 900px){
                 .ops-cal-layout{flex-direction:column;align-items:stretch;}
                 .ops-cal-lado,.ops-cal-lado.cerrado{width:100%;position:static;max-height:none;}
@@ -7451,9 +7585,9 @@
         const nReasignar = cacheFolios.filter(f => f.pendienteReasignar && !f.fechaSolucion && !f.cancelado).length;
         if (!opsPedVentasAbierto) {
             // Panel oculto: tira angosta vertical con los conteos; un clic lo vuelve a abrir.
-            box.innerHTML = (lista.length || nReasignar) ? `<button onclick="opsCalTogglePedidosVentas()" title="Mostrar servicios por programar" style="width:100%;min-height:220px;background:#fff;border:1px solid #ede9fe;border-top:3px solid #7c3aed;border-radius:12px;cursor:pointer;padding:10px 0;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);">
+            box.innerHTML = (lista.length || nReasignar) ? `<button onclick="opsCalTogglePedidosVentas()" title="Mostrar servicios por programar" style="width:100%;min-height:0;background:#fff;border:1px solid #ede9fe;border-top:3px solid #7c3aed;border-radius:12px;cursor:pointer;padding:10px 0;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);">
                 <span class="ops-cal-tira" style="display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:#5b21b6;white-space:nowrap;">
-                    <span style="font-size:15px;">\u00bb</span> Por programar
+                    <span style="font-size:15px;">\u25be</span> Servicios vendidos por programar
                     <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 8px;font-size:11px;">${lista.length}</span>
                     ${nReasignar ? `<span title="Por reasignar" style="background:#ea580c;color:#fff;border-radius:99px;padding:1px 8px;font-size:11px;">${nReasignar}</span>` : ""}
                 </span></button>` : "";
@@ -7505,10 +7639,10 @@
                     <div style="font-size:11px;color:#64748b;">Pedidos que Ventas subi\u00f3 a Almac\u00e9n con servicio o vi\u00e1ticos. Al programarlos salen de esta lista.</div>
                 </div>
 
-                <span title="Ocultar panel" style="color:#7c3aed;font-weight:800;font-size:16px;">\u00ab</span>
+                <span title="Ocultar panel" style="color:#7c3aed;font-weight:800;font-size:12px;border:1px solid #ddd6fe;border-radius:8px;padding:4px 10px;">Ocultar \u25b4</span>
             </div>
             ${(opsPedVentasAbierto && lista.length ? (setTimeout(() => lista.forEach(p => opsPedAspelPintar(p)), 0), "") : "")}
-            ${opsPedVentasAbierto ? ((lista.length ? `<div style="display:flex;flex-direction:column;gap:10px;padding:0 10px 12px;">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
+            ${opsPedVentasAbierto ? ((lista.length ? `<div class="ops-ped-fila">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
         opsCalAjustarLado();
     }
@@ -13808,6 +13942,7 @@
     }
     window.opsHerrLigarServicio = function (id, soloFecha) {
         const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        if (h.estado === "prestamo" && !soloFecha) { opsAbrirModalPrestamo(id); return; } // prestada: bloqueada hasta que regrese
         const s = opsHerrServicioActivo(h) || {};
         const prox = cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && String(f.fechaProgramada).slice(0, 10) >= opsDiaISOmas(opsHoy(), -3))
             .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada))).slice(0, 120);
@@ -19000,7 +19135,7 @@
                 <td style="padding:9px 8px;">${s.rol_viaje ? `<span style="font-size:10px;font-weight:800;color:#1e3a8a;background:#e0e7ff;border-radius:6px;padding:1px 6px;margin-right:5px;">CUADRILLA · HOJA ${(s.tarifas || {}).hoja || 1}/${(s.tarifas || {}).hojas || 2}</span>` : ""}<span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
                 <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsEsc(s.fecha_salida || "")}${s.fecha_regreso && s.fecha_regreso !== s.fecha_salida ? " → " + opsEsc(s.fecha_regreso) : ""}</td>
-                <td style="padding:9px 8px;text-align:right;font-weight:700;${tach}">${opsViaDinero(s.total)}<div style="font-size:10.5px;color:#15803d;font-weight:600;">depositar ${opsViaDinero(opsViaDeposito(s))}</div></td>
+                <td style="padding:9px 8px;text-align:right;${tach}"><div style="font-size:9.5px;font-weight:800;color:#15803d;">SE DEPOSITA</div><b style="font-size:13.5px;color:#15803d;">${opsViaDinero(opsViaDeposito(s))}</b><div style="font-size:10.5px;color:#94a3b8;">costo del viaje ${opsViaDinero(s.total)}${Number(s.cobro_cliente) > 0 ? " · cliente " + opsViaDinero(s.cobro_cliente) : ""}</div></td>
                 <td style="padding:9px 8px;">
                     ${autoriza ? `<select onchange="opsViaCambiarEstatus(${s.id}, this.value)" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 6px;font-size:11.5px;color:${OPS_VIA_ESTATUS[s.estatus] || "#334155"};font-weight:700;">
                         ${Object.keys(OPS_VIA_ESTATUS).map(k => `<option ${k === s.estatus ? "selected" : ""}>${k}</option>`).join("")}</select>`
@@ -19029,7 +19164,7 @@
                 <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
                     <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
                         <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Destino</th><th style="padding:9px 8px;">Personal</th>
-                        <th style="padding:9px 8px;">Fechas</th><th style="padding:9px 8px;text-align:right;">Total</th><th style="padding:9px 8px;">Estatus</th><th></th>
+                        <th style="padding:9px 8px;">Fechas</th><th style="padding:9px 8px;text-align:right;">Depósito al técnico</th><th style="padding:9px 8px;">Estatus</th><th></th>
                     </tr></thead>
                     <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Todavía no hay solicitudes.</td></tr>`}</tbody>
                 </table>
@@ -20862,7 +20997,7 @@
         try { doc = opsViaGenerarPDF(s); } catch (e) { alert(e.message || e); return; }
         const nombre = `Solicitud de viaticos ${s.folio || s.id}.pdf`;
         if (modo === "descargar") { doc.save(nombre); return; }
-        const textoCorto = `Solicitud de viáticos ${s.folio} — ${s.destino || ""} — Total ${opsViaDinero(s.total)}`;
+        const textoCorto = `Solicitud de viáticos ${s.folio} — ${s.destino || ""} — Se deposita al técnico ${opsViaDinero(opsViaDeposito(s))}`;
         let archivo = null;
         try { archivo = new File([doc.output("blob")], nombre, { type: "application/pdf" }); } catch (e) {}
         // Celular (y Chrome/Safari que lo permitan): se abre el menú de compartir con el PDF
