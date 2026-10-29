@@ -4430,6 +4430,13 @@ window.herrVerMisHerramientas=async function(){
       }catch(e){console.warn('[HERR] no se pudo revisar el último movimiento de',h.id,e);}
     }));
     herrState.misPiezas=piezas;
+    // Préstamos (29-oct-2026): las que presté (siguen siendo mías) y las que me prestaron, marcadas aparte.
+    try{
+      const ps=await opsDb().collection(C.OPS_HERR).where('estado','==','prestamo').get();
+      const todas=ps.docs.map(d=>({id:d.id,...d.data()}));
+      herrState.prestadas=todas.filter(h=>h.tecnicoActualId===tec.id);
+      herrState.meLasPrestaron=todas.filter(h=>h.prestamo&&h.prestamo.aId===tec.id);
+    }catch(e){console.warn('[HERR] préstamos',e);herrState.prestadas=[];herrState.meLasPrestaron=[];}
   }catch(e){
     console.error('[HERR] error al cargar mis piezas',e);
     herrState.error='No se pudo cargar tu herramienta asignada. Intenta de nuevo.';
@@ -4460,8 +4467,29 @@ function herrRenderVer(){
           ${reciente?`<div style="font-size:10.5px;color:#7C3AED;margin-top:6px;font-weight:700">No era tuya originalmente — la recibiste el ${fecha}</div>`:''}
         </div>`;
       }).join('')}
+    ${herrPrestamosHTML()}
     <div style="margin-top:10px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cerrar</button></div>
   `);
+}
+function herrPrestamosHTML(){
+  const hoy=new Date(); const hoyISO=hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
+  const fecha=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'}):'—';
+  const tarjeta=(h,yoLaPedi)=>{
+    const p=h.prestamo||{}; const tarde=p.hasta&&p.hasta<hoyISO;
+    return `<div class="fm-card" style="margin-bottom:8px;padding:13px 15px;border-left:4px solid ${tarde?'#DC2626':'#4F46E5'};background:${tarde?'#FEF2F2':'#EEF2FF'}">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div><div style="font-size:13px;font-weight:800;color:#0A0F1E">${h.folio||'—'}</div><div style="font-size:11.5px;color:#64748B;margin-top:1px">${h.descripcion||'—'}</div></div>
+        <span style="background:${tarde?'#DC2626':'#4F46E5'};color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;white-space:nowrap">${yoLaPedi?'TE LA PRESTARON':'PRESTADA'}</span>
+      </div>
+      <div style="font-size:11px;color:${tarde?'#B91C1C':'#3730A3'};margin-top:6px;font-weight:700;line-height:1.45">
+        ${yoLaPedi?'Regrésala el '+fecha(p.hasta):'La tiene '+(p.aNombre||'otra persona')+' · regresa el '+fecha(p.hasta)}${tarde?' · YA SE PASÓ LA FECHA':''}
+        ${p.folioEstacion?'<br>Para el servicio en '+p.folioEstacion+(p.folioFecha?' ('+fecha(String(p.folioFecha).slice(0,10))+')':''):''}
+      </div>
+      ${yoLaPedi?'':'<div style="font-size:10.5px;color:#64748B;margin-top:4px">Sigue a tu nombre (tu responsiva). No se puede traspasar hasta que regrese.</div>'}
+    </div>`;};
+  const a=herrState.meLasPrestaron||[], b=herrState.prestadas||[];
+  return (a.length?`<div style="font-size:12px;font-weight:800;color:#4F46E5;margin:14px 0 6px">ME LA PRESTARON (${a.length})</div>`+a.map(h=>tarjeta(h,true)).join(''):'')
+    +(b.length?`<div style="font-size:12px;font-weight:800;color:#4F46E5;margin:14px 0 6px">PRESTÉ (${b.length})</div>`+b.map(h=>tarjeta(h,false)).join(''):'');
 }
 
 // Autorrevisión: cualquier técnico puede revisar SU PROPIA herramienta (incluida
@@ -8690,7 +8718,7 @@ function fmvRenderLista(body){
     const docs=E.comps.map(function(c){
       return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #F1F5F9">'+
         '<div style="min-width:0"><div style="font-size:12px;font-weight:700;color:#0A1628">'+esc(FMV_CATS[c.categoria]||'Gasto')+' · '+fmvDin(c.total)+'</div>'+
-        '<div style="font-size:10.5px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.tipo==='cfdi'?(c.emisor_nombre||'Factura'):'No deducible: '+(c.concepto||''))+'</div>'+
+        '<div style="font-size:10.5px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.tipo==='cfdi'?(c.emisor_nombre||'Factura'):c.tipo==='factura_archivo'?('Factura'+(c.emisor_nombre?' · '+c.emisor_nombre:'')):'No deducible: '+(c.concepto||''))+'</div>'+
         (c.estatus==='Rechazado'&&c.motivo_rechazo?'<div style="font-size:10.5px;color:#B91C1C;font-weight:700">Motivo: '+esc(c.motivo_rechazo)+'</div>':'')+'</div>'+
         '<div style="flex-shrink:0">'+fmvChip(c.estatus)+'</div></div>';
     }).join('');
@@ -8708,16 +8736,52 @@ function fmvRenderLista(body){
       '<div style="height:7px;background:#F1F5F9;border-radius:9px;overflow:hidden;display:flex"><div style="width:'+pct+'%;background:#15803D"></div><div style="width:'+pctR+'%;background:#A78BFA"></div></div>'+
       '<div style="font-size:10.5px;color:#64748B;margin:5px 0 4px">'+lim+(E.rev?' · '+fmvDin(E.rev)+' en revisión':'')+'</div>'+
       docs+
+      (!s.cierre?'<button onclick="fmvExtraAbrir('+s.id+')" style="width:100%;margin-top:10px;padding:10px;background:#fff;border:1.5px solid #EA580C;border-radius:10px;color:#C2410C;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Me falta dinero: pedir más viático</button>':'')+
       (!s.cierre&&E.estado!=='Comprobada'?'<button onclick="fmViaNuevo('+s.id+')" style="width:100%;margin-top:10px;padding:11px;background:#15803D;border:none;border-radius:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer">+ Agregar comprobante</button>':'')+
     '</div>';
   };
   body.innerHTML=
-    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:12px">Sube el <b>XML</b> de cada factura (y el PDF o una foto si lo tienes). La app revisa sola que la forma de pago corresponda a cómo recibiste el dinero.</div>'+
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:12px">Comprueba cada gasto subiendo <b>fotos o PDF de la factura</b> (o del ticket, si no hubo factura). Que se lean bien el total, la fecha y el negocio.</div>'+
     (act.length?act.map(card).join(''):'<div style="text-align:center;color:#94A3B8;font-size:13px;padding:18px 10px;background:#fff;border-radius:12px;margin-bottom:12px">No tienes viáticos pendientes de comprobar.</div>')+
     (tram.length?'<div style="font-size:12px;font-weight:800;color:#64748B;margin:14px 0 6px">EN TRÁMITE (aún no se registra la entrega)</div>'+tram.map(function(s){return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px"><b style="color:#1D2E73">'+esc(s.folio)+'</b> · '+esc(s.destino||'')+' · '+(s.deposito!=null?'<b style="color:#15803D">te depositan '+fmvDin(s.deposito)+'</b>':'<span style="color:#64748B">monto por confirmar</span>')+' <span style="float:right">'+fmvChip(s.estatus==='Aprobada'?'En trámite':s.estatus)+'</span></div>';}).join(''):'')+
     (cerr.length?'<div style="font-size:12px;font-weight:800;color:#64748B;margin:14px 0 6px">CERRADOS RECIENTES</div>'+cerr.map(function(s){return '<div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px 12px;margin-bottom:8px;font-size:12px"><b style="color:#1D2E73">'+esc(s.folio)+'</b> · '+esc((s.cierre&&s.cierre.resultadoTxt)||'Cerrado')+'</div>';}).join(''):'')+
     '<button onclick="fmvRecargar()" style="width:100%;margin-top:6px;padding:10px;background:#fff;border:1.5px solid #CBD5E1;border-radius:10px;font-family:inherit;font-size:12px;font-weight:700;color:#475569;cursor:pointer">Actualizar</button>';
 }
+// ── Pedir más viático (29-oct-2026): urgente. Llega como alarma a la gerencia de Operaciones;
+// cuando la autorizan, le avisa a Pagos para depositar. Tabla ops_viaticos_extra (Supabase).
+window.fmvExtraAbrir=function(id){
+  const s=fmvLista.find(function(x){return x.id===id;})||{};
+  fmHojaModal('fmv-extra','Pedir más viático',
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Úsalo cuando ya no te alcanza lo que te depositaron. Le llega como <b>alarma urgente</b> a la gerencia de Operaciones; cuando lo autorizan, Pagos te deposita.</div>'+
+    '<div style="font-size:12px;color:#1D2E73;background:#EEF2FF;border-radius:8px;padding:7px 9px;margin-bottom:10px"><b>'+esc(s.folio||'')+'</b> · '+esc(s.destino||'')+'</div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Cuánto necesitas? *</label><input id="fmv-extra-monto" type="number" inputmode="decimal" min="1" step="1" style="'+FM_IN+'" placeholder="Ej. 600">'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Para qué? *</label><select id="fmv-extra-concepto" style="'+FM_IN+'">'+['Alimentos','Hospedaje','Gasolina','Casetas','Material o refacción','Otro'].map(function(c){return '<option>'+c+'</option>';}).join('')+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Por qué te faltó? *</label><textarea id="fmv-extra-motivo" rows="3" style="'+FM_IN+'" placeholder="Ej. Nos quedamos un día más porque no llegó la refacción"></textarea>'+
+    '<div id="fmv-extra-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
+    '<button id="fmv-extra-btn" onclick="fmvExtraEnviar('+id+')" style="width:100%;padding:13px;border:none;border-radius:12px;background:#C2410C;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar urgente</button>');
+};
+window.fmvExtraEnviar=async function(id){
+  const s=fmvLista.find(function(x){return x.id===id;})||{};
+  const msg=document.getElementById('fmv-extra-msg'), btn=document.getElementById('fmv-extra-btn');
+  const monto=Number(document.getElementById('fmv-extra-monto').value)||0, concepto=document.getElementById('fmv-extra-concepto').value, motivo=document.getElementById('fmv-extra-motivo').value.trim();
+  if(!(monto>0)){msg.textContent='Escribe cuánto necesitas.';return;}
+  if(motivo.length<8){msg.textContent='Explica por qué te faltó.';return;}
+  btn.disabled=true; btn.textContent='Enviando…';
+  try{
+    const sb=await fmvSb(), quien=opsSvMiNombre(), correo=opsSvMiCorreo();
+    const r=await sb.from('ops_viaticos_extra').insert({viatico_id:s.id||null,viatico_folio:s.folio||null,folio_servicio_id:s.folio_servicio||null,servicio_txt:s.destino||null,tecnico_nombre:quien,tecnico_correo:correo,monto:monto,concepto:concepto,motivo:motivo}).select().single();
+    if(r.error) throw r.error;
+    const texto='URGENTE: '+quien+' pide '+fmvDin(monto)+' más de viático ('+concepto+') en '+(s.folio||'')+' · '+(s.destino||'')+'. Motivo: '+motivo+'. Autorízalo en Operaciones → Viáticos.';
+    try{
+      const m=await sb.from('notif_matriz').select('destinatarios,activo').eq('evento','viatico_extra_urgente').maybeSingle();
+      const dest=(m.data&&m.data.activo!==false&&m.data.destinatarios)||['p.pinedo@tecnocontrol.com.mx'];
+      await sb.from('portal_notificaciones').insert(dest.map(function(d){return {tipo:'viatico_extra_urgente',para:String(d).toLowerCase(),mensaje:texto,leido:false,creada_en:new Date().toISOString(),datos:{modulo:'Operaciones',evento:'viatico_extra_urgente',viaticoExtraId:r.data.id,voz:'Urgente: '+quien+' pide más viático.'}};}));
+    }catch(e){console.warn('[viático extra] aviso',e);}
+    try{await opsSvAvisarAdmins('viatico_extra_urgente',texto,null);}catch(e){}
+    document.getElementById('fmv-extra')?.remove();
+    if(typeof toast==='function')toast('Listo: se envió como urgente a la gerencia de Operaciones.','ok');
+  }catch(e){msg.textContent='No se pudo enviar: '+(e.message||e)+'. Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar urgente';}
+};
 window.fmvRecargar=function(){fmViaCargar().then(function(){renderFlotViaticos();});};
 
 // Sugerencia: el viático con la fecha límite más próxima que aún tenga saldo por comprobar.
@@ -8727,7 +8791,7 @@ function fmvSugerido(){
 }
 window.fmViaNuevo=function(id){
   const sug=id?fmvLista.find(function(s){return s.id===id;}):fmvSugerido();
-  fmvUI={modo:'nuevo',viaticoId:sug?sug.id:null,sugeridoAuto:!id,tipo:'cfdi',xml:null,xmlData:null,val:null,pdf:null,foto:null,categoria:'',nd:{monto:'',fecha:fmvHoy(),concepto:'',motivo:''},enviando:false,error:''};
+  fmvUI={modo:'nuevo',viaticoId:sug?sug.id:null,sugeridoAuto:!id,tipo:'factura_archivo',archivos:[],fa:{monto:'',fecha:fmvHoy(),negocio:''},xml:null,xmlData:null,val:null,pdf:null,foto:null,categoria:'',nd:{monto:'',fecha:fmvHoy(),concepto:'',motivo:''},enviando:false,error:''};
   const t=document.getElementById('fm-flot-title'); if(t)t.textContent='Nuevo comprobante';
   renderFlotViaticos();
 };
@@ -8749,8 +8813,18 @@ function fmvRenderNuevo(body){
   h+=lbl('¿A qué viático corresponde?')+'<select onchange="fmvSet(\'viaticoId\',this.value)" style="'+inp+'">'+opciones.map(function(o){const Eo=fmvEstado(o);return '<option value="'+o.id+'" '+(o.id===u.viaticoId?'selected':'')+'>'+esc(o.folio+' · '+(o.destino||'').slice(0,26)+' · falta '+fmvDin(Eo.falta))+'</option>';}).join('')+'</select>';
   if(u.sugeridoAuto) h+='<div style="font-size:11px;color:#15803D;font-weight:700;margin-top:4px">Sugerido: es el que vence primero'+(s.folio_servicio?' (servicio '+esc(s.folio_servicio)+')':'')+'.</div>';
   h+='<div style="font-size:11px;color:#1D2E73;background:#EEF2FF;border-radius:8px;padding:7px 9px;margin-top:8px;font-weight:600">'+esc(fmvFormaTxt(s.forma_entrega)||'Aún no se registra cómo se entregó.')+' · Falta '+fmvDin(E.falta)+'</div>';
-  h+=lbl('Tipo de comprobante')+'<div style="display:flex;gap:4px;background:#E2E8F0;padding:3px;border-radius:11px">'+tabB('cfdi','Factura (XML)')+tabB('no_deducible','Sin factura')+'</div>';
-  if(u.tipo==='cfdi'){
+  h+=lbl('Tipo de comprobante')+'<div style="display:flex;gap:4px;background:#E2E8F0;padding:3px;border-radius:11px">'+tabB('factura_archivo','Con factura')+tabB('no_deducible','Sin factura')+'</div>';
+  // 29-oct-2026: el técnico ya no sube XML; sube fotos o PDF de la factura. Contabilidad baja el XML del SAT.
+  if(u.tipo==='factura_archivo'){
+    const n=(u.archivos||[]).length;
+    h+=lbl('Fotos o PDF de la factura (obligatorio)')+'<label style="display:block;border:2px dashed '+(n?'#86EFAC':'#CBD5E1')+';background:'+(n?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+
+      (n?n+' archivo(s) listo(s) · toca para agregar más':'Toca para tomar foto o elegir PDF')+'<input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="fmvAgregarArchivos(this)"></label>'+
+      (n?'<div style="margin-top:6px">'+u.archivos.map(function(f,i){return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#334155;padding:5px 2px;border-bottom:1px solid #F1F5F9"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(f.name||('Foto '+(i+1)))+'</span><button onclick="fmvQuitarArchivo('+i+')" style="border:none;background:#FEF2F2;color:#B91C1C;border-radius:7px;padding:3px 9px;font-family:inherit;font-weight:800">Quitar</button></div>';}).join('')+'</div>':'')+
+      '<div style="font-size:10.5px;color:#94A3B8;margin-top:4px">Que se lea bien el total, la fecha y el nombre del negocio. Si la factura tiene varias hojas, sube todas.</div>';
+    h+=lbl('Total de la factura')+'<input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(u.fa.monto)+'" oninput="fmvSetFA(\'monto\',this.value)" style="'+inp+'">';
+    h+=lbl('Fecha de la factura')+'<input type="date" value="'+esc(u.fa.fecha)+'" onchange="fmvSetFA(\'fecha\',this.value)" style="'+inp+'">';
+    h+=lbl('Negocio (opcional)')+'<input type="text" value="'+esc(u.fa.negocio)+'" oninput="fmvSetFA(\'negocio\',this.value)" placeholder="Ej. Hotel Plaza, Gasolinera Pemex" style="'+inp+'">';
+  }else if(u.tipo==='cfdi'){
     h+=lbl('XML de la factura (obligatorio)')+'<label style="display:block;border:2px dashed '+(u.xml?'#86EFAC':'#CBD5E1')+';background:'+(u.xml?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+
       (u.xml?esc(u.xml.name):'Toca para elegir el archivo .xml')+'<input type="file" accept=".xml,text/xml,application/xml" style="display:none" onchange="fmvElegirXML(this)"></label>'+
       '<div style="font-size:10.5px;color:#94A3B8;margin-top:4px">Viene junto con el PDF en el correo de la factura. Si solo tienes el PDF, pídele el XML al negocio.</div>';
@@ -8765,7 +8839,7 @@ function fmvRenderNuevo(body){
     h+=lbl('Foto del ticket o nota (obligatoria)')+'<label style="display:block;border:2px dashed '+(u.foto?'#86EFAC':'#CBD5E1')+';background:'+(u.foto?'#F0FDF4':'#fff')+';border-radius:12px;padding:14px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155">'+(u.foto?esc(u.foto.name||'Foto lista'):'Tomar o elegir foto')+'<input type="file" accept="image/*" style="display:none" onchange="fmvElegirArchivo(this,\'foto\')"></label>';
   }
   h+=lbl('Concepto del gasto')+cats;
-  const bloq=u.tipo==='cfdi'&&(!u.xmlData||(u.val&&u.val.bloq.length)||!u.val);
+  const bloq=(u.tipo==='cfdi'&&(!u.xmlData||(u.val&&u.val.bloq.length)||!u.val))||(u.tipo==='factura_archivo'&&(!(u.archivos||[]).length||!(fmvNum(u.fa.monto)>0)));
   h+=(u.error?'<div style="font-size:12px;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:9px 11px;margin-top:12px">'+esc(u.error)+'</div>':'');
   h+='<button onclick="fmvEnviar()" '+(bloq||u.enviando?'disabled':'')+' style="width:100%;margin-top:16px;padding:14px;background:'+(bloq?'#94A3B8':'#15803D')+';border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:900;cursor:'+(bloq?'not-allowed':'pointer')+'">'+(u.enviando?'Enviando…':u.tipo==='cfdi'&&u.val&&u.val.bloq.length?'No se puede enviar esta factura':'Enviar comprobante')+'</button>';
   body.innerHTML=h;
@@ -8839,6 +8913,15 @@ async function fmvRevalidar(){
   fmvUI.val=await fmvValidar(fmvUI.xmlData,s);
   if(fmvUI.modo==='nuevo') renderFlotViaticos();
 }
+window.fmvAgregarArchivos=function(input){
+  const fs=[].slice.call(input.files||[]); input.value='';
+  const grandes=fs.filter(function(f){return f.size>10*1024*1024;});
+  fmvUI.archivos=(fmvUI.archivos||[]).concat(fs.filter(function(f){return f.size<=10*1024*1024;}));
+  fmvUI.error=grandes.length?'Algún archivo pesa más de 10 MB; tómale otra foto o sube un PDF más ligero.':'';
+  renderFlotViaticos();
+};
+window.fmvQuitarArchivo=function(i){ (fmvUI.archivos||[]).splice(i,1); renderFlotViaticos(); };
+window.fmvSetFA=function(k,v){ fmvUI.fa[k]=v; const b=document.querySelector('button[onclick="fmvEnviar()"]'); if(b){ const ok=(fmvUI.archivos||[]).length&&fmvNum(fmvUI.fa.monto)>0; b.disabled=!ok; b.style.background=ok?'#15803D':'#94A3B8'; b.style.cursor=ok?'pointer':'not-allowed'; } };
 window.fmvElegirXML=function(input){
   const f=input.files&&input.files[0]; if(!f) return;
   fmvUI.error=''; fmvUI.xml=f; fmvUI.xmlData=null; fmvUI.val=null;
@@ -8878,7 +8961,10 @@ window.fmvEnviar=async function(){
   const s=fmvLista.find(function(x){return x.id===u.viaticoId;}); if(!s) return;
   u.error='';
   if(!u.categoria){u.error='Elige el concepto del gasto (alimentos, hospedaje, gasolina…).';renderFlotViaticos();return;}
-  if(u.tipo==='cfdi'){
+  if(u.tipo==='factura_archivo'){
+    if(!(u.archivos||[]).length){u.error='Sube al menos una foto o PDF de la factura.';renderFlotViaticos();return;}
+    if(!(fmvNum(u.fa.monto)>0)){u.error='Escribe el total de la factura.';renderFlotViaticos();return;}
+  }else if(u.tipo==='cfdi'){
     if(!u.xmlData||!u.val||u.val.bloq.length) return;
   }else{
     if(!(fmvNum(u.nd.monto)>0)){u.error='Captura el monto.';renderFlotViaticos();return;}
@@ -8890,7 +8976,13 @@ window.fmvEnviar=async function(){
   try{
     const sb=await fmvSb();
     const fila={viatico_id:s.id,viatico_folio:s.folio,folio_servicio:s.folio_servicio||null,tecnico_email:opsSvMiCorreo(),tecnico_nombre:opsSvMiNombre(),categoria:u.categoria,tipo:u.tipo,estatus:'Por revisar'};
-    if(u.tipo==='cfdi'){
+    if(u.tipo==='factura_archivo'){
+      const rutas=[];
+      for(let i=0;i<u.archivos.length;i++){ rutas.push(await fmvSubirArchivo(sb,s.id,u.archivos[i],'factura'+(i+1))); }
+      const pdfI=u.archivos.findIndex(function(f){return !/^image\//.test(f.type||'');}), fotoI=u.archivos.findIndex(function(f){return /^image\//.test(f.type||'');});
+      Object.assign(fila,{total:fmvNum(u.fa.monto),fecha_comprobante:u.fa.fecha||null,emisor_nombre:String(u.fa.negocio||'').trim()||null,concepto:FMV_CATS[u.categoria]||null,
+        pdf_path:pdfI>=0?rutas[pdfI]:null,foto_path:fotoI>=0?rutas[fotoI]:null,validacion:{archivos:rutas,avisos:['Factura en foto o PDF: Contabilidad descarga el XML del SAT.'],ok:[]}});
+    }else if(u.tipo==='cfdi'){
       const d=u.xmlData;
       fila.xml_path=await fmvSubirArchivo(sb,s.id,u.xml,'xml');
       if(u.pdf) fila[/^image\//.test(u.pdf.type)?'foto_path':'pdf_path']=await fmvSubirArchivo(sb,s.id,u.pdf,'factura');
@@ -8912,7 +9004,7 @@ window.fmvEnviar=async function(){
     fmvComps.unshift(r.data);
     // Aviso a quien autoriza y a Pagos (campanita del portal).
     const correos=(fmvCfg.correosNotificar&&fmvCfg.correosNotificar.length)?fmvCfg.correosNotificar:['c.acosta@tecnocontrol.com.mx','pagos@tecnocontrol.com.mx'];
-    const msg=opsSvMiNombre()+' subió un comprobante de '+(FMV_CATS[u.categoria]||'gasto')+' por '+fmvDin(fila.total)+' ('+(u.tipo==='cfdi'?'factura':'sin factura')+') a '+s.folio+'.';
+    const msg=opsSvMiNombre()+' subió un comprobante de '+(FMV_CATS[u.categoria]||'gasto')+' por '+fmvDin(fila.total)+' ('+(u.tipo==='no_deducible'?'sin factura':'factura')+') a '+s.folio+'.';
     correos.forEach(function(para){ sb.from('portal_notificaciones').insert({tipo:'viaticos_comprobante',para:para,mensaje:msg,datos:{modulo:'Operaciones',viaticoId:s.id}}).then(function(){},function(){}); });
     toast('Comprobante enviado','ok');
     fmvUI={modo:'lista'};

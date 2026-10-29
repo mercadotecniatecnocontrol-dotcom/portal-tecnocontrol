@@ -12,6 +12,9 @@
 //     calendario y la rotación de guardias ya no le asignen trabajo esas fechas.
 //   · Historial completo (quién aprobó/rechazó y a qué hora) y avisos a RH, aprobadores y al
 //     colaborador (campanita del portal y app de Flotilla).
+//   · 29-oct-2026: dos pasos. Lo que pide el técnico pasa primero por un jefe (Paloma, gerente de
+//     Operaciones o administrativo) que lo PREAUTORIZA; después RH solo lo ACEPTA. Si un jefe registra
+//     la falta o el permiso por alguien, ya nace preautorizado y RH solo lo acepta.
 // Formato impreso: HTC-FR-1201-13 "Solicitud de Permiso".
 // Tablas (Supabase): rh_solicitudes_ausencia, rh_config_permisos.
 // ══════════════════════════════════════════════════════════════════
@@ -42,7 +45,7 @@ const GOCE = {
   ausencia: [['a_cuenta_vacaciones', 'A cuenta de vacaciones'], ['pago_horas', 'Pago con horas'], ['sin_goce', 'Sin goce de sueldo']],
 };
 const GOCE_TXT = { con_goce: 'Con goce', sin_goce: 'Sin goce', a_cuenta_vacaciones: 'A cuenta de vacaciones', pago_horas: 'Pago con horas' };
-const EST = { 'Pendiente': ['#b45309', '#fef3c7'], 'Aprobada': ['#15803d', '#dcfce7'], 'Rechazada': ['#b91c1c', '#fee2e2'], 'Cancelada': ['#64748b', '#f1f5f9'] };
+const EST = { 'Pendiente': ['#b45309', '#fef3c7'], 'Preautorizada': ['#1d4ed8', '#dbeafe'], 'Aprobada': ['#15803d', '#dcfce7'], 'Rechazada': ['#b91c1c', '#fee2e2'], 'Cancelada': ['#64748b', '#f1f5f9'] };
 const CFG_DEF = { correosRH: ['rh@tecnocontrol.com.mx'], aprobadores: [], maxMismoGrupo: 1, diasAnticipacion: 3 };
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -104,7 +107,7 @@ async function revisar(s) {
   if (!s.fecha_inicio || !s.fecha_fin) return r;
   const c = await sb();
   const q = await c.from('rh_solicitudes_ausencia').select('id,folio,colaborador_email,colaborador_nombre,departamento,plaza,fecha_inicio,fecha_fin,estatus,tipo,urgente')
-    .in('estatus', ['Pendiente', 'Aprobada']).lte('fecha_inicio', s.fecha_fin).gte('fecha_fin', s.fecha_inicio).limit(200);
+    .in('estatus', ['Pendiente', 'Preautorizada', 'Aprobada']).lte('fecha_inicio', s.fecha_fin).gte('fecha_fin', s.fecha_inicio).limit(200);
   (q.data || []).forEach(o => {
     if (s.id && o.id === s.id) return;
     if (String(o.colaborador_email || '').toLowerCase() === String(s.colaborador_email || '').toLowerCase()) r.propias.push(o);
@@ -163,25 +166,44 @@ function correosAvisoNueva() {
   return [...new Set([].concat(cfg.correosRH || [], cfg.aprobadores || []).map(x => String(x).toLowerCase().trim()).filter(Boolean))];
 }
 
-async function crearSolicitud(s, r) {
+async function crearSolicitud(s, r, preaut) {
   const c = await sb();
   const fila = Object.assign({}, s, {
     traslapes: [].concat(r.grupo.map(o => ({ tipo: 'solicitud', nombre: o.colaborador_nombre, folio: o.folio, inicio: o.fecha_inicio, fin: o.fecha_fin, estatus: o.estatus })),
       r.registradas.map(o => ({ tipo: 'ausencia', nombre: o.nombre, inicio: o.fecha_inicio, fin: o.fecha_fin, estatus: o.tipo })),
       r.guardias.map(g => ({ tipo: 'guardia', semana: g.semana_inicio })), r.anticipacion ? [{ tipo: 'anticipacion', dias: cfg.diasAnticipacion }] : []),
-    estatus: 'Pendiente',
-    historial: [{ accion: 'Solicitada' + (s.urgente ? ' (URGENTE)' : ''), por: s.colaborador_email, porNombre: s.colaborador_nombre, en: new Date().toISOString(), comentario: s.urgente ? s.urgente_motivo : null }],
+    estatus: preaut ? 'Preautorizada' : 'Pendiente',
+    historial: [{ accion: 'Solicitada' + (s.urgente ? ' (URGENTE)' : ''), por: s.colaborador_email, porNombre: s.colaborador_nombre, en: new Date().toISOString(), comentario: s.urgente ? s.urgente_motivo : null }]
+      .concat(preaut ? [{ accion: 'Preautorizada (la registró un jefe)', por: preaut.correo, porNombre: preaut.nombre, en: new Date().toISOString(), comentario: null }] : []),
   });
   const ins = await c.from('rh_solicitudes_ausencia').insert(fila).select().single();
   if (ins.error) throw ins.error;
   const folio = 'PER-' + String(ins.data.id).padStart(5, '0');
   await c.from('rh_solicitudes_ausencia').update({ folio: folio }).eq('id', ins.data.id);
   ins.data.folio = folio;
+  if (preaut) {
+    const m = s.colaborador_nombre + ': ' + folio + ' (' + TIPOS[s.tipo].t.toLowerCase() + ', ' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ') registrada y preautorizada por ' + (preaut.nombre || preaut.correo) + '. Pendiente que RH la acepte.';
+    (cfg.correosRH || []).forEach(p => avisarPortal(p, 'permiso_por_aceptar', m, { solicitudId: ins.data.id }));
+    await apartarCalendario(c, ins.data, preaut).catch(() => {});
+    return ins.data;
+  }
   const msg = (s.urgente ? 'URGENTE · ' : '') + s.colaborador_nombre + ' solicita ' + TIPOS[s.tipo].t.toLowerCase() + ' ' + folio + ': ' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + (fila.traslapes.length ? ' · se empalma con otra solicitud o ausencia' : '') + '.';
-  correosAvisoNueva().forEach(p => avisarPortal(p, s.urgente ? 'permiso_urgente' : 'permiso_solicitud', msg, { solicitudId: ins.data.id }));
+  // Primero se entera quien preautoriza (jefes); RH recibe copia para saber que viene.
+  correosAvisoNueva().forEach(p => avisarPortal(p, s.urgente ? 'permiso_urgente' : 'permiso_solicitud', msg + ' Falta que un jefe la preautorice.', { solicitudId: ins.data.id }));
   return ins.data;
 }
 
+async function apartarCalendario(c, s, usuario) {
+  if (!s.tecnico_id || s.ausencia_ops_id) return null;
+  const tipoOps = s.tipo === 'vacaciones' ? 'Vacaciones' : s.tipo === 'incapacidad' ? 'Incapacidad' : 'Permiso';
+  const idAus = 'per' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const a = await c.from('ops_docs').insert({ ruta: 'ops_tecnico_ausencias/' + idAus, coleccion: 'ops_tecnico_ausencias', doc_id: idAus,
+    datos: { tecnicoId: s.tecnico_id, tipo: tipoOps, fechaInicio: s.fecha_inicio, fechaFin: s.fecha_fin, motivo: (s.folio || 'PER') + ' · ' + (s.motivo || ''), creadoPor: usuario.nombre || usuario.correo, fechaAlta: hoy(), solicitudId: String(s.id) } });
+  if (a.error) { console.warn('[permisos] no se pudo apartar en el calendario de Operaciones', a.error); return null; }
+  await c.from('rh_solicitudes_ausencia').update({ ausencia_ops_id: idAus }).eq('id', s.id);
+  s.ausencia_ops_id = idAus;
+  return idAus;
+}
 async function resolver(s, estatus, usuario, comentario) {
   const c = await sb();
   const ahora = new Date().toISOString();
@@ -189,8 +211,8 @@ async function resolver(s, estatus, usuario, comentario) {
     estatus: estatus, resuelto_por: usuario.correo, resuelto_nombre: usuario.nombre, resuelto_en: ahora, comentario_resolucion: comentario || null, actualizado_en: ahora,
     historial: (s.historial || []).concat([{ accion: estatus, por: usuario.correo, porNombre: usuario.nombre, en: ahora, comentario: comentario || null }]),
   };
-  // Al aprobar: se aparta en el calendario de Operaciones.
-  if (estatus === 'Aprobada' && s.tecnico_id && !s.ausencia_ops_id) {
+  // Al preautorizar o aprobar: se aparta en el calendario de Operaciones (así ya no le asignan trabajo).
+  if ((estatus === 'Aprobada' || estatus === 'Preautorizada') && s.tecnico_id && !s.ausencia_ops_id) {
     const tipoOps = s.tipo === 'vacaciones' ? 'Vacaciones' : s.tipo === 'incapacidad' ? 'Incapacidad' : 'Permiso';
     const idAus = 'per' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const a = await c.from('ops_docs').insert({ ruta: 'ops_tecnico_ausencias/' + idAus, coleccion: 'ops_tecnico_ausencias', doc_id: idAus,
@@ -206,11 +228,11 @@ async function resolver(s, estatus, usuario, comentario) {
   Object.assign(s, cambios);
   const rango = fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '');
   if (estatus !== 'Cancelada' || usuario.correo !== s.colaborador_email) {
-    const m = 'Tu solicitud ' + s.folio + ' (' + TIPOS[s.tipo].t.toLowerCase() + ', ' + rango + ') fue ' + estatus.toUpperCase() + ' por ' + (usuario.nombre || usuario.correo) + (comentario ? '. Comentario: ' + comentario : '') + '.';
+    const m = 'Tu solicitud ' + s.folio + ' (' + TIPOS[s.tipo].t.toLowerCase() + ', ' + rango + ') fue ' + estatus.toUpperCase() + ' por ' + (usuario.nombre || usuario.correo) + (comentario ? '. Comentario: ' + comentario : '') + (estatus === 'Preautorizada' ? '. Ya solo falta que RH la acepte.' : '') + '.';
     avisarApp(s.colaborador_email, estatus === 'Aprobada' ? 'perm_tec_aprobada' : estatus === 'Rechazada' ? 'perm_tec_rechazada' : 'perm_tec_cancelada', m, s);
     avisarPortal(s.colaborador_email, 'permiso_' + estatus.toLowerCase(), m, { solicitudId: s.id });
   }
-  (cfg.correosRH || []).forEach(p => avisarPortal(p, 'permiso_' + estatus.toLowerCase(), s.colaborador_nombre + ': ' + s.folio + ' ' + estatus.toLowerCase() + ' por ' + (usuario.nombre || usuario.correo) + ' (' + rango + ').', { solicitudId: s.id }));
+  (cfg.correosRH || []).forEach(p => avisarPortal(p, estatus === 'Preautorizada' ? 'permiso_por_aceptar' : 'permiso_' + estatus.toLowerCase(), s.colaborador_nombre + ': ' + s.folio + ' ' + estatus.toLowerCase() + ' por ' + (usuario.nombre || usuario.correo) + ' (' + rango + ')' + (estatus === 'Preautorizada' ? '. Pendiente que RH la acepte.' : '.'), { solicitudId: s.id }));
 }
 
 // ── Formato HTC-FR-1201-13 (imprimible) ──
@@ -267,7 +289,8 @@ function mRender() {
     '<div style="font-size:12px;color:#475569">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + esc(s.dias || '') + ' día(s)' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '') + '</div>' +
     '<div style="font-size:10.5px;color:#94A3B8">' + esc(s.folio || '') + (s.urgente ? ' · urgente' : '') + '</div></div>' + chipEst(s.estatus) + '</div>' +
     (s.resuelto_nombre && s.estatus !== 'Pendiente' ? '<div style="font-size:11.5px;color:#475569;margin-top:6px">' + esc(s.estatus) + ' por <b>' + esc(s.resuelto_nombre) + '</b> · ' + fHora(s.resuelto_en) + (s.comentario_resolucion ? '<br>"' + esc(s.comentario_resolucion) + '"' : '') + '</div>' : '') +
-    (s.estatus === 'Pendiente' ? '<button onclick="tcPermisos._mCancelar(' + s.id + ')" style="margin-top:8px;padding:8px 12px;background:#fff;border:1.5px solid #FECACA;border-radius:9px;color:#B91C1C;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Cancelar solicitud</button>' : '') +
+    (s.estatus === 'Preautorizada' ? '<div style="font-size:11.5px;color:#1d4ed8;margin-top:6px;font-weight:700">Tu jefe ya la preautorizó; falta que RH la acepte.</div>' : '') +
+    (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada' ? '<button onclick="tcPermisos._mCancelar(' + s.id + ')" style="margin-top:8px;padding:8px 12px;background:#fff;border:1.5px solid #FECACA;border-radius:9px;color:#B91C1C;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Cancelar solicitud</button>' : '') +
     '</div>';
   M.cont.innerHTML =
     '<button onclick="tcPermisos._mNueva()" style="width:100%;padding:13px;background:#1D2E73;border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:14px;font-weight:900;cursor:pointer;margin-bottom:14px">+ Nueva solicitud</button>' +
@@ -366,9 +389,27 @@ async function panel(cont, opts) {
   await pCargar();
   pRender();
 }
-function pPuedeAprobar() {
-  const u = String((P.opts.usuario || {}).correo || '').toLowerCase();
-  return !!P.opts.puedeAprobar || (cfg.aprobadores || []).map(x => String(x).toLowerCase()).includes(u) || (cfg.correosRH || []).map(x => String(x).toLowerCase()).includes(u);
+function pYo() { return String((P.opts.usuario || {}).correo || '').toLowerCase(); }
+function pEsRH() { return (cfg.correosRH || []).map(x => String(x).toLowerCase()).includes(pYo()); }
+// Jefe = quien preautoriza: admins del módulo que lo abre + "Pueden aprobar" de Reglas y avisos (sin contar a RH).
+function pEsJefe() { return !pEsRH() && (!!P.opts.puedeAprobar || (cfg.aprobadores || []).map(x => String(x).toLowerCase()).includes(pYo())); }
+function pPuedeAprobar() { return pEsRH() || pEsJefe() || !!P.opts.puedeAprobar; }
+// Botones según el paso: Pendiente → el jefe preautoriza; Preautorizada → RH acepta.
+function pAccionesHTML(s, grande) {
+  const st = grande ? 'padding:9px 14px;border-radius:8px;font-size:12.5px' : 'padding:6px 14px;border-radius:7px;font-size:12px';
+  const btn = (txt, est, c) => '<button onclick="tcPermisos._pResolver(' + s.id + ',\'' + est + '\'' + (grande ? ',true' : '') + ')" style="background:' + c + ';border:none;color:#fff;' + st + ';cursor:pointer;font-weight:700">' + txt + '</button>';
+  const rech = '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Rechazada\'' + (grande ? ',true' : '') + ')" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;' + st + ';cursor:pointer;font-weight:700">Rechazar</button>';
+  const nota = t => '<span style="font-size:11.5px;color:#64748b;align-self:center">' + t + '</span>';
+  if (s.estatus === 'Pendiente') {
+    if (pEsJefe()) return btn('Preautorizar', 'Preautorizada', '#1d4ed8') + rech;
+    if (pEsRH()) return nota('Esperando que un jefe la preautorice') + btn('Aceptar de todos modos', 'Aprobada', '#64748b') + rech;
+    return '';
+  }
+  if (s.estatus === 'Preautorizada') {
+    if (pEsRH()) return btn('Aceptar (RH)', 'Aprobada', '#15803d') + rech;
+    if (pPuedeAprobar()) return nota('Preautorizada · falta que RH la acepte') + rech;
+  }
+  return '';
 }
 async function pCargar() {
   try { const c = await sb(); const r = await c.from('rh_solicitudes_ausencia').select('*').gte('fecha_fin', sumar(hoy(), -365)).order('fecha_inicio', { ascending: false }).limit(1500); P.lista = r.data || []; }
@@ -379,14 +420,14 @@ function pRender() {
   const H = hoy();
   const deptos = [...new Set(P.lista.map(s => s.departamento).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
   const enDepto = s => !P.filtroDepto || norm(s.departamento) === norm(P.filtroDepto);
-  const pend = P.lista.filter(s => s.estatus === 'Pendiente' && enDepto(s)).sort((a, b) => (b.urgente - a.urgente) || String(a.fecha_inicio).localeCompare(String(b.fecha_inicio)));
+  const pend = P.lista.filter(s => (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada') && enDepto(s)).sort((a, b) => (b.urgente - a.urgente) || (a.estatus === b.estatus ? 0 : a.estatus === 'Pendiente' ? -1 : 1) || String(a.fecha_inicio).localeCompare(String(b.fecha_inicio)));
   const ausentesHoy = P.lista.filter(s => s.estatus === 'Aprobada' && s.fecha_inicio <= H && s.fecha_fin >= H && enDepto(s));
   const prox30 = P.lista.filter(s => s.estatus === 'Aprobada' && s.fecha_inicio > H && s.fecha_inicio <= sumar(H, 30) && enDepto(s));
   const kpi = (t, v, c, sub) => '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase">' + t + '</div><div style="font-size:20px;font-weight:800;color:' + c + '">' + v + '</div><div style="font-size:11px;color:#94a3b8">' + sub + '</div></div>';
   // Franja de 14 días: quién falta cada día.
   const dias = []; for (let i = 0; i < 14; i++) dias.push(sumar(H, i));
   const franja = '<div style="display:grid;grid-template-columns:repeat(14,minmax(70px,1fr));gap:4px;overflow-x:auto;padding-bottom:4px">' + dias.map(d => {
-    const fuera = P.lista.filter(s => (s.estatus === 'Aprobada' || s.estatus === 'Pendiente') && s.fecha_inicio <= d && s.fecha_fin >= d && enDepto(s)).sort((a, b) => String(a.colaborador_nombre).localeCompare(String(b.colaborador_nombre), 'es'));
+    const fuera = P.lista.filter(s => (s.estatus === 'Aprobada' || s.estatus === 'Preautorizada' || s.estatus === 'Pendiente') && s.fecha_inicio <= d && s.fecha_fin >= d && enDepto(s)).sort((a, b) => String(a.colaborador_nombre).localeCompare(String(b.colaborador_nombre), 'es'));
     const dom = new Date(d + 'T12:00:00').getDay() === 0;
     return '<div style="background:' + (dom ? '#f8fafc' : '#fff') + ';border:1px solid ' + (d === H ? '#1D2E73' : '#e2e8f0') + ';border-radius:9px;padding:6px;min-height:64px">' +
       '<div style="font-size:10.5px;font-weight:700;color:' + (d === H ? '#1D2E73' : '#64748b') + ';margin-bottom:4px">' + fCorta(d) + '</div>' +
@@ -400,8 +441,8 @@ function pRender() {
       '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(s.motivo || '') + '</div>' +
       (tr.length ? '<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px">Se empalma: ' + esc(tr.map(t => t.tipo === 'guardia' ? 'guardia semana ' + t.semana : t.tipo === 'anticipacion' ? 'poca anticipación' : t.nombre).join(', ')) + '</div>' : '') +
       '</div><div style="text-align:right;font-size:10.5px;color:#94a3b8">' + esc(s.folio || '') + '<br>' + esc(s.departamento || '') + '<br>' + fHora(s.creado_en) + '</div></div>' +
-      (pPuedeAprobar() ? '<div style="display:flex;gap:6px;margin-top:9px" onclick="event.stopPropagation()"><button onclick="tcPermisos._pResolver(' + s.id + ',\'Aprobada\')" style="background:#15803d;border:none;color:#fff;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">Aprobar</button>' +
-        '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Rechazada\')" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">Rechazar</button></div>' : '') +
+      (pAccionesHTML(s) ? '<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">' + pAccionesHTML(s) + '</div>' : '') +
+      (s.estatus === 'Preautorizada' ? '<div style="font-size:11px;color:#1d4ed8;font-weight:700;margin-top:6px">Preautorizada por ' + esc(((s.historial || []).slice().reverse().find(h => /^Preautorizada/.test(h.accion)) || {}).porNombre || '') + ' · falta que RH la acepte</div>' : '') +
       '</div>';
   };
   const q = P.busca.toLowerCase().trim();
@@ -411,7 +452,7 @@ function pRender() {
   P.cont.innerHTML =
     '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px"><div>' +
     '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:19px;font-weight:700;color:#1D2E73">' + esc(P.opts.titulo || 'Permisos, vacaciones y ausencias') + '</div>' +
-    '<div style="font-size:12px;color:#64748b">Los técnicos piden desde la app de Flotilla. Al aprobar se aparta en el calendario de Operaciones y se avisa a RH.</div></div>' +
+    '<div style="font-size:12px;color:#64748b">Los técnicos piden desde la app. <b>1)</b> Un jefe la preautoriza (se aparta en el calendario de Operaciones) · <b>2)</b> RH la acepta. Lo que registra un jefe por alguien ya nace preautorizado.</div></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><select onchange="tcPermisos._pSet(\'filtroDepto\',this.value)" style="' + sel + '"><option value="">Todos los departamentos</option>' + deptos.map(d => '<option ' + (norm(d) === norm(P.filtroDepto) ? 'selected' : '') + '>' + esc(d) + '</option>').join('') + '</select>' +
     '<button onclick="tcPermisos._pNuevaPortal()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">+ Registrar por alguien</button>' +
     (pPuedeAprobar() ? '<button onclick="tcPermisos._pConfig()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Reglas y avisos</button>' : '') + '</div></div>' +
@@ -451,13 +492,13 @@ async function pVer(id) {
     fila('Motivo', esc(s.motivo || '')) + fila('Cómo lo repone', esc(s.como_repone || '')) + fila('Jefe inmediato', esc(s.jefe || '')) + fila('Solicitado', fHora(s.creado_en) + (s.origen === 'app' ? ' · desde la app' : ' · desde el portal')) + '</div>' +
     '<div id="tcp-rev-adm" style="margin-top:6px"><div style="font-size:12px;color:#64748b;margin-top:8px">Revisando empalmes al día de hoy…</div></div>' +
     (hist ? '<div style="font-size:12px;font-weight:700;color:#1D2E73;margin:14px 0 4px">Historial</div>' + hist : '') +
-    (puede && s.estatus === 'Pendiente' ? '<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:14px">Comentario (obligatorio si rechazas)<textarea id="tcp-com" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;font-family:inherit"></textarea></label>' : '') +
+    (pAccionesHTML(s, true) ? '<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:14px">Comentario (obligatorio si rechazas)<textarea id="tcp-com" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;font-family:inherit"></textarea></label>' : '') +
     '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">' +
     '<button onclick="tcPermisos._pImprimir(' + s.id + ')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;gap:6px;align-items:center">' + ICO.imprimir + 'Formato HTC-FR-1201-13</button>' +
-    (puede && (s.estatus === 'Aprobada' || s.estatus === 'Pendiente') ? '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Cancelada\')" style="background:#fff;border:1px solid #cbd5e1;color:#64748b;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Cancelar</button>' : '') +
-    (puede && s.estatus === 'Pendiente' ? '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Rechazada\',true)" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700">Rechazar</button><button onclick="tcPermisos._pResolver(' + s.id + ',\'Aprobada\',true)" style="background:#15803d;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700">Aprobar</button>' : '') +
+    (puede && (s.estatus === 'Aprobada' || s.estatus === 'Pendiente' || s.estatus === 'Preautorizada') ? '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Cancelada\')" style="background:#fff;border:1px solid #cbd5e1;color:#64748b;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Cancelar</button>' : '') +
+    pAccionesHTML(s, true) +
     '</div>', 680);
-  if (s.estatus === 'Pendiente' || s.estatus === 'Aprobada') {
+  if (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada' || s.estatus === 'Aprobada') {
     try { const r = await revisar(s); const el = document.getElementById('tcp-rev-adm'); if (el) el.innerHTML = revisionHTML({ propias: [], grupo: r.grupo, registradas: r.registradas, guardias: r.guardias, anticipacion: false }); } catch (e) {}
   } else { const el = document.getElementById('tcp-rev-adm'); if (el) el.innerHTML = ''; }
 }
@@ -483,6 +524,7 @@ async function pNuevaPortal() {
   window.__tcpTecs = tecs;
   const inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px';
   pModal('<div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:4px">Registrar solicitud por alguien</div>' +
+    (pEsJefe() ? '<div style="font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:7px 10px;margin-bottom:8px">Como jefe, lo que registres aquí queda <b>preautorizado</b>; RH solo lo acepta.</div>' : '') +
     '<div style="font-size:12px;color:#64748b;margin-bottom:12px">Pasa por las mismas reglas que la app. Aparecen todos los colaboradores activos; quien no tiene correo no recibe el aviso en su celular.</div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || t.puesto || '') + (t.correo ? '' : ' (sin correo)') + '</option>').join('') + '</select></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Tipo<select id="tcp-n-tipo" style="' + inp + '">' + Object.keys(TIPOS).map(k => '<option value="' + k + '">' + TIPOS[k].t + '</option>').join('') + '</select></label>' +
@@ -512,7 +554,7 @@ async function pGuardarNueva() {
     if (r.propias.length) throw new Error('Ya tiene una solicitud en esas fechas (' + r.propias.map(o => o.folio).join(', ') + ').');
     if (bloqueada(r) && !(s.urgente && s.urgente_motivo)) throw new Error('Fechas bloqueadas: ' + [r.grupo.map(o => o.colaborador_nombre).join(', '), r.registradas.map(o => o.nombre).join(', '), r.anticipacion ? 'poca anticipación' : ''].filter(Boolean).join(' · ') + '. Márcala como urgente con su motivo.');
     if (!bloqueada(r)) s.urgente = !!(s.urgente && s.urgente_motivo);
-    await crearSolicitud(s, r);
+    await crearSolicitud(s, r, pEsJefe() ? (P.opts.usuario || {}) : null);
     pModal(''); await pCargar(); pRender();
   } catch (e) { err.textContent = e.message || String(e); btn.disabled = false; btn.textContent = 'Revisar y registrar'; }
 }

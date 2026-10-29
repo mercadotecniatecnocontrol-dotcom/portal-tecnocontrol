@@ -1052,3 +1052,200 @@ const _CHECK_PFL = setInterval(()=>{
 
 console.log('[PAGOS FLOTILLA] ✅ Bandeja de pagos flotilla cargada');
 })();
+
+// ══════════════════════════════════════════════════════════════════════
+// VIÁTICOS EN PAGOS Y CONTABILIDAD (29-oct-2026, urgente)
+//  · Pagos: "Viáticos por depositar" (solicitudes Pendiente). Pagos registra el depósito con su
+//    evidencia (foto o PDF de la transferencia o recibo firmado) → pasa a Pagada, se avisa al técnico.
+//  · Contabilidad: historial de viáticos pagados con su seguimiento de comprobación (cuánto se
+//    depositó, cuánto ya comprobó el técnico, cuánto falta, fecha límite) y revisión de comprobantes.
+//  Mismas tablas que Operaciones → Viáticos (ops_solicitudes_viaticos, ops_viaticos_comprobantes).
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+if (window.__tcViaPagos) return; window.__tcViaPagos = true;
+const SB_URL='https://vlbyjoqessxcmkejcujp.supabase.co', SB_KEY='sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+let _c=null,_cp=null;
+function sb(){ if(window.tcSupabase) return Promise.resolve(window.tcSupabase); if(_c) return Promise.resolve(_c); if(_cp) return _cp;
+  _cp=import('https://esm.sh/@supabase/supabase-js@2').then(m=>{_c=m.createClient(SB_URL,SB_KEY);return _c;}).catch(e=>{_cp=null;throw e;}); return _cp; }
+const BUCKET='viaticos-comprobantes';
+const FORMAS={ tarjeta_nomina:'Tarjeta de nómina (débito)', efectivo:'Efectivo' };
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const din=n=>'$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+function hoy(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function sumar(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+const fc=iso=>{ if(!iso) return '—'; const d=new Date(String(iso).slice(0,10)+'T12:00:00'); return isNaN(d)?iso:d.toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'}); };
+const fh=iso=>{ if(!iso) return ''; const d=new Date(iso); return isNaN(d)?iso:d.toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); };
+const depositoDe=s=>s.deposito!=null?Number(s.deposito):Number(s.total)||0;
+function yo(){ const u=(window.auth&&window.auth.currentUser)||{}; const correo=String(u.email||'').toLowerCase();
+  const t=(TECS||[]).find(x=>String(x.correo||'').toLowerCase()===correo); return { correo, nombre:(t&&t.nombre)||u.displayName||correo }; }
+async function avisoPortal(para,tipo,mensaje,datos){ if(!/@/.test(String(para||''))) return; try{ const c=await sb(); await c.from('portal_notificaciones').insert({tipo,para:String(para).toLowerCase(),mensaje,datos:Object.assign({modulo:'Viáticos'},datos||{})}); }catch(e){} }
+async function avisoApp(para,tipo,mensaje,s){ if(!/@/.test(String(para||''))) return false; try{ const c=await sb(); const r=await c.from('ops_notificaciones').insert({id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),tipo,para:String(para).toLowerCase(),mensaje,folio:s.folio||null,solicitud_id:String(s.id),leida:false,fecha:new Date().toISOString()}); return !r.error; }catch(e){ return false; } }
+async function destinatarios(evento,def){ try{ const c=await sb(); const r=await c.from('notif_matriz').select('destinatarios,activo').eq('evento',evento).maybeSingle(); if(r.data&&r.data.activo!==false&&(r.data.destinatarios||[]).length) return r.data.destinatarios; }catch(e){} return def; }
+let TECS=null;
+async function tecnicos(){ if(TECS) return TECS; try{ const c=await sb(); const r=await c.from('ops_docs').select('id:doc_id,nombre:datos->>nombre,correo:datos->>correo,estatus:datos->>estatus').eq('coleccion','ops_tecnicos').limit(1000);
+  TECS=(r.data||[]).filter(t=>t.nombre&&(t.estatus||'activo')!=='baja').sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es')); }catch(e){ TECS=[]; } return TECS; }
+function norm(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+function css(){ if(document.getElementById('vp-css')) return; const st=document.createElement('style'); st.id='vp-css'; st.textContent=
+  '.vp-box{background:#fff;border-radius:16px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px;font-family:inherit}'+
+  '.vp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:12px 0}'+
+  '.vp-kpi{border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px}.vp-kpi b{display:block;font-size:20px;margin-top:2px}.vp-kpi span{font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase}'+
+  '.vp-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border:1px solid #e2e8f0;border-left:4px solid var(--c,#cbd5e1);border-radius:12px;padding:11px 13px;margin-bottom:8px}'+
+  '.vp-chip{display:inline-block;font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 9px;white-space:nowrap}'+
+  '.vp-btn{border:none;border-radius:9px;padding:8px 13px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit}'+
+  '.vp-in{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:9px 10px;font-size:13px;margin:4px 0 11px;font-family:inherit}'+
+  '.vp-lb{font-size:11.5px;font-weight:700;color:#475569}'+
+  '.vp-f{border:1.5px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}.vp-f.on{background:#1D2E73;border-color:#1D2E73;color:#fff}';
+  document.head.appendChild(st); }
+function modal(html){ let m=document.getElementById('vp-modal'); if(!m){ m=document.createElement('div'); m.id='vp-modal'; document.body.appendChild(m); }
+  m.innerHTML=html?'<div style="position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:18px"><div style="background:#fff;border-radius:16px;width:560px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:20px 22px">'+html+'</div></div>':''; }
+window.__vpCerrar=()=>modal('');
+function abrirDato(dataUrl){ const w=window.open('','_blank'); if(!w){ alert('Permite ventanas emergentes.'); return; } const pdf=/^data:application\/pdf/.test(dataUrl||'');
+  w.document.write('<body style="margin:0;background:#222">'+(pdf?'<iframe src="'+dataUrl+'" style="border:0;width:100vw;height:100vh"></iframe>':'<img src="'+dataUrl+'" style="max-width:100%;display:block;margin:auto">')+'</body>'); w.document.close(); }
+window.__vpAbrirArchivo=async function(ruta){ const w=window.open('','_blank'); try{ const c=await sb(); const r=await c.storage.from(BUCKET).createSignedUrl(ruta,600); if(r.error) throw r.error; if(w) w.location.href=r.data.signedUrl; }catch(e){ if(w) w.close(); alert('No se pudo abrir: '+(e.message||e)); } };
+
+// ───────────── PAGOS: viáticos por depositar ─────────────
+const P={ lista:[], q:'' };
+function panelPagos(){ css(); let p=document.getElementById('vp-pagos'); if(p) return p; const dash=document.getElementById('pagos-dashboard'); if(!dash||!dash.parentNode) return null;
+  p=document.createElement('div'); p.id='vp-pagos'; dash.parentNode.insertBefore(p,dash); return p; }
+async function cargarPagos(){ tecnicos(); const p=panelPagos(); if(!p) return; p.style.display='block'; p.innerHTML='<div class="vp-box" style="color:#64748b;font-size:13px">Cargando viáticos por depositar…</div>';
+  try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select('id,folio,estatus,solicitante_email,solicitante_nombre,folio_servicio,cliente,destino,fecha_salida,fecha_regreso,integrantes,personas,deposito,total,empresa_entrega,tarifas,responsable_email,responsable_nombre,creado_en').eq('estatus','Pendiente').order('fecha_salida',{ascending:true}).limit(300);
+    if(r.error) throw r.error; P.lista=r.data||[]; pintarPagos(); }
+  catch(e){ p.innerHTML='<div class="vp-box" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div>'; } }
+function pintarPagos(){ const p=panelPagos(); if(!p) return; const H=hoy(), q=norm(P.q);
+  const l=P.lista.filter(s=>!q||norm([s.folio,s.integrantes,s.destino,s.cliente,s.solicitante_nombre,s.empresa_entrega].join(' ')).includes(q));
+  const ya=P.lista.filter(s=>s.fecha_salida&&s.fecha_salida<=H), sem=P.lista.filter(s=>s.fecha_salida>H&&s.fecha_salida<=sumar(H,7));
+  const tot=a=>a.reduce((x,s)=>x+depositoDe(s),0);
+  const est=s=>{ if(!s.fecha_salida) return ['Sin fecha','#64748b','#f1f5f9','#cbd5e1'];
+    if(s.fecha_salida<H) return ['Ya salió · sin depósito','#b91c1c','#fee2e2','#ef4444']; if(s.fecha_salida===H) return ['Sale HOY','#c2410c','#ffedd5','#f97316'];
+    const d=Math.round((new Date(s.fecha_salida+'T12:00:00')-new Date(H+'T12:00:00'))/864e5); return [d<=2?'Sale en '+d+' día(s)':'Sale '+fc(s.fecha_salida), d<=2?'#b45309':'#1D2E73', d<=2?'#fef3c7':'#e0e7ff', d<=2?'#f59e0b':'#6366f1']; };
+  p.innerHTML='<div class="vp-box"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'+
+    '<div><div style="font-size:16px;font-weight:800;color:#0A1628">Viáticos por depositar</div><div style="font-size:12px;color:#64748b">Solicitudes de viáticos que todavía no se depositan. Al registrar el depósito con su evidencia, se le avisa al técnico y pasa a Contabilidad para el seguimiento de la comprobación.</div></div>'+
+    '<button class="vp-btn" style="background:#f1f5f9;color:#334155" onclick="window.__vpPagosCargar()">↻ Actualizar</button></div>'+
+    '<div class="vp-kpis"><div class="vp-kpi"><span>Por depositar</span><b style="color:#1D2E73">'+P.lista.length+' · '+din(tot(P.lista))+'</b></div>'+
+    '<div class="vp-kpi" style="border-color:'+(ya.length?'#fecaca':'#e2e8f0')+'"><span>Ya salieron o salen hoy</span><b style="color:'+(ya.length?'#b91c1c':'#1D2E73')+'">'+ya.length+' · '+din(tot(ya))+'</b></div>'+
+    '<div class="vp-kpi"><span>Salen en 7 días</span><b style="color:#b45309">'+sem.length+' · '+din(tot(sem))+'</b></div></div>'+
+    '<input class="vp-in" placeholder="Buscar folio, técnico, destino, cliente…" value="'+esc(P.q)+'" oninput="window.__vpPagosBuscar(this.value)" id="vp-pagos-q" style="max-width:420px">'+
+    (l.length?l.map(s=>{ const e=est(s), t=s.tarifas||{};
+      return '<div class="vp-row" style="--c:'+e[3]+'"><div style="flex:1;min-width:260px">'+
+        '<div style="font-size:13.5px;font-weight:800;color:#0A1628">'+esc(s.folio)+' · '+esc(s.integrantes||s.solicitante_nombre||'')+'</div>'+
+        '<div style="font-size:12px;color:#475569">'+esc(s.destino||'')+(t.servicioTexto?' · '+esc(t.servicioTexto):'')+'</div>'+
+        '<div style="font-size:11.5px;color:#94a3b8">Sale '+fc(s.fecha_salida)+' · regresa '+fc(s.fecha_regreso)+' · '+esc(s.empresa_entrega||'')+' · pidió '+esc(s.solicitante_nombre||'')+'</div></div>'+
+        '<span class="vp-chip" style="color:'+e[1]+';background:'+e[2]+'">'+esc(e[0])+'</span>'+
+        '<div style="text-align:right;min-width:110px"><div style="font-size:10.5px;color:#64748b;font-weight:700">A DEPOSITAR</div><div style="font-size:17px;font-weight:800;color:#15803d">'+din(depositoDe(s))+'</div></div>'+
+        '<button class="vp-btn" style="background:#15803d;color:#fff" onclick="window.__vpDeposito('+s.id+')">Registrar depósito</button></div>'; }).join('')
+      :'<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px">'+(P.lista.length?'Ninguno coincide con la búsqueda.':'No hay viáticos pendientes de depositar.')+'</div>')+'</div>'; }
+window.__vpPagosCargar=cargarPagos;
+window.__vpPagosBuscar=v=>{ P.q=v; pintarPagos(); const i=document.getElementById('vp-pagos-q'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } };
+window.__vpDeposito=async function(id){ const s=P.lista.find(x=>x.id===id); if(!s) return; const tecs=await tecnicos();
+  const prim=norm(String(s.integrantes||'').split(/,| y /)[0]); let resp=String(s.responsable_email||'').toLowerCase();
+  if(!resp){ const t=tecs.find(t=>prim&&norm(t.nombre).startsWith(prim.split(' ').slice(0,2).join(' '))); resp=t&&t.correo?String(t.correo).toLowerCase():String(s.solicitante_email||'').toLowerCase(); }
+  const lim=sumar(s.fecha_regreso||hoy(),3);
+  modal('<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div style="font-size:16px;font-weight:800;color:#0A1628">Registrar depósito · '+esc(s.folio)+'</div><div style="font-size:12px;color:#64748b">'+esc(s.integrantes||'')+' · '+esc(s.destino||'')+'</div></div><button class="vp-btn" style="background:#f1f5f9;color:#475569" onclick="window.__vpCerrar()">✕</button></div>'+
+    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px 12px;margin:12px 0;font-size:12.5px;color:#166534">Calculado para depositar: <b>'+din(depositoDe(s))+'</b></div>'+
+    '<div class="vp-lb">¿Cómo se entregó?</div><div style="display:flex;gap:14px;margin:6px 0 11px">'+Object.keys(FORMAS).map((k,i)=>'<label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="radio" name="vp-forma" value="'+k+'" '+(i===0?'checked':'')+'>'+FORMAS[k]+'</label>').join('')+'</div>'+
+    '<label class="vp-lb">Monto depositado<input id="vp-monto" type="number" min="0" step="0.01" class="vp-in" value="'+depositoDe(s)+'"></label>'+
+    '<label class="vp-lb">Referencia o número de operación<input id="vp-ref" class="vp-in" placeholder="Ej. folio de la transferencia"></label>'+
+    '<label class="vp-lb">Evidencia del depósito (foto o PDF) <span style="color:#E7402B">*</span><input id="vp-comp" type="file" accept="image/*,application/pdf" class="vp-in" style="padding:7px"></label>'+
+    '<label class="vp-lb">¿Quién comprueba?<select id="vp-resp" class="vp-in"><option value="">— Elige —</option>'+tecs.map(t=>'<option value="'+esc(String(t.correo||'').toLowerCase())+'" data-n="'+esc(t.nombre)+'" '+(t.correo&&String(t.correo).toLowerCase()===resp?'selected':'')+'>'+esc(t.nombre)+(t.correo?'':' (sin correo)')+'</option>').join('')+'</select></label>'+
+    '<label class="vp-lb">Fecha límite para comprobar<input id="vp-lim" type="date" class="vp-in" value="'+lim+'"></label>'+
+    '<div id="vp-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="vp-btn" style="background:#f1f5f9;color:#475569" onclick="window.__vpCerrar()">Cancelar</button><button id="vp-btn" class="vp-btn" style="background:#15803d;color:#fff" onclick="window.__vpGuardarDeposito('+s.id+')">Guardar depósito y avisar</button></div>'); };
+window.__vpGuardarDeposito=async function(id){ const s=P.lista.find(x=>x.id===id); if(!s) return; const err=document.getElementById('vp-err'), btn=document.getElementById('vp-btn');
+  const forma=(document.querySelector('input[name="vp-forma"]:checked')||{}).value, monto=Number(document.getElementById('vp-monto').value)||0;
+  const ref=document.getElementById('vp-ref').value.trim()||null, f=document.getElementById('vp-comp').files[0], sel=document.getElementById('vp-resp'), lim=document.getElementById('vp-lim').value||null;
+  const respEmail=sel.value||null, respNombre=sel.selectedOptions[0]?sel.selectedOptions[0].getAttribute('data-n'):null;
+  if(!(monto>0)){ err.textContent='Escribe el monto depositado.'; return; } if(!f){ err.textContent='Sube la evidencia del depósito (foto o PDF).'; return; }
+  if(f.size>6*1024*1024){ err.textContent='La evidencia pesa más de 6 MB; sube una foto o PDF más ligero.'; return; } if(!sel.value&&!sel.selectedOptions[0].getAttribute('data-n')){ err.textContent='Elige quién comprueba.'; return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ const data=await new Promise((ok,mal)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>mal(new Error('No se pudo leer el archivo')); r.readAsDataURL(f); });
+    const u=yo(), ahora=new Date().toISOString();
+    const cambios={ estatus:'Pagada', forma_entrega:forma, monto_entregado:monto, entregado_en:ahora, entregado_por:u.correo, responsable_email:respEmail, responsable_nombre:respNombre, fecha_limite_comprobacion:lim,
+      actualizado_en:ahora, actualizado_por:u.correo, referencia_pago:ref, pagado_por_nombre:u.nombre, comprobante_pago:data, comprobante_pago_nombre:f.name };
+    const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').update(cambios).eq('id',id).eq('estatus','Pendiente').select('id');
+    if(r.error) throw r.error; if(!(r.data||[]).length) throw new Error('Esta solicitud ya no está pendiente (alguien la registró o cambió). Actualiza la lista.');
+    const msg='Recibiste viáticos '+s.folio+' por '+din(monto)+' ('+FORMAS[forma]+'). Comprueba subiendo fotos o PDF de tus facturas antes del '+fc(lim)+' desde la app → Comprobar viáticos.';
+    const okApp=await avisoApp(respEmail,'viat_tec_entregado',msg,s); avisoPortal(respEmail,'viaticos_entregados',msg,{viaticoId:s.id});
+    if(s.solicitante_email&&s.solicitante_email!==respEmail) avisoPortal(s.solicitante_email,'viaticos_pagada','Viáticos '+s.folio+' depositados a '+(respNombre||'el técnico')+'.',{viaticoId:s.id});
+    const msgC='Viáticos '+s.folio+' PAGADOS: '+din(monto)+' a '+(respNombre||'el técnico')+' ('+FORMAS[forma]+(ref?', ref. '+ref:'')+'). Destino: '+(s.destino||'')+'. Comprobación a más tardar el '+fc(lim)+'. Ya está en Contabilidad → Viáticos pagados.';
+    (await destinatarios('viaticos_pagados',['contabilidad@tecnocontrol.com.mx'])).forEach(p=>avisoPortal(p,'viaticos_pagados',msgC,{viaticoId:s.id,modulo:'Contabilidad'}));
+    modal(''); P.lista=P.lista.filter(x=>x.id!==id); pintarPagos();
+    if(window.mostrarToast) window.mostrarToast('Viáticos', okApp?'Depósito registrado. Se avisó al técnico y pasó a Contabilidad.':'Depósito registrado y pasó a Contabilidad. El técnico no tiene correo: avísale por otro medio.', '✅');
+  }catch(e){ err.textContent='No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar depósito y avisar'; } };
+
+// ───────────── CONTABILIDAD: historial de pagados y comprobación ─────────────
+const C={ lista:[], comps:{}, filtro:'pend', q:'' };
+function panelConta(){ css(); let p=document.getElementById('vp-conta'); if(p) return p; const dash=document.getElementById('conta-dashboard'); if(!dash||!dash.parentNode) return null;
+  p=document.createElement('div'); p.id='vp-conta'; dash.parentNode.insertBefore(p,dash); return p; }
+async function cargarConta(){ tecnicos(); const p=panelConta(); if(!p) return; p.style.display='block'; p.innerHTML='<div class="vp-box" style="color:#64748b;font-size:13px">Cargando viáticos pagados…</div>';
+  try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select('id,folio,estatus,destino,cliente,integrantes,fecha_salida,fecha_regreso,deposito,total,monto_entregado,forma_entrega,entregado_en,referencia_pago,pagado_por_nombre,responsable_nombre,responsable_email,fecha_limite_comprobacion,cierre,empresa_entrega,comprobante_pago_nombre').eq('estatus','Pagada').order('entregado_en',{ascending:false}).limit(300);
+    if(r.error) throw r.error; C.lista=r.data||[]; C.comps={};
+    if(C.lista.length){ const k=await c.from('ops_viaticos_comprobantes').select('*').in('viatico_id',C.lista.map(s=>s.id)).order('creado_en',{ascending:true}); (k.data||[]).forEach(x=>{ (C.comps[x.viatico_id]=C.comps[x.viatico_id]||[]).push(x); }); }
+    pintarConta(); }
+  catch(e){ p.innerHTML='<div class="vp-box" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div>'; } }
+function estadoConta(s){ const comps=(C.comps[s.id]||[]).filter(x=>x.estatus!=='Rechazado'); const comprobado=comps.reduce((a,x)=>a+(Number(x.total)||0),0);
+  const dep=s.monto_entregado!=null?Number(s.monto_entregado):depositoDe(s), falta=Math.max(0,Math.round((dep-comprobado)*100)/100), porRev=comps.filter(x=>x.estatus==='Por revisar').length;
+  let k,t,c,bg; if(s.cierre){ k='cerrado'; t='Cerrado'; c='#15803d'; bg='#dcfce7'; } else if(falta<=0.5&&porRev){ k='revisar'; t='Comprobado · por revisar'; c='#1d4ed8'; bg='#dbeafe'; }
+  else if(falta<=0.5){ k='comprobado'; t='Comprobado'; c='#15803d'; bg='#dcfce7'; } else if(s.fecha_limite_comprobacion&&s.fecha_limite_comprobacion<hoy()){ k='vencido'; t='Vencido sin comprobar'; c='#b91c1c'; bg='#fee2e2'; }
+  else { k='pend'; t=comps.length?'Comprobando (parcial)':'Pendiente de comprobar'; c='#b45309'; bg='#fef3c7'; }
+  return { k,t,c,bg,dep,comprobado,falta,porRev,n:comps.length }; }
+function pintarConta(){ const p=panelConta(); if(!p) return; const q=norm(C.q);
+  const todos=C.lista.map(s=>({s,e:estadoConta(s)})), cuenta=f=>todos.filter(x=>pasa(x,f)).length;
+  function pasa(x,f){ return f==='todos'||(f==='pend'&&(x.e.k==='pend'||x.e.k==='vencido'))||x.e.k===f; }
+  const l=todos.filter(x=>pasa(x,C.filtro)&&(!q||norm([x.s.folio,x.s.integrantes,x.s.responsable_nombre,x.s.destino,x.s.cliente,x.s.referencia_pago].join(' ')).includes(q)));
+  const sum=f=>todos.filter(x=>pasa(x,f)).reduce((a,x)=>a+x.e.falta,0);
+  const chip=(f,t)=>'<button class="vp-f'+(C.filtro===f?' on':'')+'" onclick="window.__vpContaFiltro(\''+f+'\')">'+t+' ('+cuenta(f)+')</button>';
+  p.innerHTML='<div class="vp-box"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">'+
+    '<div><div style="font-size:16px;font-weight:800;color:#0A1628">Viáticos pagados · seguimiento de comprobación</div><div style="font-size:12px;color:#64748b">Todo viático que Pagos deposita llega aquí con su evidencia. Revisa si el técnico ya comprobó (fotos o PDF de sus facturas), cuánto falta y si ya se venció.</div></div>'+
+    '<button class="vp-btn" style="background:#f1f5f9;color:#334155" onclick="window.__vpContaCargar()">↻ Actualizar</button></div>'+
+    '<div class="vp-kpis"><div class="vp-kpi"><span>Pendientes de comprobar</span><b style="color:#b45309">'+cuenta('pend')+' · falta '+din(sum('pend'))+'</b></div>'+
+    '<div class="vp-kpi" style="border-color:'+(cuenta('vencido')?'#fecaca':'#e2e8f0')+'"><span>Vencidos</span><b style="color:#b91c1c">'+cuenta('vencido')+' · '+din(sum('vencido'))+'</b></div>'+
+    '<div class="vp-kpi"><span>Comprobantes por revisar</span><b style="color:#1d4ed8">'+todos.reduce((a,x)=>a+x.e.porRev,0)+'</b></div></div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+chip('pend','Pendientes')+chip('vencido','Vencidos')+chip('revisar','Por revisar')+chip('comprobado','Comprobados')+chip('cerrado','Cerrados')+chip('todos','Todos')+
+    '<input id="vp-conta-q" class="vp-in" style="max-width:300px;margin:0 0 0 auto" placeholder="Buscar folio, técnico, referencia…" value="'+esc(C.q)+'" oninput="window.__vpContaBuscar(this.value)"></div>'+
+    (l.length?l.map(({s,e})=>'<div class="vp-row" style="--c:'+e.c+';cursor:pointer" onclick="window.__vpContaVer('+s.id+')"><div style="flex:1;min-width:250px">'+
+      '<div style="font-size:13.5px;font-weight:800;color:#0A1628">'+esc(s.folio)+' · '+esc(s.responsable_nombre||s.integrantes||'')+'</div>'+
+      '<div style="font-size:12px;color:#475569">'+esc(s.destino||'')+' · pagado '+fh(s.entregado_en)+' por '+esc(s.pagado_por_nombre||'')+(s.referencia_pago?' · ref. '+esc(s.referencia_pago):'')+'</div>'+
+      '<div style="font-size:11.5px;color:#94a3b8">'+esc(FORMAS[s.forma_entrega]||s.forma_entrega||'')+' · '+e.n+' comprobante(s) · límite '+fc(s.fecha_limite_comprobacion)+'</div></div>'+
+      '<span class="vp-chip" style="color:'+e.c+';background:'+e.bg+'">'+esc(e.t)+'</span>'+
+      '<div style="text-align:right;min-width:150px;font-size:11.5px;color:#475569">Depositado <b>'+din(e.dep)+'</b><br>Comprobado <b style="color:#15803d">'+din(e.comprobado)+'</b><br>Falta <b style="color:'+(e.falta>0.5?'#b91c1c':'#15803d')+'">'+din(e.falta)+'</b></div></div>').join('')
+      :'<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px">No hay viáticos en este filtro.</div>')+'</div>'; }
+window.__vpContaCargar=cargarConta;
+window.__vpContaFiltro=f=>{ C.filtro=f; pintarConta(); };
+window.__vpContaBuscar=v=>{ C.q=v; pintarConta(); const i=document.getElementById('vp-conta-q'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } };
+window.__vpContaVer=function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; const e=estadoConta(s), comps=C.comps[id]||[];
+  const bA=(r,t)=>r?'<button class="vp-btn" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:4px 9px;font-size:11px" onclick="window.__vpAbrirArchivo(\''+esc(r)+'\')">'+t+'</button>':'';
+  modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:16px;font-weight:800;color:#0A1628">'+esc(s.folio)+' · '+esc(s.responsable_nombre||'')+'</div><div style="font-size:12px;color:#64748b">'+esc(s.destino||'')+' · '+fc(s.fecha_salida)+' a '+fc(s.fecha_regreso)+'</div></div><button class="vp-btn" style="background:#f1f5f9;color:#475569" onclick="window.__vpCerrar()">✕</button></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0"><div class="vp-kpi"><span>Depositado</span><b>'+din(e.dep)+'</b></div><div class="vp-kpi"><span>Comprobado</span><b style="color:#15803d">'+din(e.comprobado)+'</b></div><div class="vp-kpi"><span>Falta</span><b style="color:'+(e.falta>0.5?'#b91c1c':'#15803d')+'">'+din(e.falta)+'</b></div></div>'+
+    '<div style="font-size:12px;color:#475569;line-height:1.6">Pagó <b>'+esc(s.pagado_por_nombre||'')+'</b> el '+fh(s.entregado_en)+' · '+esc(FORMAS[s.forma_entrega]||s.forma_entrega||'')+(s.referencia_pago?' · ref. '+esc(s.referencia_pago):'')+' · límite para comprobar '+fc(s.fecha_limite_comprobacion)+'</div>'+
+    '<button class="vp-btn" style="background:#ecfdf5;border:1px solid #bbf7d0;color:#15803d;margin:8px 0 12px" onclick="window.__vpVerDeposito('+s.id+')">Ver evidencia del depósito</button>'+
+    '<div style="font-size:13px;font-weight:800;color:#1D2E73;margin-bottom:6px">Comprobantes del técnico ('+comps.length+')</div>'+
+    (comps.length?comps.map(x=>{ const arch=((x.validacion||{}).archivos||[]); return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:7px">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:12.5px">'+din(x.total)+' · '+esc(x.categoria||'')+' <span style="font-weight:600;color:#64748b">'+(x.tipo==='no_deducible'?'Sin factura':'Factura')+'</span></b><span class="vp-chip" style="background:'+(x.estatus==='Aceptado'?'#dcfce7':x.estatus==='Rechazado'?'#fee2e2':'#dbeafe')+';color:'+(x.estatus==='Aceptado'?'#15803d':x.estatus==='Rechazado'?'#b91c1c':'#1d4ed8')+'">'+esc(x.estatus)+'</span></div>'+
+      '<div style="font-size:11.5px;color:#64748b">'+fc(x.fecha_comprobante)+(x.emisor_nombre?' · '+esc(x.emisor_nombre):'')+(x.concepto&&x.tipo!=='factura_archivo'?' · '+esc(x.concepto):'')+' · subió '+esc(x.tecnico_nombre||'')+'</div>'+
+      (x.tipo==='factura_archivo'?'<div style="font-size:11px;color:#7c3aed;font-weight:700">Descargar el XML de esta factura del SAT.</div>':'')+
+      (x.motivo_rechazo?'<div style="font-size:11px;color:#b91c1c">Rechazado: '+esc(x.motivo_rechazo)+'</div>':'')+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+(arch.length?arch.map((r,i)=>bA(r,'Archivo '+(i+1))).join(''):bA(x.xml_path,'XML')+bA(x.pdf_path,'PDF')+bA(x.foto_path,'Foto'))+
+      (!s.cierre&&x.estatus!=='Aceptado'?'<button class="vp-btn" style="background:#15803d;color:#fff;padding:4px 10px;font-size:11px" onclick="window.__vpRevisar('+x.id+','+s.id+',\'Aceptado\')">Aceptar</button>':'')+
+      (!s.cierre&&x.estatus!=='Rechazado'?'<button class="vp-btn" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:4px 10px;font-size:11px" onclick="window.__vpRevisar('+x.id+','+s.id+',\'Rechazado\')">Rechazar</button>':'')+'</div></div>'; }).join('')
+      :'<div style="font-size:12px;color:#94a3b8;padding:8px 0">El técnico todavía no sube comprobantes.</div>')+
+    (e.falta>0.5&&s.responsable_email&&!s.cierre?'<button class="vp-btn" style="background:#1D2E73;color:#fff;margin-top:6px" onclick="window.__vpRecordar('+s.id+')">Recordarle al técnico</button>':'')); };
+window.__vpVerDeposito=async function(id){ try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select('comprobante_pago').eq('id',id).single(); if(r.error||!r.data.comprobante_pago){ alert('Este pago no tiene evidencia guardada.'); return; } abrirDato(r.data.comprobante_pago); }catch(e){ alert('No se pudo abrir: '+(e.message||e)); } };
+window.__vpRevisar=async function(compId,viaId,est){ let mot=null; if(est==='Rechazado'){ mot=prompt('¿Por qué se rechaza? (le llega al técnico)',''); if(mot===null) return; mot=mot.trim(); if(!mot){ alert('Escribe el motivo.'); return; } }
+  try{ const c=await sb(), u=yo(); const r=await c.from('ops_viaticos_comprobantes').update({estatus:est,motivo_rechazo:mot,revisado_por:u.nombre||u.correo,revisado_en:new Date().toISOString()}).eq('id',compId); if(r.error) throw r.error;
+    const x=(C.comps[viaId]||[]).find(k=>k.id===compId); if(x){ x.estatus=est; x.motivo_rechazo=mot; }
+    const s=C.lista.find(k=>k.id===viaId); if(est==='Rechazado'&&x&&x.tecnico_email) avisoApp(x.tecnico_email,'viat_tec_rechazado','Contabilidad rechazó tu comprobante de '+din(x.total)+' en '+(s?s.folio:'tus viáticos')+': '+mot+'. Sube otro.',s||{id:viaId});
+    pintarConta(); window.__vpContaVer(viaId); }catch(e){ alert('No se pudo guardar: '+(e.message||e)); } };
+window.__vpRecordar=async function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; const e=estadoConta(s);
+  const ok=await avisoApp(s.responsable_email,'viat_tec_recordatorio','Contabilidad: te falta comprobar '+din(e.falta)+' de tus viáticos '+s.folio+' (límite '+fc(s.fecha_limite_comprobacion)+'). Sube fotos o PDF de tus facturas en la app → Comprobar viáticos.',s);
+  alert(ok?'Listo, se le mandó el recordatorio a su app.':'No se pudo mandar el recordatorio.'); };
+
+// ───────────── Enganche con las áreas del portal ─────────────
+const T=setInterval(()=>{ if(typeof window.verArea!=='function') return; clearInterval(T); const orig=window.verArea;
+  window.verArea=function(area,btn){ const r=orig.apply(this,arguments);
+    const pp=document.getElementById('vp-pagos'), pc=document.getElementById('vp-conta');
+    if(area==='Pagos') setTimeout(cargarPagos,50); else if(pp) pp.style.display='none';
+    if(area==='Contabilidad') setTimeout(cargarConta,50); else if(pc) pc.style.display='none';
+    return r; }; },200);
+console.log('[VIÁTICOS en Pagos y Contabilidad] listo');
+})();
