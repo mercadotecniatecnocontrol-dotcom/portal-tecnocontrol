@@ -1165,7 +1165,8 @@ window.rhAbrirPerfil = function(id){ rhPerfilId=id; rhModoEdicion=false; rhRende
 window.rhVolverDirectorio = function(){ rhPerfilId=null; rhVista='directorio'; rhRenderRoot(); };
 
 function rhHTMLTopbar(){
-    const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas', permisos:'Permisos y vacaciones'};
+    // 29-oct-2026: "Permisos y vacaciones" se centralizó en su propia sección del departamento de RH (rh-departamento.js).
+    const labels = {directorio:'Directorio', organigrama:'Organigrama', alertas:'Alertas'};
     return '<div class="rhd-topbar">'+
         Object.keys(labels).map(v=>'<button class="rhd-tab'+(rhVista===v?' on':'')+'" onclick="rhSetVista(\''+v+'\')">'+labels[v]+'</button>').join('')+
         (rhVista==='directorio' ? (
@@ -2356,3 +2357,33 @@ window.rhAvisosQuitar = async function(id){
 
 console.log('[rh.js] ✅ Módulo RH cargado');
 console.log('[rh.js] ✅ Módulo RH 360° (colaboradores) listo');
+
+// ═══════════════════════════════════════════════════════════
+//  DEPARTAMENTO DE RECURSOS HUMANOS (29-oct-2026)
+//  Al entrar al área se carga rh-departamento.js: un solo padrón con el
+//  personal de todas las áreas, medibles, permisos centralizados,
+//  incidencias para nómina, altas y bajas, y archivos para NOMIPAQ / IMSS.
+//  El directorio 360 y los indicadores de arriba se muestran dentro de él.
+// ═══════════════════════════════════════════════════════════
+(function(){
+    const _prevToggle = window.toggleRHDash;
+    let _p = null;
+    function cargarDepto(){
+        if (window.tcRHDepto) return Promise.resolve();
+        if (_p) return _p;
+        _p = new Promise((ok, ko) => {
+            const s = document.createElement('script'); s.src = 'rh-departamento.js?v=1';
+            s.onload = () => ok(); s.onerror = () => { _p = null; ko(new Error('No se pudo cargar rh-departamento.js')); };
+            document.head.appendChild(s);
+        });
+        return _p;
+    }
+    window.toggleRHDash = function(area, email){
+        if (_prevToggle) _prevToggle(area, email);
+        if (area === 'Recursos Humanos' && puedeVerRH(email)) {
+            cargarDepto().then(() => window.tcRHDepto.mostrar()).catch(e => console.error('[RH]', e.message));
+        } else if (window.tcRHDepto) {
+            window.tcRHDepto.ocultar();
+        }
+    };
+})();

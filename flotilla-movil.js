@@ -4733,8 +4733,30 @@ function herrMostrarModalPendiente(t){
   document.body.appendChild(ov);
 }
 
+// 29-oct-2026: antes de aceptar, el técnico dice en qué condición la recibe, con comentario y foto.
 window.herrAceptarTraspaso=async function(traspasoId){
   document.getElementById('fm-modal-herr-pend')?.remove();
+  window.__herrRec={id:traspasoId,cond:'completa',foto:null};
+  fmHojaModal('fm-herr-rec','Recibir herramienta',
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Revisa la pieza antes de aceptarla. Lo que anotes queda en su historial.</div>'+
+    '<div style="font-size:12px;font-weight:800;color:#334155;margin-bottom:6px">¿Cómo la recibes?</div><div id="fm-herr-rec-cond" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">'+
+      [['completa','Completa y funcionando'],['detalle','Con algún detalle'],['incompleta','Incompleta o no funciona']].map(function(o,i){ return '<label style="display:flex;gap:8px;align-items:center;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px;font-size:13px;font-weight:700"><input type="radio" name="fm-herr-cond" value="'+o[0]+'" '+(i===0?'checked':'')+' onchange="window.__herrRec.cond=this.value" style="width:18px;height:18px">'+o[1]+'</label>'; }).join('')+'</div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">Comentario</label><textarea id="fm-herr-rec-com" rows="2" style="'+FM_IN+'" placeholder="Ej. le falta el estuche, viene con la punta gastada"></textarea>'+
+    '<label style="display:block;border:2px dashed #CBD5E1;border-radius:12px;padding:12px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155" id="fm-herr-rec-flbl">Tomar foto de cómo la recibes<input type="file" accept="image/*" capture="environment" style="display:none" onchange="herrRecFoto(this)"></label>'+
+    '<div id="fm-herr-rec-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px;margin-top:6px"></div>'+
+    '<button id="fm-herr-rec-btn" onclick="herrAceptarTraspasoConfirmar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#15803D;color:#fff;font-family:inherit;font-size:14px;font-weight:900;margin-top:4px">Aceptar y recibir</button>');
+};
+window.herrRecFoto=async function(input){ const f=input.files&&input.files[0]; if(!f) return;
+  try{ window.__herrRec.foto=await herrComprimirFotoApp(f,900,0.6); const l=document.getElementById('fm-herr-rec-flbl'); if(l){ l.style.borderColor='#86EFAC'; l.style.background='#F0FDF4'; l.firstChild.textContent='Foto lista · toca para cambiarla'; } }catch(e){ toast('No se pudo leer la foto','err'); } };
+function herrComprimirFotoApp(file,max,q){ return new Promise(function(ok,mal){ const r=new FileReader(); r.onload=function(){ const img=new Image(); img.onload=function(){ const k=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height); ok(c.toDataURL('image/jpeg',q)); }; img.onerror=mal; img.src=r.result; }; r.onerror=mal; r.readAsDataURL(file); }); }
+window.herrAceptarTraspasoConfirmar=async function(){
+  const R=window.__herrRec||{}; const traspasoId=R.id; if(!traspasoId) return;
+  const com=(document.getElementById('fm-herr-rec-com')||{}).value||''; const msg=document.getElementById('fm-herr-rec-msg'), btn=document.getElementById('fm-herr-rec-btn');
+  if(R.cond!=='completa'&&(!com.trim()||!R.foto)){ if(msg) msg.textContent='Si tiene algún detalle, escribe qué tiene y toma una foto.'; return; }
+  if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  const COND={completa:'Completa y funcionando',detalle:'Con algún detalle',incompleta:'Incompleta o no funciona'};
+  window.__herrRecDatos={cond:R.cond,condTxt:COND[R.cond],com:com.trim(),foto:R.foto};
+  document.getElementById('fm-herr-rec')?.remove();
   try{
     const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
     if(!doc.exists){toast('El traspaso ya no está disponible.','err');return;}
@@ -4763,6 +4785,8 @@ window.herrAceptarTraspaso=async function(traspasoId){
     partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
     if(t.evidenciaBase64)partesObs.push('Con foto de evidencia (ver en Operaciones)');
+    const RD=window.__herrRecDatos||{};
+    if(RD.condTxt)partesObs.push('La recibió: '+RD.condTxt+(RD.com?' — "'+RD.com+'"':'')+(RD.foto?' (con foto de recepción)':''));
     if(ubicacion)partesObs.push(`Lugar aprox. ${ubicacion.lat.toFixed(5)}, ${ubicacion.lng.toFixed(5)}`);
     await opsDb().collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
@@ -4774,7 +4798,9 @@ window.herrAceptarTraspaso=async function(traspasoId){
       observaciones:partesObs.join(' · '),
       usuarioEmail:userEmail, usuarioNombre:userName, fecha:now,
     });
-    await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId });
+    await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId,
+      recepcionCondicion:RD.cond||null, recepcionComentario:RD.com||null, recepcionFotoBase64:RD.foto||null });
+    if(RD.cond&&RD.cond!=='completa'){ try{ await opsSvAvisarAdmins('herramienta_recibida_con_detalle',userName+' recibió '+(t.folio||'')+' ('+(t.descripcion||'')+') '+RD.condTxt.toLowerCase()+': '+RD.com,null); }catch(e){} }
     if(t.entregaEmail){
       db.collection('flotilla_notificaciones').add({
         tipo:'herramienta_traspaso_completada', traspasoId,
@@ -4791,6 +4817,54 @@ window.herrAceptarTraspaso=async function(traspasoId){
   }
 };
 
+// ── Compré herramienta o refacción (29-oct-2026): el técnico la reporta para que se le reponga el dinero
+// y se dé de alta en su almacén. Llega a Operaciones (Herramientas → Pendientes) y a Pagos. ──
+window.__herrCompra={};
+window.herrCompraAbrir=async function(){
+  window.__herrCompra={fotos:{}};
+  let piezas=[];
+  try{ const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase(); const tec=await herrResolverIdInterno(email,miPerfil?.nombre||''); window.__herrCompra.tec=tec;
+    if(tec){ const snap=await opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',tec.id).get(); piezas=snap.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja'); } }catch(e){}
+  window.__herrCompra.piezas=piezas;
+  const foto=(k,t)=>'<label id="fm-hc-l-'+k+'" style="display:block;border:2px dashed #CBD5E1;border-radius:12px;padding:11px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155;margin-bottom:8px">'+t+'<input type="file" accept="image/*,application/pdf" style="display:none" onchange="herrCompraFoto(\''+k+'\',this)"></label>';
+  fmHojaModal('fm-herr-compra','Compré herramienta o refacción',
+    '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Si compraste herramienta o una refacción con tus viáticos, con caja chica o con tu dinero, repórtalo aquí con sus fotos para que se te reponga y quede en tu lista de herramienta.</div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué compraste? *</label><input id="fm-hc-desc" style="'+FM_IN+'" placeholder="Ej. Llave Stillson 18&quot;">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:12px;font-weight:800;color:#334155">Marca</label><input id="fm-hc-marca" style="'+FM_IN+'"></div><div><label style="font-size:12px;font-weight:800;color:#334155">Cuánto costó *</label><input id="fm-hc-monto" type="number" inputmode="decimal" min="0" step="0.01" style="'+FM_IN+'"></div></div>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Con qué la pagaste? *</label><select id="fm-hc-pago" style="'+FM_IN+'"><option>Viáticos</option><option>Caja chica</option><option>Mi dinero</option></select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Para qué servicio? (opcional)</label><select id="fm-hc-serv" style="'+FM_IN+'"><option value="">— Ninguno —</option>'+(typeof fmServOpcionesHTML==='function'?fmServOpcionesHTML():'')+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Reemplaza a una herramienta tuya? (opcional)</label><select id="fm-hc-reemp" style="'+FM_IN+'"><option value="">— No, es nueva —</option>'+piezas.map(h=>'<option value="'+h.id+'">'+esc((h.folio||'')+' · '+(h.descripcion||''))+'</option>').join('')+'</select>'+
+    '<label style="font-size:12px;font-weight:800;color:#334155">¿Por qué la compraste? *</label><textarea id="fm-hc-mot" rows="2" style="'+FM_IN+'" placeholder="Ej. se rompió la que traía y la necesitaba para terminar el servicio"></textarea>'+
+    foto('nueva','Foto de lo que compraste *')+foto('ticket','Foto del ticket o factura *')+foto('vieja','Foto de la vieja o dañada (si la reemplaza)')+
+    '<div id="fm-hc-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
+    '<button id="fm-hc-btn" onclick="herrCompraEnviar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#C2410C;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar a Operaciones</button>');
+};
+window.herrCompraFoto=function(k,input){ const f=input.files&&input.files[0]; if(!f) return; if(f.size>10*1024*1024){ toast('El archivo pesa más de 10 MB','err'); return; }
+  window.__herrCompra.fotos[k]=f; const l=document.getElementById('fm-hc-l-'+k); if(l){ l.style.borderColor='#86EFAC'; l.style.background='#F0FDF4'; l.firstChild.textContent='Lista: '+(f.name||'foto')+' · toca para cambiar'; } };
+window.herrCompraEnviar=async function(){
+  const H=window.__herrCompra||{}, g=id=>(document.getElementById(id)||{}).value||'', msg=document.getElementById('fm-hc-msg'), btn=document.getElementById('fm-hc-btn');
+  const desc=g('fm-hc-desc').trim(), monto=Number(g('fm-hc-monto'))||0, mot=g('fm-hc-mot').trim(), reemp=g('fm-hc-reemp'), serv=g('fm-hc-serv');
+  if(!desc){ msg.textContent='Escribe qué compraste.'; return; } if(!(monto>0)){ msg.textContent='Escribe cuánto costó.'; return; } if(mot.length<6){ msg.textContent='Explica por qué la compraste.'; return; }
+  if(!H.fotos.nueva||!H.fotos.ticket){ msg.textContent='Falta la foto de lo que compraste y la del ticket o factura.'; return; }
+  if(reemp&&!H.fotos.vieja){ msg.textContent='Si reemplaza a una herramienta, toma foto de la vieja o dañada.'; return; }
+  if(!navigator.onLine){ msg.textContent='Sin conexión. Intenta cuando tengas señal.'; return; }
+  btn.disabled=true; btn.textContent='Subiendo fotos…';
+  try{
+    const sb=await fmvSb(), base='compras-herramienta/'+Date.now()+'_'+String(opsSvMiCorreo()).replace(/[^a-z0-9]/gi,'_'), rutas={};
+    for(const k of Object.keys(H.fotos)){ const f=H.fotos[k], ext=(String(f.name||'').split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'jpg', ruta=base+'_'+k+'.'+ext;
+      const up=await sb.storage.from('viaticos-comprobantes').upload(ruta,f,{contentType:f.type||undefined,upsert:false}); if(up.error) throw up.error; rutas[k]=ruta; }
+    const pz=(H.piezas||[]).find(h=>h.id===reemp), selS=document.getElementById('fm-hc-serv');
+    const fila={tecnico_id:H.tec?H.tec.id:null,tecnico_nombre:opsSvMiNombre(),tecnico_correo:opsSvMiCorreo(),descripcion:desc,marca:g('fm-hc-marca').trim()||null,monto,pagado_con:g('fm-hc-pago'),
+      folio_servicio_id:serv||null,servicio_txt:serv&&selS&&selS.selectedOptions[0]?selS.selectedOptions[0].textContent:null,reemplaza_herramienta_id:reemp||null,reemplaza_txt:pz?((pz.folio||'')+' · '+(pz.descripcion||'')):null,motivo:mot,fotos:rutas};
+    const r=await sb.from('ops_herr_compras_tecnico').insert(fila).select().single(); if(r.error) throw r.error;
+    const folio='CH-'+String(r.data.id).padStart(5,'0'); await sb.from('ops_herr_compras_tecnico').update({folio}).eq('id',r.data.id);
+    const texto=opsSvMiNombre()+' compró '+desc+' por $'+monto.toLocaleString('es-MX')+' ('+fila.pagado_con+')'+(fila.reemplaza_txt?', reemplaza a '+fila.reemplaza_txt:'')+'. Revísalo en Operaciones → Herramientas → Pendientes ('+folio+').';
+    try{ const m=await sb.from('notif_matriz').select('destinatarios,activo').eq('evento','herr_compra_tecnico').maybeSingle(); const dest=(m.data&&m.data.activo!==false&&m.data.destinatarios)||['p.pinedo@tecnocontrol.com.mx'];
+      await sb.from('portal_notificaciones').insert(dest.map(d=>({tipo:'herr_compra_tecnico',para:String(d).toLowerCase(),mensaje:texto,leido:false,creada_en:new Date().toISOString(),datos:{modulo:'Operaciones',compraId:r.data.id}}))); }catch(e){}
+    try{ await opsSvAvisarAdmins('herr_compra_tecnico',texto,serv||null); }catch(e){}
+    document.getElementById('fm-herr-compra')?.remove(); toast('Listo: se envió '+folio+' a Operaciones.','ok');
+  }catch(e){ msg.textContent='No se pudo enviar: '+(e.message||e); btn.disabled=false; btn.textContent='Enviar a Operaciones'; }
+};
 window.herrRechazarTraspaso=async function(traspasoId){
   document.getElementById('fm-modal-herr-pend')?.remove();
   const motivo=prompt('¿Por qué rechazas este traspaso? (opcional)')||'';
@@ -5156,6 +5230,9 @@ function renderUtilPaso1(){
         </button>
         <button class="fm-tile" onclick="herrVerMisHerramientas()" style="background:#fff;color:#1D2E73;border:1.5px solid #1D2E73">
           ${IC.wrench}<span>Mi herramienta</span>
+        </button>
+        <button class="fm-tile" onclick="herrCompraAbrir()" style="background:#FFF7ED;color:#C2410C;border:1.5px solid #FDBA74;grid-column:1/-1">
+          ${IC.wrench}<span>Compré herramienta o refacción (reposición)</span>
         </button>
         ${revPuedeRevisar()?`<button class="fm-tile" onclick="revAbrirRevision()" style="background:#E7402B;color:#fff;grid-column:1/-1">
           ${IC.check}<span>Revisar herramienta (Almacén/Operaciones)</span>

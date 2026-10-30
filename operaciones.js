@@ -1440,7 +1440,11 @@
     ];
     const OPS_ACC_ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"], ["dinero", "Ver dinero"]];
     // Pestañas que no son sección propia de la matriz: se rigen por otra sección.
-    const OPS_ACC_ALIAS = { gestionados: "calendario", revision: "folios" };
+    // 29-oct-2026: las pestañas que no tienen sección propia en la matriz ya se VEÍAN con la sección equivalente,
+    // pero para EDITAR no tenían alias y un administrador de Operaciones las veía en solo lectura (ej. Idaly en
+    // "Pedidos de herramienta"). Ahora ver y editar usan la misma sección.
+    const OPS_ACC_ALIAS = { gestionados: "calendario", vehiculos: "calendario", revision: "folios", derivados: "folios", pendientes: "folios", extras: "folios",
+        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard" };
     const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
@@ -1793,6 +1797,52 @@
     const PDF_GRIS_LINEA = [191, 192, 194];
     const PDF_GRIS_CLARO = [233, 233, 234];
 
+    // Fecha de compra de una pieza: la que se capture en la ficha o la de su primera factura. Si no hay, no aplica.
+    function opsHerrDatosCompra(h) {
+        const fs = (h.facturas || []).filter(f => f && (f.fecha || f.numero)).slice().sort((a, b) => String(a.fecha || "").localeCompare(String(b.fecha || "")));
+        const f = fs[0];
+        const fecha = h.fechaCompra || (f && f.fecha) || "";
+        return { fecha, detalle: f ? ["Factura " + (f.numero || ""), f.proveedor || "", f.monto ? opsDinero(f.monto) : ""].filter(Boolean).join(" · ") : (h.origenRequisicionFolio ? "Requisición " + h.origenRequisicionFolio : "") };
+    }
+    // ── Expediente de la pieza en PDF: datos, compra, asignación y TODO su historial (29-oct-2026) ──
+    window.opsExpedienteHerrPDF = async function (herramientaId) {
+        const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("No se cargó la librería de PDF. Recarga la página."); return; }
+        let movs = [];
+        try { const sb = await opsSb(); const r = await sb.from("ops_movimientos").select("*").eq("herramienta_id", herramientaId).order("fecha", { ascending: true }); movs = r.data || []; }
+        catch (e) { console.warn("[Expediente] movimientos", e); }
+        const { jsPDF } = window.jspdf; const doc = new jsPDF({ unit: "pt", format: "letter" }); const W = 612, M = 46; let y;
+        const nuevaPag = () => { doc.addPage(); y = 60; };
+        const salto = n => { if (y + n > 740) nuevaPag(); };
+        doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 64, "F"); doc.setFillColor(...PDF_ROJO); doc.rect(0, 64, W, 3, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("EXPEDIENTE DE HERRAMIENTA", M, 30);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("HEDMA TECNOCONTROL S.A. DE C.V. · Control de Herramientas", M, 46);
+        doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(String(h.folio || ""), W - M, 30, { align: "right" });
+        doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.text("Generado: " + opsFechaHora().slice(0, 16).replace("T", " "), W - M, 46, { align: "right" });
+        y = 92;
+        const sec = t => { salto(40); y += 10; doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 12, W - 2 * M, 19, "F"); doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(t, M + 8, y + 1); y += 20; };
+        const campo = (l, v) => { const lin = doc.splitTextToSize(String(v || "—"), W - 2 * M - 140); salto(lin.length * 12 + 4); doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.text(l, M, y); doc.setTextColor(20, 20, 20); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.text(lin, M + 140, y); y += lin.length * 12 + 3; };
+        const compra = opsHerrDatosCompra(h);
+        sec("1 · DATOS DE LA PIEZA");
+        campo("Descripción:", h.descripcion); campo("Marca / modelo:", [h.marca, h.modelo].filter(Boolean).join(" ")); campo("N.° de serie:", h.numeroSerie);
+        campo("Categoría:", [h.categoria, h.subcategoria].filter(Boolean).join(" · ")); campo("Estado actual:", (ESTADOS_HERRAMIENTA[h.estado] || {}).label || h.estado);
+        campo("Condición:", h.condicion); campo("Almacén / responsable:", opsNombreAlmacen(h.tecnicoActualId) || "Almacén General"); campo("Ubicación:", h.ubicacionActual);
+        sec("2 · COMPRA Y ASIGNACIÓN");
+        campo("Fecha de alta:", h.fechaAlta); campo("Fecha de compra:", compra.fecha || "No aplica (no es compra)"); campo("Comprobante de compra:", compra.detalle || "—");
+        campo("Fecha de asignación actual:", h.tecnicoActualId ? (h.fechaAsignacion || "—") : "No está asignada");
+        (h.facturas || []).forEach((f, i) => campo("Factura " + (i + 1) + ":", [f.numero, f.fecha, f.proveedor, f.monto ? opsDinero(f.monto) : ""].filter(Boolean).join(" · ")));
+        if (h.prestamo) campo("Préstamo:", "Prestada a " + (h.prestamo.aNombre || "") + " desde " + (h.prestamo.desde || "") + ", regresa el " + (h.prestamo.hasta || ""));
+        const serv = (h.historialServicios || []).concat(h.servicioLigado ? [h.servicioLigado] : []);
+        if (serv.length) { sec("3 · SERVICIOS EN LOS QUE SALIÓ"); serv.forEach(sv => campo(String(sv.salida || "").slice(0, 10) + ":", [sv.estacion, "la llevó " + (sv.entregadoA || ""), sv.estatus === "fuera" ? "sigue fuera (regresa " + (sv.regresoEsperado || "") + ")" : "regresó " + (sv.regresoReal || "") + (sv.condicionRegreso ? " · " + sv.condicionRegreso : "")].filter(Boolean).join(" · "))); }
+        sec((serv.length ? "4" : "3") + " · HISTORIAL COMPLETO DE MOVIMIENTOS (" + movs.length + ")");
+        const TL = { alta: "Alta en almacén", asignacion: "Asignación", devolucion: "Devolución", reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación", perdida: "Pérdida", danio: "Daño", baja: "Baja", transferencia: "Transferencia", traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento", prestamo: "Préstamo", devolucion_prestamo: "Regresó del préstamo" };
+        if (!movs.length) campo("—", "Sin movimientos registrados.");
+        movs.forEach(m => { const txt = [TL[m.tipo] || m.tipo, m.tecnico_nuevo_id ? "→ " + opsNombreTecnico(m.tecnico_nuevo_id) : "", m.motivo ? "Motivo: " + m.motivo : "", m.observaciones || "", m.usuario_nombre || m.usuario_email ? "(" + (m.usuario_nombre || m.usuario_email) + ")" : ""].filter(Boolean).join(" · ");
+            campo(String(m.fecha || "").slice(0, 16).replace("T", " "), txt); });
+        doc.setTextColor(...PDF_GRIS); doc.setFontSize(7.3);
+        for (let i = 1; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); doc.text("Expediente " + (h.folio || "") + " · página " + i + " de " + doc.getNumberOfPages(), M, 772); }
+        doc.save("Expediente_" + (h.folio || herramientaId) + ".pdf");
+    };
     function opsGenerarResponsivaPDF(herramientaId, silencioso) {
         if (!window.jspdf || !window.jspdf.jsPDF) {
             console.error("[operaciones.js] jsPDF no está cargado.");
@@ -1856,6 +1906,9 @@
         campo("Marca / modelo:", (h.marca || "—") + " " + (h.modelo || ""));
         campo("N.° de serie:", h.numeroSerie || "—");
         campo("Ubicación:", h.ubicacionActual || "—");
+        const compra = opsHerrDatosCompra(h);
+        campo("Fecha de compra:", compra.fecha || "No aplica (no es compra)");
+        if (compra.detalle) campo("Comprobante:", compra.detalle);
 
         seccion("3  ·  TÉRMINOS DE LA RESPONSIVA");
         const clausulas = [
@@ -2589,6 +2642,114 @@
         }, 30);
     }
 
+    // ═══ Pendientes de herramienta (29-oct-2026): traspasos por aceptar, préstamos, piezas fuera en servicio
+    //     y compras que reportan los técnicos (reposición). Todo en un solo apartado arriba del inventario. ═══
+    let opsHerrComprasTec = null, opsHerrPendAbierto = true;
+    async function opsHerrCargarComprasTec() {
+        opsHerrComprasTec = [];
+        try { const sb = await opsSb(); const r = await sb.from("ops_herr_compras_tecnico").select("*").order("creado_en", { ascending: false }).limit(150); opsHerrComprasTec = r.data || []; }
+        catch (e) { console.warn("[Herramienta] compras de técnicos", e); }
+        const el = document.getElementById("ops-herr-pend"); if (el) el.innerHTML = opsHerrPendientesHTML(opsPuedeGestionar());
+    }
+    function opsHerrPendientesHTML(gestion) {
+        const hoy = opsHoy(), en3 = opsDiaISOmas(hoy, 3);
+        const trasp = (cacheTraspasosPend || []).slice().sort((a, b) => String(a.venceEn || "").localeCompare(String(b.venceEn || "")));
+        const prest = cacheHerr.filter(h => h.estado === "prestamo" && h.prestamo).sort((a, b) => String(a.prestamo.hasta || "").localeCompare(String(b.prestamo.hasta || "")));
+        const fuera = cacheHerr.filter(h => opsHerrServicioActivo(h) && !(h.estado === "prestamo" && opsHerrServicioActivo(h).deP)).sort((a, b) => String(a.servicioLigado.regresoEsperado || "").localeCompare(String(b.servicioLigado.regresoEsperado || "")));
+        const compras = (opsHerrComprasTec || []).filter(c => c.estatus !== "Resuelta" && c.estatus !== "Rechazada");
+        const venc = x => x && x < hoy, pronto = x => x && x >= hoy && x <= en3;
+        const nUrg = trasp.filter(t => t.venceEn && t.venceEn.slice(0, 10) <= en3).length + prest.filter(h => venc(h.prestamo.hasta)).length + fuera.filter(h => venc(h.servicioLigado.regresoEsperado)).length + compras.filter(c => c.estatus === "Por revisar").length;
+        const total = trasp.length + prest.length + fuera.length + compras.length;
+        if (!total) return "";
+        const chip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:2px 8px;white-space:nowrap;">${t}</span>`;
+        const fila = (izq, der, fn) => `<div onclick="${fn || ""}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:#f8fafc;margin-bottom:6px;${fn ? "cursor:pointer;" : ""}"><div style="font-size:12px;color:#1e293b;min-width:0;">${izq}</div><div style="flex-shrink:0;">${der}</div></div>`;
+        const col = (tit, n, color, cuerpo) => `<div style="flex:1;min-width:260px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;color:${color};margin-bottom:8px;">${tit} (${n})</div>${cuerpo || `<div style="font-size:11.5px;color:#94a3b8;">Nada pendiente.</div>`}</div>`;
+        const cuerpoTr = trasp.slice(0, 8).map(t => fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Almacén")} → ${opsEsc(t.receptorNombre || t.receptorEmail || "")}</div>`,
+            t.venceEn ? chip((t.venceEn < new Date().toISOString() ? "Venció " : "Vence ") + opsFmtFechaCorta(t.venceEn), t.venceEn.slice(0, 10) <= en3 ? "#b45309" : "#475569", t.venceEn.slice(0, 10) <= en3 ? "#fef3c7" : "#f1f5f9") : "", t.herramientaId ? `opsAbrirModalMovimiento('${t.herramientaId}')` : "")).join("");
+        const cuerpoPr = prest.slice(0, 8).map(h => fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:11px;color:#64748b;">Prestada a ${opsEsc(h.prestamo.aNombre || "")}${h.prestamo.folioEstacion ? " · " + opsEsc(h.prestamo.folioEstacion) : ""}</div>`,
+            chip((venc(h.prestamo.hasta) ? "Debió regresar " : "Regresa ") + opsFmtFechaCorta(h.prestamo.hasta), venc(h.prestamo.hasta) ? "#b91c1c" : pronto(h.prestamo.hasta) ? "#b45309" : "#3730a3", venc(h.prestamo.hasta) ? "#fee2e2" : pronto(h.prestamo.hasta) ? "#fef3c7" : "#e0e7ff"), `opsAbrirModalMovimiento('${h.id}')`)).join("");
+        const cuerpoFu = fuera.slice(0, 8).map(h => { const sv = h.servicioLigado; return fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(sv.estacion || "Servicio")} · la lleva ${opsEsc(sv.entregadoA || "")}</div>`,
+            chip((venc(sv.regresoEsperado) ? "Debió regresar " : "Regresa ") + opsFmtFechaCorta(sv.regresoEsperado), venc(sv.regresoEsperado) ? "#b91c1c" : "#0f766e", venc(sv.regresoEsperado) ? "#fee2e2" : "#ccfbf1"), `opsAbrirFichaHerramienta && opsAbrirFichaHerramienta('${h.id}')`); }).join("");
+        const cuerpoCo = compras.slice(0, 8).map(c => fila(`<b>${opsEsc(c.tecnico_nombre || "")}</b> compró ${opsEsc(c.descripcion)}<div style="font-size:11px;color:#64748b;">${opsDinero(c.monto)} · ${opsEsc(c.pagado_con || "")}${c.servicio_txt ? " · " + opsEsc(c.servicio_txt) : ""}</div>`,
+            chip(c.estatus, c.estatus === "Por revisar" ? "#c2410c" : "#1d4ed8", c.estatus === "Por revisar" ? "#ffedd5" : "#dbeafe"), `opsHerrCompraVer(${c.id})`)).join("");
+        return `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:12px 14px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="opsHerrPendToggle()">
+                <div style="font-size:14px;font-weight:800;color:#9a3412;">Pendientes de herramienta</div>
+                ${nUrg ? chip(nUrg + " urgente(s)", "#fff", "#ea580c") : ""}${chip(total + " en total", "#9a3412", "#ffedd5")}
+                <span style="margin-left:auto;font-size:12px;font-weight:700;color:#9a3412;">${opsHerrPendAbierto ? "Ocultar ▴" : "Ver ▾"}</span>
+            </div>
+            ${opsHerrPendAbierto ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+                ${col("Traspasos por aceptar", trasp.length, "#b45309", cuerpoTr)}${col("Préstamos", prest.length, "#3730a3", cuerpoPr)}
+                ${col("Fuera en servicio", fuera.length, "#0f766e", cuerpoFu)}${col("Compras de técnicos (reposición)", compras.length, "#c2410c", cuerpoCo)}
+            </div>` : ""}
+        </div>`;
+    }
+    window.opsHerrPendToggle = function () { opsHerrPendAbierto = !opsHerrPendAbierto; const el = document.getElementById("ops-herr-pend"); if (el) el.innerHTML = opsHerrPendientesHTML(opsPuedeGestionar()); };
+    window.opsHerrCompraVer = async function (id) {
+        const c = (opsHerrComprasTec || []).find(x => x.id === id); if (!c) return;
+        const gestion = opsPuedeGestionar();
+        const fotos = c.fotos || {};
+        const bF = (ruta, t) => ruta ? `<button onclick="opsHerrCompraFoto('${opsEsc(ruta)}')" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${t}</button>` : "";
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:16px;font-weight:800;color:#1e293b;">Compra de ${opsEsc(c.tecnico_nombre || "técnico")}</div>
+                <div style="font-size:12px;color:#64748b;">${opsEsc(c.folio || "")} · reportada ${opsEsc(String(c.creado_en || "").slice(0, 16).replace("T", " "))} · ${opsEsc(c.estatus)}</div></div>
+                <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+                <div style="font-size:12.5px;color:#334155;line-height:1.7;background:#f8fafc;border-radius:10px;padding:10px 12px;margin:12px 0;">
+                    <div><b>Qué compró:</b> ${opsEsc(c.descripcion)}${c.marca ? " · " + opsEsc(c.marca) : ""} · ${opsEsc(c.cantidad || 1)} pza(s)</div>
+                    <div><b>Monto:</b> ${opsDinero(c.monto)} · <b>Pagó con:</b> ${opsEsc(c.pagado_con || "")}${c.viatico_folio ? " (" + opsEsc(c.viatico_folio) + ")" : ""}</div>
+                    ${c.servicio_txt ? `<div><b>Para el servicio:</b> ${opsEsc(c.servicio_txt)}</div>` : ""}
+                    ${c.reemplaza_txt ? `<div><b>Reemplaza a:</b> ${opsEsc(c.reemplaza_txt)}</div>` : ""}
+                    <div><b>Por qué:</b> ${opsEsc(c.motivo || "")}</div>
+                    ${c.respuesta ? `<div><b>Respuesta:</b> ${opsEsc(c.respuesta)} (${opsEsc(c.revisado_por || "")})</div>` : ""}
+                    ${c.repuesto_por ? `<div><b>Repuesto por:</b> ${opsEsc(c.repuesto_por)}${c.referencia_reposicion ? " · ref. " + opsEsc(c.referencia_reposicion) : ""}</div>` : ""}
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${bF(fotos.nueva, "Foto de la nueva")}${bF(fotos.vieja, "Foto de la vieja / dañada")}${bF(fotos.ticket, "Ticket / factura")}</div>
+                ${gestion ? `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                    ${c.estatus === "Por revisar" ? `<button onclick="opsHerrCompraDecidir(${c.id},false)" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Rechazar</button>
+                        <button onclick="opsHerrCompraDecidir(${c.id},true)" style="background:#15803d;border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Aprobar reposición</button>` : ""}
+                    ${c.estatus === "Aprobada" ? `<button onclick="opsHerrCompraAlta(${c.id})" style="background:#1D2E73;border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Dar de alta en su almacén</button>
+                        <button onclick="opsHerrCompraRepuesta(${c.id})" style="background:#0f766e;border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Ya se le repuso el dinero</button>` : ""}
+                </div>` : ""}
+            </div></div>`;
+    };
+    window.opsHerrCompraFoto = async function (ruta) { const w = window.open("", "_blank"); try { const sb = await opsSb(); const r = await sb.storage.from("viaticos-comprobantes").createSignedUrl(ruta, 600); if (r.error) throw r.error; if (w) w.location.href = r.data.signedUrl; } catch (e) { if (w) w.close(); alert("No se pudo abrir: " + (e.message || e)); } };
+    async function opsHerrCompraActualizar(id, cambios, aviso) {
+        const sb = await opsSb(); const r = await sb.from("ops_herr_compras_tecnico").update(cambios).eq("id", id); if (r.error) throw r.error;
+        const c = (opsHerrComprasTec || []).find(x => x.id === id); if (c) Object.assign(c, cambios);
+        if (aviso && c && c.tecnico_correo) opsViaAvisoTecnico(c.tecnico_correo, "herr_compra_respuesta", aviso, { id: c.id, folio: c.folio }).catch(() => {});
+        return c;
+    }
+    window.opsHerrCompraDecidir = async function (id, ok) {
+        const c = (opsHerrComprasTec || []).find(x => x.id === id); if (!c) return;
+        const resp = ok ? (prompt("Nota (opcional):", "") ?? null) : prompt("¿Por qué no se repone? (le llega al técnico)", "");
+        if (resp === null) return; if (!ok && !resp.trim()) { alert("Escribe la razón."); return; }
+        try {
+            await opsHerrCompraActualizar(id, { estatus: ok ? "Aprobada" : "Rechazada", revisado_por: opsNombreActual(), revisado_en: new Date().toISOString(), respuesta: resp.trim() || null },
+                ok ? `Se aprobó tu compra de ${c.descripcion} (${opsDinero(c.monto)}). Pagos te repone el dinero.` : `No se aprobó la reposición de ${c.descripcion}: ${resp.trim()}`);
+            if (ok && window.tcNotificarEvento) window.tcNotificarEvento("herr_compra_tecnico", { modulo: "Pagos", mensaje: `Reponer ${opsDinero(c.monto)} a ${c.tecnico_nombre} por la compra de ${c.descripcion} (${c.pagado_con}). Aprobó ${opsNombreActual()}.` }).catch(() => {});
+            window.opsHerrCompraVer(id); const el = document.getElementById("ops-herr-pend"); if (el) el.innerHTML = opsHerrPendientesHTML(opsPuedeGestionar());
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsHerrCompraRepuesta = async function (id) {
+        const ref = prompt("Referencia del depósito o recibo (opcional):", ""); if (ref === null) return;
+        try { const c = await opsHerrCompraActualizar(id, { repuesto_por: opsNombreActual(), repuesto_en: new Date().toISOString(), referencia_reposicion: ref.trim() || null, estatus: "Resuelta" }, null);
+            if (c && c.tecnico_correo) opsViaAvisoTecnico(c.tecnico_correo, "herr_compra_repuesta", `Ya se te repuso el dinero de ${c.descripcion} (${opsDinero(c.monto)}).`, { id: c.id, folio: c.folio }).catch(() => {});
+            document.getElementById("ops-modal-wrap").innerHTML = ""; const el = document.getElementById("ops-herr-pend"); if (el) el.innerHTML = opsHerrPendientesHTML(opsPuedeGestionar());
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    // Abre el alta de pieza ya llenada con lo que compró y en el almacén del técnico.
+    window.opsHerrCompraAlta = function (id) {
+        const c = (opsHerrComprasTec || []).find(x => x.id === id); if (!c) return;
+        window.opsAbrirModalPieza();
+        setTimeout(() => {
+            const d = document.getElementById("ops-in-desc"); if (d) d.value = c.descripcion + (c.marca ? " " + c.marca : "");
+            const sel = document.getElementById("ops-in-almacen"); if (sel && c.tecnico_id) { const v = "tec:" + c.tecnico_id; if ([...sel.options].some(o => o.value === v)) { sel.value = v; window.opsAltaAlmacenCambio(sel); } }
+            const m = document.getElementById("ops-in-marca"); if (m && c.marca) m.value = c.marca;
+            alert("Revisa los datos y guarda la pieza. Después agrégale la factura desde su ficha (compra de " + (c.tecnico_nombre || "el técnico") + " por " + opsDinero(c.monto) + ").");
+        }, 150);
+    };
     function opsRenderDashboard() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -2605,6 +2766,7 @@
         ];
 
         const gestion = opsPuedeGestionar();
+        if (opsHerrComprasTec === null) opsHerrCargarComprasTec();
         let lista = cacheHerr.slice();
         const b = filtroCat.busca.trim().toLowerCase();
         if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
@@ -2622,6 +2784,7 @@
                         <div><div style="font-size:19px;font-weight:700;color:#1e293b;line-height:1;">${k.valor}</div><div style="font-size:10.5px;color:#64748b;margin-top:3px;">${k.label}</div></div>
                     </div>`).join("")}
             </div>
+            <div id="ops-herr-pend">${opsHerrPendientesHTML(gestion)}</div>
             <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
                 <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 13px;flex:1;min-width:240px;max-width:420px;">
                     <span style="color:#94a3b8;">${ICON.search}</span>
@@ -3178,6 +3341,7 @@
                     <button onclick="opsAbrirModalPieza('${id}')" class="mkt-add-btn" style="background:#475569;">${ICON.pencil} Editar datos</button>
                     <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:#1D2E73;">${opsTraspasoPendientePara(id) ? `${ICON.lock} Ver traspaso pendiente` : "Registrar movimiento"}</button>
                     ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:#334155;">Regenerar responsiva PDF</button>` : ""}
+                    <button onclick="opsExpedienteHerrPDF('${id}')" class="mkt-add-btn" style="background:#0f766e;" title="Datos, compra, asignación y todo su historial">Expediente PDF (historial)</button>
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
