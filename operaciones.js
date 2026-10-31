@@ -1444,7 +1444,7 @@
     // pero para EDITAR no tenían alias y un administrador de Operaciones las veía en solo lectura (ej. Idaly en
     // "Pedidos de herramienta"). Ahora ver y editar usan la misma sección.
     const OPS_ACC_ALIAS = { gestionados: "calendario", vehiculos: "calendario", revision: "folios", derivados: "folios", pendientes: "folios", extras: "folios",
-        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard", material: "dashboard" };
+        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard", material: "dashboard", reportesapp: "folios" };
     const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
@@ -2278,10 +2278,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "reportesapp:Pólizas y reportes (app)", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2352,6 +2352,7 @@
         else if (tab === "pendientes") opsRenderPendientes();
         else if (tab === "herrsol") opsRenderSolHerr();
         else if (tab === "material") opsRenderMaterial();
+        else if (tab === "reportesapp") opsRenderReportesApp();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
@@ -4062,6 +4063,178 @@
         const hastaTxt = hasta ? new Date(hasta + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "sin fecha";
         return { ...p, aNombre: p.aNombre || "alguien", hastaTxt, vencido: !!hasta && hasta < opsHoy() };
     }
+    // ═══ PÓLIZAS Y REPORTES DE LA APP (j2tecno-app) — 31-oct-2026 ═══
+    // Las pólizas de mantenimiento, inspecciones de integridad de tanques y certificados de limpieza que
+    // levantan los técnicos en la app de pólizas, con TODAS sus evidencias, para verlas, descargarlas
+    // (PDF completo, solo hallazgos, ZIP de fotos) y auditarlas desde Operaciones.
+    // Seguridad: los datos de la app NO están abiertos al público. Se piden a la función del servidor
+    // "portal-reportes-app", que valida la sesión de Firebase del usuario y su acceso a Operaciones, y
+    // regresa ligas temporales (1 hora) a las fotos. La auditoría queda en ops_auditoria_reportes.
+    let opsRA = { tab: "polizas", q: "", datos: null, cargando: false, err: null };
+    if (!Object.getOwnPropertyDescriptor(window, "opsRA")) Object.defineProperty(window, "opsRA", { get() { return opsRA; }, configurable: true });
+    async function opsRALlamar(cuerpo) {
+        const u = window.auth && window.auth.currentUser; if (!u) throw new Error("Vuelve a iniciar sesión en el portal.");
+        const tok = await u.getIdToken();
+        const r = await fetch(OPS_SB_URL + "/functions/v1/portal-reportes-app", { method: "POST", headers: { "Content-Type": "application/json", apikey: OPS_SB_KEY, "x-firebase-token": tok }, body: JSON.stringify(cuerpo) });
+        const j = await r.json().catch(() => ({ error: "Respuesta no válida del servidor" }));
+        if (!r.ok || j.error) throw new Error(j.error || ("Error " + r.status));
+        return j;
+    }
+    const OPS_RA_RES = { aprobado: ["Auditado: aprobado", "#15803d", "#dcfce7"], con_observaciones: ["Auditado con observaciones", "#a16207", "#fef9c3"], rechazado: ["Auditado: rechazado", "#b91c1c", "#fee2e2"] };
+    function opsRAAuditoria(tipo, id) { return ((opsRA.datos || {}).auditorias || []).find(a => a.tipo === tipo && a.registro_id === id) || null; }
+    window.opsRenderReportesApp = async function () {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsRA.datos && !opsRA.cargando) {
+            opsRA.cargando = true; el.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;">Trayendo pólizas y reportes de la app…</div>`;
+            try { opsRA.datos = await opsRALlamar({ accion: "lista" }); opsRA.err = null; } catch (e) { opsRA.err = e.message; }
+            opsRA.cargando = false; if (tabActual !== "reportesapp") return;
+        }
+        const d = opsRA.datos || { polizas: [], integridad: [], limpieza: [] }, q = opsAsNorm(opsRA.q);
+        const conf = { polizas: { t: "Pólizas", tipo: "poliza" }, integridad: { t: "Integridad", tipo: "integridad" }, limpieza: { t: "Limpieza", tipo: "limpieza" } };
+        const filas = (d[opsRA.tab] || []).filter(r => !q || opsAsNorm(JSON.stringify(r)).includes(q));
+        const tipo = conf[opsRA.tab].tipo;
+        const chip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:3px 9px;white-space:nowrap;">${opsEsc(t)}</span>`;
+        const tarjeta = r => {
+            const a = opsRAAuditoria(tipo, r.id), au = a ? OPS_RA_RES[a.resultado] : ["Sin auditar", "#475569", "#f1f5f9"];
+            const tit = tipo === "poliza" ? r.estacion_nombre : (r.nombre_generico || r.razon_social || r.identificacion_tanque || "Reporte");
+            const sub = tipo === "poliza" ? `${r.cliente_razon_social || ""} · Folio ${r.folio || ""}` : tipo === "integridad" ? `${r.razon_social || ""}${r.dictamen_final ? " · Dictamen: " + r.dictamen_final : ""}` : `${r.razon_social || ""} · Tanque ${r.identificacion_tanque || ""}`;
+            const fecha = tipo === "poliza" ? opsFmtFechaCorta(r.fecha) : (r.fecha_emision || opsFmtFechaCorta(r.created_at));
+            const meta = tipo === "poliza" ? `${r.tecnico_nombre || ""} · ${r.total_puntos || 0} punto(s) · ${r.total_hallazgos || 0} hallazgo(s)` : tipo === "integridad" ? `${r.tecnico_nombre || ""} · ${r.n_evidencias || 0} evidencia(s)` : `${r.responsable_trabajos || ""}`;
+            return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+                    <div style="cursor:pointer;flex:1;min-width:240px;" onclick="opsRAVer('${tipo}','${r.id}')"><div style="font-size:15px;font-weight:800;color:#1D2E73;">${opsEsc(tit || "—")}</div>
+                    <div style="font-size:12.5px;color:#334155;">${opsEsc(sub)}</div><div style="font-size:12px;color:#94a3b8;">${opsEsc(fecha)} · ${opsEsc(meta)}</div></div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${tipo === "poliza" && r.total_hallazgos ? chip(r.total_hallazgos + " hallazgo(s)", "#b91c1c", "#fee2e2") : ""}${chip(au[0], au[1], au[2])}</div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                    <button onclick="opsRAVer('${tipo}','${r.id}')" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;">Ver y auditar</button>
+                    <button onclick="opsRAPDF('${tipo}','${r.id}',false)" style="background:#eef2ff;color:#1D2E73;border:1px solid #c7d2fe;border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;">PDF completo</button>
+                    ${tipo === "poliza" ? `<button onclick="opsRAPDF('${tipo}','${r.id}',true)" style="background:#eef2ff;color:#1D2E73;border:1px solid #c7d2fe;border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;">Solo hallazgos</button>` : ""}
+                    <button onclick="opsRAZip('${tipo}','${r.id}')" style="background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;">Descargar fotos (ZIP)</button>
+                </div></div>`;
+        };
+        el.innerHTML = `<div style="background:#f8fafc;border-radius:14px;padding:16px 18px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px;">
+                <div><div style="font-size:17px;font-weight:800;color:#1D2E73;">Pólizas y reportes de la app</div>
+                <div style="font-size:12px;color:#64748b;max-width:760px;">Lo que los técnicos levantan en la app de pólizas, con todas sus evidencias. Ábrelo para ver punto por punto, fotos con ubicación y firma; descárgalo en PDF o las fotos en ZIP, y deja tu auditoría.</div></div>
+                <button onclick="opsRA.datos=null;opsRenderReportesApp()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">↻ Actualizar</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">${Object.keys(conf).map(k => `<button onclick="opsRA.tab='${k}';opsRenderReportesApp()" style="border:1.5px solid ${opsRA.tab === k ? "#1D2E73" : "#cbd5e1"};background:${opsRA.tab === k ? "#1D2E73" : "#fff"};color:${opsRA.tab === k ? "#fff" : "#334155"};border-radius:12px;padding:10px;font-size:13.5px;font-weight:800;cursor:pointer;">${conf[k].t} (${(d[k] || []).length})</button>`).join("")}</div>
+            <input id="ops-ra-q" placeholder="Buscar por estación, tanque, folio o técnico…" value="${opsEsc(opsRA.q)}" oninput="opsRA.q=this.value;opsRenderReportesApp();setTimeout(()=>{const i=document.getElementById('ops-ra-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)" style="width:100%;border:1.5px solid #cbd5e1;border-radius:10px;padding:10px 12px;font-size:13.5px;margin-bottom:12px;box-sizing:border-box;">
+            ${opsRA.err ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px;color:#991b1b;font-size:13px;">No se pudo traer la información: ${opsEsc(opsRA.err)}</div>` : (filas.length ? filas.map(tarjeta).join("") : `<div style="padding:24px;text-align:center;color:#94a3b8;">No hay reportes${q ? " con esa búsqueda" : ""}.</div>`)}
+        </div>`;
+    };
+    // ── Detalle: punto por punto, hallazgos, evidencias con ubicación, firma y auditoría ──
+    window.opsRAVer = async function (tipo, id) {
+        const wrap = document.getElementById("ops-modal-wrap");
+        const marco = c => `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;" onclick="if(event.target===this)this.parentNode.innerHTML=''"><div style="background:#fff;border-radius:16px;width:1000px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:22px 24px;">${c}</div></div>`;
+        wrap.innerHTML = marco(`<div style="padding:30px;text-align:center;color:#64748b;">Cargando el reporte y sus evidencias…</div>`);
+        let d; try { d = await opsRALlamar({ accion: "detalle", tipo, id }); } catch (e) { wrap.innerHTML = marco(`<div style="color:#b91c1c;">${opsEsc(e.message)}</div><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="margin-top:12px;">Cerrar</button>`); return; }
+        opsRA.ultimo = { tipo, id, d };
+        const r = d.registro, ev = d.evidencias || [];
+        const campo = (k, v) => v == null || v === "" ? "" : `<div style="background:#f8fafc;border-radius:10px;padding:8px 11px;"><div style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;">${k}</div><div style="font-size:13px;font-weight:600;color:#0f172a;">${opsEsc(v)}</div></div>`;
+        const foto = e => e.url ? `<a href="${opsEsc(e.url)}" target="_blank" style="display:block;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;text-decoration:none;background:#fff;">
+            <img src="${opsEsc(e.url)}" loading="lazy" style="width:100%;height:120px;object-fit:cover;display:block;background:#f1f5f9;">
+            <div style="padding:6px 8px;font-size:10.5px;color:#334155;line-height:1.35;">${opsEsc(e.elemento_nombre || e.anexo || e.punto || e.tipo || "")}${e.item_texto || e.descripcion ? "<br><span style='color:#64748b'>" + opsEsc(String(e.item_texto || e.descripcion).slice(0, 90)) + "</span>" : ""}
+            <br><span style="color:#94a3b8">${e.tomada_en ? opsEsc(String(e.tomada_en).slice(0, 16).replace("T", " ")) : ""}${e.latitud ? ` · <span onclick="event.preventDefault();window.open('https://maps.google.com/?q=${e.latitud},${e.longitud}','_blank')" style="color:#2563eb;text-decoration:underline;">mapa</span>` : ""}${e.ligada === "estacion_fecha" ? " · por estación y fecha" : ""}</span></div></a>` : "";
+        let cuerpo = "";
+        if (tipo === "poliza") {
+            const items = r.tabla_completa || [], hall = r.detalle || [];
+            const porZona = {}; items.forEach(it => { const z = it.zonaNombre || "Otros"; (porZona[z] = porZona[z] || []).push(it); });
+            const cumpleTxt = c => c === "si" ? ["Cumple", "#15803d", "#dcfce7"] : c === "no" ? ["No cumple", "#b91c1c", "#fee2e2"] : ["N/A", "#64748b", "#f1f5f9"];
+            cuerpo = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:12px 0;">${campo("Cliente", r.cliente_razon_social)}${campo("Folio", r.folio)}${campo("Técnico", r.tecnico_nombre)}${campo("Fecha", String(r.fecha || "").slice(0, 16).replace("T", " "))}${campo("Puntos revisados", r.total_puntos)}${campo("Hallazgos", r.total_hallazgos)}${campo("Estado en la app", r.estado)}${campo("Enviado a", r.enviado_a)}</div>
+                ${hall.length ? `<div style="font-size:14px;font-weight:800;color:#b91c1c;margin:14px 0 6px;">Hallazgos (${hall.length})</div>${hall.map(h => `<div style="border:1px solid #fecaca;background:#fff5f5;border-radius:10px;padding:9px 12px;margin-bottom:7px;font-size:12.5px;"><b>${opsEsc(h.elemento || "")}</b> · ${opsEsc(h.zona || "")}${h.critico ? ` <span style="color:#b91c1c;font-weight:800;">CRÍTICO</span>` : ""}<div style="color:#475569;">${opsEsc(h.texto || "")}</div>${h.comentario || h.observacion ? `<div style="color:#7f1d1d;">${opsEsc(h.comentario || h.observacion)}</div>` : ""}</div>`).join("")}` : ""}
+                <div style="font-size:14px;font-weight:800;color:#1D2E73;margin:14px 0 6px;">Revisión punto por punto (${items.length})</div>
+                ${Object.keys(porZona).map(z => `<details ${Object.keys(porZona).length <= 3 ? "open" : ""} style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;margin-bottom:6px;"><summary style="font-weight:800;color:#334155;cursor:pointer;font-size:13px;">${opsEsc(z)} (${porZona[z].length}) ${porZona[z].some(x => x.cumple === "no") ? `<span style="color:#b91c1c;">· ${porZona[z].filter(x => x.cumple === "no").length} no cumple</span>` : ""}</summary>
+                    ${porZona[z].map(it => { const c = cumpleTxt(it.cumple); return `<div style="display:flex;gap:10px;justify-content:space-between;align-items:flex-start;padding:6px 0;border-top:1px solid #f1f5f9;font-size:12px;"><span><b>${opsEsc(it.elementoNombre || "")}</b> · ${opsEsc(it.texto || "")}<span style="color:#94a3b8;"> · ${opsEsc(it.periodicidad || "")}</span></span><span style="font-size:10.5px;font-weight:800;color:${c[1]};background:${c[2]};border-radius:99px;padding:2px 8px;white-space:nowrap;">${c[0]}</span></div>`; }).join("")}</details>`).join("")}
+                ${r.firma_base64 ? `<div style="font-size:14px;font-weight:800;color:#1D2E73;margin:14px 0 6px;">Firma</div><img src="${/^data:/.test(r.firma_base64) ? r.firma_base64 : "data:image/png;base64," + r.firma_base64}" style="max-width:320px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;">` : ""}`;
+        } else {
+            const p = r.payload || {};
+            const plano = []; (function rec(o, pref, nivel) { if (nivel > 2 || plano.length > 80) return; Object.keys(o || {}).forEach(k => { const v = o[k]; if (v == null || v === "") return; if (typeof v === "object" && !Array.isArray(v)) rec(v, pref + k + " · ", nivel + 1); else if (!Array.isArray(v) && String(v).length < 140 && !/^data:/.test(String(v))) plano.push([pref + k, v]); }); })(p, "", 0);
+            cuerpo = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:12px 0;">${campo("Razón social", r.razon_social)}${campo("Tanque", r.nombre_generico || r.identificacion_tanque)}${campo("Técnico", r.tecnico_nombre || r.responsable_trabajos)}${campo("Fecha de emisión", r.fecha_emision)}${campo("Dictamen", r.dictamen_final)}${campo("Permiso de expendio", r.permiso_expendio)}</div>
+                ${plano.length ? `<details style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;margin-bottom:6px;"><summary style="font-weight:800;color:#334155;cursor:pointer;font-size:13px;">Todos los datos capturados (${plano.length})</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px;margin-top:8px;">${plano.map(([k, v]) => campo(k, v)).join("")}</div></details>` : ""}`;
+        }
+        const auds = d.auditorias || [];
+        wrap.innerHTML = marco(`<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+                <div><div style="font-size:12px;color:#64748b;font-weight:700;">${tipo === "poliza" ? "Póliza de mantenimiento" : tipo === "integridad" ? "Integridad de tanque" : "Certificado de limpieza"}</div>
+                <div style="font-size:21px;font-weight:800;color:#1D2E73;">${opsEsc(r.estacion_nombre || r.nombre_generico || r.razon_social || "")}</div></div>
+                <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:34px;height:34px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
+            ${cuerpo}
+            <div style="font-size:14px;font-weight:800;color:#1D2E73;margin:16px 0 8px;">Evidencias (${ev.length})</div>
+            ${ev.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">${ev.map(foto).join("")}</div>` : `<div style="font-size:12.5px;color:#94a3b8;">Sin evidencias ligadas.</div>`}
+            ${tipo === "poliza" && ev.some(e => e.ligada === "estacion_fecha") ? `<div style="font-size:11px;color:#94a3b8;margin-top:6px;">Las fotos marcadas "por estación y fecha" se tomaron en esa estación el mismo día de la póliza (la app no las liga directo a la póliza).</div>` : ""}
+            <div style="font-size:14px;font-weight:800;color:#1D2E73;margin:18px 0 8px;">Auditoría</div>
+            ${auds.length ? auds.map(a => { const x = OPS_RA_RES[a.resultado]; return `<div style="border-left:4px solid ${x[1]};background:${x[2]};border-radius:8px;padding:8px 11px;margin-bottom:6px;font-size:12.5px;"><b style="color:${x[1]};">${x[0]}</b> · ${opsEsc(a.por_nombre || a.por_email)} · ${opsEsc(String(a.creado_en).slice(0, 16).replace("T", " "))}${a.comentario ? `<div>${opsEsc(a.comentario)}</div>` : ""}</div>`; }).join("") : `<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Nadie lo ha auditado.</div>`}
+            ${opsPuedeGestionar() ? `<textarea id="ops-ra-com" rows="2" placeholder="Observaciones (obligatorias si no se aprueba)" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:9px 11px;font-size:13px;box-sizing:border-box;margin-top:6px;"></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px;">
+                <button onclick="opsRAPDF('${tipo}','${id}',false)" style="background:#eef2ff;color:#1D2E73;border:1px solid #c7d2fe;border-radius:8px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">PDF completo</button>
+                <button onclick="opsRAZip('${tipo}','${id}')" style="background:#fff;color:#334155;border:1px solid #cbd5e1;border-radius:8px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">Fotos (ZIP)</button>
+                <button onclick="opsRAAuditar('${tipo}','${id}','rechazado')" style="background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">Rechazar</button>
+                <button onclick="opsRAAuditar('${tipo}','${id}','con_observaciones')" style="background:#fef9c3;color:#a16207;border:1px solid #fde68a;border-radius:8px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">Con observaciones</button>
+                <button onclick="opsRAAuditar('${tipo}','${id}','aprobado')" style="background:#15803d;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">Aprobar</button>
+            </div>` : ""}`);
+    };
+    window.opsRAAuditar = async function (tipo, id, resultado) {
+        const com = ((document.getElementById("ops-ra-com") || {}).value || "").trim();
+        if (resultado !== "aprobado" && !com) { alert("Escribe las observaciones."); return; }
+        const r = (opsRA.ultimo && opsRA.ultimo.d && opsRA.ultimo.d.registro) || {};
+        try { await opsRALlamar({ accion: "auditar", tipo, id, folio: r.folio || r.nombre_generico || r.identificacion_tanque || null, resultado, comentario: com || null, nombre: opsNombreActual() });
+            opsRA.datos = null; await window.opsRAVer(tipo, id); if (tabActual === "reportesapp") opsRenderReportesApp();
+        } catch (e) { alert("No se pudo guardar la auditoría: " + e.message); }
+    };
+    async function opsRADetalle(tipo, id) { if (opsRA.ultimo && opsRA.ultimo.tipo === tipo && opsRA.ultimo.id === id) return opsRA.ultimo.d; const d = await opsRALlamar({ accion: "detalle", tipo, id }); opsRA.ultimo = { tipo, id, d }; return d; }
+    // Imagen → JPEG reducido (para PDF y para no reventar memoria)
+    function opsRAImagen(url, max) { return fetch(url).then(r => r.blob()).then(b => new Promise(ok => { const im = new Image(), u = URL.createObjectURL(b); im.onload = () => { const k = Math.min(1, (max || 1100) / Math.max(im.width, im.height)); const c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); ok({ data: c.toDataURL("image/jpeg", 0.72), w: c.width, h: c.height }); }; im.onerror = () => { URL.revokeObjectURL(u); ok(null); }; im.src = u; })).catch(() => null); }
+    window.opsRAPDF = async function (tipo, id, soloHallazgos) {
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("No se cargó la librería de PDF. Recarga la página."); return; }
+        let d; try { d = await opsRADetalle(tipo, id); } catch (e) { alert(e.message); return; }
+        const r = d.registro, ev = d.evidencias || [];
+        const doc = new window.jspdf.jsPDF({ unit: "pt", format: "letter" }); const W = 612, M = 40; let y = 0;
+        const salto = n => { if (y + n > 750) { doc.addPage(); y = 50; } };
+        const txt = (t, s, b, col, x, w) => { doc.setFont("helvetica", b ? "bold" : "normal"); doc.setFontSize(s); doc.setTextColor(...(col || [15, 23, 42])); const l = doc.splitTextToSize(String(t == null ? "" : t), w || W - 2 * M); salto(l.length * s * 1.2); doc.text(l, x || M, y); y += l.length * s * 1.2 + 2; };
+        const sec = t => { salto(30); y += 8; doc.setFillColor(...PDF_AZUL); doc.rect(M, y - 12, W - 2 * M, 18, "F"); doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(t, M + 6, y); y += 16; };
+        doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 62, "F"); doc.setFillColor(...PDF_ROJO); doc.rect(0, 62, W, 3, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+        doc.text(tipo === "poliza" ? (soloHallazgos ? "PÓLIZA DE MANTENIMIENTO · HALLAZGOS" : "PÓLIZA DE MANTENIMIENTO") : tipo === "integridad" ? "INTEGRIDAD DE TANQUE" : "CERTIFICADO DE LIMPIEZA", M, 30);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("HEDMA TECNOCONTROL S.A. DE C.V. · descargado del Portal Operativo el " + new Date().toLocaleString("es-MX"), M, 46);
+        y = 90;
+        txt(r.estacion_nombre || r.nombre_generico || r.razon_social || "", 14, true, [29, 46, 115]);
+        txt([r.cliente_razon_social || r.razon_social, r.folio ? "Folio " + r.folio : "", r.tecnico_nombre || r.responsable_trabajos, String(r.fecha || r.fecha_emision || r.created_at || "").slice(0, 16).replace("T", " ")].filter(Boolean).join(" · "), 9.5, false, [71, 85, 105]);
+        if (tipo === "poliza") {
+            txt(`Puntos revisados: ${r.total_puntos || 0} · Hallazgos: ${r.total_hallazgos || 0}`, 10, true);
+            if ((r.detalle || []).length) { sec("HALLAZGOS (" + r.detalle.length + ")"); r.detalle.forEach((h, i) => { txt((i + 1) + ". " + (h.elemento || "") + " · " + (h.zona || "") + (h.critico ? " · CRÍTICO" : ""), 10, true, h.critico ? [185, 28, 28] : null); txt(h.texto || "", 9, false, [71, 85, 105]); if (h.comentario || h.observacion) txt(h.comentario || h.observacion, 9, false, [127, 29, 29]); }); }
+            else if (soloHallazgos) { sec("HALLAZGOS"); txt("Sin hallazgos en esta póliza.", 10); }
+            if (!soloHallazgos) { sec("REVISIÓN PUNTO POR PUNTO (" + (r.tabla_completa || []).length + ")"); let zona = ""; (r.tabla_completa || []).forEach(it => { if (it.zonaNombre !== zona) { zona = it.zonaNombre; txt(zona || "", 10, true, [29, 46, 115]); } txt((it.cumple === "si" ? "✓ Cumple" : it.cumple === "no" ? "✗ NO cumple" : "N/A") + " · " + (it.elementoNombre || "") + ": " + (it.texto || ""), 8.5, false, it.cumple === "no" ? [185, 28, 28] : [51, 65, 85]); }); }
+        } else {
+            if (r.dictamen_final) txt("Dictamen: " + r.dictamen_final, 11, true);
+        }
+        const fotos = soloHallazgos ? ev.filter(e => e.ligada === "hallazgo" || e.tipo === "hallazgo") : ev;
+        if (fotos.length) {
+            sec("EVIDENCIAS (" + fotos.length + ")"); let col = 0; const lado = (W - 2 * M - 10) / 2;
+            for (const e of fotos) { if (!e.url) continue; const im = await opsRAImagen(e.url, 900); if (!im) continue; const h = Math.min(lado * im.h / im.w, 230);
+                if (col === 0) salto(h + 40); const x = M + col * (lado + 10);
+                try { doc.addImage(im.data, "JPEG", x, y, lado, h, undefined, "FAST"); } catch (_) {}
+                doc.setFontSize(7.5); doc.setTextColor(71, 85, 105); doc.text(doc.splitTextToSize([e.elemento_nombre || e.anexo || e.punto || "", String(e.tomada_en || "").slice(0, 16).replace("T", " "), e.latitud ? e.latitud.toFixed(5) + ", " + e.longitud.toFixed(5) : ""].filter(Boolean).join(" · "), lado).slice(0, 2), x, y + h + 10);
+                if (col === 1) { y += h + 32; col = 0; } else col = 1; window._opsRAh = h; }
+            if (col === 1) y += (window._opsRAh || 200) + 32;
+        }
+        if (r.firma_base64 && !soloHallazgos) { sec("FIRMA"); salto(110); try { doc.addImage(/^data:/.test(r.firma_base64) ? r.firma_base64 : "data:image/png;base64," + r.firma_base64, "PNG", M, y, 220, 90); } catch (_) {} y += 100; }
+        const auds = d.auditorias || []; if (auds.length) { sec("AUDITORÍA DEL PORTAL"); auds.forEach(a => txt((OPS_RA_RES[a.resultado] || [a.resultado])[0] + " · " + (a.por_nombre || a.por_email) + " · " + String(a.creado_en).slice(0, 16).replace("T", " ") + (a.comentario ? " · " + a.comentario : ""), 9)); }
+        doc.save((tipo === "poliza" ? "Poliza_" + (r.folio || id) : tipo === "integridad" ? "Integridad_" + (r.nombre_generico || id) : "Limpieza_" + (r.identificacion_tanque || id)).replace(/[^\w.-]+/g, "_") + (soloHallazgos ? "_hallazgos" : "") + ".pdf");
+    };
+    window.opsRAZip = async function (tipo, id) {
+        let d; try { d = await opsRADetalle(tipo, id); } catch (e) { alert(e.message); return; }
+        const ev = (d.evidencias || []).filter(e => e.url); if (!ev.length) { alert("Este reporte no tiene fotos."); return; }
+        try {
+            const JSZip = (await import("https://esm.sh/jszip@3.10.1")).default; const zip = new JSZip(); let n = 0;
+            for (const e of ev) { const b = await fetch(e.url).then(r => r.blob()).catch(() => null); if (!b) continue; n++;
+                const nombre = String(n).padStart(3, "0") + "_" + String(e.elemento_nombre || e.anexo || e.punto || e.tipo || "foto").replace(/[^\wáéíóúñÁÉÍÓÚÑ.-]+/g, "_").slice(0, 60) + "." + (String(e.storage_path).split(".").pop() || "jpg").slice(0, 4);
+                zip.file(nombre, b); }
+            const r = d.registro, blob = await zip.generateAsync({ type: "blob" }), a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = ("Evidencias_" + (r.folio || r.nombre_generico || r.identificacion_tanque || id)).replace(/[^\w.-]+/g, "_") + ".zip"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+        } catch (e) { alert("No se pudo armar el ZIP: " + (e.message || e)); }
+    };
+
     // ═══ MATERIAL DE SERVICIOS — almacén de resguardo (30-oct-2026) ═══
     // Material que se compra aparte y siempre debe haber en existencia (ej. Re-Tank de una marca específica,
     // resina). Cada entrada y salida queda en el historial, ligada al servicio. Las salidas las autoriza quien
