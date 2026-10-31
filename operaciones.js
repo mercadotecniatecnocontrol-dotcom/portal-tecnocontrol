@@ -1444,7 +1444,7 @@
     // pero para EDITAR no tenían alias y un administrador de Operaciones las veía en solo lectura (ej. Idaly en
     // "Pedidos de herramienta"). Ahora ver y editar usan la misma sección.
     const OPS_ACC_ALIAS = { gestionados: "calendario", vehiculos: "calendario", revision: "folios", derivados: "folios", pendientes: "folios", extras: "folios",
-        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard" };
+        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard", material: "dashboard" };
     const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
@@ -1834,6 +1834,8 @@
         if (h.prestamo) campo("Préstamo:", "Prestada a " + (h.prestamo.aNombre || "") + " desde " + (h.prestamo.desde || "") + ", regresa el " + (h.prestamo.hasta || ""));
         const serv = (h.historialServicios || []).concat(h.servicioLigado ? [h.servicioLigado] : []);
         if (serv.length) { sec("3 · SERVICIOS EN LOS QUE SALIÓ"); serv.forEach(sv => campo(String(sv.salida || "").slice(0, 10) + ":", [sv.estacion, "la llevó " + (sv.entregadoA || ""), sv.estatus === "fuera" ? "sigue fuera (regresa " + (sv.regresoEsperado || "") + ")" : "regresó " + (sv.regresoReal || "") + (sv.condicionRegreso ? " · " + sv.condicionRegreso : "")].filter(Boolean).join(" · "))); }
+        if ((h.mantenimientos || []).length) { sec("MANTENIMIENTO Y CALIBRACIÓN (" + h.mantenimientos.length + ")"); h.mantenimientos.forEach(m => campo(String(m.fecha || "") + ":", [(m.tipo || ""), m.descripcion, m.proveedor, m.costo ? opsDinero(m.costo) : "", m.requisicion ? "requisición " + m.requisicion : "", m.proximo ? "próximo " + m.proximo : "", m.abierto ? "EN PROCESO" : (m.terminado ? "terminó " + m.terminado : "")].filter(Boolean).join(" · "))); }
+        if ((h.usoLab || []).length) { sec("SALIDAS DE LABORATORIO (" + h.usoLab.length + ")"); h.usoLab.forEach(u => campo(String(u.salida || "") + " → " + String(u.regreso || ""), [u.quien, u.dias ? u.dias + " día(s)" : "", u.ubicacion, u.razonSocial, u.servicio, u.autorizo ? "autorizó " + u.autorizo : "", u.conDetalle ? "regresó con detalle: " + (u.obsRegreso || "") : "sin detalle"].filter(Boolean).join(" · "))); }
         sec((serv.length ? "4" : "3") + " · HISTORIAL COMPLETO DE MOVIMIENTOS (" + movs.length + ")");
         const TL = { alta: "Alta en almacén", asignacion: "Asignación", devolucion: "Devolución", reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación", perdida: "Pérdida", danio: "Daño", baja: "Baja", transferencia: "Transferencia", traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento", prestamo: "Préstamo", devolucion_prestamo: "Regresó del préstamo" };
         if (!movs.length) campo("—", "Sin movimientos registrados.");
@@ -2276,10 +2278,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2349,6 +2351,7 @@
         else if (tab === "connecteam") opsRenderConnecteam();
         else if (tab === "pendientes") opsRenderPendientes();
         else if (tab === "herrsol") opsRenderSolHerr();
+        else if (tab === "material") opsRenderMaterial();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
@@ -2657,9 +2660,12 @@
         const prest = cacheHerr.filter(h => h.estado === "prestamo" && h.prestamo).sort((a, b) => String(a.prestamo.hasta || "").localeCompare(String(b.prestamo.hasta || "")));
         const fuera = cacheHerr.filter(h => opsHerrServicioActivo(h) && !(h.estado === "prestamo" && opsHerrServicioActivo(h).deP)).sort((a, b) => String(a.servicioLigado.regresoEsperado || "").localeCompare(String(b.servicioLigado.regresoEsperado || "")));
         const compras = (opsHerrComprasTec || []).filter(c => c.estatus !== "Resuelta" && c.estatus !== "Rechazada");
+        const en30 = opsDiaISOmas(hoy, 30);
+        const mtto = cacheHerr.filter(h => h.estado !== "baja" && ((h.mantenimientos || []).some(m => m.abierto) || (h.proximoMantenimiento && h.proximoMantenimiento <= en30)))
+            .sort((a, b) => String(a.proximoMantenimiento || "0").localeCompare(String(b.proximoMantenimiento || "0")));
         const venc = x => x && x < hoy, pronto = x => x && x >= hoy && x <= en3;
-        const nUrg = trasp.filter(t => t.venceEn && t.venceEn.slice(0, 10) <= en3).length + prest.filter(h => venc(h.prestamo.hasta)).length + fuera.filter(h => venc(h.servicioLigado.regresoEsperado)).length + compras.filter(c => c.estatus === "Por revisar").length;
-        const total = trasp.length + prest.length + fuera.length + compras.length;
+        const nUrg = trasp.filter(t => t.venceEn && t.venceEn.slice(0, 10) <= en3).length + prest.filter(h => venc(h.prestamo.hasta)).length + fuera.filter(h => venc(h.servicioLigado.regresoEsperado)).length + compras.filter(c => c.estatus === "Por revisar").length + mtto.filter(h => h.proximoMantenimiento && h.proximoMantenimiento < hoy).length;
+        const total = trasp.length + prest.length + fuera.length + compras.length + mtto.length;
         if (!total) return "";
         const chip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:2px 8px;white-space:nowrap;">${t}</span>`;
         const fila = (izq, der, fn) => `<div onclick="${fn || ""}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:#f8fafc;margin-bottom:6px;${fn ? "cursor:pointer;" : ""}"><div style="font-size:12px;color:#1e293b;min-width:0;">${izq}</div><div style="flex-shrink:0;">${der}</div></div>`;
@@ -2681,6 +2687,8 @@
             ${opsHerrPendAbierto ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
                 ${col("Traspasos por aceptar", trasp.length, "#b45309", cuerpoTr)}${col("Préstamos", prest.length, "#3730a3", cuerpoPr)}
                 ${col("Fuera en servicio", fuera.length, "#0f766e", cuerpoFu)}${col("Compras de técnicos (reposición)", compras.length, "#c2410c", cuerpoCo)}
+                ${col("Mantenimiento y calibración", mtto.length, "#0369a1", mtto.slice(0, 8).map(h => { const ab = (h.mantenimientos || []).find(m => m.abierto);
+                    return fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}`, ab ? chip("En mantenimiento", "#c2410c", "#ffedd5") : chip((h.proximoMantenimiento < hoy ? "Vencido " : "Toca ") + opsFmtFechaCorta(h.proximoMantenimiento), h.proximoMantenimiento < hoy ? "#b91c1c" : "#0369a1", h.proximoMantenimiento < hoy ? "#fee2e2" : "#e0f2fe"), `opsHerrMantenimiento('${h.id}')`); }).join(""))}
             </div>` : ""}
         </div>`;
     }
@@ -3342,6 +3350,7 @@
                     <button onclick="opsAbrirModalMovimiento('${id}')" class="mkt-add-btn" style="background:#1D2E73;">${opsTraspasoPendientePara(id) ? `${ICON.lock} Ver traspaso pendiente` : "Registrar movimiento"}</button>
                     ${h.estado === "asignada" ? `<button onclick="opsGenerarResponsivaPDF('${id}')" class="mkt-add-btn" style="background:#334155;">Regenerar responsiva PDF</button>` : ""}
                     <button onclick="opsExpedienteHerrPDF('${id}')" class="mkt-add-btn" style="background:#0f766e;" title="Datos, compra, asignación y todo su historial">Expediente PDF (historial)</button>
+                    <button onclick="opsHerrMantenimiento('${id}')" class="mkt-add-btn" style="background:#0369a1;" title="Registrar mantenimiento o calibración, con evidencias y requisición de Compras">Mantenimiento / calibración${(h.mantenimientos || []).length ? " (" + h.mantenimientos.length + ")" : ""}</button>
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
@@ -3964,6 +3973,16 @@
                     <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Salen primero los servicios de esa persona. Al elegir uno, la pieza queda ligada al servicio y la fecha de regreso se sugiere sola.</div>
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Cuándo la regresa?</label>
                     <input type="date" id="ops-in-prestamo-hasta" min="${opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;box-sizing:border-box;">
+                    ${opsEsLab(h) ? `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+                        <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:6px;">Salida de equipo de laboratorio (TecnoLab)</div>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Dónde se va a usar?</label>
+                        <input id="ops-in-lab-ubic" placeholder="Estación, ciudad o laboratorio" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 8px;box-sizing:border-box;">
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Razón social del cliente</label>
+                        <input id="ops-in-lab-rs" placeholder="Ej. Servicio Balleza, S.A. de C.V." style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 8px;box-sizing:border-box;">
+                        <div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:4px;">Revisión antes de salir</div>
+                        ${OPS_LAB_CHECK.map((t, i) => `<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:#334155;padding:3px 0;"><input type="checkbox" class="ops-lab-chk" data-i="${i}" style="width:15px;height:15px;">${opsEsc(t)}</label>`).join("")}
+                        <input id="ops-in-lab-obs" placeholder="Observaciones de la revisión (obligatorio si algo no está bien)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:6px 0 0;box-sizing:border-box;">
+                    </div>` : ""}
                 </div>
 
                 <div id="ops-campo-transferencia-info" style="display:none;background:#EDF0F7;border:1px solid #C7CEE0;border-radius:8px;padding:9px 11px;font-size:11px;color:#1D2E73;margin-bottom:12px;line-height:1.5;">
@@ -4043,6 +4062,271 @@
         const hastaTxt = hasta ? new Date(hasta + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "sin fecha";
         return { ...p, aNombre: p.aNombre || "alguien", hastaTxt, vencido: !!hasta && hasta < opsHoy() };
     }
+    // ═══ MATERIAL DE SERVICIOS — almacén de resguardo (30-oct-2026) ═══
+    // Material que se compra aparte y siempre debe haber en existencia (ej. Re-Tank de una marca específica,
+    // resina). Cada entrada y salida queda en el historial, ligada al servicio. Las salidas las autoriza quien
+    // esté en la lista (por defecto Paloma). "Comprometido" = lo que piden las recetas de los servicios
+    // programados en los próximos 30 días; si no alcanza, se avisa antes de quedarse sin material.
+    // Tablas: ops_material_stock, ops_material_mov, ops_material_config (Supabase). La resta la hace la
+    // función ops_material_aplicar en una sola operación: nunca deja el stock en negativo.
+    let opsMat = { items: [], movs: [], cfg: { autorizadores: [] }, cargado: false, q: "", verMov: null };
+    if (!Object.getOwnPropertyDescriptor(window, "opsMat")) Object.defineProperty(window, "opsMat", { get() { return opsMat; }, configurable: true });
+    window.opsRenderMaterial = function () { return opsRenderMaterial(); };
+    async function opsMatCargar() {
+        try {
+            const sb = await opsSb();
+            const [a, b, c] = await Promise.all([ sb.from("ops_material_stock").select("*").eq("activo", true).order("descripcion"),
+                sb.from("ops_material_mov").select("*").order("creado_en", { ascending: false }).limit(400),
+                sb.from("ops_material_config").select("datos").eq("id", "general").maybeSingle() ]);
+            if (a.error) throw a.error;
+            opsMat.items = a.data || []; opsMat.movs = b.data || []; opsMat.cfg = (c.data && c.data.datos) || { autorizadores: [] }; opsMat.cargado = true; opsMat.err = null;
+        } catch (e) { opsMat.err = e.message || String(e); }
+    }
+    function opsMatEsAutorizador() { const c = opsUsuarioActual(); return (window.esAdminTotal && window.esAdminTotal(c)) || (opsMat.cfg.autorizadores || []).map(x => String(x).toLowerCase()).includes(c); }
+    // Lo que piden las recetas de los servicios de los próximos 30 días (por clave o por nombre)
+    function opsMatComprometido() {
+        const hoy = opsHoy(), en30 = opsDiaISOmas(hoy, 30), out = {};
+        const recetas = cacheServiciosCatalogo || [];
+        cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && f.fechaProgramada.slice(0, 10) >= hoy && f.fechaProgramada.slice(0, 10) <= en30).forEach(f => {
+            const servs = (f.serviciosProgramados || []).length ? f.serviciosProgramados : (f.servicioCatalogoId ? [{ id: f.servicioCatalogoId, cantidad: f.cantidadUnidades }] : []);
+            servs.forEach(sv => { const r = recetas.find(x => x.id === sv.id); if (!r) return; const cant = Math.max(1, Number(sv.cantidad) || 1);
+                (r.materiales || []).forEach(m => { const q = (Number(m.cantidadBase) || 0) * cant; if (!(q > 0)) return;
+                    opsMat.items.forEach(it => { const coincide = (m.clave && it.clave && opsAsNorm(m.clave) === opsAsNorm(it.clave)) || opsAsNorm(m.nombre) === opsAsNorm(it.descripcion);
+                        if (coincide) { const o = out[it.id] || (out[it.id] = { cant: 0, servicios: [] }); o.cant += q; o.servicios.push((f.estacion || "Servicio") + " · " + f.fechaProgramada.slice(0, 10)); } }); }); }); });
+        return out;
+    }
+    async function opsRenderMaterial() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsMat.cargado) { el.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;">Cargando material de servicios…</div>`; await opsMatCargar(); if (tabActual !== "material") return; }
+        const gestion = opsPuedeGestionar(), aut = opsMatEsAutorizador(), comp = opsMatComprometido(), q = opsAsNorm(opsMat.q);
+        const items = opsMat.items.filter(it => !q || opsAsNorm([it.clave, it.descripcion, it.marca, it.proveedor].join(" ")).includes(q));
+        const porAut = opsMat.movs.filter(m => m.estatus === "Por autorizar");
+        const est = it => { const c = (comp[it.id] || {}).cant || 0, disp = Number(it.stock) - c;
+            if (Number(it.stock) <= 0) return ["Sin stock", "#b91c1c", "#fee2e2"]; if (Number(it.stock) <= Number(it.minimo)) return ["En el mínimo", "#c2410c", "#ffedd5"];
+            if (disp < Number(it.minimo)) return ["No alcanza para lo programado", "#a16207", "#fef9c3"]; return ["Suficiente", "#15803d", "#dcfce7"]; };
+        const bajos = opsMat.items.filter(it => est(it)[0] !== "Suficiente");
+        const nom = id => (opsMat.items.find(x => x.id === id) || {}).descripcion || "Material";
+        const chip = (t, c, bg) => `<span style="font-size:11px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:3px 9px;white-space:nowrap;">${opsEsc(t)}</span>`;
+        el.innerHTML = `
+        <div style="background:#fff;border-radius:14px;padding:16px 18px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+                <div><div style="font-size:17px;font-weight:800;color:#1D2E73;">Material de servicios · almacén de resguardo</div>
+                <div style="font-size:12px;color:#64748b;max-width:760px;">Material que siempre debe haber en existencia (Re-Tank, resina…). Cada entrada y salida queda ligada a su servicio. Las salidas las autoriza: ${opsEsc((opsMat.cfg.autorizadores || []).join(", ") || "un administrador")}. "Comprometido" es lo que piden las recetas de los servicios programados en los próximos 30 días.</div></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${gestion ? `<button onclick="opsMatForm()" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">+ Material</button>` : ""}
+                    ${window.esAdminTotal && window.esAdminTotal(opsUsuarioActual()) ? `<button onclick="opsMatAutorizadores()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">Quién autoriza</button>` : ""}
+                    <button onclick="opsMat.cargado=false;opsRenderMaterial()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;cursor:pointer;">↻ Actualizar</button>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0;">
+                ${[["Materiales", opsMat.items.length, "#1D2E73"], ["Bajos o sin stock", bajos.length, bajos.length ? "#b91c1c" : "#15803d"], ["Salidas por autorizar", porAut.length, porAut.length ? "#c2410c" : "#1D2E73"], ["Movimientos del mes", opsMat.movs.filter(m => String(m.creado_en).slice(0, 7) === opsHoy().slice(0, 7)).length, "#1D2E73"]]
+                    .map(k => `<div style="border:1px solid #e2e8f0;border-radius:12px;padding:11px 13px;"><div style="font-size:10.5px;font-weight:800;color:#94a3b8;text-transform:uppercase;">${k[0]}</div><div style="font-size:22px;font-weight:800;color:${k[2]};">${k[1]}</div></div>`).join("")}
+            </div>
+            ${porAut.length ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:10px 12px;margin-bottom:12px;">
+                <div style="font-size:13px;font-weight:800;color:#9a3412;margin-bottom:6px;">Salidas esperando autorización</div>
+                ${porAut.map(m => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #fde4c8;font-size:12.5px;">
+                    <span style="flex:1;min-width:240px;"><b>${opsEsc(m.cantidad)} · ${opsEsc(nom(m.material_id))}</b> para ${opsEsc(m.servicio_txt || "sin servicio")} · pidió ${opsEsc(m.solicito || "")}${m.motivo ? " · " + opsEsc(m.motivo) : ""}</span>
+                    ${aut ? `<button onclick="opsMatAutorizar(${m.id},true)" style="background:#15803d;color:#fff;border:none;border-radius:7px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;">Autorizar</button><button onclick="opsMatAutorizar(${m.id},false)" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;border-radius:7px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;">Rechazar</button>` : `<span style="font-size:11.5px;color:#94a3b8;">Lo autoriza ${opsEsc((opsMat.cfg.autorizadores || []).join(", "))}</span>`}
+                </div>`).join("")}</div>` : ""}
+            <input placeholder="Buscar clave, material, marca o proveedor…" value="${opsEsc(opsMat.q)}" oninput="opsMat.q=this.value;opsRenderMaterial();setTimeout(()=>{const i=document.getElementById('ops-mat-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)" id="ops-mat-q" style="width:100%;max-width:420px;border:1px solid #cbd5e1;border-radius:9px;padding:9px 11px;font-size:13px;margin-bottom:10px;">
+            ${items.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <thead><tr style="text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;"><th style="padding:8px;">Material</th><th style="padding:8px;text-align:right;">Stock</th><th style="padding:8px;text-align:right;">Mínimo</th><th style="padding:8px;text-align:right;">Comprometido 30 días</th><th style="padding:8px;text-align:right;">Disponible</th><th style="padding:8px;">Estado</th><th style="padding:8px;"></th></tr></thead>
+                <tbody>${items.map(it => { const c = comp[it.id] || { cant: 0, servicios: [] }, e = est(it), disp = Number(it.stock) - c.cant;
+                    return `<tr style="border-top:1px solid #f1f5f9;">
+                        <td style="padding:9px 8px;"><b>${opsEsc(it.descripcion)}</b><div style="font-size:11px;color:#64748b;">${opsEsc([it.clave, it.marca, it.proveedor, it.ubicacion].filter(Boolean).join(" · "))}</div></td>
+                        <td style="padding:9px 8px;text-align:right;font-weight:800;">${opsEsc(it.stock)} ${opsEsc(it.unidad || "")}</td>
+                        <td style="padding:9px 8px;text-align:right;color:#64748b;">${opsEsc(it.minimo)}</td>
+                        <td style="padding:9px 8px;text-align:right;" title="${opsEsc(c.servicios.join("\n"))}">${c.cant ? Math.round(c.cant * 100) / 100 + ` <span style="font-size:10.5px;color:#94a3b8;">(${c.servicios.length} serv.)</span>` : "—"}</td>
+                        <td style="padding:9px 8px;text-align:right;font-weight:800;color:${disp < Number(it.minimo) ? "#b91c1c" : "#15803d"};">${Math.round(disp * 100) / 100}</td>
+                        <td style="padding:9px 8px;">${chip(e[0], e[1], e[2])}</td>
+                        <td style="padding:9px 8px;white-space:nowrap;">
+                            ${gestion ? `<button onclick="opsMatMovForm(${it.id},'entrada')" style="background:#dcfce7;color:#15803d;border:none;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Entrada</button>
+                            <button onclick="opsMatMovForm(${it.id},'salida')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Salida</button>` : ""}
+                            <button onclick="opsMatHistorial(${it.id})" style="background:#f1f5f9;color:#334155;border:none;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Historial</button>
+                            ${gestion ? `<button onclick="opsMatForm(${it.id})" style="background:#f1f5f9;color:#334155;border:none;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Editar</button>` : ""}
+                        </td></tr>`; }).join("")}</tbody></table></div>`
+                : `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">${opsMat.err ? "No se pudo cargar: " + opsEsc(opsMat.err) : (opsMat.items.length ? "Nada coincide con la búsqueda." : "Todavía no hay material registrado. Usa \"+ Material\" para dar de alta el primero (por ejemplo, el Re-Tank y la resina).")}</div>`}
+        </div>`;
+    }
+    const opsMatIn = (id, lbl, val, extra) => `<label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;">${lbl}<input id="${id}" value="${opsEsc(val == null ? "" : val)}" ${extra || ""} style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;"></label>`;
+    function opsMatModal(html) { document.getElementById("ops-modal-wrap").innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;"><div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">${html}</div></div>`; }
+    const opsMatCerrar = () => { document.getElementById("ops-modal-wrap").innerHTML = ""; };
+    window.opsMatForm = function (id) {
+        const it = id ? opsMat.items.find(x => x.id === id) : {};
+        opsMatModal(`<div style="font-size:16px;font-weight:800;color:#1e293b;margin-bottom:12px;">${id ? "Editar material" : "Nuevo material"}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">${opsMatIn("om-clave", "Clave", it.clave)}${opsMatIn("om-marca", "Marca", it.marca)}</div>
+            ${opsMatIn("om-desc", "Descripción *", it.descripcion, 'placeholder="Ej. Re-Tank resina epóxica 4 L"')}
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px;">${opsMatIn("om-unidad", "Unidad", it.unidad || "pza")}${id ? "" : opsMatIn("om-stock", "Stock inicial", 0, 'type="number" min="0" step="0.01"')}${opsMatIn("om-min", "Mínimo", it.minimo || 0, 'type="number" min="0" step="0.01"')}</div>
+            ${opsMatIn("om-prov", "Proveedor", it.proveedor)}${opsMatIn("om-ubic", "Ubicación", it.ubicacion || "Almacén de resguardo")}${opsMatIn("om-notas", "Notas (cómo se compra, tiempo de entrega…)", it.notas)}
+            <div style="font-size:11px;color:#94a3b8;margin:-4px 0 10px;">Si la clave o la descripción coinciden con un material de una receta del catálogo, el portal calcula solo cuánto está comprometido por los servicios programados.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+            <button id="om-btn" onclick="opsMatGuardar(${id || "null"})" style="background:#1D2E73;border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Guardar</button></div>`);
+    };
+    window.opsMatGuardar = async function (id) {
+        const g = k => ((document.getElementById(k) || {}).value || "").trim();
+        if (!g("om-desc")) { alert("Escribe la descripción."); return; }
+        const datos = { clave: g("om-clave") || null, marca: g("om-marca") || null, descripcion: g("om-desc"), unidad: g("om-unidad") || "pza", minimo: Number(g("om-min")) || 0, proveedor: g("om-prov") || null, ubicacion: g("om-ubic") || null, notas: g("om-notas") || null, actualizado_en: new Date().toISOString() };
+        try {
+            const sb = await opsSb();
+            if (id) { const r = await sb.from("ops_material_stock").update(datos).eq("id", id); if (r.error) throw r.error; }
+            else { const r = await sb.from("ops_material_stock").insert({ ...datos, stock: 0, creado_por: opsNombreActual() }).select().single(); if (r.error) throw r.error;
+                const ini = Number(g("om-stock")) || 0;
+                if (ini > 0) { const mv = await sb.from("ops_material_mov").insert({ material_id: r.data.id, tipo: "ajuste", cantidad: ini, estatus: "Por autorizar", motivo: "Stock inicial", solicito: opsNombreActual() }).select().single(); if (!mv.error) await sb.rpc("ops_material_aplicar", { p_mov: mv.data.id, p_autorizo: opsNombreActual() }); } }
+            opsMatCerrar(); opsMat.cargado = false; opsRenderMaterial();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsMatMovForm = function (id, tipo) {
+        const it = opsMat.items.find(x => x.id === id); if (!it) return;
+        const prox = cacheFolios.filter(f => !f.cancelado && !f.fechaSolucion && f.fechaProgramada && f.fechaProgramada.slice(0, 10) >= opsDiaISOmas(opsHoy(), -7)).sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada))).slice(0, 120);
+        const aut = opsMatEsAutorizador();
+        opsMatModal(`<div style="font-size:16px;font-weight:800;color:${tipo === "entrada" ? "#15803d" : "#b91c1c"};">${tipo === "entrada" ? "Entrada" : "Salida"} · ${opsEsc(it.descripcion)}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:12px;">Hay ${opsEsc(it.stock)} ${opsEsc(it.unidad || "")} en stock${tipo === "salida" && !aut ? ". La salida queda <b>por autorizar</b> hasta que la apruebe " + opsEsc((opsMat.cfg.autorizadores || []).join(", ")) : ""}.</div>
+            ${opsMatIn("om-cant", "Cantidad *", "", 'type="number" min="0" step="0.01"')}
+            ${tipo === "salida" ? `<label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;">¿Para qué servicio? *<select id="om-folio" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;"><option value="">— Sin servicio (explica abajo) —</option>${prox.map(f => `<option value="${f.id}">${opsEsc(opsFmtFechaCorta(f.fechaProgramada))} · ${opsEsc(f.estacion || "Servicio")}${(f.tecnicosAsignadosNombres || []).length ? " · " + opsEsc(f.tecnicosAsignadosNombres.join(", ")) : ""}</option>`).join("")}</select></label>` : opsMatIn("om-req", "Requisición o factura de compra", "", 'placeholder="Ej. RC-0081 / factura A-1234"')}
+            ${opsMatIn("om-mot", tipo === "salida" ? "Quién se lo lleva y para qué" : "Notas", "")}
+            <div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+            <button id="om-btn" onclick="opsMatMovGuardar(${id},'${tipo}')" style="background:${tipo === "entrada" ? "#15803d" : "#b91c1c"};border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">${tipo === "salida" && !aut ? "Pedir autorización" : "Guardar"}</button></div>`);
+    };
+    window.opsMatMovGuardar = async function (id, tipo) {
+        const it = opsMat.items.find(x => x.id === id); if (!it) return;
+        const g = k => ((document.getElementById(k) || {}).value || "").trim();
+        const cant = Number(g("om-cant")) || 0, fid = g("om-folio"), mot = g("om-mot");
+        if (!(cant > 0)) { alert("Escribe la cantidad."); return; }
+        if (tipo === "salida" && !fid && !mot) { alert("Elige el servicio o explica para qué es."); return; }
+        if (tipo === "salida" && cant > Number(it.stock)) { alert("No hay suficiente: solo hay " + it.stock + " " + (it.unidad || "") + "."); return; }
+        const f = fid ? cacheFolios.find(x => x.id === fid) : null, aut = opsMatEsAutorizador();
+        const btn = document.getElementById("om-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb();
+            const mv = await sb.from("ops_material_mov").insert({ material_id: id, tipo, cantidad: cant, estatus: "Por autorizar", folio_servicio_id: f ? f.id : null, servicio_txt: f ? (f.estacion || "Servicio") + " · " + String(f.fechaProgramada || "").slice(0, 10) : null,
+                tecnico: f ? (f.tecnicosAsignadosNombres || []).join(", ") || null : null, motivo: mot || null, requisicion: g("om-req") || null, solicito: opsNombreActual() }).select().single();
+            if (mv.error) throw mv.error;
+            if (tipo === "entrada" || aut) { const r = await sb.rpc("ops_material_aplicar", { p_mov: mv.data.id, p_autorizo: opsNombreActual() }); if (r.error) throw r.error; await opsMatRevisarMinimo(id, Number(r.data)); }
+            else if (window.tcNotificarEvento) window.tcNotificarEvento("material_salida_autorizar", { modulo: "Operaciones", mensaje: `${opsNombreActual()} pide sacar ${cant} ${it.unidad || ""} de ${it.descripcion} del almacén de resguardo${f ? " para " + (f.estacion || "un servicio") : ""}. Autorízalo en Operaciones → Material de servicios.` }).catch(() => {});
+            if (f) { const { db, fs } = await opsGetFB(); fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[Material] ${tipo === "entrada" ? "Entrada" : "Salida"} de ${cant} ${it.unidad || ""} de ${it.descripcion}${tipo === "salida" && !aut ? " (por autorizar)" : ""}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: opsFechaHora() }).catch(() => {}); }
+            opsMatCerrar(); opsMat.cargado = false; opsRenderMaterial();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = "Guardar"; } }
+    };
+    async function opsMatRevisarMinimo(id, stock) {
+        const it = opsMat.items.find(x => x.id === id); if (!it || !(stock <= Number(it.minimo))) return;
+        if (window.tcNotificarEvento) window.tcNotificarEvento("material_stock_bajo", { modulo: "Operaciones", mensaje: `${it.descripcion} quedó en ${stock} ${it.unidad || ""} (mínimo ${it.minimo}). Hay que pedirlo a Compras${it.proveedor ? " (proveedor: " + it.proveedor + ")" : ""}.` }).catch(() => {});
+    }
+    window.opsMatAutorizar = async function (movId, ok) {
+        if (!opsMatEsAutorizador()) { alert("No estás en la lista de quién autoriza."); return; }
+        const m = opsMat.movs.find(x => x.id === movId); if (!m) return;
+        try {
+            const sb = await opsSb();
+            if (ok) { const r = await sb.rpc("ops_material_aplicar", { p_mov: movId, p_autorizo: opsNombreActual() }); if (r.error) throw r.error; await opsMatRevisarMinimo(m.material_id, Number(r.data)); }
+            else { const resp = prompt("¿Por qué no se autoriza?", ""); if (resp === null) return; const r = await sb.from("ops_material_mov").update({ estatus: "Rechazada", autorizo: opsNombreActual(), autorizado_en: new Date().toISOString(), respuesta: resp || null }).eq("id", movId); if (r.error) throw r.error; }
+            opsMat.cargado = false; opsRenderMaterial();
+        } catch (e) { alert("No se pudo: " + (e.message || e)); }
+    };
+    window.opsMatHistorial = function (id) {
+        const it = opsMat.items.find(x => x.id === id); if (!it) return;
+        const l = opsMat.movs.filter(m => m.material_id === id);
+        opsMatModal(`<div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:16px;font-weight:800;color:#1e293b;">Historial · ${opsEsc(it.descripcion)}</div><div style="font-size:12px;color:#64748b;">Stock actual: ${opsEsc(it.stock)} ${opsEsc(it.unidad || "")} · últimos ${l.length} movimientos</div></div>
+            <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+            <div style="margin-top:12px;">${l.length ? l.map(m => `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 11px;margin-bottom:6px;font-size:12.5px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;"><b style="color:${m.tipo === "entrada" ? "#15803d" : m.tipo === "salida" ? "#b91c1c" : "#1D2E73"};">${m.tipo === "entrada" ? "+" : m.tipo === "salida" ? "−" : "="} ${opsEsc(m.cantidad)} ${opsEsc(it.unidad || "")} · ${m.tipo}</b><span style="color:#64748b;">${opsEsc(String(m.creado_en).slice(0, 16).replace("T", " "))} · ${opsEsc(m.estatus)}</span></div>
+                <div style="color:#475569;">${opsEsc([m.servicio_txt, m.tecnico, m.motivo, m.requisicion ? "requisición " + m.requisicion : "", "pidió " + (m.solicito || ""), m.autorizo ? (m.estatus === "Rechazada" ? "rechazó " : "autorizó ") + m.autorizo : "", m.stock_resultante != null ? "quedaron " + m.stock_resultante : ""].filter(Boolean).join(" · "))}</div></div>`).join("") : `<div style="color:#94a3b8;font-size:12.5px;">Sin movimientos.</div>`}</div>`);
+    };
+    window.opsMatAutorizadores = async function () {
+        const v = prompt("Correos de quién autoriza las salidas, separados por coma:", (opsMat.cfg.autorizadores || []).join(", ")); if (v === null) return;
+        const lista = v.split(",").map(x => x.trim().toLowerCase()).filter(x => x.includes("@"));
+        try { const sb = await opsSb(); const r = await sb.from("ops_material_config").upsert({ id: "general", datos: { ...opsMat.cfg, autorizadores: lista }, actualizado_en: new Date().toISOString() }); if (r.error) throw r.error; opsMat.cfg.autorizadores = lista; opsRenderMaterial(); }
+        catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+    // ═══ Equipo de laboratorio TecnoLab (30-oct-2026) ═══
+    const OPS_LAB_CHECK = ["Enciende y funciona", "Calibración vigente", "Accesorios completos", "Estuche, cables y cargador", "Limpio y sin daños visibles"];
+    // ── Mantenimiento y calibración (cualquier pieza; pensado para TecnoLab) ──
+    // Se guarda en la pieza (mantenimientos[]) con evidencias en Storage, costo, proveedor, folio de la
+    // requisición de Compras y la fecha del próximo. Si la pieza se queda fuera de servicio pasa a
+    // "En reparación" y al terminar regresa a su estado anterior.
+    const OPS_MTTO_TIPOS = { preventivo: "Preventivo", correctivo: "Correctivo", calibracion: "Calibración", verificacion: "Verificación" };
+    window.opsHerrMantenimiento = function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const gestion = opsPuedeGestionar(), lista = (h.mantenimientos || []).slice().reverse(), abierto = (h.mantenimientos || []).find(m => m.abierto);
+        const usos = (h.usoLab || []).slice().reverse();
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:640px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:16px;font-weight:800;color:#1e293b;">Mantenimiento y calibración</div>
+                <div style="font-size:12px;color:#64748b;">${opsEsc(h.folio)} · ${opsEsc(h.descripcion || "")}${h.proximoMantenimiento ? " · próximo: " + opsEsc(opsFmtFechaCorta(h.proximoMantenimiento)) : ""}</div></div>
+                <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+                ${abierto && gestion ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:12.5px;color:#9a3412;">Está en mantenimiento desde el ${opsEsc(abierto.fecha)} (${opsEsc(OPS_MTTO_TIPOS[abierto.tipo] || abierto.tipo)}).
+                    <button onclick="opsHerrMttoTerminar('${id}')" style="margin-left:8px;background:#15803d;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">Ya terminó: regresa a servicio</button></div>` : ""}
+                ${gestion ? `<div style="background:#f8fafc;border-radius:12px;padding:12px 14px;margin:12px 0;">
+                    <div style="font-size:13px;font-weight:800;color:#0369a1;margin-bottom:8px;">Registrar</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Tipo<select id="ops-mt-tipo" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;">${Object.keys(OPS_MTTO_TIPOS).map(k => `<option value="${k}">${OPS_MTTO_TIPOS[k]}</option>`).join("")}</select></label>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Fecha<input id="ops-mt-fecha" type="date" value="${opsHoy()}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></label>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Quién lo hace (proveedor o persona)<input id="ops-mt-prov" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></label>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Costo (si aplica)<input id="ops-mt-costo" type="number" min="0" step="0.01" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></label>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Folio de requisición en Compras<input id="ops-mt-req" placeholder="Ej. RC-0081" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></label>
+                        <label style="font-size:11.5px;color:#64748b;font-weight:600;">Próximo mantenimiento / calibración<input id="ops-mt-prox" type="date" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></label>
+                    </div>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;margin-top:8px;">Qué se hizo o qué tiene<textarea id="ops-mt-desc" rows="2" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:13px;margin-top:3px;box-sizing:border-box;"></textarea></label>
+                    <label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;margin-top:6px;">Evidencias (fotos, videos, certificado PDF)<input id="ops-mt-arch" type="file" multiple accept="image/*,video/*,application/pdf" style="width:100%;margin-top:4px;font-size:12px;"></label>
+                    <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:#334155;margin-top:8px;"><input id="ops-mt-fuera" type="checkbox" style="width:15px;height:15px;">Se queda fuera de servicio mientras se hace (pasa a "En reparación")</label>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px;">
+                        <button onclick="opsHerrMttoPedirCompras('${id}')" style="background:#fff;border:1px solid #1D2E73;color:#1D2E73;padding:8px 13px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Pedir en Compras</button>
+                        <button id="ops-mt-btn" onclick="opsHerrMttoGuardar('${id}')" style="background:#0369a1;border:none;color:#fff;padding:8px 13px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Guardar</button>
+                    </div></div>` : ""}
+                <div style="font-size:13px;font-weight:800;color:#1e293b;margin:12px 0 6px;">Historial de mantenimiento (${lista.length})</div>
+                ${lista.length ? lista.map(m => `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:7px;font-size:12.5px;color:#334155;">
+                    <div style="display:flex;justify-content:space-between;gap:8px;"><b>${opsEsc(OPS_MTTO_TIPOS[m.tipo] || m.tipo)} · ${opsEsc(m.fecha || "")}</b><span style="color:${m.abierto ? "#c2410c" : "#15803d"};font-weight:700;">${m.abierto ? "En proceso" : "Terminado" + (m.terminado ? " " + opsEsc(m.terminado) : "")}</span></div>
+                    <div>${opsEsc(m.descripcion || "")}</div>
+                    <div style="font-size:11.5px;color:#64748b;">${[m.proveedor, m.costo ? opsDinero(m.costo) : "", m.requisicion ? "Requisición " + m.requisicion : "", m.proximo ? "próximo " + m.proximo : "", "registró " + (m.por || "")].filter(Boolean).map(opsEsc).join(" · ")}</div>
+                    ${(m.evidencias || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;">${m.evidencias.map((r, i) => `<button onclick="opsHerrCompraFoto('${opsEsc(r)}')" style="background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">Evidencia ${i + 1}</button>`).join("")}</div>` : ""}
+                </div>`).join("") : `<div style="font-size:12px;color:#94a3b8;">Sin mantenimientos registrados.</div>`}
+                ${usos.length ? `<div style="font-size:13px;font-weight:800;color:#1e293b;margin:14px 0 6px;">Salidas de laboratorio (${usos.length})</div>
+                    ${usos.map(u => `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:8px 11px;margin-bottom:6px;font-size:12px;color:#334155;"><b>${opsEsc(u.quien)}</b> · ${opsEsc(u.salida || "")} → ${opsEsc(u.regreso || "")} (${u.dias || "?"} día(s))${u.conDetalle ? ` <span style="color:#b91c1c;font-weight:700;">regresó con detalle</span>` : ""}
+                    <div style="color:#64748b;">${opsEsc([u.ubicacion, u.razonSocial, u.servicio, u.autorizo ? "autorizó " + u.autorizo : ""].filter(Boolean).join(" · "))}${u.obsRegreso ? " · " + opsEsc(u.obsRegreso) : ""}</div></div>`).join("")}` : ""}
+            </div></div>`;
+    };
+    window.opsHerrMttoPedirCompras = function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const d = ((document.getElementById("ops-mt-desc") || {}).value || "").trim();
+        const txt = "Mantenimiento de " + (h.folio || "") + " · " + (h.descripcion || "") + (h.marca ? " " + h.marca : "") + (h.numeroSerie ? " (serie " + h.numeroSerie + ")" : "") + (d ? ": " + d : "");
+        try { navigator.clipboard.writeText(txt); } catch (e) {}
+        alert("Copié la descripción para que la pegues en la requisición:\n\n" + txt + "\n\nAl cerrar este aviso se abre Compras. Cuando tengas el folio de la requisición, anótalo aquí en \"Folio de requisición en Compras\".");
+        if (typeof window.verArea === "function") { document.getElementById("ops-modal-wrap").innerHTML = ""; window.verArea("Compras"); }
+    };
+    window.opsHerrMttoGuardar = async function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const g = k => ((document.getElementById(k) || {}).value || "").trim();
+        const desc = g("ops-mt-desc"); if (!desc) { alert("Escribe qué se hizo o qué tiene."); return; }
+        const fuera = !!(document.getElementById("ops-mt-fuera") || {}).checked, files = [...((document.getElementById("ops-mt-arch") || {}).files || [])];
+        if (files.some(f => f.size > 50 * 1024 * 1024)) { alert("Algún archivo pesa más de 50 MB."); return; }
+        const btn = document.getElementById("ops-mt-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb(), evid = [];
+            for (let i = 0; i < files.length; i++) { const f = files[i], ext = (String(f.name || "").split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+                const ruta = "herramienta-mtto/" + id + "/" + Date.now() + "_" + (i + 1) + "." + ext; const up = await sb.storage.from("viaticos-comprobantes").upload(ruta, f, { contentType: f.type || undefined, upsert: false }); if (up.error) throw up.error; evid.push(ruta); }
+            const m = { id: "mt" + Date.now().toString(36), tipo: g("ops-mt-tipo"), fecha: g("ops-mt-fecha") || opsHoy(), proveedor: g("ops-mt-prov") || null, costo: Number(g("ops-mt-costo")) || null, requisicion: g("ops-mt-req") || null,
+                proximo: g("ops-mt-prox") || null, descripcion: desc, evidencias: evid, abierto: fuera, estadoPrevio: fuera ? h.estado : null, por: opsNombreActual(), en: opsFechaHora() };
+            const cambios = { mantenimientos: (h.mantenimientos || []).concat([m]).slice(-60), ...(m.proximo ? { proximoMantenimiento: m.proximo } : {}), ...(fuera && h.estado !== "reparacion" ? { estado: "reparacion" } : {}) };
+            await opsSbHerrActualizar(id, cambios);
+            await opsRegistrarMovimiento({ herramientaId: id, tipo: fuera ? "reparacion" : "seguimiento", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
+                observaciones: (OPS_MTTO_TIPOS[m.tipo] || m.tipo) + ": " + desc + (m.requisicion ? " · requisición " + m.requisicion : "") + (m.proximo ? " · próximo " + m.proximo : "") + (evid.length ? " · " + evid.length + " evidencia(s)" : "") });
+            window.opsHerrMantenimiento(id);
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = "Guardar"; } }
+    };
+    window.opsHerrMttoTerminar = async function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const nota = prompt("¿Cómo quedó? (opcional)", ""); if (nota === null) return;
+        const ab = (h.mantenimientos || []).find(m => m.abierto);
+        try {
+            const lista = (h.mantenimientos || []).map(m => m.abierto ? { ...m, abierto: false, terminado: opsHoy(), notaCierre: nota || null } : m);
+            const estado = ab && ab.estadoPrevio && ab.estadoPrevio !== "reparacion" ? ab.estadoPrevio : (h.tecnicoActualId ? "asignada" : "disponible");
+            await opsSbHerrActualizar(id, { mantenimientos: lista, estado });
+            await opsRegistrarMovimiento({ herramientaId: id, tipo: "retorno_reparacion", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual, observaciones: "Terminó el mantenimiento" + (nota ? ": " + nota : "") });
+            window.opsHerrMantenimiento(id);
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    function opsEsLab(h) { return !!h && (h.requiereAutorizacion || h.almacenId === "tecnolab-cuarto-control" || /tecnolab/i.test(String(h.categoria || ""))); }
+    function opsLeerCheckLab() { const r = {}; document.querySelectorAll(".ops-lab-chk").forEach(c => { r[OPS_LAB_CHECK[Number(c.dataset.i)]] = c.checked; }); return r; }
     async function opsRegistrarPrestamo(herramientaId, obs) {
         const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
         const btn = document.getElementById("ops-mov-btn-confirmar");
@@ -4053,13 +4337,21 @@
         if (!hasta) { alert("Pon la fecha en que la regresa."); return; }
         if (hasta < opsHoy()) { alert("La fecha de regreso no puede ser antes de hoy."); return; }
         const a = cacheTec.find(t => t.id === aId);
+        let lab = null;
+        if (opsEsLab(h)) {
+            const ubic = ((document.getElementById("ops-in-lab-ubic") || {}).value || "").trim(), rs = ((document.getElementById("ops-in-lab-rs") || {}).value || "").trim(), lobs = ((document.getElementById("ops-in-lab-obs") || {}).value || "").trim();
+            const chk = opsLeerCheckLab(), malos = Object.keys(chk).filter(k => !chk[k]);
+            if (!ubic) { alert("Escribe dónde se va a usar el equipo."); return; }
+            if (malos.length && !lobs) { alert("Marca la revisión completa o explica en observaciones qué no está bien: " + malos.join(", ")); return; }
+            lab = { ubicacion: ubic, razonSocial: rs || null, checkSalida: chk, obsSalida: lobs || null, autorizo: opsNombreActual() };
+        }
         const fid = (document.getElementById("ops-in-prestamo-folio") || {}).value || "";
         const f = fid ? cacheFolios.find(x => x.id === fid) : null;
         if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
         try {
             const prestamo = { aId, aNombre: a ? a.nombre : "", aCorreo: (a && a.correo) || null, desde: opsHoy(), hasta,
                 estadoAnterior: h.estado, ubicacionAnterior: h.ubicacionActual || null, porNombre: opsNombreActual(), porCorreo: opsUsuarioActual(), en: opsFechaHora(), obs: obs || null,
-                folioId: f ? f.id : null, folioEstacion: f ? (f.estacion || null) : null, folioFecha: f ? (f.fechaProgramada || null) : null, folioNumero: f ? (f.folioNumero || null) : null };
+                folioId: f ? f.id : null, folioEstacion: f ? (f.estacion || null) : null, folioFecha: f ? (f.fechaProgramada || null) : null, folioNumero: f ? (f.folioNumero || null) : null, lab };
             // Ligada al servicio (misma ficha "Servicio ligado" que ya existía), para que se vea en el servicio y en la pieza.
             const extraLig = f ? { servicioLigado: { folioId: f.id, estacion: f.estacion || null, fechaServicio: f.fechaProgramada || null, entregadoA: prestamo.aNombre, entregadoAId: aId,
                 salida: opsHoy(), regresoEsperado: hasta, nota: "Préstamo" + (obs ? " · " + obs : ""), estatus: "fuera", por: opsNombreActual(), deP: true } } : {};
@@ -4067,7 +4359,7 @@
             if (f) { try { const { db, fs } = await opsGetFB(); fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[Herramienta prestada] ${h.folio || ""} ${h.descripcion || ""} se le prestó a ${prestamo.aNombre} para este servicio; la regresa el ${hasta}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: opsFechaHora() }).catch(() => {}); } catch (e) {} }
             await opsRegistrarMovimiento({ herramientaId, tipo: "prestamo", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null,
                 ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
-                observaciones: `Prestada a ${prestamo.aNombre}${f ? " para el servicio " + (f.estacion || "") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")" : ""}; la regresa el ${hasta}.` + (obs ? " " + obs : "") });
+                observaciones: `${lab ? "Salida de equipo de laboratorio" : "Prestada"} a ${prestamo.aNombre}${f ? " para el servicio " + (f.estacion || "") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")" : ""}; la regresa el ${hasta}.` + (lab ? ` Uso en: ${lab.ubicacion}${lab.razonSocial ? " · " + lab.razonSocial : ""}. Autorizó ${lab.autorizo}. Revisión: ${Object.keys(lab.checkSalida).filter(k => lab.checkSalida[k]).length}/${OPS_LAB_CHECK.length}${lab.obsSalida ? " (" + lab.obsSalida + ")" : ""}.` : "") + (obs ? " " + obs : "") });
             const hastaTxt = opsPrestamoInfo({ prestamo }).hastaTxt;
             const avisar = [a && a.correo, h.tecnicoActualId ? (cacheTec.find(t => t.id === h.tecnicoActualId) || {}).correo : null].filter(Boolean);
             for (const para of [...new Set(avisar.map(x => String(x).toLowerCase()))]) {
@@ -4098,6 +4390,11 @@
                     ${p.obs ? `<div><strong>Notas:</strong> ${opsEsc(p.obs)}</div>` : ""}
                     <div style="margin-top:4px;">Está bloqueada: no se puede asignar, traspasar ni mover hasta que se registre que la devolvió.</div>
                 </div>
+                ${gestiona && p.lab ? `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+                    <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:6px;">Revisión al regresar (TecnoLab)</div>
+                    ${OPS_LAB_CHECK.map((t, i) => `<label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:#334155;padding:3px 0;"><input type="checkbox" class="ops-lab-chk" data-i="${i}" style="width:15px;height:15px;">${opsEsc(t)}</label>`).join("")}
+                    <div style="font-size:11px;color:#64748b;margin-top:4px;">Salió el ${opsEsc(p.desde || "")} a ${opsEsc(p.lab.ubicacion || "")}${p.lab.razonSocial ? " (" + opsEsc(p.lab.razonSocial) + ")" : ""}. Si algo no está bien, anótalo abajo y registra un mantenimiento.</div>
+                </div>` : ""}
                 ${gestiona ? `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿En qué condición regresó? (opcional)</label>
                 <textarea id="ops-in-prestamo-obs" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;resize:vertical;"></textarea>` : ""}
                 <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
@@ -4126,12 +4423,20 @@
         const p = h.prestamo || {};
         const obs = ((document.getElementById("ops-in-prestamo-obs") || {}).value || "").trim();
         const btn = document.getElementById("ops-prestamo-dev-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
+        let usoLab = null;
+        if (p.lab) {
+            const chk = opsLeerCheckLab(), malos = Object.keys(chk).filter(k => !chk[k]);
+            if (malos.length && !obs) { alert("Explica en la condición qué no está bien: " + malos.join(", ")); if (btn) { btn.disabled = false; btn.textContent = "Ya la devolvió"; } return; }
+            const dias = p.desde ? Math.max(1, Math.round((new Date(opsHoy() + "T12:00:00") - new Date(p.desde + "T12:00:00")) / 864e5) + 1) : null;
+            usoLab = { quien: p.aNombre || "", servicio: p.folioEstacion || null, folioId: p.folioId || null, ubicacion: p.lab.ubicacion || null, razonSocial: p.lab.razonSocial || null,
+                salida: p.desde || null, regreso: opsHoy(), dias, checkSalida: p.lab.checkSalida || null, checkRegreso: chk, obsRegreso: obs || null, autorizo: p.lab.autorizo || null, recibio: opsNombreActual(), conDetalle: malos.length > 0 };
+        }
         try {
             const estado = p.estadoAnterior && p.estadoAnterior !== "prestamo" ? p.estadoAnterior : (h.tecnicoActualId ? "asignada" : "disponible");
             const sl = h.servicioLigado;
             const cierreLig = sl && sl.estatus === "fuera" && (sl.deP || (p.folioId && sl.folioId === p.folioId))
                 ? { servicioLigado: null, historialServicios: (h.historialServicios || []).concat([{ ...sl, estatus: "regresada", regresoReal: opsHoy(), condicionRegreso: obs || null, recibio: opsNombreActual() }]).slice(-30) } : {};
-            await opsSbHerrActualizar(herramientaId, { estado, prestamo: null, ...cierreLig, ...(obs ? { observaciones: obs } : {}) });
+            await opsSbHerrActualizar(herramientaId, { estado, prestamo: null, ...cierreLig, ...(obs ? { observaciones: obs } : {}), ...(usoLab ? { usoLab: (h.usoLab || []).concat([usoLab]).slice(-100) } : {}) });
             await opsRegistrarMovimiento({ herramientaId, tipo: "devolucion_prestamo", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
                 observaciones: `${p.aNombre || "Quien la pidió"} devolvió la pieza prestada${p.hasta && p.hasta < opsHoy() ? " (con retraso; debía regresar el " + p.hasta + ")" : ""}.` + (obs ? " Condición: " + obs : "") });
             document.getElementById("ops-modal-wrap").innerHTML = "";
