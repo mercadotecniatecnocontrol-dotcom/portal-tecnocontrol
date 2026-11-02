@@ -1444,7 +1444,7 @@
     // pero para EDITAR no tenían alias y un administrador de Operaciones las veía en solo lectura (ej. Idaly en
     // "Pedidos de herramienta"). Ahora ver y editar usan la misma sección.
     const OPS_ACC_ALIAS = { gestionados: "calendario", vehiculos: "calendario", revision: "folios", derivados: "folios", pendientes: "folios", extras: "folios",
-        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard", material: "dashboard", reportesapp: "folios" };
+        comparativa: "folios", gestoria: "folios", tableros: "folios", connecteam: "folios", herrsol: "dashboard", material: "dashboard", reportesapp: "folios", estaciones: "folios" };
     const OPS_ACC_VERSION = 2;
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
@@ -1934,6 +1934,13 @@
         seccion("4  ·  FIRMAS DE ENTREGA-RECEPCIÓN");
         y += 34;
         const colW = (W - 2 * M - 20) / 2;
+        // Firma autógrafa que el técnico dibujó en la app al recibir la pieza (31-oct-2026, Magali)
+        const fr = h.firmaRecepcion;
+        if (fr && fr.img && /^data:image/.test(fr.img)) {
+            try { doc.addImage(fr.img, /png/.test(fr.img.slice(0, 30)) ? "PNG" : "JPEG", M + colW + 20 + colW / 2 - 75, y - 50, 150, 47); } catch (e) {}
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8);
+            doc.text("Firmó de recibido en la app · " + String(fr.en || "").slice(0, 16).replace("T", " ") + (fr.condicion ? " · " + fr.condicion : ""), M + colW + 20 + colW / 2, y + 34, { align: "center" });
+        }
         doc.setDrawColor(...PDF_GRIS_LINEA);
         doc.line(M, y, M + colW, y);
         doc.line(M + colW + 20, y, M + 2 * colW + 20, y);
@@ -2278,10 +2285,10 @@
         const rol = opsRolActual();
         const rolLabel = { administrador: "Administrador", almacen: "Almacén", consulta: "Consulta" }[rol];
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
-            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "reportesapp:Pólizas y reportes (app)", "gestionados:Gestionados y cancelados", "clientes:Clientes",
+            "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "reportesapp:Pólizas y reportes (app)", "estaciones:Estaciones por plaza", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "estaciones" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2353,6 +2360,7 @@
         else if (tab === "herrsol") opsRenderSolHerr();
         else if (tab === "material") opsRenderMaterial();
         else if (tab === "reportesapp") opsRenderReportesApp();
+        else if (tab === "estaciones") opsRenderEstacionesPlaza();
         else if (tab === "vehiculos") window.tcCalVehiculos("ops-tab-content");
         else if (tab === "externos") opsRenderExternos();
         else if (tab === "permisos") opsRenderPermisos();
@@ -4063,6 +4071,87 @@
         const hastaTxt = hasta ? new Date(hasta + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }) : "sin fecha";
         return { ...p, aNombre: p.aNombre || "alguien", hastaTxt, vencido: !!hasta && hasta < opsHoy() };
     }
+    // ═══ ESTACIONES POR PLAZA (31-oct-2026, Magali) ═══
+    // Todas las estaciones del catálogo maestro (estaciones_servicio) agrupadas por plaza, con su
+    // información completa y sus servicios (abiertos, del mes y el último). Exporta a Excel.
+    let opsEP = { lista: null, plaza: "", cliente: "", q: "", err: null };
+    if (!Object.getOwnPropertyDescriptor(window, "opsEP")) Object.defineProperty(window, "opsEP", { get() { return opsEP; }, configurable: true });
+    function opsEPPlaza(e) { return opsPlazaDeTexto(e.municipio, true) || opsPlazaDeTexto([e.direccion_normalizada, e.domicilio_raw, e.estado].join(" ")) || (e.estado ? "Otra · " + e.estado : "Sin plaza"); }
+    function opsEPServicios(e) { const l = cacheFolios.filter(f => f.estacionCatalogoId === e.id); const mes = opsHoy().slice(0, 7);
+        return { total: l.length, abiertos: l.filter(f => !f.fechaSolucion && !f.cancelado).length, mes: l.filter(f => String(f.fechaProgramada || f.fechaSolicitud || "").slice(0, 7) === mes).length,
+            ultimo: l.map(f => String(f.fechaProgramada || f.fechaSolicitud || "").slice(0, 10)).filter(Boolean).sort().pop() || "", lista: l }; }
+    window.opsRenderEstacionesPlaza = async function () {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsEP.lista) {
+            el.innerHTML = `<div style="padding:30px;text-align:center;color:#94a3b8;">Cargando el catálogo de estaciones…</div>`;
+            try { const sb = await opsSb(); let todas = [], desde = 0;
+                for (;;) { const { data, error } = await sb.from("estaciones_servicio").select("id,nombre_comercial,nombre,marca,razon_social,codigo_estacion_cre,permiso,numero_estacion,direccion_normalizada,domicilio_raw,colonia,municipio,estado,codigo_postal,lat,lng,encargado,zona,region,numero_tanques,numero_dispensarios,numero_mangueras,numero_sondas,combustibles,marca_dispensarios,cr,maps_url,ubicacion_verificada,activo,cliente_id,identificador_cliente,centro_costos").eq("activo", true).order("nombre_comercial").range(desde, desde + 999);
+                    if (error) throw error; todas = todas.concat(data || []); if (!data || data.length < 1000) break; desde += 1000; }
+                opsEP.lista = todas.map(e => ({ ...e, _plaza: opsEPPlaza(e), _cliente: e.marca || (/oxxo/i.test(e.razon_social || e.nombre_comercial || "") ? "OXXO GAS" : /petro/i.test(e.razon_social || "") ? "Petro Seven" : "Otros") })); opsEP.err = null;
+            } catch (e) { opsEP.err = e.message || String(e); opsEP.lista = []; }
+            if (tabActual !== "estaciones") return;
+        }
+        const q = opsAsNorm(opsEP.q);
+        const base = opsEP.lista.filter(e => (!opsEP.cliente || e._cliente === opsEP.cliente) && (!q || opsAsNorm([e.nombre_comercial, e.nombre, e.razon_social, e.municipio, e.colonia, e.permiso, e.codigo_estacion_cre, e.numero_estacion, e.cr, e.encargado].join(" ")).includes(q)));
+        const plazas = {}; base.forEach(e => { plazas[e._plaza] = (plazas[e._plaza] || 0) + 1; });
+        const orden = Object.keys(plazas).sort((a, b) => plazas[b] - plazas[a]);
+        const lista = base.filter(e => !opsEP.plaza || e._plaza === opsEP.plaza);
+        const clientes = [...new Set(opsEP.lista.map(e => e._cliente))].sort();
+        const chip = (v, t, n) => `<button onclick="opsEP.plaza='${opsEsc(v)}';opsRenderEstacionesPlaza()" style="border:1.5px solid ${opsEP.plaza === v ? "#1D2E73" : "#cbd5e1"};background:${opsEP.plaza === v ? "#1D2E73" : "#fff"};color:${opsEP.plaza === v ? "#fff" : "#334155"};border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">${opsEsc(t)} (${n})</button>`;
+        el.innerHTML = `<div style="background:#fff;border-radius:14px;padding:16px 18px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px;">
+                <div><div style="font-size:17px;font-weight:800;color:#1D2E73;">Estaciones por plaza</div><div style="font-size:12px;color:#64748b;">Catálogo maestro de estaciones con su información y sus servicios. Haz clic en una estación para ver todo.</div></div>
+                <div style="display:flex;gap:8px;"><button onclick="opsEPExportar()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">Exportar a Excel</button>
+                <button onclick="opsEP.lista=null;opsRenderEstacionesPlaza()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">↻ Actualizar</button></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <input id="ops-ep-q" placeholder="Buscar estación, razón social, permiso, CRE, N.º…" value="${opsEsc(opsEP.q)}" oninput="opsEP.q=this.value;opsRenderEstacionesPlaza();setTimeout(()=>{const i=document.getElementById('ops-ep-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},0)" style="flex:1;min-width:240px;border:1px solid #cbd5e1;border-radius:9px;padding:8px 11px;font-size:13px;">
+                <select onchange="opsEP.cliente=this.value;opsRenderEstacionesPlaza()" style="border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;font-size:13px;"><option value="">Todos los clientes</option>${clientes.map(c => `<option ${opsEP.cliente === c ? "selected" : ""}>${opsEsc(c)}</option>`).join("")}</select>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${chip("", "Todas", base.length)}${orden.map(p => chip(p, p, plazas[p])).join("")}</div>
+            ${opsEP.err ? `<div style="color:#b91c1c;">No se pudo cargar: ${opsEsc(opsEP.err)}</div>` : lista.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <thead><tr style="text-align:left;color:#94a3b8;font-size:10.5px;text-transform:uppercase;"><th style="padding:8px;">Estación</th><th style="padding:8px;">Plaza · municipio</th><th style="padding:8px;">Permiso / CRE</th><th style="padding:8px;">Equipo</th><th style="padding:8px;">Encargado</th><th style="padding:8px;text-align:center;">Servicios</th><th style="padding:8px;">Último</th></tr></thead>
+                <tbody>${lista.slice(0, 600).map(e => { const sv = opsEPServicios(e); return `<tr onclick="opsEPVer('${e.id}')" style="border-top:1px solid #f1f5f9;cursor:pointer;">
+                    <td style="padding:8px;"><b>${opsEsc(e.nombre_comercial || e.nombre || "—")}</b><div style="font-size:11px;color:#64748b;">${opsEsc([e._cliente, e.razon_social].filter(Boolean).join(" · "))}${e.numero_estacion ? " · N.º " + opsEsc(e.numero_estacion) : ""}</div></td>
+                    <td style="padding:8px;">${opsEsc(e._plaza)}<div style="font-size:11px;color:#64748b;">${opsEsc([e.municipio, e.estado].filter(Boolean).join(", "))}</div></td>
+                    <td style="padding:8px;font-size:11.5px;">${opsEsc(e.permiso || "—")}<div style="color:#94a3b8;">${opsEsc(e.codigo_estacion_cre || "")}</div></td>
+                    <td style="padding:8px;font-size:11.5px;">${[e.numero_tanques ? e.numero_tanques + " tanq." : "", e.numero_dispensarios ? e.numero_dispensarios + " disp." : "", e.numero_mangueras ? e.numero_mangueras + " mang." : ""].filter(Boolean).join(" · ") || "—"}</td>
+                    <td style="padding:8px;font-size:11.5px;">${opsEsc(e.encargado || "—")}</td>
+                    <td style="padding:8px;text-align:center;">${sv.total}${sv.abiertos ? ` <span style="color:#b45309;font-weight:800;">(${sv.abiertos} abierto${sv.abiertos > 1 ? "s" : ""})</span>` : ""}</td>
+                    <td style="padding:8px;font-size:11.5px;">${sv.ultimo ? opsEsc(opsFmtFechaCorta(sv.ultimo)) : "—"}</td></tr>`; }).join("")}</tbody></table></div>${lista.length > 600 ? `<div style="font-size:11.5px;color:#94a3b8;margin-top:6px;">Se muestran 600 de ${lista.length}; usa la búsqueda o elige una plaza.</div>` : ""}`
+                : `<div style="padding:24px;text-align:center;color:#94a3b8;">No hay estaciones con ese filtro.</div>`}
+        </div>`;
+    };
+    window.opsEPVer = function (id) {
+        const e = (opsEP.lista || []).find(x => x.id === id); if (!e) return;
+        const sv = opsEPServicios(e);
+        const c = (k, v) => v == null || v === "" ? "" : `<div style="background:#f8fafc;border-radius:9px;padding:7px 10px;"><div style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;">${k}</div><div style="font-size:12.5px;font-weight:600;color:#0f172a;">${opsEsc(Array.isArray(v) ? v.join(", ") : v)}</div></div>`;
+        const mapa = e.maps_url || (e.lat && e.lng ? `https://maps.google.com/?q=${e.lat},${e.lng}` : "");
+        document.getElementById("ops-modal-wrap").innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.parentNode.innerHTML=''">
+            <div style="background:#fff;border-radius:14px;width:820px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:12px;color:#64748b;font-weight:700;">${opsEsc(e._cliente)} · ${opsEsc(e._plaza)}</div><div style="font-size:20px;font-weight:800;color:#1D2E73;">${opsEsc(e.nombre_comercial || e.nombre || "")}</div></div>
+                <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px;margin:12px 0;">
+                    ${c("Razón social", e.razon_social)}${c("N.º de estación", e.numero_estacion)}${c("Permiso CRE", e.permiso)}${c("Código CRE", e.codigo_estacion_cre)}${c("CR", e.cr)}${c("Centro de costos", e.centro_costos)}
+                    ${c("Dirección", e.direccion_normalizada || e.domicilio_raw)}${c("Colonia", e.colonia)}${c("Municipio", e.municipio)}${c("Estado", e.estado)}${c("C.P.", e.codigo_postal)}${c("Zona / región", [e.zona, e.region].filter(Boolean).join(" · "))}
+                    ${c("Encargado", e.encargado)}${c("Tanques", e.numero_tanques)}${c("Dispensarios", e.numero_dispensarios)}${c("Mangueras", e.numero_mangueras)}${c("Sondas", e.numero_sondas)}${c("Marca de dispensarios", e.marca_dispensarios)}${c("Combustibles", e.combustibles)}
+                    ${c("Ubicación", e.ubicacion_verificada ? "Verificada" : (e.lat ? "Sin verificar" : "Sin ubicación"))}
+                </div>
+                ${mapa ? `<a href="${opsEsc(mapa)}" target="_blank" style="display:inline-block;margin-bottom:12px;color:#2563eb;font-weight:700;font-size:12.5px;">Abrir en el mapa</a>` : ""}
+                <div style="font-size:14px;font-weight:800;color:#1D2E73;margin:6px 0;">Servicios (${sv.total}) · abiertos ${sv.abiertos} · este mes ${sv.mes}</div>
+                ${sv.lista.length ? sv.lista.slice().sort((a, b) => String(b.fechaProgramada || b.fechaSolicitud || "").localeCompare(String(a.fechaProgramada || a.fechaSolicitud || ""))).slice(0, 30).map(f => `<div onclick="document.getElementById('ops-modal-wrap').innerHTML='';opsAbrirPanelFolio('${f.id}')" style="display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border:1px solid #e2e8f0;border-radius:9px;margin-bottom:5px;font-size:12px;cursor:pointer;">
+                    <span><b>${opsEsc(opsFmtFechaCorta(f.fechaProgramada || f.fechaSolicitud))}</b> · ${opsEsc(opsCalTipoTexto(f))}${f.folioClienteId || f.folioOS ? " · " + opsEsc(f.folioClienteId || f.folioOS) : ""} · ${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico")}</span>
+                    <span style="font-weight:700;color:${f.cancelado ? "#64748b" : f.fechaSolucion ? "#15803d" : "#b45309"};">${f.cancelado ? "Cancelado" : f.fechaSolucion ? "Cerrado" : "Abierto"}</span></div>`).join("") : `<div style="font-size:12px;color:#94a3b8;">Sin servicios registrados en el portal.</div>`}
+            </div></div>`;
+    };
+    window.opsEPExportar = function () {
+        const filas = [["Plaza", "Cliente", "Nombre comercial", "Razón social", "N.º estación", "Permiso CRE", "Código CRE", "CR", "Dirección", "Colonia", "Municipio", "Estado", "C.P.", "Encargado", "Tanques", "Dispensarios", "Mangueras", "Sondas", "Combustibles", "Lat", "Lng", "Servicios", "Abiertos", "Último servicio"]];
+        (opsEP.lista || []).filter(e => (!opsEP.plaza || e._plaza === opsEP.plaza) && (!opsEP.cliente || e._cliente === opsEP.cliente)).forEach(e => { const sv = opsEPServicios(e);
+            filas.push([e._plaza, e._cliente, e.nombre_comercial || e.nombre, e.razon_social, e.numero_estacion, e.permiso, e.codigo_estacion_cre, e.cr, e.direccion_normalizada || e.domicilio_raw, e.colonia, e.municipio, e.estado, e.codigo_postal, e.encargado, e.numero_tanques, e.numero_dispensarios, e.numero_mangueras, e.numero_sondas, (e.combustibles || []).join(" / "), e.lat, e.lng, sv.total, sv.abiertos, sv.ultimo]); });
+        const t = "\ufeff" + filas.map(r => r.map(v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+        const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], { type: "text/csv;charset=utf-8" })); a.download = "estaciones_por_plaza_" + opsHoy() + ".csv"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    };
+
     // ═══ PÓLIZAS Y REPORTES DE LA APP (j2tecno-app) — 31-oct-2026 ═══
     // Las pólizas de mantenimiento, inspecciones de integridad de tanques y certificados de limpieza que
     // levantan los técnicos en la app de pólizas, con TODAS sus evidencias, para verlas, descargarlas

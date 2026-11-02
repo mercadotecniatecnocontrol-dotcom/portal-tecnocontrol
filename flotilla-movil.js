@@ -4743,8 +4743,12 @@ window.herrAceptarTraspaso=async function(traspasoId){
       [['completa','Completa y funcionando'],['detalle','Con algún detalle'],['incompleta','Incompleta o no funciona']].map(function(o,i){ return '<label style="display:flex;gap:8px;align-items:center;border:1.5px solid #E2E8F0;border-radius:10px;padding:10px;font-size:13px;font-weight:700"><input type="radio" name="fm-herr-cond" value="'+o[0]+'" '+(i===0?'checked':'')+' onchange="window.__herrRec.cond=this.value" style="width:18px;height:18px">'+o[1]+'</label>'; }).join('')+'</div>'+
     '<label style="font-size:12px;font-weight:800;color:#334155">Comentario</label><textarea id="fm-herr-rec-com" rows="2" style="'+FM_IN+'" placeholder="Ej. le falta el estuche, viene con la punta gastada"></textarea>'+
     '<label style="display:block;border:2px dashed #CBD5E1;border-radius:12px;padding:12px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:700;color:#334155" id="fm-herr-rec-flbl">Tomar foto de cómo la recibes<input type="file" accept="image/*" capture="environment" style="display:none" onchange="herrRecFoto(this)"></label>'+
+    '<div style="font-size:12px;font-weight:800;color:#334155;margin:10px 0 4px">Tu firma de recibido *</div>'+
+    '<div style="border:1.5px solid #CBD5E1;border-radius:10px;background:#fff"><canvas id="fm-herr-rec-firma" width="320" height="140" style="display:block;width:100%;height:140px;touch-action:none;border-radius:10px"></canvas></div>'+
+    '<button type="button" onclick="limpiarFirma(\'fm-herr-rec-firma\')" style="background:none;border:none;color:#64748B;font-size:11.5px;font-weight:700;padding:4px 0;cursor:pointer;font-family:inherit">Borrar firma</button>'+
     '<div id="fm-herr-rec-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px;margin-top:6px"></div>'+
     '<button id="fm-herr-rec-btn" onclick="herrAceptarTraspasoConfirmar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#15803D;color:#fff;font-family:inherit;font-size:14px;font-weight:900;margin-top:4px">Aceptar y recibir</button>');
+  setTimeout(function(){ initFirmaCanvas('fm-herr-rec-firma'); },120);
 };
 window.herrRecFoto=async function(input){ const f=input.files&&input.files[0]; if(!f) return;
   try{ window.__herrRec.foto=await herrComprimirFotoApp(f,900,0.6); const l=document.getElementById('fm-herr-rec-flbl'); if(l){ l.style.borderColor='#86EFAC'; l.style.background='#F0FDF4'; l.firstChild.textContent='Foto lista · toca para cambiarla'; } }catch(e){ toast('No se pudo leer la foto','err'); } };
@@ -4753,9 +4757,11 @@ window.herrAceptarTraspasoConfirmar=async function(){
   const R=window.__herrRec||{}; const traspasoId=R.id; if(!traspasoId) return;
   const com=(document.getElementById('fm-herr-rec-com')||{}).value||''; const msg=document.getElementById('fm-herr-rec-msg'), btn=document.getElementById('fm-herr-rec-btn');
   if(R.cond!=='completa'&&(!com.trim()||!R.foto)){ if(msg) msg.textContent='Si tiene algún detalle, escribe qué tiene y toma una foto.'; return; }
+  if(!firmaTieneTrazo('fm-herr-rec-firma')){ if(msg) msg.textContent='Firma de recibido para aceptar la herramienta.'; return; }
+  const firmaRec=firmaExportar('fm-herr-rec-firma');
   if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
   const COND={completa:'Completa y funcionando',detalle:'Con algún detalle',incompleta:'Incompleta o no funciona'};
-  window.__herrRecDatos={cond:R.cond,condTxt:COND[R.cond],com:com.trim(),foto:R.foto};
+  window.__herrRecDatos={cond:R.cond,condTxt:COND[R.cond],com:com.trim(),foto:R.foto,firma:firmaRec};
   document.getElementById('fm-herr-rec')?.remove();
   try{
     const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
@@ -4780,7 +4786,9 @@ window.herrAceptarTraspasoConfirmar=async function(){
     const herrSnap=await herrRef.get();
     const ubicacionActual=herrSnap.exists?(herrSnap.data().ubicacionActual||null):null;
 
-    await herrRef.update({ tecnicoActualId:receptorId, fechaAsignacion:now.slice(0,10), estado:'asignada' });
+    const RDf=window.__herrRecDatos||{};
+    await herrRef.update({ tecnicoActualId:receptorId, fechaAsignacion:now.slice(0,10), estado:'asignada',
+      ...(RDf.firma?{ firmaRecepcion:{ img:RDf.firma, nombre:userName, en:now, traspasoId:traspasoId, condicion:RDf.condTxt||null } }:{}) });
     const partesObs=[];
     partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
@@ -4799,7 +4807,7 @@ window.herrAceptarTraspasoConfirmar=async function(){
       usuarioEmail:userEmail, usuarioNombre:userName, fecha:now,
     });
     await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({ estatus:'Completado', completadoEn:now, receptorTecnicoId:receptorId,
-      recepcionCondicion:RD.cond||null, recepcionComentario:RD.com||null, recepcionFotoBase64:RD.foto||null });
+      recepcionCondicion:RD.cond||null, recepcionComentario:RD.com||null, recepcionFotoBase64:RD.foto||null, recepcionFirma:RD.firma||null });
     if(RD.cond&&RD.cond!=='completa'){ try{ await opsSvAvisarAdmins('herramienta_recibida_con_detalle',userName+' recibió '+(t.folio||'')+' ('+(t.descripcion||'')+') '+RD.condTxt.toLowerCase()+': '+RD.com,null); }catch(e){} }
     if(t.entregaEmail){
       db.collection('flotilla_notificaciones').add({
