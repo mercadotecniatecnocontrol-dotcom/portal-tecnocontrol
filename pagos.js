@@ -563,12 +563,27 @@ let _comentModal  = null; // id de sol abierta en modal comentarios
 //  Render principal de la bandeja 
 // 29-oct-2026: el recuadro viejo ya no se dibuja; el tablero nuevo de Pagos (pestaña Flotilla) usa estos datos
 // y estos mismos botones (_pflRegistrarPago, _pflComentarios, _pflVerSol).
+// 31-oct-2026: Flotilla ya no usa el estado "Pagos". Cuando Flotilla programa un pago, lo guarda en la
+// solicitud (pagoProgramado) y la deja en "Servicio". Por pagar = tiene pago programado, sin pago registrado
+// y no está rechazada/cancelada. Se lee de la vista ligera flotilla_pagos_v (sin fotos ni comprobantes).
+window.__pflPagados = [];
 window.__pflCargarDatos = async function(){
-  const { db, fs, auth } = await _getDB();
+  const { auth } = await _getDB();
   const yo = auth.currentUser?.email || '';
   if(!(await _esUsuarioPagos(yo))) return null;
-  const snap = await fs.getDocs(fs.query(fs.collection(db, 'flotilla_solicitudes'), fs.where('estatus', '==', 'Pagos')));
-  _flSolsPago = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.fechaPagoProgramada||'').localeCompare(b.fechaPagoProgramada||''));
+  const c = window.tcSupabase || await import('https://esm.sh/@supabase/supabase-js@2').then(m=>m.createClient('https://vlbyjoqessxcmkejcujp.supabase.co','sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8'));
+  const r = await c.from('flotilla_pagos_v').select('*').order('actualizado_en',{ascending:false}).limit(300);
+  if(r.error) throw r.error;
+  const aSol = v => ({ id:v.id, folio:v.folio, vehiculoEco:v.eco, estatus:v.estado, tipo:v.tipo || (v.pago&&v.pago.tipo) || '', vehiculo:v.vehiculo||'', descripcion:v.descripcion||'',
+    creadoPor:v.creado_por, creadoPorNombre:v.creado_por_nombre, pagoProgramado:v.pago||null, fechaPagoProgramada:(v.pago&&v.pago.fechaEsperada)||'',
+    cotizacion:{ monto:Number((v.pago&&v.pago.monto)||v.cotizacion_monto||0), taller:(v.pago&&v.pago.proveedor)||v.cotizacion_taller||'' },
+    montoPagado:v.monto_pagado?Number(v.monto_pagado):null, fechaPagoReal:v.fecha_pago||'', facturaNum:v.factura_num||'', metodoPago:v.metodo_pago||'', pagadoPor:v.pagado_por||'', pagadoEn:v.pagado_en||'',
+    comprobantePago:v.tiene_comprobante?'(guardado)':'', liberadoEn:v.liberado_en||'', comentariosPagos:new Array(v.n_comentarios||0) });
+  const todas = (r.data||[]).map(aSol);
+  const pagada = x => x.montoPagado!=null || !!x.fechaPagoReal || !!x.comprobantePago;
+  _flSolsPago = todas.filter(x=>!pagada(x) && !['Rechazada','Cancelada'].includes(x.estatus)).sort((a,b)=>(a.fechaPagoProgramada||'').localeCompare(b.fechaPagoProgramada||''));
+  const hace45 = new Date(Date.now()-45*864e5).toISOString().slice(0,10);
+  window.__pflPagados = todas.filter(x=>pagada(x) && String(x.fechaPagoReal||x.pagadoEn||'').slice(0,10)>=hace45);
   return _flSolsPago;
 };
 window.__pflSemaforo = function(s){ return _semaforo(s); };
@@ -793,6 +808,10 @@ window._pflRegistrarPago = function(solId){
           '<label style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;display:block;margin-bottom:5px">Notas adicionales</label>'+
           '<textarea id="pfl-notas" rows="2" placeholder="Observaciones, número de transferencia, banco..." style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:12px;resize:vertical;box-sizing:border-box">'+(s.notasPago||'')+'</textarea>'+
         '</div>'+
+        '<label style="display:flex;gap:9px;align-items:flex-start;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;padding:10px 12px;cursor:pointer">'+
+          '<input id="pfl-liberar" type="checkbox" checked style="width:17px;height:17px;margin-top:1px">'+
+          '<span style="font-size:12px;color:#14532D;line-height:1.4"><b>Liberar el servicio y cerrar la solicitud</b><br>El vehículo queda liberado del taller y la solicitud pasa a Cerrada. Desmárcalo si todavía falta algo (por ejemplo, la factura).</span>'+
+        '</label>'+
 
         // Botones
         '<div style="display:flex;gap:8px;margin-top:4px">'+
@@ -845,7 +864,7 @@ window._pflGuardarPago = async function(solId){
     // Convertir archivo a base64
     let comprobanteB64 = '';
     const s = _flSolsPago.find(x=>x.id===solId);
-    comprobanteB64 = s?.comprobantePago || '';
+    comprobanteB64 = (s?.comprobantePago && s.comprobantePago!=='(guardado)') ? s.comprobantePago : '';
 
     if(file){
       comprobanteB64 = await new Promise((res,rej)=>{
@@ -859,8 +878,13 @@ window._pflGuardarPago = async function(solId){
     if(!comprobanteB64){ alert('Debes subir el comprobante de pago'); if(btn){btn.disabled=false;btn.textContent='💾 Confirmar pago';} return; }
 
     // Actualizar la solicitud en flotilla_solicitudes
+    // 31-oct-2026: ya no se usa el estado "Cierre" (Flotilla no lo reconoce). Si se marca "liberar",
+    // la solicitud pasa a Cerrada y el vehículo se libera del taller; si no, conserva su estado.
+    const liberar = !!document.getElementById('pfl-liberar')?.checked;
+    const ahoraISO = new Date().toISOString();
     await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',solId),{
-      estatus:          'Cierre',
+      ...(liberar ? { estatus:'Cerrada', cerradoEn:ahoraISO, cerradoPor:yo, liberadoPor:yo, liberadoEn:ahoraISO } : {}),
+      fechaPago:        fecha,
       montoPagado:      parseFloat(monto)||0,
       facturaNum:       factura||'',
       fechaPagoReal:    fecha,
@@ -885,6 +909,11 @@ window._pflGuardarPago = async function(solId){
         creadaEn:    new Date().toISOString(),
       }));
     }
+    // Resumen a Cristy (administración) con el comprobante, para que quede todo listo y liberado
+    const resumen = 'PAGO FLOTILLA '+(liberar?'Y SERVICIO LIBERADO':'REGISTRADO')+' — '+(s?.folio||'')+' · ECO '+(s?.vehiculoEco||'—')+' · '+(s?.tipo||'')+
+      '\nProveedor: '+((s?.pagoProgramado&&s.pagoProgramado.proveedor)||(s?.cotizacion&&s.cotizacion.taller)||'—')+'\nMonto pagado: $'+Number(monto).toLocaleString('es-MX')+' · '+metodo+' · '+fecha+
+      (factura?'\nFactura: '+factura:'')+(notas?'\nNotas: '+notas:'')+'\nRegistró: '+yo+(liberar?'\nLa solicitud quedó Cerrada y el vehículo liberado.':'\nLa solicitud sigue abierta en Flotilla.');
+    nots.push(window.tcNotificar2(fs, db,{ solicitudId: solId, para:'c.acosta@tecnocontrol.com.mx', vehiculoEco:s?.vehiculoEco||'—', tipo:'pagado', mensaje:resumen, leido:false, creadaEn:ahoraISO }));
     nots.push(window.tcNotificar2(fs, db,{
       solicitudId: solId,
       para:        'flotilla@tecnocontrol.com.mx',
@@ -897,7 +926,7 @@ window._pflGuardarPago = async function(solId){
     await Promise.all(nots);
 
     document.querySelector('.fl-ov')?.remove();
-    if(window.mostrarPush) window.mostrarPush('✅ Pago registrado','La solicitud pasó a Cierre y se notificó a Flotilla','💳');
+    if(window.mostrarPush) window.mostrarPush('✅ Pago registrado', liberar ? 'Servicio liberado y solicitud cerrada. Se avisó a Cristy, a Flotilla y a quien la pidió.' : 'Pago registrado. Se avisó a Cristy, a Flotilla y a quien la pidió.','💳');
     // Refrescar bandeja
     await renderBandejaFlotilla();
   } catch(e){
@@ -1336,7 +1365,7 @@ window.__vp2FlDetalle=function(id){ const s=(P.fl||[]).find(x=>x.id===id); if(!s
   modal('<div style="display:flex;justify-content:space-between;gap:12px"><div><div style="font-size:12px;color:#6b7280;font-weight:700">Flotilla · ECO '+esc(s.vehiculoEco||'—')+'</div><div style="font-size:21px;font-weight:800;color:#111827">'+esc(s.tipo||'Servicio')+'</div><div style="font-size:13px;color:#4b5563">'+esc(s.vehiculo||s.unidad||'')+'</div></div>'+
     '<div style="display:flex;gap:8px;align-items:center">'+pill(e.t,e.c,e.bg)+'<button class="vp2-ib" onclick="window.__vp2Cerrar()">'+IC.cerrar+'</button></div></div>'+
     '<div class="vp2-gr">'+f('Monto autorizado','<span style="font-size:18px;color:#15803d;font-weight:800">'+din(flMonto(s))+'</span>')+f('Taller / proveedor',esc(flTaller(s)))+f('Fecha programada de pago',fl(s.fechaPagoProgramada))+
-      f('Factura',esc(s.facturaNum||'Pendiente'))+f('Solicitó',esc(s.creadoPorNombre||s.creadoPor||''))+f('Comprobante de pago',s.comprobantePago?'<a href="'+esc(s.comprobantePago)+'" target="_blank" style="color:#2563eb;font-weight:700">Ver comprobante</a>':'Pendiente')+'</div>'+
+      f('Factura',esc(s.facturaNum||'Pendiente'))+f('Solicitó',esc(s.creadoPorNombre||s.creadoPor||''))+f('Comprobante de pago',s.comprobantePago==='(guardado)'?'Guardado (ábrelo en Flotilla)':s.comprobantePago?'<a href="'+esc(s.comprobantePago)+'" target="_blank" style="color:#2563eb;font-weight:700">Ver comprobante</a>':'Pendiente')+'</div>'+
     (s.cotizacion?'<div class="vp2-sec">Cotización</div><div class="vp2-gr">'+Object.keys(s.cotizacion).filter(k=>['string','number'].includes(typeof s.cotizacion[k])&&!/^https?:|^data:/.test(String(s.cotizacion[k]))).map(k=>f(esc(k),esc(s.cotizacion[k]))).join('')+'</div>':'')+
     '<div class="vp2-sec">Comentarios con Pagos ('+coms.length+')</div>'+(coms.length?'<div class="vp2-tl">'+coms.map(c=>'<div style="--c:#7c3aed"><b>'+esc(c.autor||'')+'</b> · '+esc(String(c.fecha||'').slice(0,16).replace('T',' '))+'<br>'+esc(c.texto||'')+'</div>').join('')+'</div>':'<div style="font-size:12px;color:#9ca3af">Sin comentarios.</div>')+
     '<details style="margin-top:12px"><summary style="font-size:12px;color:#6b7280;cursor:pointer;font-weight:700">Todos los datos de la solicitud</summary><div class="vp2-gr">'+extras.map(k=>f(esc(k),esc(s[k]))).join('')+'</div></details>'+
@@ -1372,6 +1401,10 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
       :'<div class="vp2-empty">No hay viático extra pendiente.</div>';
   } else if(P.tab==='flotilla'){
     const l=(P.fl||[]).filter(s=>!q||norm([s.vehiculoEco,s.tipo,s.vehiculo,flTaller(s),s.creadoPorNombre,s.facturaNum].join(' ')).includes(q));
+    const pag=(window.__pflPagados||[]).filter(s=>!q||norm([s.vehiculoEco,s.tipo,s.folio,flTaller(s)].join(' ')).includes(q));
+    const pagadosHTML=pag.length?'<div class="vp2-sec" style="margin-top:16px">Pagados en los últimos 45 días ('+pag.length+')</div>'+pag.map(s=>'<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 170px minmax(160px,1.1fr) minmax(150px,1fr) 140px 90px;opacity:.92"><div><div class="vp2-name">'+esc(s.tipo||'Servicio')+' · ECO '+esc(s.vehiculoEco||'—')+'</div><div class="vp2-meta"><span>'+esc(s.folio||'')+'</span><span>'+esc(s.estatus||'')+'</span></div></div>'+
+      '<div>'+pill('Pagado '+fc(s.fechaPagoReal||s.pagadoEn),'#15803d','#dcfce7')+'</div><div><div class="vp2-k">Taller</div><div class="vp2-v">'+esc(flTaller(s))+'</div></div><div><div class="vp2-k">Factura</div><div class="vp2-v">'+esc(s.facturaNum||'—')+'</div></div>'+
+      '<div><div class="vp2-k">Pagado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.montoPagado||0)+'</div></div><div></div></div>').join(''):'';
     cuerpo=P.fl===null?'<div class="vp2-empty">Cargando solicitudes de Flotilla…</div>':(l.length?l.map(s=>{ const e=flEstado(s);
       return '<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 170px minmax(160px,1.1fr) minmax(150px,1fr) 140px 210px" onclick="window.__vp2FlDetalle(\''+s.id+'\')">'+
         '<div><div class="vp2-name">'+esc(s.tipo||'Servicio')+' · ECO '+esc(s.vehiculoEco||'—')+'</div><div class="vp2-meta"><span>'+esc(s.vehiculo||s.unidad||'')+'</span><span>'+IC.persona+esc(s.creadoPorNombre||s.creadoPor||'')+'</span></div></div>'+
@@ -1379,7 +1412,7 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
         '<div><div class="vp2-k">Pagar el</div><div class="vp2-v">'+fc(s.fechaPagoProgramada)+'</div><div style="font-size:11px;color:#9ca3af">Factura: '+esc(s.facturaNum||'pendiente')+'</div></div>'+
         '<div><div class="vp2-k">Monto</div><div class="vp2-saldo" style="color:'+(e.k==='vencida'?'#dc2626':'#111827')+'"><i style="background:'+e.c+'"></i>'+din(flMonto(s))+'</div></div>'+
         '<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="vp2-btn pri" style="height:32px" onclick="event.stopPropagation();window._pflRegistrarPago(\''+s.id+'\')">'+(s.comprobantePago?'Actualizar pago':'Registrar pago')+'</button><button class="vp2-note" onclick="event.stopPropagation();window.__vp2FlDetalle(\''+s.id+'\')">'+IC.nota+' Ver todo</button></div></div>'; }).join('')
-      :'<div class="vp2-empty">'+(P.flErr?'No se pudo cargar Flotilla: '+esc(P.flErr):'No hay solicitudes de Flotilla esperando pago.')+'</div>');
+      :'<div class="vp2-empty">'+(P.flErr?'No se pudo cargar Flotilla: '+esc(P.flErr):'No hay solicitudes de Flotilla esperando pago. Aparecen aquí cuando Flotilla programa un pago.')+'</div>')+pagadosHTML;
   } else if(P.tab==='pagados'){
     const l=pagMes.filter(pasa);
     cuerpo=l.length?l.map(s=>filaViatico(s,{t:'Pagado '+fc(s.entregado_en),c:'#15803d',bg:'#dcfce7'},'<div><div class="vp2-k">Depositado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.monto_entregado)+'</div></div>','window.__vp2Detalle('+s.id+',\'pagos\')')).join('')

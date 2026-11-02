@@ -7390,6 +7390,8 @@
     // Una sola vez por folio y por vencimiento (si cambian la fecha, vuelve a avisar).
     const OPS_ALARMA_ANTES_MIN = 60;
     const opsFolios1hAvisados = new Set();
+    // 31-oct-2026 (Magali): además del aviso de 1 hora, una segunda alarma 20 minutos antes de que venza.
+    const OPS_ALARMAS_FOLIO = [{ min: 60, campo: "avisoVence1h", tipo: "ops_folio_vence_1h" }, { min: 20, campo: "avisoVence20m", tipo: "ops_folio_vence_20m" }];
     function opsVigilarVencimiento1h() {
         if (opsAccFiltroEmpresa()) return;
         const ahora = Date.now();
@@ -7397,24 +7399,27 @@
             if (f.source === OPS_DEMO_SOURCE || f.cancelado || f.fechaSolucion || !opsEsFolioCliente(f)) continue;
             const v = opsFolioVenceMs(f); if (!v) continue;
             const falta = (v - ahora) / 60000;
-            const clave = f.id + "|" + v;
-            if (falta > 0 && falta <= OPS_ALARMA_ANTES_MIN && !opsFolios1hAvisados.has(clave)) {
-                opsFolios1hAvisados.add(clave);
-                if (f.avisoVence1h === clave) continue; // ya lo mandó otra sesión del portal
-                opsReproducirAlarmaFolio();
-                const tecs = (f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico";
-                opsNotifAgregar({ titulo: "Vence en " + Math.round(falta) + " min", color: "#E7402B", accion: "folio", accionTxt: "Ver folio", folioId: f.id,
-                    texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
-                (async () => {
-                    try {
-                        const { db, fs } = await opsGetFB();
-                        await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { avisoVence1h: clave });
-                        const correos = [...new Set((f.tecnicosAsignadosIds || []).map(id => (opsTecPorId(id) || {}).correo).concat([f.tecnicoResponsableCorreo]).filter(Boolean).map(c => String(c).toLowerCase().trim()))];
-                        for (const para of correos) await window.tcNotificar2(fs, db, { tipo: "ops_folio_vence_1h", codigo: f.folioClienteId || f.folioOS || f.estacion, folioId: f.id, para,
-                            mensaje: `Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${Math.round(falta)} minutos (${new Date(v).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}).`, creadaEn: new Date().toISOString() });
-                    } catch (e) { console.warn("[Folios] aviso 1 h:", e.message || e); }
-                })();
-            }
+            // La alarma que toca es la más cercana que ya se cruzó (20 min gana a 60 min).
+            const al = OPS_ALARMAS_FOLIO.filter(a => falta > 0 && falta <= a.min).sort((x, y) => x.min - y.min)[0];
+            if (!al) continue;
+            const clave = f.id + "|" + v + "|" + al.min;
+            if (opsFolios1hAvisados.has(clave)) continue;
+            opsFolios1hAvisados.add(clave);
+            if (f[al.campo] === clave || (al.min === 60 && f.avisoVence1h === f.id + "|" + v)) continue; // ya lo mandó otra sesión del portal
+            opsReproducirAlarmaFolio();
+            const tecs = (f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico";
+            opsNotifAgregar({ titulo: (al.min === 20 ? "¡ÚLTIMOS MINUTOS! " : "") + "Vence en " + Math.round(falta) + " min", color: al.min === 20 ? "#B91C1C" : "#E7402B", accion: "folio", accionTxt: "Ver folio", folioId: f.id,
+                texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
+            (async () => {
+                try {
+                    const { db, fs } = await opsGetFB();
+                    await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { [al.campo]: clave });
+                    const correos = [...new Set((f.tecnicosAsignadosIds || []).map(id => (opsTecPorId(id) || {}).correo).concat([f.tecnicoResponsableCorreo]).filter(Boolean).map(c => String(c).toLowerCase().trim()))];
+                    for (const para of correos) await window.tcNotificar2(fs, db, { tipo: al.tipo, codigo: f.folioClienteId || f.folioOS || f.estacion, folioId: f.id, para,
+                        mensaje: `${al.min === 20 ? "URGENTE: " : ""}Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${Math.round(falta)} minutos (${new Date(v).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}).`,
+                        leido: false, creadaEn: opsFechaHora() });
+                } catch (e) { console.warn("[Folios] aviso de vencimiento:", e.message || e); }
+            })();
         }
     }
 
@@ -10362,6 +10367,7 @@
             Object.assign(f, cambios);
             if (accion === "completar") opsComisionesAlFinalizar(f);
             if (accion === "cancelar") {
+                opsViaAlCancelarServicio(f, cambios.motivoCancelacion).catch(e => console.warn("[cancelar] viáticos:", e.message));
                 const ped = (cacheSurtidos || []).find(x => x.opsFolioId === id || (f.pedidoVentasId && x.id === f.pedidoVentasId));
                 if (ped && ped.opsGestionado && confirm(`Este servicio venía del pedido ${ped.folio || ""} (${ped.cliente || ""}).\n\n¿Regresar el pedido a "Servicios vendidos por programar" para programarlo de nuevo?`))
                     opsPedDesgestionar(ped.id, "Servicio cancelado; el pedido regresó a 'por programar'").then(() => opsCalPintarPedidosVentas()).catch(err => console.warn("[cancelar] no se pudo regresar el pedido:", err.message));
@@ -12146,6 +12152,43 @@
     // "Programación completa" = los servicios del mismo grupo (alta de varias estaciones) más los
     // servicios de esos técnicos que caen dentro de las fechas de sus viáticos.
     const OPS_VIA_EXCLUIR = ["Cancelada", "Rechazada"];
+    // 31-oct-2026: cuando se cancela un servicio, sus viáticos ligados directo se marcan en rojo
+    // (tarifas.servicioCancelado) y se avisa al técnico, a Pagos, a Cristina y a Contabilidad. No se
+    // cancelan solos: puede que ya se haya depositado. Quedan en "Servicios cancelados con viáticos".
+    async function opsViaAlCancelarServicio(f, motivo) {
+        const vias = (await opsViaticosDeFolios([f])).filter(v => v._directo && !OPS_VIA_EXCLUIR.includes(v.estatus));
+        if (!vias.length) return;
+        const sb = await opsSb(), quien = opsNombreActual(), en = new Date().toISOString();
+        for (const v of vias) {
+            const marca = { en, por: quien, motivo: motivo || "", estacion: f.estacion || "", fechaServicio: f.fechaProgramada || "", folioId: f.id, resuelto: false };
+            await sb.from("ops_solicitudes_viaticos").update({ tarifas: { ...(v.tarifas || {}), servicioCancelado: marca }, actualizado_en: en, actualizado_por: opsUsuarioActual() }).eq("id", v.id);
+            const pagado = !!v.entregado_en, monto = opsViaDinero(v.monto_entregado != null ? v.monto_entregado : opsViaDeposito(v));
+            const msg = `SERVICIO CANCELADO con viáticos: ${v.folio} · ${f.estacion || ""} (${String(f.fechaProgramada || "").slice(0, 10)}). ${pagado ? "Ya se depositaron " + monto + ": hay que recuperarlo o aplicarlo a otro servicio." : "Todavía NO se deposita (" + monto + "): no pagarlo."} Motivo: ${motivo || "—"}. Canceló ${quien}.`;
+            if (v.responsable_email) opsViaAvisoTecnico(v.responsable_email, "viat_servicio_cancelado", `Se canceló el servicio de tus viáticos ${v.folio} (${f.estacion || ""}). ${pagado ? "Comunícate con Operaciones para ver qué hacer con lo depositado." : "Ya no se te depositará."}`, v).catch(() => {});
+            const dest = ["pagos@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx", "contabilidad@tecnocontrol.com.mx"];
+            if (window.tcNotificarEvento) window.tcNotificarEvento("viatico_servicio_cancelado", { modulo: "Viáticos", mensaje: "URGENTE: " + msg }).catch(() => dest.forEach(p => window.tcNotificar({ tipo: "viatico_servicio_cancelado", para: p, modulo: "Viáticos", mensaje: "URGENTE: " + msg }).catch(() => {})));
+            else dest.forEach(p => window.tcNotificar({ tipo: "viatico_servicio_cancelado", para: p, modulo: "Viáticos", mensaje: "URGENTE: " + msg }).catch(() => {}));
+            const enLista = opsViaLista.find(x => x.id === v.id); if (enLista) enLista.tarifas = { ...(enLista.tarifas || {}), servicioCancelado: marca };
+        }
+        if (window.mostrarPush) window.mostrarPush("Viáticos", `${vias.length} viático(s) de este servicio quedaron marcados en rojo y se avisó a Pagos y Contabilidad.`, "⚠️");
+    }
+    window.opsViaCancResolver = async function (id) {
+        const v = opsViaLista.find(x => x.id === id); if (!v) return;
+        const r = prompt(`¿Qué se hizo con ${v.folio}? (ej. "se canceló el viático", "se aplicó al servicio X", "el técnico regresó el dinero")`, ""); if (!r || !r.trim()) return;
+        try { const sb = await opsSb(); const t = { ...(v.tarifas || {}) }; t.servicioCancelado = { ...(t.servicioCancelado || {}), resuelto: true, resolucion: r.trim(), resueltoPor: opsNombreActual(), resueltoEn: new Date().toISOString() };
+            const { error } = await sb.from("ops_solicitudes_viaticos").update({ tarifas: t }).eq("id", id); if (error) throw error; v.tarifas = t; opsRenderViaticos();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    function opsViaCancHTML() {
+        const l = (opsViaLista || []).filter(v => !OPS_VIA_EXCLUIR.includes(v.estatus) && (v.tarifas || {}).servicioCancelado && !v.tarifas.servicioCancelado.resuelto);
+        if (!l.length) return "";
+        return `<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:14px;padding:12px 14px;margin-bottom:12px;">
+            <div style="font-size:14px;font-weight:900;color:#b91c1c;margin-bottom:8px;">⚠ Servicios cancelados con viáticos (${l.length})</div>
+            ${l.map(v => { const c = v.tarifas.servicioCancelado; return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #fecaca;border-radius:10px;padding:8px 11px;margin-bottom:6px;font-size:12.5px;">
+                <span style="flex:1;min-width:260px;"><b>${opsEsc(v.folio)}</b> · ${opsEsc(v.integrantes || "")} · ${opsEsc(c.estacion || v.destino || "")}<br><span style="color:#7f1d1d;">${v.entregado_en ? "YA DEPOSITADO " + opsViaDinero(v.monto_entregado) + " — recuperar o aplicar a otro servicio" : "No se ha depositado " + opsViaDinero(opsViaDeposito(v)) + " — no pagar"} · canceló ${opsEsc(c.por || "")} · ${opsEsc(c.motivo || "")}</span></span>
+                <button onclick="opsViaCancResolver(${v.id})" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Ya se resolvió</button></div>`; }).join("")}
+        </div>`;
+    }
     function opsFolioLlaves(f) { return [f.id, f.folioOS, f.folioClienteId, f.folioNumero != null ? String(f.folioNumero) : ""].map(x => String(x || "").trim()).filter(Boolean); }
     function opsFolioDia(f) { return String(f.fechaProgramada || "").slice(0, 10); }
     function opsFolioTecNombres(f) {
@@ -20001,7 +20044,7 @@
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         let box = document.getElementById("ops-via-extra");
         if (!box) { box = document.createElement("div"); box.id = "ops-via-extra"; el.prepend(box); }
-        box.innerHTML = opsViaExtraHTML();
+        box.innerHTML = opsViaCancHTML() + opsViaExtraHTML();
     }
     window.opsViaExtraDecidir = async function (id, ok) {
         const x = opsViaExtra.find(v => v.id === id); if (!x) return;
@@ -20043,9 +20086,9 @@
         if (opsViaVista === "comprobacion") return opsRenderViaComprobacion(el, autoriza);
         if (opsViaVista === "pagos") return opsRenderViaPagos(el, autoriza);
         if (opsViaVista === "empresas") return opsRenderViaEmpresas(el);
-        const filas = opsViaLista.map(s => { const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada"; const tach = canc ? "text-decoration:line-through;" : ""; return `
-            <tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : ""}">
-                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${tach}">${opsEsc(s.folio || s.id)}</td>
+        const filas = opsViaLista.map(s => { const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada"; const tach = canc ? "text-decoration:line-through;" : ""; const sc = !canc && (s.tarifas || {}).servicioCancelado; return `
+            <tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : sc ? "background:#fee2e2;box-shadow:inset 4px 0 0 #dc2626;" : ""}">
+                <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${tach}">${opsEsc(s.folio || s.id)}${sc ? `<div style="font-size:9.5px;font-weight:900;color:#fff;background:#dc2626;border-radius:5px;padding:1px 6px;margin-top:3px;display:inline-block;">SERVICIO CANCELADO</div>` : ""}</td>
                 <td style="padding:9px 8px;">${s.rol_viaje ? `<span style="font-size:10px;font-weight:800;color:#1e3a8a;background:#e0e7ff;border-radius:6px;padding:1px 6px;margin-right:5px;">CUADRILLA · HOJA ${(s.tarifas || {}).hoja || 1}/${(s.tarifas || {}).hojas || 2}</span>` : ""}<span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
                 <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsEsc(s.fecha_salida || "")}${s.fecha_regreso && s.fecha_regreso !== s.fecha_salida ? " → " + opsEsc(s.fecha_regreso) : ""}</td>
@@ -20057,6 +20100,7 @@
                 </td>
                 <td style="padding:9px 8px;white-space:nowrap;">
                     <button onclick="opsViaVerDetalle(${s.id})" style="background:#E9ECF5;border:none;color:#1D2E73;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">Ver</button>
+                    ${opsViaPuedeCorregir() && !s.cierre ? `<button onclick="opsViaCorregir(${s.id})" title="Corregir montos, fechas, depósito, cobro o empresas (queda en el historial)" style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;">Corregir</button>` : ""}
                     <button onclick="opsViaVerDetalle(${s.id}); opsViaCompartirPDF('descargar')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">PDF</button>
                 </td>
             </tr>`; }).join("");
@@ -22000,6 +22044,53 @@
             const m2 = document.getElementById("ops-via-emp-msg"); if (m2) { m2.textContent = "Guardado: ahora sale como " + empresa + ". El PDF ya sale con su logo."; m2.style.color = "#15803d"; m2.style.fontWeight = "700"; }
             if (typeof opsRenderViaticos === "function" && document.getElementById("ops-via-tabla")) { try { opsRenderViaticos(); } catch (e) {} }
         } catch (e) { alert("No se pudo cambiar la empresa: " + (e.message || e)); }
+    };
+    // ── Correcciones de viáticos (31-oct-2026): Cristina Acosta y administradores totales ──
+    // Cambia montos, fechas, depósito, cobro al cliente y empresas de una solicitud que todavía no se cierra.
+    // Recalcula el total y deja en tarifas.correcciones qué cambió (antes → después), quién y cuándo.
+    const OPS_VIA_CORRIGEN = ["c.acosta@tecnocontrol.com.mx"];
+    function opsViaPuedeCorregir() { const c = opsUsuarioActual(); return OPS_VIA_CORRIGEN.includes(c) || !!(window.esAdminTotal && window.esAdminTotal(c)); }
+    const OPS_VIA_CAMPOS_COR = [["fecha_salida", "Sale", "date"], ["fecha_regreso", "Regresa", "date"], ["integrantes", "Integrantes", "text"], ["destino", "Destino", "text"],
+        ["alimentos", "Alimentos", "num"], ["hospedaje", "Hospedaje", "num"], ["gasolina", "Gasolina", "num"], ["casetas", "Casetas", "num"], ["otros", "Otros", "num"],
+        ["deposito", "Se deposita al técnico", "num"], ["cobro_cliente", "Se cobra al cliente", "num"], ["empresa_entrega", "Empresa que entrega", "text"], ["empresa_cobra", "Empresa a la que se cobra", "text"]];
+    window.opsViaCorregir = function (id) {
+        if (!opsViaPuedeCorregir()) { alert("Solo Cristina Acosta o un administrador pueden corregir viáticos."); return; }
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const cor = ((s.tarifas || {}).correcciones || []).slice().reverse();
+        document.getElementById("ops-modal-wrap").innerHTML = `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:620px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-size:16px;font-weight:800;color:#c2410c;">Corregir ${opsEsc(s.folio)}</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:12px;">${opsEsc(s.destino || "")} · estatus ${opsEsc(s.estatus)}${s.entregado_en ? " · <b>ya se depositó</b>: si cambias el depósito, avisa a Pagos" : ""}. El total se recalcula con alimentos + hospedaje + gasolina + casetas + otros.</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;">
+                    ${OPS_VIA_CAMPOS_COR.map(([k, t, tipo]) => `<label style="font-size:11.5px;color:#64748b;font-weight:600;">${t}<input id="ops-vc-${k}" type="${tipo === "num" ? "number" : tipo}" ${tipo === "num" ? 'step="0.01" min="0"' : ""} value="${opsEsc(s[k] == null ? "" : s[k])}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:3px 0 8px;box-sizing:border-box;"></label>`).join("")}
+                </div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;display:block;">Motivo de la corrección *<input id="ops-vc-motivo" placeholder="Ej. se canceló una noche de hotel" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:3px 0 10px;box-sizing:border-box;"></label>
+                ${cor.length ? `<details style="margin-bottom:10px;"><summary style="font-size:12px;font-weight:700;color:#475569;cursor:pointer;">Correcciones anteriores (${cor.length})</summary>${cor.map(c => `<div style="font-size:11.5px;color:#334155;border-top:1px solid #f1f5f9;padding:5px 0;"><b>${opsEsc(c.por || "")}</b> · ${opsEsc(String(c.en || "").slice(0, 16).replace("T", " "))} · ${opsEsc(c.motivo || "")}<br>${(c.cambios || []).map(x => opsEsc(x.campo + ": " + x.antes + " → " + x.despues)).join("<br>")}</div>`).join("")}</details>` : ""}
+                <div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                <button id="ops-vc-btn" onclick="opsViaGuardarCorreccion(${id})" style="background:#c2410c;border:none;color:#fff;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Guardar corrección</button></div>
+            </div></div>`;
+    };
+    window.opsViaGuardarCorreccion = async function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const motivo = ((document.getElementById("ops-vc-motivo") || {}).value || "").trim();
+        if (motivo.length < 5) { alert("Escribe el motivo de la corrección."); return; }
+        const nuevos = {}, cambios = [];
+        OPS_VIA_CAMPOS_COR.forEach(([k, t, tipo]) => { const raw = (document.getElementById("ops-vc-" + k) || {}).value; let v = tipo === "num" ? (raw === "" ? null : Math.round(Number(raw) * 100) / 100) : (String(raw || "").trim() || null);
+            const antes = s[k] == null ? null : (tipo === "num" ? Number(s[k]) : s[k]); if (String(antes) !== String(v)) { nuevos[k] = v; cambios.push({ campo: t, antes: antes == null ? "—" : antes, despues: v == null ? "—" : v }); } });
+        if (!cambios.length) { alert("No cambiaste nada."); return; }
+        const n = k => Number(k in nuevos ? nuevos[k] : s[k]) || 0;
+        const total = Math.round((n("alimentos") + n("hospedaje") + n("gasolina") + n("casetas") + n("otros")) * 100) / 100;
+        if (total !== Number(s.total)) { nuevos.total = total; cambios.push({ campo: "Total", antes: s.total, despues: total }); }
+        const reg = { por: opsNombreActual(), correo: opsUsuarioActual(), en: new Date().toISOString(), motivo, cambios };
+        nuevos.tarifas = { ...(s.tarifas || {}), correcciones: ((s.tarifas || {}).correcciones || []).concat([reg]) };
+        nuevos.actualizado_en = reg.en; nuevos.actualizado_por = reg.correo;
+        const btn = document.getElementById("ops-vc-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            const sb = await opsSb(); const { error } = await sb.from("ops_solicitudes_viaticos").update(nuevos).eq("id", id); if (error) throw error;
+            Object.assign(s, nuevos);
+            if (s.entregado_en && ("deposito" in nuevos)) window.tcNotificar({ tipo: "viaticos_corregido", para: "pagos@tecnocontrol.com.mx", modulo: "Viáticos", mensaje: `Se corrigió el depósito de ${s.folio} (ya pagado) por ${reg.por}: ${motivo}. Revisa si hay diferencia que reponer o cobrar.` }).catch(() => {});
+            document.getElementById("ops-modal-wrap").innerHTML = ""; opsRenderViaticos();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = "Guardar corrección"; } }
     };
     window.opsViaVerDetalle = function (id) {
         const s = opsViaLista.find(x => x.id === id);

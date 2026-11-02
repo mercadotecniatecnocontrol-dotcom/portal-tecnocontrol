@@ -325,7 +325,7 @@ function mRevisar() {
 function mPuede() {
   const f = M.f, b = mSolicitudBase();
   const bloq = M.rev ? bloqueada(M.rev) : false, propia = M.rev && M.rev.propias.length;
-  return !!(M.rev && !propia && b.motivo && b.fecha_fin >= b.fecha_inicio && (!bloq || (f.urgente && String(f.urgente_motivo || '').trim())));
+  return !!(M.rev && !propia && b.motivo && b.fecha_fin >= b.fecha_inicio && (!f.urgente || String(f.urgente_motivo || '').trim()));
 }
 // Habilita el botón mientras se escribe, sin repintar (repintar quitaba el foco y el primer toque).
 function mBoton() {
@@ -355,7 +355,7 @@ function mRenderForm() {
   if (bloq && !propia) {
     h += '<div style="background:#fff;border:1.5px solid #FCA5A5;border-radius:12px;padding:11px 12px;margin-top:10px">' +
       '<div style="font-size:12.5px;color:#B91C1C;font-weight:800;margin-bottom:6px">Estas fechas están bloqueadas</div>' +
-      '<div style="font-size:12px;color:#475569;line-height:1.4;margin-bottom:8px">Solo se puede enviar como <b>solicitud urgente</b>. Se revisará aparte para decidir si se aprueba.</div>' +
+      '<div style="font-size:12px;color:#475569;line-height:1.4;margin-bottom:8px">Puedes enviarla normal: quien la revise verá este aviso de disponibilidad. Márcala como <b>urgente</b> solo si de verdad lo es.</div>' +
       '<label style="display:flex;gap:8px;align-items:center;font-size:13px;font-weight:700;color:#0A1628"><input type="checkbox" ' + (f.urgente ? 'checked' : '') + ' onchange="tcPermisos._mSet(\'urgente\',this.checked)" style="width:18px;height:18px"> Es urgente</label>' +
       (f.urgente ? '<input type="text" value="' + esc(f.urgente_motivo) + '" oninput="tcPermisos._mSetSin(\'urgente_motivo\',this.value)" placeholder="¿Por qué es urgente?" style="' + mEstilo('margin-top:8px') + '">' : '') + '</div>';
   }
@@ -371,8 +371,8 @@ async function mEnviar() {
   try {
     const r = await revisar(b); M.rev = r;
     if (r.propias.length) throw new Error('Ya tienes una solicitud en esas fechas.');
-    if (bloqueada(r) && !(b.urgente && b.urgente_motivo)) throw new Error('Esas fechas se bloquearon; márcala como urgente con su motivo.');
-    if (!bloqueada(r)) { b.urgente = !!b.urgente && !!b.urgente_motivo; }
+    // 31-oct-2026: ya no obliga a marcar urgente; la disponibilidad se avisa y el que aprueba decide.
+    b.urgente = !!b.urgente && !!b.urgente_motivo;
     const s = await crearSolicitud(b, r);
     M.enviando = false; M.modo = 'lista';
     if (M.ctx.toast) M.ctx.toast('Solicitud ' + s.folio + ' enviada', 'ok');
@@ -552,8 +552,8 @@ async function pGuardarNueva() {
   try {
     const r = await revisar(s);
     if (r.propias.length) throw new Error('Ya tiene una solicitud en esas fechas (' + r.propias.map(o => o.folio).join(', ') + ').');
-    if (bloqueada(r) && !(s.urgente && s.urgente_motivo)) throw new Error('Fechas bloqueadas: ' + [r.grupo.map(o => o.colaborador_nombre).join(', '), r.registradas.map(o => o.nombre).join(', '), r.anticipacion ? 'poca anticipación' : ''].filter(Boolean).join(' · ') + '. Márcala como urgente con su motivo.');
-    if (!bloqueada(r)) s.urgente = !!(s.urgente && s.urgente_motivo);
+    // 31-oct-2026: ya no obliga a marcar urgente; la disponibilidad se muestra en la solicitud.
+    s.urgente = !!(s.urgente && s.urgente_motivo);
     await crearSolicitud(s, r, pEsJefe() ? (P.opts.usuario || {}) : null);
     pModal(''); await pCargar(); pRender();
   } catch (e) { err.textContent = e.message || String(e); btn.disabled = false; btn.textContent = 'Revisar y registrar'; }
