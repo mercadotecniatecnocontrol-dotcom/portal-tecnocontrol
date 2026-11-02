@@ -7978,7 +7978,7 @@ window.fmOpsServTerminar=async function(id){
       ro('2','Fecha del servicio',opsSvFecha(fechaServ),f.iniciadoEn?'Hora real en que tocaste «Iniciar servicio».':'Fecha programada por Operaciones.')+
       ro('3','Razón social',e.razonSocial||f.estacionRazonSocial||cliente)+
       fmTermTit('4','No. folio / O.S.',true)+
-      '<input id="fm-term-os" type="text" inputmode="numeric" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Número de la orden de servicio en papel (ej. 4362)" style="'+FM_TERM_INP+'">'+
+      '<input id="fm-term-os" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Código de la orden de servicio (letras, números y símbolos; ej. CHH-812/A)" style="'+FM_TERM_INP+'">'+
       ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
       (fmPideIdFolio(f)?'<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
         '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO (el que se publicó en WhatsApp) *</div>'+
