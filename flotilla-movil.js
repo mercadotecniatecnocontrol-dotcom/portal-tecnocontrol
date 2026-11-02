@@ -2090,6 +2090,12 @@ async function flSincronizarResponsable(eco,nombreOVacio){
 // vehículo del catálogo con solo elegirlo de la lista, sin validación
 // alguna. No aplica a rol libre (admin/flotilla/encargado): ellos sí
 // necesitan poder moverse libremente por toda la flota.
+// Remolques, dolly, compresores y plantas remolcables no llevan combustible propio:
+// no se pide ni se guarda nivel de gasolina (2-nov-2026).
+function fmSinCombustible(v){
+  if(!v)return false;
+  return /REMOLQUE|SEMIRREMOLQUE|DOLLY|REMOLCABLE|PLANTA DE LUZ|PLANTA DE ENERGIA|PATIN HIDRAULICO/i.test(String(v.unidad||''))||v.tipo==='remolque';
+}
 function _normNombre(s){
   return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 }
@@ -2223,7 +2229,7 @@ function renderNuevaSol(){
     <div class="fm-fld"><label>KM actual</label><input type="number" id="fm-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
 
     <!-- GASOLINA -->
-    <div class="fm-fld">
+    ${fmSinCombustible(miVeh)?'':`    <div class="fm-fld">
       <label>Nivel de gasolina</label>
       <div class="fm-gauge-wrap" id="fm-gauge-wrap">
         ${renderGaugeSVG(50)}
@@ -2231,6 +2237,7 @@ function renderNuevaSol(){
       </div>
       <input type="range" min="0" max="100" value="50" id="fm-gas" oninput="fmGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
     </div>
+    `}
 
     <!-- FOTOS PRINCIPALES — CÁMARA FORZADA -->
     <div class="fm-fld">
@@ -2706,7 +2713,7 @@ function renderChkSemanal(){
     <!-- KM + GASOLINA -->
     <div class="fm-fld"><label>Kilometraje actual</label><input type="number" id="fm-sem-km" placeholder="${miVeh.km||0}" inputmode="numeric"></div>
 
-    <div class="fm-fld">
+    ${fmSinCombustible(miVeh)?'':`    <div class="fm-fld">
       <label>Nivel de gasolina</label>
       <div class="fm-gauge-wrap" id="fm-sem-gauge-wrap">
         ${renderGaugeSVG(50)}
@@ -2714,6 +2721,7 @@ function renderChkSemanal(){
       </div>
       <input type="range" min="0" max="100" value="50" id="fm-sem-gas" oninput="fmGasSem(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
     </div>
+    `}
 
     <!-- EVIDENCIAS GENERALES -->
     <div class="fm-fld">
@@ -2842,7 +2850,7 @@ window.fmGuardarChkSemanal=async function(){
       semana,
       fecha:new Date().toISOString().slice(0,10),
       km:km||String(miVeh.km||0),
-      gasolina:semState.gasolina,
+      gasolina:fmSinCombustible(miVeh)?null:semState.gasolina,
       checklist:semState.chk,          // solo SI/NO por ítem — muy ligero
       chkComentarios:semState.chkComt||{}, // texto "Describe el problema" por ítem marcado NO — antes se capturaba en pantalla pero nunca se guardaba
       chkFotosKeys:Object.keys(semState.chkFotos||{}), // solo lista de claves con foto
@@ -3242,7 +3250,7 @@ window.fmGuardar=async function(){
     placas:miVeh?.placas||'',
     tipo,prioridad:solState.prior,descripcion:desc,
     kilometrajeReportado:km||'',
-    gasolina:solState.gasolina,
+    gasolina:fmSinCombustible(miVeh)?null:solState.gasolina,
     tipoUnidad:miVeh?.tipo==='maquinaria'?'maquinaria':(['camioneta','camion'].includes(miVeh?.tipo)?'troca':'auto'),
     estatus:'Solicitud',
     solicitante:window.auth?.currentUser?.displayName||window.auth?.currentUser?.email||'—',
@@ -5351,11 +5359,12 @@ function renderUtilPaso2(){
       </div>
     </div>
 
-    <div class="fm-fld">
+    ${fmSinCombustible(miVeh)?'':`    <div class="fm-fld">
       <label>Nivel de gasolina</label>
       <div id="util-gauge-wrap">${renderGaugeSVG(utilState.gasolina)}<div class="fm-gauge-labels" style="width:200px"><span>VACÍO</span><span>2/4</span><span>MEDIO</span><span>3/4</span><span>LLENO</span></div></div>
       <input type="range" min="0" max="100" value="${utilState.gasolina}" oninput="utilGas(this.value)" style="width:100%;margin-top:6px;accent-color:#2563EB">
     </div>
+    `}
 
     <div class="fm-fld">
       <label>Fotos obligatorias del vehículo <span style="font-size:9px;font-weight:500;text-transform:none;color:#94A3B8">(7 requeridas · cámara obligatoria)</span></label>
@@ -5426,7 +5435,7 @@ function renderUtilPaso3(){
         ['Vehículo', utilState.datosEntrega?.vehiculo||miVeh?.unidad||'—'],
         ['ECO', utilState.datosEntrega?.eco||miVeh?.eco||'—'],
         ['KM', utilState.datosEntrega?.km||'—'],
-        ['Gasolina', Math.round(utilState.gasolina)+'%'],
+        ['Gasolina', fmSinCombustible(miVeh)?'No aplica':Math.round(utilState.gasolina)+'%'],
         ['Entrega', utilState.datosEntrega?.nombre||window.auth?.currentUser?.displayName||'—'],
         ['Recibe', utilState.datosEntrega?.receptor||'—'],
         ['Fecha', new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})],

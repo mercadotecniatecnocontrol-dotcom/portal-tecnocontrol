@@ -8556,6 +8556,9 @@
             opsCalPintarPorReasignar();
         } catch (e) { alert("No se pudo: " + (e.message || e)); }
     };
+    // Separar servicios vendidos de peticiones / diagnóstico (2-nov-2026)
+    let opsPedFiltro = "todos";
+    window.opsPedFiltrar = function (k, ev) { if (ev) ev.stopPropagation(); opsPedFiltro = k; opsCalPintarPedidosVentas(); };
     function opsCalPintarPedidosVentas() {
         try { opsCalPintarPorReasignar(); } catch (e) { console.warn("[por reasignar]", e); }
         const box = document.getElementById("ops-cal-pedidos-ventas");
@@ -8577,7 +8580,12 @@
         }
         if (!lista.length && !gestionados.length) { box.innerHTML = ""; opsCalAjustarLado(); return; }
         const gestiona = opsPuedeGestionar();
-        const tarjetas = lista.map(p => {
+        const esPet = p => p.tipoSolicitud === "peticion_diagnostico";
+        const nPet = lista.filter(esPet).length, nServ = lista.length - nPet;
+        const listaVer = opsPedFiltro === "peticiones" ? lista.filter(esPet) : opsPedFiltro === "servicios" ? lista.filter(p => !esPet(p)) : lista;
+        const chipPed = (k, t, n) => `<button onclick="opsPedFiltrar('${k}',event)" style="border:1.5px solid ${opsPedFiltro === k ? "#7c3aed" : "#e2e8f0"};background:${opsPedFiltro === k ? "#7c3aed" : "#fff"};color:${opsPedFiltro === k ? "#fff" : "#475569"};border-radius:99px;padding:4px 11px;font-size:11px;font-weight:800;cursor:pointer;">${t} (${n})</button>`;
+        const filtrosPed = `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px;">${chipPed("todos", "Todos", lista.length)}${chipPed("servicios", "Servicios vendidos", nServ)}${chipPed("peticiones", "Peticiones / diagnóstico", nPet)}</div>`;
+        const tarjetas = listaVer.map(p => {
             const est = opsPedVentasEstadoPiezas(p);
             const partidas = (Array.isArray(p.productos) ? p.productos : []);
             const serv = partidas.filter(x => x.tipo === "servicio" || x.tipo === "viaticos");
@@ -8623,7 +8631,8 @@
                 <span title="Ocultar panel" style="color:#7c3aed;font-weight:800;font-size:12px;border:1px solid #ddd6fe;border-radius:8px;padding:4px 10px;">Ocultar \u25b4</span>
             </div>
             ${(opsPedVentasAbierto && lista.length ? (setTimeout(() => lista.forEach(p => opsPedAspelPintar(p)), 0), "") : "")}
-            ${opsPedVentasAbierto ? ((lista.length ? `<div class="ops-ped-fila">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
+            ${opsPedVentasAbierto && lista.length ? filtrosPed : ""}
+            ${opsPedVentasAbierto ? ((listaVer.length ? `<div class="ops-ped-fila">${tarjetas}</div>` : `<div style="padding:4px 16px 14px;font-size:12px;color:#94a3b8;">No hay servicios por programar.</div>`)) : ""}
         </div>`;
         opsCalAjustarLado();
     }
@@ -10070,6 +10079,11 @@
     window.opsRevSet = function (k, v) { opsRevEstado()[k] = v; if (k === "desde" || k === "hasta") opsRevPolClave = ""; opsRenderRevision(); };
     window.opsRevBuscar = function (v) { opsRevEstado().q = v || ""; opsRerenderConFoco(opsRenderRevision); };
 
+    // Desde el panel del servicio (2-nov-2026): abre su revisión de cierre sin ir a la pestaña.
+    window.opsPanelRevisionCierre = function (id) {
+        try { window.opsCerrarPanelFolio && window.opsCerrarPanelFolio(); } catch (e) {}
+        try { window.opsRevAbrir(id); } catch (e) { alert("No se pudo abrir la revisión: " + (e.message || e)); }
+    };
     window.opsRevAbrir = function (id) {
         const f = cacheFolios.find(x => x.id === id); if (!f) return;
         const r = f.revisionCierre || {}, c = r.cobro || {}, v = opsRevUltimaVisita(f) || {};
@@ -10966,6 +10980,8 @@
                 ${opsPanelCambiosHTML(f)}
                 ${sec("Historial", `<div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>`, ico.historial)}
 
+                ${opsRevFechaCierre(f) ? (() => { const e = OPS_REV_ESTATUS[(f.revisionCierre || {}).estatus || "por_revisar"] || OPS_REV_ESTATUS.por_revisar;
+                    return `<button onclick="opsPanelRevisionCierre('${f.id}')" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;border-radius:10px;padding:9px;font-weight:800;font-size:12.5px;cursor:pointer;margin-bottom:8px;">Revisión de cierre <span style="font-size:10px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 7px;">${e[0]}</span></button>`; })() : ""}
                 <div style="display:flex;gap:8px;">
                     ${btnTop(`opsDescargarPdfFolio('${f.id}')`, "Descargar PDF", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', false)}
                     ${opsPuedeGestionar() ? btnTop(`opsAbrirModalFolio('${f.id}')`, "Editar folio", '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', true) : ""}
@@ -11034,7 +11050,7 @@
         const m = opsMv, q = opsAsNorm(m.q).trim();
         return cacheFolios.filter(f => !f.cancelado && f.fechaProgramada && (m.verTerminados || !f.fechaSolucion))
             .filter(f => { const d = f.fechaProgramada.slice(0, 10); return (!m.desde || d >= m.desde) && (!m.hasta || d <= m.hasta); })
-            .filter(f => !q || opsAsNorm([f.estacion, f.clienteNombre, f.estacionRazonSocial, f.folioOS, f.folioNumero, (f.tecnicosAsignadosNombres || []).join(" "), opsCalTipoTexto(f), f.plaza, f.estacionMunicipio].join(" ")).includes(q))
+            .filter(f => !q || opsAsNorm([f.estacion, f.clienteNombre, f.estacionRazonSocial, f.folioOS, f.folioNumero, f.osTecnico, f.folioClienteId, f.pedidoVentasFolio, (f.pedidosVentas || []).map(x => x && (x.folio || x)).join(" "), (f.pedidosMaterial || []).map(x => x && (x.folio || x)).join(" "), (f.revisionCierre || {}).cotizacion, (f.tecnicosAsignadosNombres || []).join(" "), opsCalTipoTexto(f), f.plaza, f.estacionMunicipio].join(" ")).includes(q))
             .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada)));
     }
     function opsMvPintar() {
@@ -15828,6 +15844,29 @@
         s.diasTraslado = l.sort(); opsAsPintar();
     };
     // Etapa C (oct-2026): un vehículo no se puede planear en dos servicios que se empalman de día.
+    function opsAsRemolqueOcupado(val) {
+        const s = opsAS; if (!s || !val) return [];
+        const ini = opsAsFechaDia(); if (!ini) return [];
+        const fin = opsAsFechaFin() || ini;
+        const ecoDe = v => { const m = String(v || "").match(/ECO\s*([\w-]+)/i); return m ? m[1].toUpperCase() : String(v || "").trim().toUpperCase(); };
+        const eco = ecoDe(val);
+        return cacheFolios.filter(f => f.cancelado !== true && f.fechaProgramada && ((f.remolquePlaneado && ecoDe(f.remolquePlaneado) === eco) || (f.vehiculoPlaneado && ecoDe(f.vehiculoPlaneado) === eco)))
+            .filter(f => { const a = f.fechaProgramada.slice(0, 10), b = opsFolioFechaFin(f) || a; return a <= fin && b >= ini; });
+    }
+    function opsAsRemolqueHTML(requerido) {
+        const s = opsAS; if (!s) return "";
+        const lista = opsViaRemolques || [];
+        if (!lista.length && !requerido) return "";
+        const sel = s.remolque || "";
+        const opts = lista.map(v => { const val = `ECO ${v.Eco} · ${v.Unidad || ""}`; const oc = opsAsRemolqueOcupado(val);
+            return `<option value="${opsEsc(val)}" ${sel === val ? "selected" : ""}>${opsEsc(val)} — ${opsEsc(opsVehEstadoTxt(v))}${v.Plaza ? " · " + opsEsc(v.Plaza) : ""}${oc.length ? " — OCUPADO: " + opsEsc(oc[0].estacion || "otro servicio") : ""}</option>`; }).join("");
+        const vv = lista.find(v => sel && sel.indexOf("ECO " + v.Eco + " ") === 0);
+        const oc = opsAsRemolqueOcupado(sel);
+        return `<div style="margin-top:8px;"><label class="opsas-lb">Remolque${requerido ? " (la receta lo pide)" : " (opcional)"}</label>
+            <select class="opsas-in" onchange="opsAS.remolque=this.value;opsAsPintar()"><option value="">— Sin remolque —</option>${opts}</select>
+            ${oc.length ? `<div class="opsas-note opsas-warn">Ese remolque ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")" + ((f.tecnicosAsignadosNombres || []).length ? " con " + f.tecnicosAsignadosNombres.join(", ") : ""))).join("; ")}.</div>`
+              : vv ? `<div class="opsas-note">${vv.EnTaller ? "<b>EN TALLER</b> · " : ""}${vv.QuienLaTrae ? "Lo trae hoy: <b>" + opsEsc(vv.QuienLaTrae) + "</b>" : "Sin asignar"}${vv.Plaza ? " · " + opsEsc(vv.Plaza) : ""}. No genera gasto de gasolina.</div>` : ""}</div>`;
+    }
     function opsAsVehiculoOcupado(val) {
         const s = opsAS; if (!s || !val) return [];
         const ini = opsAsFechaDia(); if (!ini) return [];
@@ -16081,7 +16120,7 @@
             <textarea class="opsas-in" style="min-height:60px;resize:vertical;" oninput="opsAS.comentarios=this.value" placeholder="Indicaciones para el técnico, accesos, horarios de la estación…">${opsEsc(s.comentarios)}</textarea>
             ${s.evidenciasCliente && s.evidenciasCliente.length ? `<div class="opsas-note" style="margin-top:8px;">Ventas mandó ${s.evidenciasCliente.length} archivo(s) del cliente (fotos, video o documentos): pasan al servicio y el técnico los ve en su app.</div>` : ""}
             ${s.tipo !== "receta" ? `<div style="margin-top:8px;"><label class="opsas-lb">Vehículo</label><select class="opsas-in" onchange="opsAS.vehiculo=this.value;opsAsPintar()"><option value="">— Por definir —</option>${((typeof opsViaFlota !== "undefined" && opsViaFlota) || []).filter(v => v.Status !== "baja").map(v => { const val = "ECO " + v.Eco + " · " + (v.Unidad || ""); return `<option value="${opsEsc(val)}" ${s.vehiculo === val ? "selected" : ""}>${opsEsc(val)} (${OPS_VEH_TAM[opsVehTamano(v)]})</option>`; }).join("")}</select></div>` : ""}
-            ${s.tipo !== "receta" ? opsAsVehTamanoHTML() : ""}
+            ${s.tipo !== "receta" ? opsAsVehTamanoHTML() + opsAsRemolqueHTML(false) : ""}
             ${s.tipo !== "programacion" ? (s.masFac ? `
             <div class="opsas-grid" style="margin-top:10px;">
                 <div><label class="opsas-lb">A quién se factura</label><input class="opsas-in" value="${opsEsc(s.facturarA || e?.razonSocial || "")}" oninput="opsAS.facturarA=this.value"></div>
@@ -17146,8 +17185,8 @@
                 </select></div>
             </div>
             ${r.vehiculos?.alternos?.length ? `<div class="opsas-note">${r.vehiculos.alternos.map(a => opsEsc(a.nombre + (a.condicion ? " — " + a.condicion : ""))).join(" · ")}</div>` : ""}
-            ${r.requiereRemolque ? `<div class="opsas-note opsas-warn">Esta receta requiere remolque.</div>` : ""}
             ${opsAsVehTamanoHTML()}
+            ${opsAsRemolqueHTML(!!r.requiereRemolque)}
             ${(() => { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); return vv && vv.EnTaller ? `<div class="opsas-note opsas-warn">Esa unidad está EN TALLER según Flotilla. Elige otra o confírmalo con Flotilla.</div>` : (vv && vv.QuienLaTrae ? `<div class="opsas-note">La trae hoy: <b>${opsEsc(vv.QuienLaTrae)}</b>.</div>` : ""); })()}
             ${(() => { const oc = opsAsVehiculoOcupado(s.vehiculo); return oc.length ? `<div class="opsas-note opsas-warn">Ese vehículo ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")")).join(", ")}. Elige otro o confírmalo con Flotilla.</div>` : (s.vehiculo && /ECO/i.test(s.vehiculo) ? `<div class="opsas-note">Al guardar se le avisa a Flotilla que ese vehículo se necesita en esas fechas.</div>` : ""); })()}`;
 
@@ -17270,6 +17309,7 @@
             tecnicoResponsableId: lider?.id || null, tecnicoResponsableNombre: lider?.nombre || null, tecnicoResponsableCorreo: lider?.correo || null,
             responsable: lider?.nombre || null,
             vehiculoPlaneado: s.vehiculo || null,
+            remolquePlaneado: s.remolque || null,
             vehiculoTamanoPedido: s.vehiculoTamano || null,
             evidenciasCliente: s.evidenciasCliente || null,
             herramientaChecklist: herrLista,
@@ -17538,6 +17578,7 @@
         if (opsAsEsSCFI() && !(Number(s.mangueras) > 0)) avisos.push({ c: "#B45309", t: "SCFI se cobra por manguera y no capturaste mangueras." });
         { const de = opsEsDiaEspecial(opsAsFechaDia()); if (de) avisos.push({ c: "#B45309", t: `Es ${de === "DOMINGO" ? "domingo" : "día festivo"}: quien trabaje o viaje ese día se paga doble o se le repone el día. Quedará marcado en el calendario.` }); }
         { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); if (vv && vv.EnTaller) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} está EN TALLER según Flotilla.` }); }
+        { const oc = opsAsRemolqueOcupado(s.remolque); if (s.remolque && oc.length) avisos.push({ c: "#DC2626", t: `El remolque ${s.remolque} ya está planeado en ${oc.map(f => (f.estacion || "otro servicio")).join(", ")}.` }); }
         { const oc = opsAsVehiculoOcupado(s.vehiculo); if (oc.length) avisos.push({ c: "#DC2626", t: `El vehículo ${s.vehiculo} ya está planeado en ${oc.map(f => (f.estacion || "otro servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")").join(", ")}.` }); }
         let precioTxt = "";
         try {
@@ -17573,6 +17614,7 @@
                         return `<div style="margin-bottom:6px;"><b>${opsEsc(t.nombre)}</b> <span style="color:#64748b;font-weight:600;">· ${hs.length} pieza(s)</span>${hs.length ? `<div style="font-weight:500;color:#475569;font-size:12px;line-height:1.45;">${opsEsc(hs.slice(0, 12).join(", "))}${hs.length > 12 ? ` <span style="color:#94a3b8;">y ${hs.length - 12} más</span>` : ""}</div>` : `<div style="font-weight:500;color:#b45309;font-size:12px;">No tiene herramienta asignada en el portal.</div>`}</div>`;
                     }).join("")) : ""}
                     ${fila("Vehículo", opsEsc(s.vehiculo || ""))}
+                    ${s.remolque ? fila("Remolque", opsEsc(s.remolque) + " (sin gasolina)") : ""}
                     ${fila("Equipo de seguridad", opsEsc((s.seguridad || []).slice().sort(opsAsAlfa).join(", ")))}
                     ${fila("Comisiones", (s.comisiones || []).filter(c => c.tecId).map(c => opsEsc(((cacheTec.find(t => t.id === c.tecId) || {}).nombre || "") + (c.concepto ? " · " + c.concepto : "") + " · " + (c.pendienteMonto ? "monto por revisar" : opsDinero(opsAsComisionMonto(c, opsAsResumenPrecio().baseComision))))).join("<br>"))}
                     ${fila("Contacto", opsEsc([s.contacto, s.whatsapp || s.telefono].filter(Boolean).join(" · ")))}
@@ -17659,6 +17701,7 @@
         if (!opsAS) return;
         opsAS.tecnicos = (f.tecnicosAsignadosIds || []).slice();
         if (f.vehiculoPlaneado) opsAS.vehiculo = f.vehiculoPlaneado;
+        if (f.remolquePlaneado) opsAS.remolque = f.remolquePlaneado;
         if (f.plaza) { opsAS.plaza = f.plaza; opsAS.plazaManual = true; }
         if (f.fechaProgramada) opsAS.fecha = f.fechaProgramada.length > 10 ? f.fechaProgramada.slice(0, 16) : f.fechaProgramada + "T08:00";
         opsAS.comentarios = "Mismo equipo que " + (f.folioNumero ? "el servicio N.º " + f.folioNumero + " · " : "") + (f.estacion || "");
@@ -20307,6 +20350,9 @@
     let opsViaFlota = null;        // flota_veihcular (Supabase) — vehículos reales de Flotilla
     let opsViaCasetasCat = null;   // ops_casetas (Supabase) — casetas con tarifa por tipo de vehículo
     const OPS_VIA_NO_VEHICULO = /REMOLQUE|SEMIRREMOLQUE|COMPRESOR|VIBROCOMPACTADOR|MORTOCONFORMADORA|DOLLY|PLANTA DE LUZ/i;
+    // Remolques y equipo remolcable (2-nov-2026): se programan como cualquier unidad (ocupado, dónde y quién),
+    // pero no generan gasto de gasolina ni entran al cálculo de viáticos.
+    let opsViaRemolques = [];
 
     // Vehículos REALES de Flotilla en tiempo real (oct-2026). Antes se leía una copia en Supabase
     // (flota_veihcular) que no se actualizaba; ahora se escucha la misma colección que usa el
@@ -20353,6 +20399,7 @@
             m.EnTaller = m.Status === "taller";
             return m;
         });
+        opsViaRemolques = opsViaOrdenarFlota(lista.filter(v => v.Eco && OPS_VIA_NO_VEHICULO.test(v.Unidad || "") && v.Status !== "baja"));
         const res = opsViaOrdenarFlota(opsViaFiltrarFlota(lista));
         if (res.length) { opsViaFlota = res; opsViaFlotaFuente = "Flotilla en vivo · " + new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }); opsFlotaVivaEn = Date.now(); }
         return opsViaFlota;

@@ -296,6 +296,69 @@ function flNombrePorCorreo(valor){
   return u?.nombre||valor;
 }
 
+// ══ TAG de casetas por vehículo (2-nov-2026) ══
+function flEscTag(t){return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+const FL_TAG_EST={activo:'Activo',suspendido:'Suspendido / sin saldo',extraviado:'Extraviado',baja:'Dado de baja',sin:'Sin TAG'};
+function flTagEstTxt(e){const t=FL_TAG_EST[e||'activo']||e;const c=e==='activo'||!e?'#15803D':e==='sin'?'#94A3B8':'#B91C1C';return `<span style="color:${c};font-weight:700">${t}</span>`;}
+function flTagFormHTML(v){
+  const inp=(id,val,ph)=>`<input id="ve-${id}" type="text" value="${flEscTag(val||'')}" placeholder="${ph||''}" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px;outline:none;box-sizing:border-box">`;
+  const lab=t=>`<label style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#94A3B8;display:block;margin-bottom:4px">${t}</label>`;
+  const est=v.tagEstatus||(v.tagNumero?'activo':'sin');
+  return `<div style="margin-top:12px;padding:12px;border:1px solid #E2E8F0;border-radius:10px">
+    <div style="font-size:12px;font-weight:800;color:#1D2E73;margin-bottom:8px">TAG de casetas</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+      <div>${lab('Número de TAG')}${inp('tagNumero',v.tagNumero,'Ej. IMDM 12345678')}</div>
+      <div>${lab('Proveedor')}${inp('tagProveedor',v.tagProveedor,'IAVE, PASE, Televía…')}</div>
+      <div>${lab('Estatus')}<select id="ve-tagEstatus" style="width:100%;padding:8px 11px;border:1.5px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:12px">${Object.entries(FL_TAG_EST).map(([k,t])=>`<option value="${k}" ${k===est?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div>${lab('A nombre de (empresa)')}${inp('tagEmpresa',v.tagEmpresa,'HEDMA, JOMAR, VH…')}</div>
+    </div>
+    <div style="margin-top:8px">${lab('Notas del TAG')}${inp('tagNotas',v.tagNotas,'Saldo, cuenta, recargas…')}</div>
+  </div>`;
+}
+window.flInventarioTag=function(){
+  const filas=[...flV].sort((a,b)=>(Number(a.eco)||0)-(Number(b.eco)||0));
+  const con=filas.filter(v=>v.tagNumero&&v.tagEstatus!=='sin'&&v.tagEstatus!=='baja');
+  const resp=v=>v.responsable&&v.responsable!=='—'?((v.responsableNombre&&!String(v.responsableNombre).includes('@'))?v.responsableNombre:flNombrePorCorreo(v.responsable)):'Sin asignar';
+  const ov=document.createElement('div');ov.className='fl-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.onclick=e=>{if(e.target===ov)ov.remove();};
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;max-width:980px;width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:14px 18px;background:#1D2E73;color:#fff;display:flex;align-items:center;gap:10px">
+      <b style="font-size:15px">Inventario de TAG de casetas</b>
+      <span style="font-size:12px;opacity:.85">${con.length} activo(s) de ${filas.length} vehículos</span>
+      <input id="fl-tag-q" placeholder="Buscar ECO, TAG, responsable…" oninput="flInventarioTagFiltrar()" style="margin-left:auto;padding:6px 10px;border-radius:8px;border:none;font-size:12px;min-width:200px">
+      <button onclick="flInventarioTagExcel()" style="background:#E7402B;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-weight:700;font-size:12px;cursor:pointer">Excel</button>
+      <button onclick="this.closest('.fl-ov').remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:8px;padding:6px 10px;cursor:pointer">✕</button>
+    </div>
+    <div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px" id="fl-tag-tabla">
+      <thead><tr style="background:#F1F5F9;position:sticky;top:0">${['ECO','Unidad','Plaza','Responsable','TAG','Proveedor','Estatus','A nombre de','Notas',''].map(h=>`<th style="text-align:left;padding:8px;font-size:10.5px;color:#475569">${h}</th>`).join('')}</tr></thead>
+      <tbody>${filas.map(v=>`<tr data-q="${flEscTag([v.eco,v.unidad,v.plaza,resp(v),v.tagNumero,v.tagProveedor,v.tagEmpresa].join(' ').toLowerCase())}" style="border-top:1px solid #F1F5F9">
+        <td style="padding:7px 8px;font-weight:800">${flEscTag(v.eco)}</td><td style="padding:7px 8px">${flEscTag(v.unidad||'')}</td><td style="padding:7px 8px">${flEscTag(v.plaza||'')}</td>
+        <td style="padding:7px 8px">${flEscTag(resp(v))}</td><td style="padding:7px 8px;font-weight:700">${v.tagNumero?flEscTag(v.tagNumero):'<span style="color:#94A3B8">—</span>'}</td>
+        <td style="padding:7px 8px">${flEscTag(v.tagProveedor||'')}</td><td style="padding:7px 8px">${v.tagNumero?flTagEstTxt(v.tagEstatus):'<span style="color:#94A3B8">Sin TAG</span>'}</td>
+        <td style="padding:7px 8px">${flEscTag(v.tagEmpresa||'')}</td><td style="padding:7px 8px;color:#64748B">${flEscTag(v.tagNotas||'')}</td>
+        <td style="padding:7px 8px">${hAdm()?`<button onclick="flTagEditarRapido('${v.id}')" class="fb gho" style="padding:4px 9px;font-size:11px">Editar</button>`:''}</td></tr>`).join('')}</tbody></table></div></div>`;
+  document.body.appendChild(ov);
+};
+window.flInventarioTagFiltrar=function(){
+  const q=(document.getElementById('fl-tag-q')?.value||'').toLowerCase().trim();
+  document.querySelectorAll('#fl-tag-tabla tbody tr').forEach(tr=>{tr.style.display=!q||tr.dataset.q.includes(q)?'':'none';});
+};
+window.flInventarioTagExcel=function(){
+  const filas=[...flV].sort((a,b)=>(Number(a.eco)||0)-(Number(b.eco)||0)).map(v=>({ECO:v.eco,Unidad:v.unidad||'',Plaza:v.plaza||'',Responsable:v.responsable&&v.responsable!=='—'?((v.responsableNombre&&!String(v.responsableNombre).includes('@'))?v.responsableNombre:flNombrePorCorreo(v.responsable)):'Sin asignar',TAG:v.tagNumero||'',Proveedor:v.tagProveedor||'',Estatus:v.tagNumero?(FL_TAG_EST[v.tagEstatus||'activo']||v.tagEstatus):'Sin TAG','A nombre de':v.tagEmpresa||'',Notas:v.tagNotas||''}));
+  if(window.XLSX){const ws=XLSX.utils.json_to_sheet(filas),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'TAG');XLSX.writeFile(wb,'Inventario_TAG_casetas.xlsx');return;}
+  const cols=Object.keys(filas[0]||{});const csv=[cols.join(','),...filas.map(r=>cols.map(c=>'"'+String(r[c]).replace(/"/g,'""')+'"').join(','))].join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='Inventario_TAG_casetas.csv';a.click();
+};
+window.flTagEditarRapido=async function(id){
+  const v=flV.find(x=>x.id===id);if(!v)return;
+  const num=prompt('Número de TAG del ECO '+v.eco+' (vacío = sin TAG):',v.tagNumero||'');if(num===null)return;
+  const prov=num.trim()?prompt('Proveedor (IAVE, PASE, Televía…):',v.tagProveedor||''):'';if(prov===null)return;
+  const upd={tagNumero:num.trim(),tagProveedor:(prov||'').trim(),tagEstatus:num.trim()?(v.tagEstatus&&v.tagEstatus!=='sin'?v.tagEstatus:'activo'):'sin',actualizadoEn:new Date().toISOString(),actualizadoPor:window.auth?.currentUser?.email||''};
+  try{if(!fs){fs=await flImportFs();}await fs.updateDoc(fs.doc(db,C.VEHS,id),upd);Object.assign(v,upd);document.querySelector('.fl-ov')?.remove();flInventarioTag();flToast('TAG actualizado','ok');}
+  catch(e){flToast('No se pudo guardar: '+(e.message||e),'err');}
+};
+
 function flServicioEstado(v){
   const intervalo=Number(v.servicioIntervaloKm)||0;
   if(!intervalo)return null;
@@ -3963,7 +4026,7 @@ function renderRP(id){
 
     <div class="fl-rp-grid">
     ${card('Información general',`
-      ${fila('Responsable',v.responsable&&v.responsable!=='—'?flNombrePorCorreo(v.responsable):'<span style="color:#B91C1C">Sin asignar</span>')}
+      ${fila('Responsable',v.responsable&&v.responsable!=='—'?(()=>{const n=(v.responsableNombre&&!String(v.responsableNombre).includes('@'))?v.responsableNombre:flNombrePorCorreo(v.responsable);return n+(v.responsableFuente==='app'?' <span title="Tomado del perfil de la app de quien trae la unidad" style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:6px;background:#DCFCE7;color:#15803D">APP</span>':'');})():'<span style="color:#B91C1C">Sin asignar</span>')}
       ${fila('Número de serie / VIN',v.serie||'—',true)}
       ${fila('Año modelo',v.año||'—')}
       ${fila('Color',v.color||'—')}
@@ -3995,6 +4058,15 @@ function renderRP(id){
       ${v.dashcamInstalado==='si'?fila('N.° de serie',v.dashcamSerie||'—',true):''}
       ${v.dashcamInstalado==='si'?fila('Fecha de instalación',v.dashcamFecha?hF(v.dashcamFecha):'—'):''}
       ${v.gpsDashcamNotas?`<div style="margin-top:8px;padding:8px 10px;background:#F8FAFD;border-radius:8px;font-size:11.5px;color:#374151;white-space:pre-wrap">${v.gpsDashcamNotas}</div>`:''}
+    `)}
+
+    ${card('TAG de casetas',`
+      ${fila('TAG',v.tagEstatus==='sin'||!v.tagNumero?'<span style="color:#94A3B8">Sin TAG</span>':`<b>${flEscTag(v.tagNumero)}</b>`)}
+      ${v.tagNumero?fila('Proveedor',flEscTag(v.tagProveedor||'—')):''}
+      ${v.tagNumero?fila('Estatus',flTagEstTxt(v.tagEstatus)):''}
+      ${v.tagNumero&&v.tagEmpresa?fila('A nombre de',flEscTag(v.tagEmpresa)):''}
+      ${v.tagNotas?`<div style="margin-top:8px;padding:8px 10px;background:#F8FAFD;border-radius:8px;font-size:11.5px;color:#374151;white-space:pre-wrap">${flEscTag(v.tagNotas)}</div>`:''}
+      <div style="margin-top:8px"><button onclick="flInventarioTag()" class="fb gho" style="padding:6px 12px;font-size:11px">Ver inventario de TAG</button></div>
     `)}
 
     ${flTieneGPS(v.eco)?(()=>{
@@ -4816,6 +4888,7 @@ window.flEditarVeh=function(id){
             onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#E2E8F0'">${v.gpsDashcamNotas||''}</textarea>
         </div>
       </div>
+      ${flTagFormHTML(v)}
 
       <div class="fl-fa" style="margin-top:4px;justify-content:space-between">
         ${hAdm()?`<button onclick="flConfirmarEliminarVeh('${id}','${v.eco}','${(v.unidad||'').replace(/'/g,"\\'")}')" class="fb gho" style="padding:9px 16px;color:#B91C1C;border-color:#FCA5A5">🗑 Eliminar definitivamente</button>`:'<span></span>'}
@@ -4928,6 +5001,11 @@ window.flGuardarEditVeh=async function(id){
     dashcamSerie: get('dashcamSerie'),
     dashcamFecha: get('dashcamFecha')||null,
     gpsDashcamNotas: get('gpsDashcamNotas'),
+    tagNumero: get('tagNumero'),
+    tagProveedor: get('tagProveedor'),
+    tagEstatus: document.getElementById('ve-tagEstatus')?.value||(get('tagNumero')?'activo':'sin'),
+    tagEmpresa: get('tagEmpresa'),
+    tagNotas: get('tagNotas'),
   };
   btn.textContent='Guardando…';btn.disabled=true;
   try{
