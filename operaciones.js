@@ -2423,6 +2423,7 @@
                 cacheFolios = snap.docs.map(d => opsNormalizarFolio({ id: d.id, ...d.data() }));
                 try { opsAvisosProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos de programación:", e); }
                 try { opsAvisarVentasEstado(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Ventas:", e); }
+                try { opsCalidadRevisarCierres(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Calidad:", e); }
                 if (tabActual === "folios") opsRenderFolios();
                 if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
                 if (tabActual === "resumen") opsRenderResumen();
@@ -8559,6 +8560,33 @@
     // Separar servicios vendidos de peticiones / diagnóstico (2-nov-2026)
     let opsPedFiltro = "todos";
     window.opsPedFiltrar = function (k, ev) { if (ev) ev.stopPropagation(); opsPedFiltro = k; opsCalPintarPedidosVentas(); };
+    // ═══ Avisos a Calidad (Jaqueline) — 2-nov-2026 ═══
+    // Al programar un servicio y cuando se termina, para revisar programación y cumplimiento.
+    // El servidor manda cada aviso UNA sola vez aunque varias pantallas tengan el portal abierto.
+    // Destinatarios: evento calidad_servicio_programado / calidad_servicio_terminado en "Quién recibe qué".
+    const OPS_CALIDAD_DESDE = "2026-11-03";
+    const opsCalidadVistos = new Set();
+    function opsCalidadTxt(f) {
+        return [f.estacion || f.estacionNombreComercial || "Servicio", opsCalTipoTexto ? opsCalTipoTexto(f) : "", (f.tecnicosAsignadosNombres || []).length ? "técnico(s): " + f.tecnicosAsignadosNombres.join(", ") : ""].filter(Boolean).join(" · ");
+    }
+    async function opsCalidadAvisar(evento, f, mensaje) {
+        try { const sb = await opsSb(); await sb.rpc("tc_notificar_evento_unico", { p_evento: evento, p_clave: f.id, p_mensaje: mensaje, p_datos: { folioId: f.id, modulo: "Calidad" } }); }
+        catch (e) { console.warn("[Calidad] aviso:", e.message || e); }
+    }
+    function opsCalidadProgramado(f) {
+        if (!f || !f.id) return;
+        const fecha = String(f.fechaProgramada || "").replace("T", " ").slice(0, 16);
+        opsCalidadAvisar("calidad_servicio_programado", f, `Servicio programado ${fecha}: ${opsCalidadTxt(f)}. Revisa la programación.`);
+    }
+    function opsCalidadRevisarCierres(lista) {
+        (lista || []).forEach(f => {
+            if (!f || !f.fechaSolucion || f.cancelado === true || opsCalidadVistos.has(f.id)) return;
+            const d = String(f.fechaSolucion).slice(0, 10);
+            opsCalidadVistos.add(f.id);
+            if (d < OPS_CALIDAD_DESDE || Date.now() - new Date(f.fechaSolucion).getTime() > 3 * 864e5) return;
+            opsCalidadAvisar("calidad_servicio_terminado", f, `Servicio terminado ${String(f.fechaSolucion).replace("T", " ").slice(0, 16)}: ${opsCalidadTxt(f)}${f.completadoPor ? " (cerró " + f.completadoPor + ")" : ""}. Revisa el cumplimiento.`);
+        });
+    }
     function opsCalPintarPedidosVentas() {
         try { opsCalPintarPorReasignar(); } catch (e) { console.warn("[por reasignar]", e); }
         const box = document.getElementById("ops-cal-pedidos-ventas");
@@ -17408,6 +17436,7 @@
             if (s.__surtidoId) opsMarcarPedidoGestionado(s.__surtidoId, nuevo.id).catch(err => console.warn("[Alta servicio] no se pudo ligar el pedido de Ventas:", err.message));
             if (s.__derivadoId) opsTDLigarAlta(s.__derivadoId, nuevo.id, opsFmtFechaCorta(datos.fechaProgramada));
             opsAvisarVehiculoRequerido(s, nuevo.id);
+            try { opsCalidadProgramado({ id: nuevo.id, ...datos }); } catch (err) { console.warn("[Alta servicio] aviso a Calidad:", err); }
             try { opsAvisarHerramientaOcupada({ id: nuevo.id, ...datos }, herrLista, tecs); } catch (err) { console.warn("[Alta servicio] aviso de herramienta:", err); }
             // Material y herramienta de la receta → pedido a Almacén con la fecha en que se necesita (22-oct-2026)
             if (s.tipo === "receta" && receta && s.pedirAlmacen !== false) {
