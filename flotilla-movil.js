@@ -2366,7 +2366,10 @@ window.fmVerVideoLocalSol=function(idx){
 };
 
 // ── CAPTURAR VIDEO (cámara forzada, archivo original sin comprimir) ──
-const VIDEO_MAX_BYTES=1024*1024*1024; // límite del espacio flotilla-videos (1 GB)
+// 02-nov-2026: el bucket acepta 1 GB, pero el proyecto de Supabase corta cada archivo en ~50 MB (error 413
+// "Maximum size exceeded"). Se limita a 49 MB para avisar al grabar y no atorar la solicitud.
+const VIDEO_MAX_BYTES=49*1024*1024;
+const VIDEO_MAX_TXT='49 MB (más o menos 30 a 40 segundos de video)';
 window.fmCapturarVideoSol=function(){
   const inp=document.createElement('input');
   inp.type='file';inp.accept='video/*';
@@ -2378,7 +2381,7 @@ window.fmCapturarVideoSol=function(){
     document.body.removeChild(inp);
     if(!file)return;
     if(file.size>VIDEO_MAX_BYTES){
-      toast(`El video pesa ${_fmTamTxt(file.size)} — el máximo es 1 GB. Graba uno más corto.`,'err');
+      toast(`El video pesa ${_fmTamTxt(file.size)} — el máximo es ${VIDEO_MAX_TXT}. Graba uno más corto.`,'err');
       return;
     }
     toast('Obteniendo GPS…','info');
@@ -3387,14 +3390,20 @@ async function _solSubir(item,onProg){
       const v=p.x;
       if(!v.blob)throw new Error('El video ya no está disponible en el teléfono');
       const ruta=`${base}/video-${iVid}-${_fmLimpiaNombre(v.meta?.codigo)}.${_fmExtVideo(v)}`;
-      await tc.subirArchivo(tc.BUCKET_VIDEOS,ruta,v.blob,_fmMimeVideo(v),(e)=>enviar(e));
-      v.ruta=ruta;v.tamano=v.blob.size;
+      if(v.blob.size>VIDEO_MAX_BYTES){ v.omitido='pesa '+_fmTamTxt(v.blob.size); }
+      else{
+        try{ await tc.subirArchivo(tc.BUCKET_VIDEOS,ruta,v.blob,_fmMimeVideo(v),(e)=>enviar(e)); v.ruta=ruta;v.tamano=v.blob.size; }
+        catch(e){ if(/413|maximum size|too large|exceeded/i.test(String(e&&e.message||e))) v.omitido='el servidor lo rechazó por pesado ('+_fmTamTxt(v.blob.size)+')'; else throw e; }
+      }
     }
     hecho+=p.size;
   }
   onProg&&onProg('Registrando solicitud…',100);
 
   const datos=Object.assign({},d);
+  const omitidos=videos.filter(v=>v.omitido);
+  if(omitidos.length){ datos.videosNoSubidos=omitidos.map(v=>({nombre:v.file?.name||v.nombre||'video',motivo:v.omitido}));
+    datos.descripcion=(d.descripcion||'')+'\n[Nota: '+omitidos.length+' video(s) no se subieron porque pesaban demasiado; pídelos por otro medio si se necesitan.]'; }
   const row={
     id:solId,
     vehiculo_id:d.vehiculoId||null,
@@ -3402,7 +3411,7 @@ async function _solSubir(item,onProg){
     placas:d.placas||null,
     km:Number(d.kilometrajeReportado)||null,
     tipo:d.tipo||null,
-    descripcion:d.descripcion||null,
+    descripcion:datos.descripcion||d.descripcion||null,
     estado:d.estatus||'Solicitud',
     creado_por:d.creadoPor||null,
     creado_por_nombre:d.solicitante||null,
@@ -3412,7 +3421,7 @@ async function _solSubir(item,onProg){
   const creada=await tc.crearSolicitud(row);
   const evRows=[
     ...fotos.map(f=>({solicitud_id:solId,categoria:f.categoria,posicion:f.categoria==='principal'?f.posicion:null,medio:'foto',bucket:tc.BUCKET_FOTOS,ruta:f.ruta,mime:'image/jpeg',tamano_bytes:f.tamano||null,nota:f.nota||null,subido_por:subidor,meta:f.meta||{}})),
-    ...videos.map(v=>({solicitud_id:solId,categoria:'adicional',posicion:null,medio:'video',bucket:tc.BUCKET_VIDEOS,ruta:v.ruta,mime:_fmMimeVideo(v),tamano_bytes:v.tamano||null,nota:v.nota||null,subido_por:subidor,meta:v.meta||{}})),
+    ...videos.filter(v=>v.ruta).map(v=>({solicitud_id:solId,categoria:'adicional',posicion:null,medio:'video',bucket:tc.BUCKET_VIDEOS,ruta:v.ruta,mime:_fmMimeVideo(v),tamano_bytes:v.tamano||null,nota:v.nota||null,subido_por:subidor,meta:v.meta||{}})),
   ];
   await tc.registrarEvidencias(evRows);
   fotos.forEach(f=>{delete f._blob;});
@@ -3569,7 +3578,7 @@ window.fmSrvCapturar=function(kind){
   document.body.appendChild(inp);
   inp.onchange=async function(){
     const file=this.files&&this.files[0];document.body.removeChild(inp);if(!file)return;
-    if(kind==='video'&&file.size>VIDEO_MAX_BYTES){toast('El video supera 1 GB — graba uno más corto','err');return;}
+    if(kind==='video'&&file.size>VIDEO_MAX_BYTES){toast('El video pesa '+_fmTamTxt(file.size)+' — el máximo es '+VIDEO_MAX_TXT+'. Graba uno más corto.','err');return;}
     const s=_fmBuscarSol(srvState.solId)||{};
     const gps=await getGPS();
     const now=new Date();
@@ -7654,7 +7663,7 @@ window.fmTermVideoCapturar=function(){
   document.body.appendChild(inp);
   inp.onchange=function(){
     const file=this.files&&this.files[0]; document.body.removeChild(inp); if(!file)return;
-    if(file.size>VIDEO_MAX_BYTES){toast('El video pesa '+_fmTamTxt(file.size)+' — el máximo es 1 GB. Graba uno más corto.','err');return;}
+    if(file.size>VIDEO_MAX_BYTES){toast('El video pesa '+_fmTamTxt(file.size)+' — el máximo es '+VIDEO_MAX_TXT+'. Graba uno más corto.','err');return;}
     window.__fmTermVideo={blob:file,nombre:file.name,mime:file.type,url:URL.createObjectURL(file)};
     const box=document.getElementById('fm-term-video'); if(box)box.innerHTML=fmTermVideoHTML();
   };
