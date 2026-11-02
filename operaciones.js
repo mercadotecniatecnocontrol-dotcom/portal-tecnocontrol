@@ -6391,6 +6391,7 @@
                     <div style="font-size:11px;color:#94a3b8;margin-bottom:12px;">Rota parejo entre los técnicos que elijas — a quien menos semanas lleva le toca primero, y se salta a quien tenga una ausencia programada esa semana. Puedes editar cualquier semana a mano.</div>
                     ${opsRenderCalendarioGuardias(gestion)}
                 </div>
+                <div id="ops-res-guardia" style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;">${opsResGuardiaHTML()}</div>
                 <div id="ops-mat-guardia" style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:16px;">${opsMatGuardiaHTML(gestion)}</div>
             </div>`;
         opsGtelPintar();
@@ -6518,6 +6519,56 @@
         w.document.close();
     };
 
+    // ═══ Resumen de folios de guardia (31-oct-2026, Magali): para mandarlo por WhatsApp o como imagen ═══
+    // Folios que se le cargaron a la guardia (turnoFolios.tipo = "guardia") recibidos dentro del turno
+    // (viernes 9:00 p. m. → viernes 8:00 a. m.). Se elige el turno actual o el anterior.
+    let opsResGuardiaTurno = 0;
+    function opsResGuardiaDatos() {
+        const semAct = opsSemanaGuardiaDe(new Date()), sem = opsSumarDias(semAct, -7 * opsResGuardiaTurno);
+        const ini = new Date(opsSumarDias(sem, -3) + "T21:00:00"), fin = new Date(opsSumarDias(sem, 4) + "T08:00:00");
+        const quien = opsGtelDeGuardia(sem);
+        const folios = cacheFolios.filter(f => {
+            const g = (f.turnoFolios && f.turnoFolios.tipo === "guardia") || (f.asignaciones || []).some(a => a.turno === "guardia");
+            if (!g) return false; const d = opsAFechaObj(f.fechaSolicitud || f.creadoEn); return d && d >= ini && d < fin;
+        }).sort((a, b) => String(a.fechaSolicitud || "").localeCompare(String(b.fechaSolicitud || "")));
+        return { sem, ini, fin, quien, folios };
+    }
+    function opsResGuardiaLineas(D) {
+        const h = d => d ? new Date(d).toLocaleString("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+        const cerr = D.folios.filter(f => f.fechaSolucion).length;
+        const L = [`RESUMEN DE GUARDIA · ${opsGuardiaHorarioTxt(D.sem)}`, `De guardia: ${D.quien ? D.quien.nombre : "sin asignar"}`, `Folios: ${D.folios.length} · cerrados ${cerr} · abiertos ${D.folios.length - cerr}`, ""];
+        D.folios.forEach((f, i) => { const v = opsFolioVenceMs(f), sol = opsAFechaObj(f.fechaSolucion);
+            L.push(`${i + 1}. ${f.folioClienteId || f.folioOS || "S/F"} · ${f.estacion || ""}${f.prioridad ? " · " + f.prioridad : ""}`);
+            L.push(`   Recibido ${h(f.fechaSolicitud)} · ${(f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico"}`);
+            L.push(`   ${f.cancelado ? "CANCELADO" : sol ? "Cerrado " + h(f.fechaSolucion) + (v ? (sol.getTime() <= v ? " · en tiempo" : " · FUERA DE TIEMPO") : "") : "ABIERTO" + (v ? " · vence " + h(v) : "")}`); });
+        if (!D.folios.length) L.push("Sin folios en este turno.");
+        return L;
+    }
+    function opsResGuardiaHTML() {
+        const D = opsResGuardiaDatos(), cerr = D.folios.filter(f => f.fechaSolucion).length;
+        const b = (fn, t, bg, c) => `<button onclick="${fn}" style="background:${bg};color:${c};border:${bg === "#fff" ? "1px solid #cbd5e1" : "none"};border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">${t}</button>`;
+        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Resumen de folios de guardia</div>
+                <select onchange="opsResGuardiaCambiar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:5px 8px;font-size:12px;"><option value="0" ${opsResGuardiaTurno === 0 ? "selected" : ""}>Turno actual</option><option value="1" ${opsResGuardiaTurno === 1 ? "selected" : ""}>Turno anterior</option><option value="2" ${opsResGuardiaTurno === 2 ? "selected" : ""}>Hace 2 turnos</option></select>
+                <span style="font-size:11.5px;color:#64748b;">${opsEsc(opsGuardiaHorarioTxt(D.sem))} · ${opsEsc(D.quien ? D.quien.nombre : "sin asignar")} · ${D.folios.length} folio(s), ${cerr} cerrado(s)</span>
+                <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">${b("opsResGuardiaWA()", "WhatsApp", "#16a34a", "#fff")}${b("opsResGuardiaImagen()", "Imagen", "#1D2E73", "#fff")}${b("opsResGuardiaCopiar()", "Copiar", "#fff", "#334155")}</span>
+            </div>
+            ${D.folios.length ? `<div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;">${D.folios.map(f => `<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 10px;border-top:1px solid #f1f5f9;font-size:12px;"><span><b>${opsEsc(f.folioClienteId || f.folioOS || "S/F")}</b> · ${opsEsc(f.estacion || "")} · ${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico")}</span><span style="font-weight:700;color:${f.cancelado ? "#64748b" : f.fechaSolucion ? "#15803d" : "#b45309"};">${f.cancelado ? "Cancelado" : f.fechaSolucion ? "Cerrado" : "Abierto"}</span></div>`).join("")}</div>` : `<div style="font-size:12px;color:#94a3b8;">Sin folios de guardia en este turno.</div>`}`;
+    }
+    window.opsResGuardiaCambiar = v => { opsResGuardiaTurno = Number(v) || 0; const el = document.getElementById("ops-res-guardia"); if (el) el.innerHTML = opsResGuardiaHTML(); };
+    window.opsResGuardiaWA = () => window.open("https://wa.me/?text=" + encodeURIComponent(opsResGuardiaLineas(opsResGuardiaDatos()).join("\n")), "_blank");
+    window.opsResGuardiaCopiar = () => { try { navigator.clipboard.writeText(opsResGuardiaLineas(opsResGuardiaDatos()).join("\n")); if (window.mostrarPush) window.mostrarPush("Guardias", "Resumen copiado.", "📋"); } catch (e) { alert("No se pudo copiar."); } };
+    window.opsResGuardiaImagen = async function () {
+        const L = opsResGuardiaLineas(opsResGuardiaDatos()), W = 900, lh = 26, H = 110 + L.length * lh;
+        const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d");
+        x.fillStyle = "#ffffff"; x.fillRect(0, 0, W, H); x.fillStyle = "#1D2E73"; x.fillRect(0, 0, W, 64); x.fillStyle = "#E7402B"; x.fillRect(0, 64, W, 4);
+        x.fillStyle = "#fff"; x.font = "bold 24px Arial"; x.fillText("TECNOCONTROL · Resumen de guardia", 24, 41);
+        L.forEach((t, i) => { x.font = (i < 3 || /^\d+\./.test(t) ? "bold " : "") + "17px Arial"; x.fillStyle = /FUERA DE TIEMPO|ABIERTO/.test(t) ? "#b45309" : /en tiempo|Cerrado/.test(t) ? "#15803d" : "#0f172a"; x.fillText(t, 24, 100 + i * lh); });
+        const blob = await new Promise(ok => c.toBlob(ok, "image/png")); const nombre = "Resumen_guardia_" + opsHoy() + ".png";
+        const file = new File([blob], nombre, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: "Resumen de guardia" }); return; } catch (e) {} }
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 600);
+    };
     function opsRenderCalendarioGuardias(gestion) {
         const hoyLunes = opsSemanaGuardiaDe(new Date());
         const semanas = [...new Set(cacheGuardiasProgramadas.filter(g => g.semanaInicio >= hoyLunes).map(g => g.semanaInicio))].sort().slice(0, 16);
