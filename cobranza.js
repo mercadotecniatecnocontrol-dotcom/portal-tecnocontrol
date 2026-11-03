@@ -383,7 +383,7 @@
       '</div>'+
 
       '<div style="display:flex;gap:6px;margin-bottom:16px">'+
-        vistaBtn('cuentas','Cuentas por cobrar')+ vistaBtn('pedidos','Pedidos de Almacén')+
+        vistaBtn('cuentas','Cuentas por cobrar')+ vistaBtn('pedidos','Pedidos de Almacén')+ vistaBtn('encuestas','Encuesta postventa')+
       '</div>'+
 
       (vistaActual==='cuentas' ? (
@@ -406,12 +406,154 @@
         (lista.length ? renderTabla(lista) : '<p style="text-align:center;color:#94A3B8;padding:40px 0;font-size:13px">Sin cuentas en esta vista.</p>')+
       '</div>'+
       (detalleId ? renderDetalle() : '')
-      ) : renderVistaPedidos());
+      ) : vistaActual==='encuestas' ? '<div id="cb-enc"><p style="text-align:center;color:#94A3B8;padding:30px">Cargando encuestas…</p></div>' : renderVistaPedidos());
 
     calcularCobradoMes(mesActual);
     if(vistaActual==='cuentas' && detalleId) window.__cbCargarDetalleAsync(detalleId);
     if(vistaActual==='pedidos') cargarYRenderPedidosGlobal();
+    if(vistaActual==='encuestas') encCargar();
   }
+
+  // ══════════════ ENCUESTA POSTVENTA (2-nov-2026) ══════════════
+  // Meta mensual: 10 clientes por vendedor y 5 de Gestoría. Las hace Francisca.
+  // Se guardan en Supabase (ventas_encuestas). Los clientes salen de ventas_clientes.
+  var ENC_META_VEND = 10, ENC_META_GEST = 5, ENC_GEST = 'Gestoría';
+  var encMes = hoyISO().slice(0,7), encLista = [], encAbierta = null;
+  function encSb(){ return (window.tcSbSesion ? window.tcSbSesion() : window.tcSb()); }
+  function encYo(){ return (window.auth && window.auth.currentUser && window.auth.currentUser.email) || ''; }
+  function encVendedores(){
+    var m = {};
+    clientes.forEach(function(c){ var v = String(c.vendedor||'').trim(); if(v) m[v]=1; });
+    return Object.keys(m).sort();
+  }
+  function encCargar(){
+    return encSb().then(function(c){ return c.from('ventas_encuestas').select('*').eq('mes', encMes).order('creada_en'); })
+      .then(function(r){ if(r.error) throw r.error; encLista = r.data||[]; encPintar(); })
+      .catch(function(e){ var el=document.getElementById('cb-enc'); if(el) el.innerHTML='<p style="color:#DC2626;padding:20px">No se pudieron cargar las encuestas: '+esc(e.message||e)+'</p>'; });
+  }
+  function encEstrellas(n){ n=Number(n)||0; return n? '★★★★★'.slice(0,n)+'<span style="color:#CBD5E1">'+'★★★★★'.slice(0,5-n)+'</span>' : '<span style="color:#CBD5E1">—</span>'; }
+  var ENC_EST = { pendiente:['Pendiente','#B45309','#FEF3C7'], realizada:['Realizada','#15803D','#DCFCE7'], no_contesto:['No contestó','#B91C1C','#FEE2E2'], no_aplica:['No aplica','#64748B','#F1F5F9'] };
+  function encPintar(){
+    var el = document.getElementById('cb-enc'); if(!el) return;
+    var grupos = encVendedores().concat([ENC_GEST]);
+    encLista.forEach(function(e){ if(grupos.indexOf(e.grupo)<0) grupos.push(e.grupo); });
+    var prom = function(arr,k){ var v=arr.map(function(x){return Number(x[k])||0;}).filter(Boolean); return v.length? (v.reduce(function(a,b){return a+b;},0)/v.length).toFixed(1) : '—'; };
+    window.__cbEncGrupos = grupos;
+    var filas = grupos.map(function(g, gi){
+      var de = encLista.filter(function(e){ return e.grupo===g; });
+      var hechas = de.filter(function(e){ return e.estatus==='realizada'; });
+      var meta = g===ENC_GEST? ENC_META_GEST : ENC_META_VEND;
+      var pct = Math.min(100, Math.round(hechas.length*100/meta));
+      return '<div style="border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;margin-bottom:12px">'+
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<b style="font-size:14px;color:#0A1628">'+esc(g)+'</b>'+
+          '<span style="font-size:12px;color:#5C7089">'+hechas.length+' de '+meta+' realizadas · '+de.length+' en lista</span>'+
+          '<span style="font-size:11px;color:#5C7089">Atención '+prom(hechas,'calif_atencion')+' · Tiempo '+prom(hechas,'calif_tiempo')+' · Calidad '+prom(hechas,'calif_calidad')+'</span>'+
+          '<span style="margin-left:auto;display:flex;gap:6px">'+
+            '<button onclick="window.__cbEncSortear(window.__cbEncGrupos['+gi+'])" style="padding:6px 11px;border-radius:8px;border:1px solid #0A1628;background:#fff;color:#0A1628;font-size:11px;font-weight:700;cursor:pointer">Sortear clientes</button>'+
+            '<button onclick="window.__cbEncAgregar(window.__cbEncGrupos['+gi+'])" style="padding:6px 11px;border-radius:8px;border:1px solid #E2E8F0;background:#fff;color:#5C7089;font-size:11px;font-weight:700;cursor:pointer">+ Agregar</button>'+
+          '</span>'+
+        '</div>'+
+        '<div style="height:6px;background:#F1F5F9;border-radius:6px;margin:10px 0"><div style="height:6px;width:'+pct+'%;background:'+(pct>=100?'#16A34A':'#147EFB')+';border-radius:6px"></div></div>'+
+        (de.length? de.map(function(e){ var st=ENC_EST[e.estatus]||ENC_EST.pendiente;
+          return '<div onclick="window.__cbEncAbrir(\''+e.id+'\')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;flex-wrap:wrap" onmouseover="this.style.background=\'#F8FAFC\'" onmouseout="this.style.background=\'\'">'+
+            '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px;color:'+st[1]+';background:'+st[2]+'">'+st[0]+'</span>'+
+            '<span style="font-size:13px;font-weight:600;color:#0A1628">'+esc(e.cliente_nombre)+'</span>'+
+            '<span style="font-size:11px;color:#94A3B8">'+esc([e.contacto,e.telefono].filter(Boolean).join(' · '))+'</span>'+
+            (e.estatus==='realizada'?'<span style="margin-left:auto;font-size:12px;color:#F59E0B">'+encEstrellas(Math.round(((Number(e.calif_atencion)||0)+(Number(e.calif_tiempo)||0)+(Number(e.calif_calidad)||0))/3))+'</span>':'')+
+          '</div>'; }).join('') : '<p style="font-size:12px;color:#94A3B8;margin:4px 0">Sin clientes en la lista de este mes. Usa "Sortear clientes".</p>')+
+      '</div>';
+    }).join('');
+    el.innerHTML = '<div style="background:#fff;border-radius:14px;padding:18px 22px;box-shadow:0 1px 3px rgba(10,22,40,.08)">'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">'+
+        '<h3 style="margin:0;font-size:16px;color:#0A1628">Encuesta postventa</h3>'+
+        '<span style="font-size:12px;color:#5C7089">Meta: '+ENC_META_VEND+' por vendedor y '+ENC_META_GEST+' de Gestoría al mes</span>'+
+        '<input type="month" value="'+encMes+'" onchange="window.__cbEncMes(this.value)" style="margin-left:auto;padding:7px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px">'+
+        '<button onclick="window.__cbEncExcel()" style="padding:8px 14px;border-radius:8px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Descargar Excel</button>'+
+      '</div>'+ filas +'</div>'+ (encAbierta? encModal() : '');
+  }
+  window.__cbEncMes = function(m){ encMes = m||hoyISO().slice(0,7); encAbierta=null; encCargar(); };
+  function encInsertar(filas){
+    return encSb().then(function(c){ return c.from('ventas_encuestas').insert(filas); }).then(function(r){ if(r.error) throw r.error; return encCargar(); })
+      .catch(function(e){ alert('No se pudo guardar: '+(e.message||e)); });
+  }
+  function encClienteFila(g, c){ return { mes: encMes, grupo: g, cliente_id: c.id||null, cliente_nombre: c.nombre||c.razonSocial||'Cliente', contacto: c.contacto||null, telefono: c.tel||c.telefono||null, creada_por: encYo() }; }
+  // Sortea clientes de ese vendedor que no estén ya en la lista del mes ni se hayan encuestado en los últimos 3 meses.
+  window.__cbEncSortear = function(g){
+    var meta = g===ENC_GEST? ENC_META_GEST : ENC_META_VEND;
+    var ya = encLista.filter(function(e){ return e.grupo===g; }).length;
+    var faltan = meta - ya;
+    if(faltan<=0){ alert('Este grupo ya tiene '+ya+' clientes en la lista del mes.'); return; }
+    var d = new Date(encMes+'-01T12:00:00'); d.setMonth(d.getMonth()-3); var desde = d.toISOString().slice(0,7);
+    encSb().then(function(c){ return c.from('ventas_encuestas').select('cliente_id,cliente_nombre').gte('mes', desde).lte('mes', encMes); })
+    .then(function(r){
+      var usados = {}; (r.data||[]).forEach(function(x){ usados[x.cliente_id||x.cliente_nombre]=1; });
+      var pool = clientes.filter(function(c){ return (g===ENC_GEST || String(c.vendedor||'').trim()===g) && !usados[c.id] && !usados[c.nombre]; });
+      if(!pool.length){ alert('No hay más clientes disponibles para '+g+'. Usa "+ Agregar" para elegir uno a mano.'); return; }
+      for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+      return encInsertar(pool.slice(0,faltan).map(function(c){ return encClienteFila(g,c); }));
+    });
+  };
+  window.__cbEncAgregar = function(g){
+    var q = prompt('Escribe parte del nombre del cliente para '+g+':'); if(!q) return;
+    var n = q.toLowerCase();
+    var hall = clientes.filter(function(c){ return String(c.nombre||'').toLowerCase().indexOf(n)>=0; }).slice(0,10);
+    if(!hall.length){ if(confirm('No está en el catálogo. ¿Agregar "'+q+'" como cliente de la encuesta?')) encInsertar([{ mes: encMes, grupo: g, cliente_nombre: q.trim(), creada_por: encYo() }]); return; }
+    var txt = hall.map(function(c,i){ return (i+1)+'. '+c.nombre; }).join('\n');
+    var k = Number(prompt('Elige el número:\n'+txt, '1'));
+    if(!k || !hall[k-1]) return;
+    encInsertar([encClienteFila(g, hall[k-1])]);
+  };
+  window.__cbEncAbrir = function(id){ encAbierta = id; encPintar(); };
+  window.__cbEncCerrar = function(){ encAbierta = null; encPintar(); };
+  function encModal(){
+    var e = encLista.find(function(x){ return x.id===encAbierta; }); if(!e) return '';
+    var sel = function(id,v){ return '<select id="'+id+'" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px"><option value="">—</option>'+[5,4,3,2,1].map(function(n){ return '<option value="'+n+'"'+(Number(v)===n?' selected':'')+'>'+n+' · '+['','Muy mal','Mal','Regular','Bien','Excelente'][n]+'</option>'; }).join('')+'</select>'; };
+    var lb = function(t){ return '<label style="font-size:11px;font-weight:700;color:#5C7089;display:block;margin:10px 0 4px">'+t+'</label>'; };
+    return '<div onclick="if(event.target===this)window.__cbEncCerrar()" style="position:fixed;inset:0;background:rgba(10,22,40,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px">'+
+      '<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:20px 22px;max-height:90vh;overflow:auto">'+
+        '<div style="font-size:16px;font-weight:700;color:#0A1628">'+esc(e.cliente_nombre)+'</div>'+
+        '<div style="font-size:12px;color:#5C7089;margin-bottom:6px">'+esc(e.grupo)+' · '+esc([e.contacto,e.telefono].filter(Boolean).join(' · ')||'Sin contacto en catálogo')+'</div>'+
+        (e.telefono?'<a href="tel:'+esc(e.telefono)+'" style="font-size:12px;font-weight:700;color:#147EFB">Llamar</a> · <a target="_blank" href="https://wa.me/52'+esc(String(e.telefono).replace(/\D/g,'').slice(-10))+'" style="font-size:12px;font-weight:700;color:#16A34A">WhatsApp</a>':'')+
+        lb('Resultado')+'<select id="enc-est" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px">'+Object.keys(ENC_EST).map(function(k){ return '<option value="'+k+'"'+(e.estatus===k?' selected':'')+'>'+ENC_EST[k][0]+'</option>'; }).join('')+'</select>'+
+        lb('¿Cómo calificaría la atención del vendedor?')+sel('enc-at',e.calif_atencion)+
+        lb('¿Le entregaron o atendieron a tiempo?')+sel('enc-ti',e.calif_tiempo)+
+        lb('¿Cómo calificaría la calidad del producto o servicio?')+sel('enc-ca',e.calif_calidad)+
+        lb('¿Nos recomendaría?')+'<select id="enc-rec" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px"><option value="">—</option><option value="si"'+(e.recomendaria===true?' selected':'')+'>Sí</option><option value="no"'+(e.recomendaria===false?' selected':'')+'>No</option></select>'+
+        lb('Comentarios del cliente')+'<textarea id="enc-com" rows="3" style="width:100%;padding:8px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;box-sizing:border-box;font-family:inherit">'+esc(e.comentarios||'')+'</textarea>'+
+        '<div style="display:flex;gap:8px;margin-top:14px">'+
+          '<button onclick="window.__cbEncBorrar(\''+e.id+'\')" style="padding:9px 12px;border-radius:8px;border:1px solid #FECACA;background:#fff;color:#B91C1C;font-size:12px;font-weight:700;cursor:pointer">Quitar de la lista</button>'+
+          '<button onclick="window.__cbEncCerrar()" style="margin-left:auto;padding:9px 14px;border-radius:8px;border:1px solid #E2E8F0;background:#fff;font-size:12px;cursor:pointer">Cancelar</button>'+
+          '<button onclick="window.__cbEncGuardar(\''+e.id+'\')" style="padding:9px 16px;border-radius:8px;border:none;background:#0A1628;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Guardar</button>'+
+        '</div></div></div>';
+  }
+  window.__cbEncGuardar = function(id){
+    var e = encLista.find(function(x){ return x.id===id; }) || {};
+    var v = function(k){ var el=document.getElementById(k); return el? el.value : ''; };
+    var est = v('enc-est');
+    var num = function(k){ var n=Number(v(k)); return n||null; };
+    if(est==='realizada' && (!num('enc-at')||!num('enc-ti')||!num('enc-ca'))){ alert('Para marcarla como realizada califica las tres preguntas.'); return; }
+    var upd = { estatus: est, calif_atencion: num('enc-at'), calif_tiempo: num('enc-ti'), calif_calidad: num('enc-ca'),
+      recomendaria: v('enc-rec')==='si'?true:v('enc-rec')==='no'?false:null, comentarios: v('enc-com').trim()||null,
+      intentos: (e.intentos||0) + (est==='no_contesto'?1:0),
+      realizada_por: est==='realizada'? encYo() : e.realizada_por||null, realizada_en: est==='realizada'? (e.realizada_en||new Date().toISOString()) : null };
+    encSb().then(function(c){ return c.from('ventas_encuestas').update(upd).eq('id', id); })
+      .then(function(r){ if(r.error) throw r.error; encAbierta=null; return encCargar(); })
+      .catch(function(err){ alert('No se pudo guardar: '+(err.message||err)); });
+  };
+  window.__cbEncBorrar = function(id){
+    if(!confirm('¿Quitar este cliente de la lista del mes?')) return;
+    encSb().then(function(c){ return c.from('ventas_encuestas').delete().eq('id', id); })
+      .then(function(r){ if(r.error) throw r.error; encAbierta=null; return encCargar(); })
+      .catch(function(err){ alert('No se pudo quitar: '+(err.message||err)); });
+  };
+  window.__cbEncExcel = function(){
+    var filas = encLista.map(function(e){ return { Mes:e.mes, Grupo:e.grupo, Cliente:e.cliente_nombre, Contacto:e.contacto||'', Telefono:e.telefono||'', Resultado:(ENC_EST[e.estatus]||[e.estatus])[0], Atencion:e.calif_atencion||'', Tiempo:e.calif_tiempo||'', Calidad:e.calif_calidad||'', Recomendaria:e.recomendaria===true?'Sí':e.recomendaria===false?'No':'', Comentarios:e.comentarios||'', 'Hecha por':e.realizada_por||'', Fecha:e.realizada_en?String(e.realizada_en).slice(0,10):'' }; });
+    if(!filas.length){ alert('No hay encuestas en este mes.'); return; }
+    if(window.XLSX){ var ws=XLSX.utils.json_to_sheet(filas), wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Encuestas'); XLSX.writeFile(wb,'Encuesta_postventa_'+encMes+'.xlsx'); return; }
+    var cols=Object.keys(filas[0]); var csv=[cols.join(',')].concat(filas.map(function(r){ return cols.map(function(c){ return '"'+String(r[c]).replace(/"/g,'""')+'"'; }).join(','); })).join('\n');
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download='Encuesta_postventa_'+encMes+'.csv'; a.click();
+  };
 
   function vistaBtn(id, label){
     var activo = vistaActual===id;
