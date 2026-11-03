@@ -35,6 +35,8 @@
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
 <script src="surtidos-supabase.js?v=14"></script>
 <script src="operaciones-supabase.js?v=ops8"></script>
+<!-- Etapa 1 del login a Supabase: misma contraseña, cuenta migrada sola -->
+<script src="sesion-supabase.js?v=1"></script>
 <!-- Flotilla: solicitudes, fotos y videos van directo a Supabase (sin Firebase) -->
 <script src="flotilla-supabase.js?v=4"></script>
 <!-- Mismo diseño de notificaciones que el portal (19-oct-2026). La app usa su pestaña "Avisos" como campanita. -->
@@ -186,6 +188,7 @@ auth.onAuthStateChanged(async (user) => {
     // Asegurar que db y auth estén globales ANTES de cargar flotilla-movil.js
     window.auth = auth;
     window.db   = db;
+    setTimeout(() => { if (window.tcSesion) window.tcSesion.asegurar(user.email); }, 2500);
     await cargarAppMovil();
     if (typeof initFlotillaMovil === 'function') initFlotillaMovil();
   } else {
@@ -204,6 +207,7 @@ async function doLogin() {
   if (!email || !pass) { showErr('Ingresa tu correo y contraseña'); return; }
   btn.textContent = 'Entrando…'; btn.disabled = true;
   try {
+    if (window.tcSesion) window.tcSesion.recordarClave(email, pass);
     await auth.signInWithEmailAndPassword(email, pass);
     // onAuthStateChanged se encarga del resto
   } catch (e) {

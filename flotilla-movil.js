@@ -4063,7 +4063,7 @@ window.abrirPerfil=function(){
       </div>
       ${!ecosActuales.length?`<button class="fm-btn primary" onclick="this.closest('.fm-ov').remove();fmVista('vehiculo')" style="margin-bottom:10px">Vincular mi vehículo</button>`:''}
       ${(esRolLibre()&&ecosActuales.length)?`<button class="fm-btn" style="margin-bottom:10px;background:#FEF2F2;color:#B91C1C;border:1.5px solid #FECACA;font-size:12px" onclick="window._desvinc()">Desvincular todas mis unidades</button>`:''}
-      <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){window.auth.signOut().then(()=>location.reload());}">Cerrar sesión</button>`;
+      <button class="fm-btn danger" onclick="if(confirm('¿Cerrar sesión?')){Promise.resolve(window.tcSesion&&window.tcSesion.salir()).then(()=>window.auth.signOut()).then(()=>location.reload());}">Cerrar sesión</button>`;
   }
   ov.innerHTML=`<div class="fm-sheet">
     <div class="fm-sheet-hd"><h3>Mi perfil</h3><button class="fm-sheet-x" onclick="this.closest('.fm-ov').remove()">✕</button></div>

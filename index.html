@@ -23,6 +23,7 @@
     <script src="portal-supabase.js?v=5"></script>
     <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
     <script src="operaciones-supabase.js?v=ops8"></script>
+    <script src="sesion-supabase.js?v=1"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -2634,6 +2635,8 @@ onAuthStateChanged(auth, async user=>{
     if(user){
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('app-portal').style.display='block';
+        // Etapa 1 del login a Supabase: abre (o migra) la cuenta en Supabase sin estorbar la carga.
+        setTimeout(()=>{ if(window.tcSesion) window.tcSesion.asegurar(user.email); }, 2500);
         // Cargar usuarios de Firestore y fusionarlos ANTES de pintar sidebar/encargados,
         // así los usuarios dados de alta desde el botón "Agregar usuario" ya aparecen
         // con sus permisos sin necesidad de tocar código en ningún archivo.
@@ -2681,10 +2684,12 @@ onAuthStateChanged(auth, async user=>{
 });
 
 window.iniciar = async()=>{
+    // Etapa 1 del login a Supabase: la misma contraseña abre también la sesión de Supabase (sesion-supabase.js).
+    if(window.tcSesion) window.tcSesion.recordarClave(document.getElementById('l-email').value, document.getElementById('l-pass').value);
     try{ await signInWithEmailAndPassword(auth, document.getElementById('l-email').value, document.getElementById('l-pass').value); }
     catch(e){ alert("Credenciales incorrectas"); }
 };
-window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
+window.cerrarSesion = ()=>Promise.resolve(window.tcSesion && window.tcSesion.salir()).then(()=>signOut(auth)).then(()=>location.reload());
 
 // ══════════════════════════════════════════════════════════════
 // FIRESTORE — escucha en tiempo real + notificaciones
@@ -3326,6 +3331,7 @@ function upVigilarMiBaja(){
             const mio = snap.docs.map(d=>d.data()).find(u => (u.correo||'').toLowerCase() === (auth.currentUser?.email||'').toLowerCase());
             if(mio && mio.activo === false){
                 alert('Tu acceso al portal fue dado de baja. Si es un error, habla con Administración.');
+                if(window.tcSesion) window.tcSesion.salir();
                 signOut(auth);
             }
         }, ()=>{}));
