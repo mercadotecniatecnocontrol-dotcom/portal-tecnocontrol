@@ -11,6 +11,8 @@
     <title>TECNOCONTROL · Portal Operativo</title>
     <meta name="version" content="1776262807">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Etapa 2a del login (nov-2026): todo import de firebase-auth.js usa Supabase Auth (firebase-auth-supabase.js). Debe ir ANTES de cualquier script de módulo -->
+    <script type="importmap">{ "imports": { "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js": "./firebase-auth-supabase.js?v=1" } }</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -24,6 +26,8 @@
     <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
     <script src="operaciones-supabase.js?v=ops8"></script>
     <script src="sesion-supabase.js?v=1"></script>
+    <!-- Etapa 2a: el inicio de sesión es Supabase Auth con la misma forma que Firebase (window.tcAuth) -->
+    <script src="auth-supabase.js?v=1"></script>
     <link rel="stylesheet" href="CSS/style.css">
 </head>
 <body>
@@ -2164,7 +2168,7 @@ import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, do
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };
 const app = initializeApp(config);
 const db = getFirestore(app);
-const auth = getAuth(app);
+const auth = getAuth(app); // Etapa 2a: por el import map, es window.tcAuth (Supabase Auth)
 // Exponer globalmente para módulos de ventas (CRM, Cotizaciones, Perfil Cliente)
 window.db = db;
 // Config pública de Firebase (misma que usa el kiosco) — para que módulos externos
@@ -2635,8 +2639,6 @@ onAuthStateChanged(auth, async user=>{
     if(user){
         document.getElementById('auth-screen').style.display='none';
         document.getElementById('app-portal').style.display='block';
-        // Etapa 1 del login a Supabase: abre (o migra) la cuenta en Supabase sin estorbar la carga.
-        setTimeout(()=>{ if(window.tcSesion) window.tcSesion.asegurar(user.email); }, 2500);
         // Cargar usuarios de Firestore y fusionarlos ANTES de pintar sidebar/encargados,
         // así los usuarios dados de alta desde el botón "Agregar usuario" ya aparecen
         // con sus permisos sin necesidad de tocar código en ningún archivo.
@@ -2684,12 +2686,10 @@ onAuthStateChanged(auth, async user=>{
 });
 
 window.iniciar = async()=>{
-    // Etapa 1 del login a Supabase: la misma contraseña abre también la sesión de Supabase (sesion-supabase.js).
-    if(window.tcSesion) window.tcSesion.recordarClave(document.getElementById('l-email').value, document.getElementById('l-pass').value);
     try{ await signInWithEmailAndPassword(auth, document.getElementById('l-email').value, document.getElementById('l-pass').value); }
     catch(e){ alert("Credenciales incorrectas"); }
 };
-window.cerrarSesion = ()=>Promise.resolve(window.tcSesion && window.tcSesion.salir()).then(()=>signOut(auth)).then(()=>location.reload());
+window.cerrarSesion = ()=>signOut(auth).then(()=>location.reload());
 
 // ══════════════════════════════════════════════════════════════
 // FIRESTORE — escucha en tiempo real + notificaciones

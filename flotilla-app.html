@@ -27,7 +27,6 @@
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <!-- jsPDF: usado por Solicitud de material y Requisición de compra (PDF generado en el dispositivo) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -37,6 +36,8 @@
 <script src="operaciones-supabase.js?v=ops8"></script>
 <!-- Etapa 1 del login a Supabase: misma contraseña, cuenta migrada sola -->
 <script src="sesion-supabase.js?v=1"></script>
+<!-- Etapa 2a del login (nov-2026): se entra con Supabase Auth; window.tcAuth tiene la misma forma que firebase.auth() -->
+<script src="auth-supabase.js?v=1"></script>
 <!-- Flotilla: solicitudes, fotos y videos van directo a Supabase (sin Firebase) -->
 <script src="flotilla-supabase.js?v=4"></script>
 <!-- Mismo diseño de notificaciones que el portal (19-oct-2026). La app usa su pestaña "Avisos" como campanita. -->
@@ -77,7 +78,7 @@ _db.enablePersistence({ synchronizeTabs: true }).catch(err => {
   console.warn('[FLOTILLA-APP] Persistencia offline no disponible:', err.code || err.message);
 });
 
-const auth = firebase.auth();
+const auth = window.tcAuth; // Etapa 2a: Supabase Auth (auth-supabase.js), mismo uid de Firebase
 // Oct-2026: vehículos, transferencias, checklists, tareas, usuarios, notificaciones…
 // de Flotilla van a Supabase (flotilla-supabase.js → tcFlDocsCompat). Lo demás sigue igual.
 const db   = window.tcFlDocsCompat ? window.tcFlDocsCompat(_db) : _db;
@@ -188,7 +189,6 @@ auth.onAuthStateChanged(async (user) => {
     // Asegurar que db y auth estén globales ANTES de cargar flotilla-movil.js
     window.auth = auth;
     window.db   = db;
-    setTimeout(() => { if (window.tcSesion) window.tcSesion.asegurar(user.email); }, 2500);
     await cargarAppMovil();
     if (typeof initFlotillaMovil === 'function') initFlotillaMovil();
   } else {
@@ -207,7 +207,6 @@ async function doLogin() {
   if (!email || !pass) { showErr('Ingresa tu correo y contraseña'); return; }
   btn.textContent = 'Entrando…'; btn.disabled = true;
   try {
-    if (window.tcSesion) window.tcSesion.recordarClave(email, pass);
     await auth.signInWithEmailAndPassword(email, pass);
     // onAuthStateChanged se encarga del resto
   } catch (e) {
