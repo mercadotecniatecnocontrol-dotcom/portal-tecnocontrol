@@ -22501,6 +22501,7 @@
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${s.fecha_limite_comprobacion ? opsEsc(opsViaFechaCorta(s.fecha_limite_comprobacion)) + (dl != null && s.entregado_en && !["Comprobada", "Cerrada"].includes(E.estado) ? `<div style="font-weight:700;color:${dl < 0 ? "#b91c1c" : dl <= 2 ? "#b45309" : "#15803d"};">${dl < 0 ? "vencida hace " + (-dl) + " d" : "faltan " + dl + " d"}</div>` : "") : "—"}</td>
                 <td style="padding:9px 8px;white-space:nowrap;">
                     ${s.comprobante_pago ? `<button onclick="opsViaVerComprobantePago(${s.id})" style="background:#ecfdf5;border:1px solid #bbf7d0;color:#15803d;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Comprobante</button>` : ""}
+                    ${(autoriza || opsViaSubeComprobante()) && s.entregado_en && !s.comprobante_pago ? `<button onclick="opsViaSubirComprobante(${s.id})" title="Viático ya pagado sin comprobante: sube la transferencia o el recibo" style="background:#fff7ed;border:1px solid #fdba74;color:#c2410c;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Subir comprobante</button>` : ""}
                     ${autoriza && !s.entregado_en && s.estatus === "Aprobada" ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#15803d;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Registrar pago</button>` : ""}
                     ${autoriza && !canc && !s.entregado_en ? `<button onclick="opsViaCambiarEstatus(${s.id}, 'Cancelada')" title="No aplica (mal programada, duplicada…)" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">No aplica</button>` : ""}
                     ${autoriza && s.estatus === "Pendiente" ? `<button onclick="opsViaCambiarEstatus(${s.id}, 'Aprobada')" style="background:#1D2E73;border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Autorizar</button>` : ""}
@@ -22861,6 +22862,37 @@
             alert("No se pudo registrar la entrega: " + (e.message || e));
             if (btn) { btn.disabled = false; btn.textContent = "Guardar entrega y avisar"; }
         }
+    };
+
+    // ── Comprobante de pago después (2-nov-2026) ──
+    // Para viáticos ya pagados sin comprobante (p. ej. la regularización del 2-nov): Contabilidad y Pagos
+    // suben la transferencia o el recibo firmado sin volver a registrar la entrega.
+    function opsViaSubeComprobante() {
+        const yo = (opsUsuarioActual() || "").toLowerCase();
+        return ["contabilidad@tecnocontrol.com.mx", "pagos@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx"].includes(yo) || opsRolActual() === "administrador";
+    }
+    window.opsViaSubirComprobante = function (id) {
+        const s = opsViaLista.find(x => x.id === id); if (!s) return;
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf";
+        inp.onchange = async () => {
+            const a = inp.files && inp.files[0]; if (!a) return;
+            if (a.size > 6 * 1024 * 1024) { alert("El comprobante pesa más de 6 MB. Sube una foto o PDF más ligero."); return; }
+            const ref = prompt(`Comprobante de ${s.folio}. Referencia o número de operación (opcional):`, s.referencia_pago || "");
+            if (ref === null) return;
+            try {
+                const data = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => mal(new Error("No se pudo leer el archivo")); r.readAsDataURL(a); });
+                const cambios = { comprobante_pago: data, comprobante_pago_nombre: a.name, referencia_pago: ref.trim() || s.referencia_pago || null,
+                    pagado_por_nombre: s.pagado_por_nombre && !/^Regularizaci/.test(s.pagado_por_nombre) ? s.pagado_por_nombre : opsNombreActual(),
+                    actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() };
+                const sb = await opsSb();
+                const { error } = await sb.from("ops_solicitudes_viaticos").update(cambios).eq("id", id);
+                if (error) throw error;
+                Object.assign(s, cambios);
+                if (typeof opsRenderViaticos === "function") opsRenderViaticos(); else if (typeof opsRenderTab === "function") opsRenderTab();
+                alert("Comprobante guardado en " + s.folio + ".");
+            } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+        };
+        inp.click();
     };
 
     // ── Detalle de comprobación ──
