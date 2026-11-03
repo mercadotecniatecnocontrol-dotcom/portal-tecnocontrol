@@ -99,7 +99,10 @@
 
   function cargarFirestore(){
     if (_fs) return Promise.resolve(_fs);
-    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){ _fs=m; return m; });
+    // Puente a Supabase: catalogo/config (y lo ya migrado) van a Supabase; lo demás sigue igual.
+    return import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js').then(function(m){
+      return window.tcOpsFS ? window.tcOpsFS(m) : m;
+    }).then(function(m){ _fs=m; return m; });
   }
   // Documentos de evidencia (PDF/Word/etc., lo que no cabe comprimido en
   // Firestore/Supabase) → Supabase Storage, bucket `portal_evidencias` —

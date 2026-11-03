@@ -9,7 +9,7 @@
 <script src="material-pdf.js?v=4"></script>
 <!-- surtidos ya vive en Supabase — este adaptador expone window.tcSb... -->
 <script src="surtidos-supabase.js?v=14"></script>
-<script src="operaciones-supabase.js?v=ops1"></script>
+<script src="operaciones-supabase.js?v=ops7"></script>
 </head>
 <body>
 
@@ -300,7 +300,7 @@ function aplicarAspelAlCatalogo(){
     if(typeof renderGrid==='function') renderGrid();
   });
 }
-authReady.then(() => getDoc(doc(db,'catalogo','productos')).then(snap=>{
+authReady.then(() => window.tcOpsFS(null).then(f => f.getDoc(f.doc(db,'catalogo','productos'))).then(snap=>{
   if(snap.exists()){
     const d = snap.data() || {};
     CATALOGO = Array.isArray(d.items) ? d.items : [];
@@ -527,7 +527,7 @@ function renderGrid(){
 
 /* Busca en Firestore si el producto ya tiene foto subida por un admin (lectura pública) */
 function buscarFotoProducto(k, card){
-  getDoc(doc(db,'catalogo','productos','imagenes',keyFirestore(k))).then(snap=>{
+  window.tcOpsFS(null).then(f => f.getDoc(f.doc(db,'catalogo','productos','imagenes',keyFirestore(k)))).then(snap=>{
     const url = snap.exists() ? (snap.data()||{}).imagen : null;
     _imgCache[k] = url || null;
     if(url && card && card.isConnected){

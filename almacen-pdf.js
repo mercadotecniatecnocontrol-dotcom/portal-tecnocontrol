@@ -296,7 +296,9 @@
   var _fsPromise = null;
   function cargarFirestore() {
     if (_fsPromise) return _fsPromise;
-    _fsPromise = import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    // Puente a Supabase (config/almacenes y lo ya migrado).
+    _fsPromise = import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js')
+      .then(function (m) { return window.tcOpsFS ? window.tcOpsFS(m) : m; });
     return _fsPromise;
   }
  

@@ -6079,7 +6079,7 @@ window.renderFlotMaterial=async function(){
   if(_matCatalogo===null||_matCatalogo===undefined){
     body.innerHTML='<div style="text-align:center;padding:30px;color:#94A3B8;font-size:13px">Cargando catálogo…</div>';
     try{
-      const snap=await db.collection('catalogo').doc('productos').get();
+      const snap=await opsDb().collection('catalogo').doc('productos').get();
       _matCatalogo=snap.exists?(Array.isArray(snap.data().items)?snap.data().items:[]):[];
     }catch(e){ _matCatalogo=[]; }
   }

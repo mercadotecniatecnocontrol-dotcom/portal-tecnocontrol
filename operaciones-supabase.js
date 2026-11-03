@@ -54,6 +54,8 @@
    'conta_registros', 'egresos_registros', 'pagos_cuentas_por_pagar', 'pagos_registros', 'cuentas_por_cobrar'].forEach(function (c) { RUTEADAS[c] = 1; });
   // 26-oct-2026: usuarios del portal (accesos y permisos). El inicio de sesión sigue siendo de Firebase.
   ['usuarios'].forEach(function (c) { RUTEADAS[c] = 1; });
+  // 3-nov-2026: catálogo de productos (+ fotos) y config/almacenes (Almacén, Ventas, kiosco, Flotilla).
+  ['catalogo', 'config'].forEach(function (c) { RUTEADAS[c] = 1; });
   window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
   function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
   function autoId() {
