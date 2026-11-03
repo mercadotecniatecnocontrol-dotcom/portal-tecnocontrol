@@ -2300,7 +2300,7 @@
                         <div style="font-size:10.5px;color:#C7CEE0;">Hedma Tecnocontrol · Rol: ${opsEsc(opsAccNombreRol() || rolLabel)} · ${opsEsc(opsUsuarioActual() || "sin sesión")}${!opsPuedeGestionar() ? ' <span style="background:#fde68a;color:#78350f;border-radius:6px;padding:1px 7px;font-weight:700;margin-left:4px;">Solo consulta: no puedes programar ni dar de alta</span>' : ""}</div>
                     </div>
                 </div>
-                <div style="display:flex;align-items:center;">${opsNotifBotonHTML()}<button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
+                <div style="display:flex;align-items:center;gap:8px;">${opsPuedeGestionar() ? `<button onclick="opsSubirPedidoPDF()" title="Subir pedido ya hecho · PDF (formato CHH)" style="display:inline-flex;align-items:center;gap:6px;background:#0e7490;border:none;color:#fff;padding:7px 12px;border-radius:9px;cursor:pointer;font-size:12px;font-weight:700;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Subir pedido</button>` : ""}${opsNotifBotonHTML()}<button onclick="opsCerrarHerramientas()" style="background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;">${ICON.close}</button></div>
             </div>
 
             <div style="flex:1;display:flex;overflow:hidden;">
@@ -6937,6 +6937,13 @@
     // (Nuevo Servicio Técnico, Ver registros) bajo un solo lugar, sin duplicar esas
     // funciones — solo las invoca. Folios/Pólizas todavía no existen como módulos
     // propios en el portal; se dejan como "Próximamente" en vez de inventarlos.
+    // Subir pedido ya hecho (PDF formato CHH) desde Operaciones — 3-nov-2026.
+    // Usa el mismo módulo que el botón de Ventas (almacen-pdf.js → window.abrirSurtidoPDF).
+    window.opsSubirPedidoPDF = function () {
+        if (typeof window.abrirSurtidoPDF === "function") window.abrirSurtidoPDF();
+        else alert("El módulo para subir pedidos está cargando, intenta de nuevo en un momento.");
+    };
+
     function opsRenderServicios() {
         const el = document.getElementById("ops-tab-content");
         if (!el) return;
@@ -6950,6 +6957,7 @@
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:22px;">
                 ${tarjeta(ICON.plus, "Nuevo servicio técnico", "Abre el formulario ya existente en Operaciones", "typeof abrirFormServicio==='function' && abrirFormServicio()", typeof window.abrirFormServicio === "function")}
                 ${tarjeta(ICON.box, "Servicios / registros", "Ver la lista de servicios técnicos capturados", "typeof toggleListaServicios==='function' && toggleListaServicios()", typeof window.toggleListaServicios === "function")}
+                ${tarjeta(ICON.file, "Subir pedido ya hecho", "PDF en formato CHH, igual que en Ventas", "opsSubirPedidoPDF()", opsPuedeGestionar())}
                 ${tarjeta(NAV_ICONS.folios, "Folios de servicio", "Seguimiento de vencimiento, atención y solución (Connecteam)", "opsCambiarTab('folios')", true)}
                 ${tarjeta(ICON.check, "Pólizas", "Próximamente — módulo aún no existe en el portal", "", false)}
                 ${tarjeta(ICON.bell, "Servicios pendientes / completados", "Próximamente — requiere el módulo de Folios", "", false)}
@@ -16427,7 +16435,7 @@
         <div class="opsas-sec ${lock(listo3)}">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">Viáticos</div></div>
             <div class="opsas-sw ${s.viaticos ? "on" : ""}" onclick="opsAsSet('viaticos',${!s.viaticos})"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Este servicio requiere viáticos</div><div style="font-size:11.5px;color:#94a3b8;">Al guardar se abre la Solicitud de viáticos con estación, personal y horario ya cargados</div></div></div>
-            ${(() => { const ests = opsAsEstacionesElegidas(s); if (ests.length && ests.every(opsEsCuuCiudad)) return `<div class="opsas-note" style="background:#f0fdf4;color:#166534;">La estación está en Chihuahua ciudad: no aplican viáticos.</div>`; const sinDir = ests.filter(e => !String(e.direccionNormalizada || "").trim()); return s.viaticos && sinDir.length ? `<div class="opsas-note" style="background:#fef2f2;color:#991b1b;">${sinDir.length === 1 ? "Esta estación no tiene" : sinDir.length + " estaciones no tienen"} dirección capturada: sin dirección no se pueden calcular bien los viáticos (kilómetros, casetas, gasolina). Pide a Ventas que la complete o captúrala en Clientes.</div>` : ""; })()}
+            ${(() => { const ests = opsAsEstacionesElegidas(s); if (ests.length && ests.every(opsEsCuuCiudad) && !s.viaticos) return `<div class="opsas-note" style="background:#f0fdf4;color:#166534;">La estación está en el municipio de Chihuahua: normalmente no lleva viáticos. Si el técnico sale de la ciudad o pasa por caseta (por ejemplo, Sacramento), sí puedes activarlos.</div>`; const sinDir = ests.filter(e => !String(e.direccionNormalizada || "").trim()); return s.viaticos && sinDir.length ? `<div class="opsas-note" style="background:#fef2f2;color:#991b1b;">${sinDir.length === 1 ? "Esta estación no tiene" : sinDir.length + " estaciones no tienen"} dirección capturada: sin dirección no se pueden calcular bien los viáticos (kilómetros, casetas, gasolina). Pide a Ventas que la complete o captúrala en Clientes.</div>` : ""; })()}
             ${s.viaticos ? `<div class="opsas-note">Es el mismo formulario del botón "Nueva solicitud de viáticos": ruta en mapa, vehículo de Flotilla, gasolina, alimentos por horario, hotel y casetas. Notifica a quien autoriza y a Pagos.</div>` : ""}
         </div>` : "";
 
@@ -16501,7 +16509,9 @@
         const s = opsAS; if (!s) return;
         if (campo === "viaticos" && valor) {
             const ests = opsAsEstacionesElegidas(s);
-            if (ests.length && ests.every(opsEsCuuCiudad)) { alert("En Chihuahua ciudad no aplican viáticos."); return; }
+            // 3-nov-2026 (Paloma): el municipio de Chihuahua es grande; servicios sobre carretera
+            // (ej. km 95 a Juárez, caseta Sacramento) sí llevan viáticos. Se avisa, pero se permite.
+            if (ests.length && ests.every(opsEsCuuCiudad) && !confirm("La estación está en el municipio de Chihuahua, donde normalmente no aplican viáticos.\n\n¿Este servicio sí los requiere? (por ejemplo, el técnico sale de la ciudad o pasa por la caseta Sacramento)")) return;
         }
         s[campo] = valor;
         if (campo === "tipo") {
