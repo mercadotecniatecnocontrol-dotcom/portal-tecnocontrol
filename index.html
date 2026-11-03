@@ -8,7 +8,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Tecnocontrol">
     <meta name="theme-color" content="#1e3a8a">
-    <link rel="manifest" href="manifest.json">
     <title>TECNOCONTROL · Portal Operativo</title>
     <meta name="version" content="1776262807">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -1926,7 +1925,7 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
 ═══════════════════════════════════════════════════ -->
 <script>
 async function solicitarPush() {
-    document.getElementById('push-banner').style.display = 'none';
+    { const pb = document.getElementById('push-banner'); if (pb) pb.style.display = 'none'; }
     if (!('Notification' in window)) { alert('Tu navegador no soporta notificaciones'); return; }
     const perm = await Notification.requestPermission();
     localStorage.setItem('pushPerm', perm);
@@ -2674,7 +2673,7 @@ onAuthStateChanged(auth, async user=>{
         if (Notification.permission === 'granted') {
             actualizarPushStatus('granted');
         } else if (!declined && perm !== 'denied') {
-            setTimeout(()=>{ document.getElementById('push-banner').style.display='block'; }, 3000);
+            setTimeout(()=>{ const pb = document.getElementById('push-banner'); if (pb) pb.style.display='block'; }, 3000);
         } else {
             actualizarPushStatus(Notification.permission);
         }
