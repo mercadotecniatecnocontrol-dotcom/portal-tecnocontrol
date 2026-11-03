@@ -8065,6 +8065,75 @@
         if (idx === dias - 1 && resto > 0 && resto < (FIN - INI)) return { fecha: fechaISO, horaDecimal: INI, traslado: base.traslado, ejecucion: resto, dia: idx + 1, dias, multiDia: true };
         return { fecha: fechaISO, horaDecimal: INI, traslado: 0, ejecucion: FIN - INI, dia: idx + 1, dias, multiDia: true };
     }
+    // ═══ Lo que el técnico ya hizo se llena solo en su día (3-nov-2026, a petición de Paloma) ═══
+    // Cuando un técnico cierra un servicio en la app de Flotilla con evidencia, cada visita queda en
+    // f.atenciones (quién, inicio, fin, auxiliar). Antes el calendario solo enseñaba lo PROGRAMADO, así
+    // que los folios que se atienden sin programar (sobre todo "Atención a folios") no salían y había
+    // que capturarlos a mano. Ahora cada visita aparece sola en el día real, en la fila del técnico
+    // y en la del auxiliar que puso. Al darle clic se abre el servicio para ponerle comisión, garantía, etc.
+    // No escribe nada en la base: se arma con lo que el técnico ya subió.
+    let opsCalAuxCache = new Map();
+    function opsCalTecnicosDeTexto(texto) {
+        const crudo = String(texto || "").trim();
+        if (!crudo) return [];
+        if (opsCalAuxCache.has(crudo)) return opsCalAuxCache.get(crudo);
+        const tecs = opsTecOperativos().map(t => ({ id: t.id, palabras: opsNormalizaTexto(t.nombre).split(/\s+/).filter(Boolean) }));
+        const ids = new Set();
+        crudo.split(/[,;\/\n]+|\s+y\s+/i).map(x => opsNormalizaTexto(x).split(/\s+/).filter(w => w.length > 1)).filter(w => w.length).forEach(pal => {
+            // Todas las palabras escritas deben estar en el nombre del técnico ("Bruno Lechuga" ↔ "Bruno Lechuga Pérez").
+            const cand = tecs.filter(t => pal.every(w => t.palabras.some(tp => tp === w || (w.length >= 4 && tp.startsWith(w)))));
+            if (cand.length === 1) ids.add(cand[0].id);   // solo si no hay duda de quién es
+        });
+        const r = [...ids];
+        opsCalAuxCache.set(crudo, r);
+        return r;
+    }
+    function opsCalHoraDec(iso) {
+        const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
+        if (!m) return null;
+        if (/Z$|[+-]\d{2}:?\d{2}$/.test(String(iso))) { const d = new Date(iso); return isNaN(d) ? null : d.getHours() + d.getMinutes() / 60; }
+        return Number(m[1]) + Number(m[2]) / 60;
+    }
+    function opsCalFechaLocalDe(iso) {
+        const x = String(iso || "");
+        if (!x) return "";
+        if (/Z$|[+-]\d{2}:?\d{2}$/.test(x)) { const d = new Date(x); if (!isNaN(d)) return opsCalFechaISO(d); }
+        return x.slice(0, 10);
+    }
+    // Visitas (con evidencia) que hizo el técnico t ese día, como técnico o como auxiliar.
+    function opsCalVisitasTecDia(f, t, fechaISO) {
+        const correoT = opsCorreoDe(t), nomT = opsNormalizaTexto(t.nombre);
+        return (f.atenciones || []).filter(v => v && (v.fin || v.inicio) && opsCalFechaLocalDe(v.fin || v.inicio) === fechaISO).map(v => {
+            const esTec = (v.tecnicoId && v.tecnicoId === t.id) || (correoT && String(v.correo || "").toLowerCase().trim() === correoT) || (!v.tecnicoId && !v.correo && nomT && opsNormalizaTexto(v.nombre) === nomT);
+            const esAux = !esTec && opsCalTecnicosDeTexto(v.tecnicoAuxiliar).includes(t.id);
+            if (!esTec && !esAux) return null;
+            const fin = opsCalHoraDec(v.fin), ini = opsCalHoraDec(v.inicio && opsCalFechaLocalDe(v.inicio) === fechaISO ? v.inicio : null);
+            const hIni = ini !== null ? ini : (fin !== null ? Math.max(0, fin - 1) : 8);
+            const dur = fin !== null && fin > hIni ? fin - hIni : 1;
+            return { v, d: { fecha: fechaISO, horaDecimal: hIni, traslado: 0, ejecucion: Math.max(0.5, dur), realizado: true, rol: esTec ? "tecnico" : "auxiliar", resultado: v.resultado || "" } };
+        }).filter(Boolean);
+    }
+    // Todo lo del técnico t en el día: lo programado + lo que hizo con evidencia y no estaba programado para él ese día.
+    function opsCalOcupacionesTecDia(foliosBase, t, fechaISO) {
+        const prog = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolioDia(f, fechaISO) })).filter(o => o.d);
+        const ya = new Set(prog.map(o => o.f.id));
+        const hechos = [];
+        foliosBase.forEach(f => {
+            if (ya.has(f.id) || !(f.atenciones || []).length) return;
+            const vs = opsCalVisitasTecDia(f, t, fechaISO);
+            if (!vs.length) return;
+            const v = vs.find(x => x.d.rol === "tecnico") || vs[0];
+            hechos.push({ f, d: v.d });
+            ya.add(f.id);
+        });
+        return prog.concat(hechos).sort((a, b) => a.d.horaDecimal - b.d.horaDecimal);
+    }
+    function opsCalEtiquetaHecho(d) {
+        if (!d || !d.realizado) return "";
+        const txt = d.rol === "auxiliar" ? "AUXILIAR" : d.resultado === "avance_dia" ? "AVANCE" : d.resultado && d.resultado !== "finalizado" ? "VISITA" : "HECHO";
+        return `<b title="Se llenó solo con la evidencia que subió el técnico en la app" style="background:#0f766e;color:#fff;border-radius:4px;padding:0 4px;font-size:8.5px;margin-right:3px;">${txt}</b>`;
+    }
+
     // Buscador de técnicos (asistente y formulario de edición): oculta los que no coinciden,
     // sin volver a pintar la lista (así no se pierden las palomitas ya marcadas).
     window.opsFiltrarListaTec = function (input, idContenedor) {
@@ -9154,6 +9223,7 @@
     function opsCalRenderBody() {
         const cont = document.getElementById("ops-cal-body");
         if (!cont) return;
+        opsCalAuxCache = new Map(); // los nombres de auxiliares se vuelven a buscar con la lista de técnicos al día
         // Turno de folios y guardia del día que se ve (Día) o de hoy (Semana/Mes), para las etiquetas de cada técnico.
         try { opsCalTurnoCache = opsTurnoFolios(opsCalVista === "dia" ? opsCalFechaISO(opsCalFecha) : opsHoyLocal()); } catch (e) { opsCalTurnoCache = null; }
         if (opsCalVista === "dia") cont.innerHTML = opsCalRenderDia();
@@ -9298,12 +9368,11 @@
         function filaDe(t) {
             const ausente = cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             const guardia = cacheGuardias.find(g => g.tecnicoId === t.id && g.estado === "activa" && g.fechaInicio <= fechaISO && (!g.fechaFin || g.fechaFin >= fechaISO));
-            const ocupados = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id)).map(f => ({ f, d: opsCalDatosFolioDia(f, fechaISO) })).filter(o => o.d)
-                .sort((a, b) => a.d.horaDecimal - b.d.horaDecimal);
+            const ocupados = opsCalOcupacionesTecDia(foliosBase, t, fechaISO);
 
             const choqueSet = new Set();
             ocupados.forEach((o, i) => ocupados.forEach((o2, j) => {
-                if (i === j) return;
+                if (i === j || o.d.realizado || o2.d.realizado) return;
                 const fin1 = o.d.horaDecimal + o.d.traslado + o.d.ejecucion, fin2 = o2.d.horaDecimal + o2.d.traslado + o2.d.ejecucion;
                 if (o.d.horaDecimal < fin2 && fin1 > o2.d.horaDecimal) choqueSet.add(o.f.id);
             }));
@@ -9331,12 +9400,12 @@
                     const faltaGente = rolesReq !== null && (f.tecnicosAsignadosIds || []).length < rolesReq;
                     const anchoPct = Math.min((dur / totalHrs) * 100, 100);
                     const izqPct = Math.min(((ini - OPS_CAL_HORA_INICIO) / totalHrs) * 100, 100 - anchoPct);
-                    const sinHora = !(f.fechaProgramada || "").includes("T");
+                    const sinHora = !d.realizado && !(f.fechaProgramada || "").includes("T");
                     const finDec = d.horaDecimal + d.traslado + d.ejecucion;
                     const horaTxt = (opsEsDiaEspecial(fechaISO) ? opsEsDiaEspecial(fechaISO) + " · " : "") + (d.diaTraslado ? "DÍA DE TRASLADO (" + d.diaTraslado + ") · " : "") + (d.multiDia ? `Día ${d.dia}/${d.dias} · ` : "") + (sinHora ? "Sin hora" : (d.traslado + d.ejecucion > 0 ? `${opsCalFmtHora(d.horaDecimal)}–${opsCalFmtHora(finDec)}` : opsCalFmtHora(d.horaDecimal)));
                     const propTraslado = d.traslado ? (d.traslado / ((d.traslado + d.ejecucion) || 1)) * 100 : 0;
                     const tip = `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}\n${f.clienteNombre || "Sin cliente"} · ${opsCalTipoTexto(f)}\n${horaTxt} · ${cat.nombre} · ${cat.estNombre} (${info.estado})${choqueSet.has(f.id) ? "\n⚠ Choque de horario" : ""}${faltaGente ? "\n⚠ Falta personal contra la receta" : ""}`;
-                    return `<div class="ops-cal-card" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
+                    return `<div class="ops-cal-card" ${opsPuedeGestionar() && !d.realizado ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc(tip)}"
                         style="position:absolute;top:${carril * OPS_CAL_ALTO_CARRIL + 5}px;height:${OPS_CAL_ALTO_CARRIL - 6}px;left:${izqPct}%;width:calc(${anchoPct}% - 3px);box-sizing:border-box;background:${cat.fondo};border:none;border-radius:8px;${choqueSet.has(f.id) ? "outline:2px solid #E7402B;outline-offset:1px;" : ""}${cat.estClave === "cancelado" ? "opacity:.55;" : ""}box-shadow:inset 0 0 0 1px ${cat.borde},0 1px 2px rgba(15,23,42,.14);padding:3px 28px 5px 9px;overflow:hidden;cursor:pointer;z-index:2;display:flex;flex-direction:column;justify-content:space-between;">
                         <span style="position:absolute;top:4px;right:4px;">${opsCalBadgeEstatus(cat.estClave, 18)}</span>${opsCalSelloFinal(cat.estClave, false)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:#dc2626;"></div>` : ""}${opsMarcaCambioExterno(f)}
@@ -9348,7 +9417,7 @@
                         </div>
                         <div style="font-size:10px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(cat.nombre)} · ${opsEsc(f.clienteNombre || "Sin cliente")}</div>
                         <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                            <span style="font-size:10px;font-weight:600;color:${cat.texto};white-space:nowrap;">${horaTxt}</span>
+                            <span style="font-size:10px;font-weight:600;color:${cat.texto};white-space:nowrap;">${opsCalEtiquetaHecho(d)}${horaTxt}</span>
                             <span style="font-size:9px;font-weight:800;color:${cat.estColor};background:#fff;padding:0 6px;border-radius:999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(OPS_CAL_ESTATUS[cat.estClave].nombre)}</span>
                             ${opsCalMiniAvatares(f)}
                         </div>
@@ -9396,23 +9465,23 @@
 
         function celda(t, dia) {
             const fechaISO = opsCalFechaISO(dia);
-            const folios = foliosBase.filter(f => (f.tecnicosAsignadosIds || []).includes(t.id) && opsCalDatosFolioDia(f, fechaISO))
-                .sort((a, b) => opsCalDatosFolioDia(a, fechaISO).horaDecimal - opsCalDatosFolioDia(b, fechaISO).horaDecimal);
+            const ocup = opsCalOcupacionesTecDia(foliosBase, t, fechaISO);
+            const folios = ocup.map(o => o.f), datoDe = new Map(ocup.map(o => [o.f.id, o.d]));
             const ausente = cacheAusencias.some(a => a.tecnicoId === t.id && a.fechaInicio <= fechaISO && a.fechaFin >= fechaISO);
             if (ausente) return `<div style="height:100%;min-height:44px;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 5px,#f1f5f9 5px,#f1f5f9 10px);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#64748b;font-weight:700;">Ausente</div>`;
             if (!folios.length) return "";
-            const datos = folios.map(f => opsCalDatosFolioDia(f, fechaISO));
+            const datos = ocup.filter(o => !o.d.realizado).map(o => o.d);
             const conChoque = datos.some((d1, i) => datos.some((d2, j) => i !== j && d1.horaDecimal < (d2.horaDecimal + d2.traslado + d2.ejecucion) && (d1.horaDecimal + d1.traslado + d1.ejecucion) > d2.horaDecimal));
             const vis = folios.slice(0, 2), resto = folios.length - vis.length;
             return `<div style="${conChoque ? "outline:2px solid #E7402B;outline-offset:1px;border-radius:8px;" : ""}">
                 ${vis.map(f => {
-                    const cat = opsCalColorFolio(f), d = opsCalDatosFolioDia(f, fechaISO);
-                    const sinHora = !(f.fechaProgramada || "").includes("T");
+                    const cat = opsCalColorFolio(f), d = datoDe.get(f.id);
+                    const sinHora = !d.realizado && !(f.fechaProgramada || "").includes("T");
                     return `<div class="ops-cal-chip" onclick="opsAbrirPanelFolio('${f.id}')" title="${opsEsc((f.folioOS ? "O.S. " + f.folioOS + " · " : "") + f.estacion + " · " + (f.clienteNombre || "Sin cliente") + " · " + cat.nombre + " · " + cat.estNombre)}" style="position:relative;background:${d.diaTraslado ? "repeating-linear-gradient(135deg,#e2e8f0 0 6px,#f8fafc 6px 12px)" : cat.fondo};border:none;${d.diaTraslado ? "border-left:5px solid #0f172a;" : ""}box-shadow:inset 0 0 0 1px ${d.diaTraslado ? "#94a3b8" : cat.borde};${cat.estClave === "cancelado" ? "opacity:.55;" : ""}border-radius:6px;padding:3px 24px 3px 7px;margin-bottom:3px;cursor:pointer;overflow:hidden;">${opsMarcaCambioExterno(f)}
                         <span style="position:absolute;top:3px;right:3px;">${opsCalBadgeEstatus(cat.estClave, 16)}</span>${opsCalSelloFinal(cat.estClave, true)}
                         ${cat.estClave === "vencido" ? `<div style="position:absolute;left:0;right:0;bottom:0;height:3px;background:#dc2626;"></div>` : ""}
                         <div style="font-size:10.5px;font-weight:700;color:${d.diaTraslado ? "#0f172a" : cat.texto};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cat.empresa === "jomar" ? `<span style="font-size:8px;font-weight:800;color:${cat.color};background:#fff;padding:0 3px;border-radius:3px;margin-right:4px;">J</span>` : ""}${opsArcaBadgeMini(f)}${opsEsc(f.estacion)}</div>
-                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}${d.diaTraslado || d.ejecucion > 0 ? " · día de descanso trabajado" : ""}</b> ` : ""}${d.diaTraslado ? `<b style="background:#334155;color:#fff;border-radius:4px;padding:0 4px;">DÍA DE TRASLADO (${d.diaTraslado})</b> ` : ""}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
+                        <div style="font-size:9.5px;color:${cat.suave};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsDiaEspecial(fechaISO) ? `<b style="background:#fee2e2;color:#991b1b;border-radius:4px;padding:0 4px;">${opsEsDiaEspecial(fechaISO)}${d.diaTraslado || d.ejecucion > 0 ? " · día de descanso trabajado" : ""}</b> ` : ""}${d.diaTraslado ? `<b style="background:#334155;color:#fff;border-radius:4px;padding:0 4px;">DÍA DE TRASLADO (${d.diaTraslado})</b> ` : ""}${opsCalEtiquetaHecho(d)}${f.pausaActiva ? `<b style="color:#c2410c;">EN PAUSA · </b>` : ""}${d.multiDia ? `Día ${d.dia}/${d.dias} · ` : ""}${sinHora ? "Sin hora" : opsCalFmtHora(d.horaDecimal)}${d.ejecucion > 0 ? " · trabajo " + opsEsc(opsAsTxtHoras(d.ejecucion)) : ""}${d.traslado > 0 ? " · traslado " + opsEsc(opsAsTxtHoras(d.traslado)) : ""} · ${opsEsc(cat.nombre)} · ${opsEsc(cat.estNombre)}</div>
                     </div>`;
                 }).join("")}
                 ${resto > 0 ? `<div onclick="opsCalIrADia('${fechaISO}')" style="font-size:10px;font-weight:700;color:#1D2E73;background:#eef2f7;border-radius:6px;padding:2px 6px;text-align:center;cursor:pointer;">+${resto} más</div>` : ""}
@@ -9453,7 +9522,8 @@
 
         function contarDia(d) {
             const fechaISO = opsCalFechaISO(d);
-            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolioDia(f, fechaISO));
+            // También los servicios hechos ese día con evidencia, aunque no estuvieran programados ese día.
+            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolioDia(f, fechaISO) || (f.atenciones || []).some(v => v && (v.fin || v.inicio) && opsCalFechaLocalDe(v.fin || v.inicio) === fechaISO));
         }
 
         return `
