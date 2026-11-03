@@ -178,7 +178,8 @@
 </div>
 
 <!-- Compras vive en Supabase (oct-2026): este puente decide qué va a Supabase y qué sigue en Firestore -->
-<script src="compras-supabase.js?v=sb1"></script>
+<script src="operaciones-supabase.js?v=ops8"></script>
+<script src="compras-supabase.js?v=sb2"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, doc, getDoc, getDocs, updateDoc, query, where, orderBy, limit, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -194,7 +195,7 @@ const auth = getAuth(app);
 window.db = db;
 window.__tcModularFs = { collection, getDocs, addDoc };
 // Requisiciones y sus fotos van a Supabase por el puente (SF.*); lo demás
-// (colaboradores, empresas, organigrama, ubicaciones) sigue en Firestore.
+// (colaboradores, empresas, organigrama) también van a Supabase por el puente general.
 const SF = await window.tcComprasFS(fsMod);
 
 const $ = id => document.getElementById(id);
@@ -271,7 +272,7 @@ async function resolverMiPerfil(){
   if(!auth.currentUser) return;
   const correo = (auth.currentUser.email || '').toLowerCase().trim();
   try{
-    const snap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',correo), limit(1)));
+    const snap = await SF.getDocs(SF.query(SF.collection(db,'colaboradores'), SF.where('correo','==',correo), SF.limit(1)));
     miPerfil = snap.empty ? null : (snap.docs[0].data()||{});
   }catch(e){
     console.warn('[requisición] no se pudo resolver colaborador:', e.message);
@@ -287,15 +288,12 @@ const REQ_SIN_LOGO = new Set(['MARTIN DE LA O','PALOMA PINEDO']);
 let EMPRESAS = [];
 
 async function cargarEmpresas(){
-  const snap = await getDocs(query(collection(db,'empresas_requisicion'), orderBy('orden')));
+  const snap = await SF.getDocs(SF.query(SF.collection(db,'empresas_requisicion'), SF.orderBy('orden')));
   if(snap.empty){
-    const batch = writeBatch(db);
-    REQ_EMPRESAS_SEED.forEach((nombre,i)=>{
-      const ref = doc(collection(db,'empresas_requisicion'));
-      batch.set(ref, {nombre, logoBase64:null, orden:i});
-    });
-    await batch.commit();
-    const snap2 = await getDocs(query(collection(db,'empresas_requisicion'), orderBy('orden')));
+    for(let i=0;i<REQ_EMPRESAS_SEED.length;i++){
+      await SF.setDoc(SF.doc(SF.collection(db,'empresas_requisicion')), {nombre:REQ_EMPRESAS_SEED[i], logoBase64:null, orden:i});
+    }
+    const snap2 = await SF.getDocs(SF.query(SF.collection(db,'empresas_requisicion'), SF.orderBy('orden')));
     EMPRESAS = snap2.docs.map(d=>({id:d.id, ...d.data()}));
   } else {
     EMPRESAS = snap.docs.map(d=>({id:d.id, ...d.data()}));
@@ -481,10 +479,10 @@ async function notificarJefeArea(idDoc, data){
   try{
     // "Jefe de área por departamento" vive centralizado en config_organigrama
     // (se edita en admin-directorio.html, general para todo el portal).
-    const cfgSnap = await getDoc(doc(db,'config_organigrama','general'));
+    const cfgSnap = await SF.getDoc(SF.doc(db,'config_organigrama','general'));
     const cfg = cfgSnap.exists() ? cfgSnap.data() : null;
     if(!cfg || !cfg.jefesPorDepto) return;
-    const colabSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',data.solicitanteEmail), limit(1)));
+    const colabSnap = await SF.getDocs(SF.query(SF.collection(db,'colaboradores'), SF.where('correo','==',data.solicitanteEmail), SF.limit(1)));
     const depto = !colabSnap.empty ? colabSnap.docs[0].data().departamento : null;
     const jefe = depto ? cfg.jefesPorDepto[depto] : null;
     if(!jefe || !jefe.correo) return;
@@ -696,7 +694,7 @@ $('submit').onclick = async ()=>{
     // desde admin-directorio.html, general para todo el portal).
     let esDirector = false;
     try{
-      const colSnap = await getDocs(query(collection(db,'colaboradores'), where('correo','==',solicitanteEmail.toLowerCase().trim()), limit(1)));
+      const colSnap = await SF.getDocs(SF.query(SF.collection(db,'colaboradores'), SF.where('correo','==',solicitanteEmail.toLowerCase().trim()), SF.limit(1)));
       esDirector = !colSnap.empty && colSnap.docs[0].data().tipoUsuario==='director';
     }catch(e){ console.warn('[requisición] no se pudo checar tipoUsuario:', e.message); }
     const flujoAutorizacion = [

@@ -579,7 +579,11 @@
   }
 
   window.tcComprasFS = function (moduloFirestore) {
-    return sb().then(function () { return crearPuente(moduloFirestore || null); });
+    // 3-nov-2026: lo que no es de Compras (colaboradores, organigrama, empresas, usuarios…)
+    // pasa por el puente general de operaciones-supabase.js cuando la página lo cargó.
+    return sb().then(function () {
+      return (moduloFirestore && window.tcOpsFS) ? window.tcOpsFS(moduloFirestore) : moduloFirestore;
+    }).then(function (base) { return crearPuente(base || null); });
   };
 
   // ── Folios atómicos ───────────────────────────────────────────────────

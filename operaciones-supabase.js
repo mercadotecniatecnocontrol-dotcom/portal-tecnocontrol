@@ -56,6 +56,8 @@
   ['usuarios'].forEach(function (c) { RUTEADAS[c] = 1; });
   // 3-nov-2026: catálogo de productos (+ fotos) y config/almacenes (Almacén, Ventas, kiosco, Flotilla).
   ['catalogo', 'config'].forEach(function (c) { RUTEADAS[c] = 1; });
+  // 3-nov-2026: perfiles de colaboradores (+ documentos), organigrama y empresas que facturan requisiciones.
+  ['colaboradores', 'config_organigrama', 'empresas_requisicion'].forEach(function (c) { RUTEADAS[c] = 1; });
   window.tcFSRuteadas = function () { return Object.keys(RUTEADAS); };
   function esOps(ruta) { var b = String(ruta || '').split('/')[0]; return /^ops_/.test(b) || !!RUTEADAS[b]; }
   function autoId() {

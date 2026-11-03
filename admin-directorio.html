@@ -88,9 +88,13 @@
 
 </div>
 
+<script src="operaciones-supabase.js?v=ops8"></script>
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import * as fsReal from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// 3-nov-2026: usuarios, colaboradores y organigrama viven en Supabase (puente de operaciones-supabase.js).
+const { getFirestore } = fsReal;
+const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where } = await window.tcOpsFS(fsReal);
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const config = { apiKey:"AIzaSyBXh-P0oMtMiDjyz9PObuJ8DNfROlXvhLE", authDomain:"tecnocontrol-1c42f.firebaseapp.com", projectId:"tecnocontrol-1c42f", storageBucket:"tecnocontrol-1c42f.firebasestorage.app", appId:"1:27642771956:web:54225af9e386afded8a1a1" };

@@ -6316,15 +6316,12 @@ let _reqClientesCache=null; // solo nombres de ventas_clientes, cargado una vez 
 
 async function _reqCargarEmpresas(){
   if(_reqEmpresas)return _reqEmpresas;
-  const snap=await db.collection('empresas_requisicion').orderBy('orden').get();
+  const snap=await opsDb().collection('empresas_requisicion').orderBy('orden').get();
   if(snap.empty){
-    const batch=db.batch();
-    REQ_EMPRESAS_SEED.forEach((nombre,i)=>{
-      const ref=db.collection('empresas_requisicion').doc();
-      batch.set(ref,{nombre,logoBase64:null,orden:i});
-    });
-    await batch.commit();
-    const snap2=await db.collection('empresas_requisicion').orderBy('orden').get();
+    for(let i=0;i<REQ_EMPRESAS_SEED.length;i++){
+      await opsDb().collection('empresas_requisicion').doc().set({nombre:REQ_EMPRESAS_SEED[i],logoBase64:null,orden:i});
+    }
+    const snap2=await opsDb().collection('empresas_requisicion').orderBy('orden').get();
     _reqEmpresas=snap2.docs.map(d=>({id:d.id,...d.data()}));
   }else{
     _reqEmpresas=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -6478,7 +6475,7 @@ window.reqSubirLogo=function(input,empresaId){
   const reader=new FileReader();
   reader.onload=async()=>{
     try{
-      await db.collection('empresas_requisicion').doc(empresaId).update({logoBase64:reader.result});
+      await opsDb().collection('empresas_requisicion').doc(empresaId).update({logoBase64:reader.result});
       const emp=_reqEmpresas.find(e=>e.id===empresaId); if(emp)emp.logoBase64=reader.result;
       _reqActualizarLogo();
       toast('Logo actualizado','ok');
@@ -6571,7 +6568,7 @@ let _reqPuentePromesa=null;
 function _reqPuenteCompras(){
   if(_reqPuentePromesa) return _reqPuentePromesa;
   _reqPuentePromesa=(window.tcComprasFS ? Promise.resolve() : new Promise((ok,ko)=>{
-    const s=document.createElement('script'); s.src='compras-supabase.js?v=sb1';
+    const s=document.createElement('script'); s.src='compras-supabase.js?v=sb2';
     s.onload=()=>ok(); s.onerror=()=>ko(new Error('No se pudo cargar compras-supabase.js'));
     document.head.appendChild(s);
   })).then(()=>window.tcComprasFS(null)).catch(e=>{ _reqPuentePromesa=null; throw e; });
@@ -6635,10 +6632,10 @@ async function _reqNotificarJefeArea(idDoc, data){
   try{
     // "Jefe de área por departamento" vive centralizado en config_organigrama
     // (se edita en admin-directorio.html, general para todo el portal).
-    const cfgSnap = await db.collection('config_organigrama').doc('general').get();
+    const cfgSnap = await opsDb().collection('config_organigrama').doc('general').get();
     const cfg = cfgSnap.exists ? cfgSnap.data() : null;
     if(!cfg || !cfg.jefesPorDepto) return;
-    const colabSnap = await db.collection('colaboradores').where('correo','==',data.solicitanteEmail).limit(1).get();
+    const colabSnap = await opsDb().collection('colaboradores').where('correo','==',data.solicitanteEmail).limit(1).get();
     const depto = !colabSnap.empty ? colabSnap.docs[0].data().departamento : null;
     const jefe = depto ? cfg.jefesPorDepto[depto] : null;
     if(!jefe || !jefe.correo) return;
@@ -6832,7 +6829,7 @@ window.reqEnviar=async function(){
     // desde admin-directorio.html, general para todo el portal).
     let esDirectorReq=false;
     try{
-      const colSnapReq=await db.collection('colaboradores').where('correo','==',miCorreoReq).limit(1).get();
+      const colSnapReq=await opsDb().collection('colaboradores').where('correo','==',miCorreoReq).limit(1).get();
       esDirectorReq=!colSnapReq.empty && colSnapReq.docs[0].data().tipoUsuario==='director';
     }catch(e){ console.warn('[flotilla requisicion] no se pudo checar tipoUsuario:',e.message); }
     const flujoAutorizacion=[

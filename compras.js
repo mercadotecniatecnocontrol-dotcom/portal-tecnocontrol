@@ -44,7 +44,7 @@
   function _cpCargarPuente(){
     if(window.tcComprasFS) return Promise.resolve();
     return new Promise(function(ok, ko){
-      var s=document.createElement('script'); s.src='compras-supabase.js?v=sb1';
+      var s=document.createElement('script'); s.src='compras-supabase.js?v=sb2';
       s.onload=function(){ ok(); }; s.onerror=function(){ ko(new Error('No se pudo cargar compras-supabase.js')); };
       document.head.appendChild(s);
     });
