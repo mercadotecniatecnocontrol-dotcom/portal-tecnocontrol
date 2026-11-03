@@ -7242,7 +7242,7 @@ async function fmOpsComsRefrescar(forzar){
       if(!forzar&&_fmComsEn[f.id]&&ahora-_fmComsEn[f.id]<60000)continue;
       try{
         const sn=await opsDb().collection(OPS_COL_FOLIOS).doc(f.id).collection('comentarios').get();
-        const lista=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto&&!OPS_SV_DELICADO.test(c.texto);})
+        const lista=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto;})
           .sort(function(a,b){return String(a.createdAt||'').localeCompare(String(b.createdAt||''));});
         if(JSON.stringify(lista)!==JSON.stringify(_fmComs[f.id]||[]))cambio=true;
         _fmComs[f.id]=lista; _fmComsEn[f.id]=ahora;
@@ -8586,7 +8586,7 @@ window.fmOpsServDetalle=async function(id){
   let coms=[];
   try{
     const sn=await opsDb().collection(OPS_COL_FOLIOS).doc(id).collection('comentarios').get();
-    coms=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto&&!OPS_SV_DELICADO.test(c.texto);})
+    coms=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto;})
       .sort(function(a,b){return String(a.createdAt||'').localeCompare(String(b.createdAt||''));});
   }catch(e){console.warn('[OPS comentarios]',e);}
 
