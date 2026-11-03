@@ -6930,7 +6930,11 @@ function opsSvFecha(iso){
 function opsSvTipo(f){
   if(f.tipoFolio==='inspeccion')return f.normaInspeccion?'Inspección '+f.normaInspeccion:'Visita de inspección';
   if(f.tipoFolio==='laboratorio')return 'Laboratorio';
-  return f.categoriaServicio||'Servicio técnico';
+  // 2-nov-2026: servicios fuera de catálogo (programación libre) → se dice qué hay que hacer.
+  const prog=(f.serviciosProgramados||[]).filter(function(x){return x&&x.nombre;}).map(function(x){return x.nombre+(Number(x.cantidad)>1?' ×'+x.cantidad:'');});
+  if(prog.length)return prog.join(' · ');
+  if(f.conceptoGeneral&&!f.categoriaServicio)return f.conceptoGeneral;
+  return f.categoriaServicio||(f.comentarios?String(f.comentarios).split('\n')[0].slice(0,80):'Servicio técnico');
 }
 // ── Estación del servicio: nombre comercial y ubicación real (17-oct-2026) ──
 // El folio guarda una COPIA de la estación al darse de alta. Aquí se consulta el catálogo
@@ -7068,6 +7072,7 @@ async function fmOpsServCargar(){
         f._movido=mio; return String(mio.hasta||'')>=hace7;
       }).sort(function(a,b){return String(b._movido.hasta||'').localeCompare(String(a._movido.hasta||''));});
       actualizarBadges();
+      fmOpsComsRefrescar();
       if(vistaAct==='tareas')renderTareas();
       else if(OPS_CANDADO_ACTIVO&&OPS_CANDADO_VISTAS_LIBRES.indexOf(vistaAct)<0&&fmOpsPendientesCierre().length)fmVista(vistaAct);
       fmOpsEstRefrescar(false);
@@ -7225,6 +7230,38 @@ function fmOpsFechaGrandeHTML(f,dia,diaFin,esHoy,atrasado){
     '<div style="flex:1"><div style="font-size:15px;font-weight:900;text-transform:capitalize">'+(esHoy?'HOY · ':atrasado?'ATRASADO · ':'')+opsSvEsc(dSem)+' '+dNum+' de '+opsSvEsc(mes)+'</div>'+
     '<div style="font-size:12.5px;font-weight:700;opacity:.95">'+(hora?'a las '+opsSvEsc(hora):'Sin hora')+(diaFin!==dia?' · hasta el '+opsSvEsc(diaFin.split('-').reverse().join('/')):'')+(f.tiempoEjecucionHrs?' · '+f.tiempoEjecucionHrs+' h de trabajo':'')+'</div></div></div>';
 }
+// ── Comentarios de Operaciones en la tarjeta (2-nov-2026) ──
+// Antes solo se veían dentro de "Ver todo"; ahora salen los últimos en la tarjeta, al momento.
+const _fmComs={}, _fmComsEn={};
+let _fmComsCorriendo=false;
+async function fmOpsComsRefrescar(forzar){
+  if(_fmComsCorriendo)return; _fmComsCorriendo=true;
+  try{
+    const ahora=Date.now(); let cambio=false;
+    for(const f of misOpsServ.slice(0,40)){
+      if(!forzar&&_fmComsEn[f.id]&&ahora-_fmComsEn[f.id]<60000)continue;
+      try{
+        const sn=await opsDb().collection(OPS_COL_FOLIOS).doc(f.id).collection('comentarios').get();
+        const lista=sn.docs.map(function(d){return d.data();}).filter(function(c){return c&&c.texto&&!OPS_SV_DELICADO.test(c.texto);})
+          .sort(function(a,b){return String(a.createdAt||'').localeCompare(String(b.createdAt||''));});
+        if(JSON.stringify(lista)!==JSON.stringify(_fmComs[f.id]||[]))cambio=true;
+        _fmComs[f.id]=lista; _fmComsEn[f.id]=ahora;
+      }catch(e){}
+    }
+    if(cambio&&vistaAct==='tareas')renderTareas();
+  }finally{_fmComsCorriendo=false;}
+}
+function fmOpsComsHTML(f){
+  const cs=(_fmComs[f.id]||[]).filter(function(c){return !/^\[(Inicio|Finalizado|Pausa|Reanud|Tarea hecha|Llegada|Finalizado por cuadrilla)/i.test(c.texto);});
+  if(!cs.length)return '';
+  const ult=cs.slice(-2);
+  return '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:7px 10px;margin-bottom:8px">'+
+    '<div style="font-size:10px;font-weight:900;color:#1D4ED8;letter-spacing:.4px;margin-bottom:3px">COMENTARIOS ('+cs.length+')</div>'+
+    ult.map(function(c){return '<div style="font-size:11.5px;color:#1E293B;margin-top:3px"><b>'+opsSvEsc(c.autor||'Operaciones')+':</b> '+opsSvEsc(c.texto)+'</div>';}).join('')+
+    (cs.length>2?'<div style="font-size:10.5px;color:#64748B;margin-top:3px">Los demás en "Ver todo".</div>':'')+'</div>';
+}
+setInterval(function(){ if(document.visibilityState==='visible'&&misOpsServ.length)fmOpsComsRefrescar(); },90000);
+
 function fmOpsServHTML(){
   if(!misOpsServ.length)return fmOpsMovidosHTML();
   const hoy=new Date(); hoy.setMinutes(hoy.getMinutes()-hoy.getTimezoneOffset());
@@ -7255,6 +7292,7 @@ function fmOpsServHTML(){
         (f.estacionDireccion?'<div style="font-size:11.5px;color:#64748B;margin-bottom:6px">'+opsSvEsc(f.estacionDireccion)+'</div>':'')+
         ((f.tecnicosAsignadosNombres||[]).length>1?'<div style="font-size:11px;color:#64748B;margin-bottom:6px">Equipo: '+opsSvEsc(f.tecnicosAsignadosNombres.join(', '))+'</div>':'')+
         (f.contactoNombre?'<div style="font-size:11.5px;color:#334155;margin-bottom:6px">Contacto: <b>'+opsSvEsc(f.contactoNombre)+'</b>'+(tel?' · <a href="tel:'+opsSvEsc(tel)+'" style="color:#1D4ED8;font-weight:700">'+opsSvEsc(tel)+'</a>':'')+'</div>':'')+
+        fmOpsComsHTML(f)+
         (f.comentarios?'<div style="background:#F8FAFD;border:1px solid #E8EDF5;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#334155;margin-bottom:8px">'+opsSvEsc(f.comentarios)+'</div>':'')+
         (f.ultimoNoFinalizado?'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#92400E;margin-bottom:8px"><b>Visita anterior sin finalizar</b> ('+opsSvEsc(f.ultimoNoFinalizado.por||'')+'): '+opsSvEsc(f.ultimoNoFinalizado.motivo||'')+(f.ultimoNoFinalizado.detalle?' · '+opsSvEsc(f.ultimoNoFinalizado.detalle):'')+'</div>':'')+
         (enProc?'<div style="font-size:11px;color:#1E40AF;font-weight:700;margin-bottom:8px">Iniciado: '+opsSvEsc(opsSvFecha(f.iniciadoEn))+'</div>':'')+

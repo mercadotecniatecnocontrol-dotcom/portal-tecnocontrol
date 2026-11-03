@@ -44,7 +44,7 @@
     colonia: 'Tabalaopa',
     cp: '31376',
     ciudadEstado: 'Chihuahua, Chihuahua, M\u00e9xico',
-    telefono: '614-417-0152'
+    telefono: '614-484-2578'
   };
   // ── Clasificación del pedido (oct-2026) ──
   // La clave de cada partida decide a qué área va: Servicio y Viáticos → Operaciones,

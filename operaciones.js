@@ -9803,6 +9803,11 @@
                     <option value="">Mismo equipo: ${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "sin técnico")}</option>
                     ${cacheTec.filter(t => (t.estatus || "activo") !== "baja" && !opsEsAdministrativo(t)).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(t => `<option value="${opsEsc(t.id)}">Pasar a: ${opsEsc(t.nombre || "")}</option>`).join("")}
                 </select>
+                ${(f.tecnicosAsignadosIds || []).length > 1 ? `<div style="font-size:11px;font-weight:600;color:#475569;margin:8px 0 4px;">¿A quién se le quita? (deja de verlo en su app)</div>
+                <select id="ops-folio-reprog-quita-${f.id}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
+                    ${(f.tecnicosAsignadosIds || []).map((tid, i) => { const nom = (opsTecPorId(tid) || {}).nombre || (f.tecnicosAsignadosNombres || [])[i] || tid; return `<option value="${opsEsc(tid)}" ${tid === (f.tecnicoResponsableId || f.tecnicosAsignadosIds[0]) ? "selected" : ""}>Quitar a: ${opsEsc(nom)}</option>`; }).join("")}
+                    <option value="__nadie">A nadie (se suma al equipo)</option>
+                </select>` : ""}
                 <input id="ops-folio-reprog-motivo-${f.id}" placeholder="Detalle (si cambia de día o de técnico te pedirá la causa)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">
             </div>
             ${extra.length ? `<div style="font-size:11px;color:#64748b;margin-top:8px;line-height:1.6;">${extra.join("<br>")}</div>` : ""}
@@ -10521,7 +10526,12 @@
                 let ids;
                 if (actuales.includes(tecNuevo)) ids = actuales;
                 else if (!actuales.length) ids = [tecNuevo];
-                else { const quita = f.tecnicoResponsableId && actuales.includes(f.tecnicoResponsableId) ? f.tecnicoResponsableId : actuales[0]; ids = actuales.map(x => x === quita ? tecNuevo : x); }
+                else {
+                    // 2-nov-2026: se elige a quién se le quita (antes siempre era el responsable y el otro seguía viéndolo).
+                    const elegido = ((document.getElementById(`ops-folio-reprog-quita-${id}`) || {}).value || "").trim();
+                    if (elegido === "__nadie") ids = actuales.concat([tecNuevo]);
+                    else { const quita = elegido && actuales.includes(elegido) ? elegido : (f.tecnicoResponsableId && actuales.includes(f.tecnicoResponsableId) ? f.tecnicoResponsableId : actuales[0]); ids = actuales.map(x => x === quita ? tecNuevo : x); }
+                }
                 const r = await opsPedirCausaCambio("Pasar el servicio a otro técnico", `${(f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "sin técnico"} → ${(opsTecPorId(tecNuevo) || {}).nombre || ""}`, motivo);
                 if (!r) return;
                 const fBase = { ...f, tecnicosAsignadosIds: actuales.concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : []), tecnicoResponsableId: tecNuevo };
