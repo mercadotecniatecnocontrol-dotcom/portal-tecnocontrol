@@ -390,7 +390,7 @@ window.calcularAlertasClientes = async () => {
             });
         }
         try {
-            const snapV = await getDocs(query(collection(dbb,'checkins'), orderBy('fecha','desc')));
+            const snapV = await getDocs(query(collection(dbb,'ventas_checkins'), orderBy('fecha','desc')));
             const ultima={}; snapV.forEach(d=>{const r=d.data(); if(r.clienteId&&!ultima[r.clienteId]) ultima[r.clienteId]=r.fecha;});
             const ahora=Date.now();
             Object.entries(ultima).forEach(([cid,f])=>{

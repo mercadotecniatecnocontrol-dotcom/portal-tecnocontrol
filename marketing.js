@@ -2027,24 +2027,13 @@ function msolBindPaso(n){
     }
 }
 
-// Folio automático (contador en Firestore)
+// Folio automático (contador atómico en Supabase, nov-2026).
+// Un contador por año (ops_contadores/mkt_solicitudes_AAAA): el folio reinicia
+// solo cada año y dos envíos simultáneos nunca reciben el mismo número.
 async function msolGenerarFolio(){
-    const {addDoc,collection,doc,getDoc,getDocs,setDoc,updateDoc} = await mktFS();
     const anioActual = new Date().getFullYear();
-    const ref = doc(db, 'contadores', 'mkt_solicitudes');
-    const snap = await getDoc(ref);
-    let ultimo = 1;
-    if(snap.exists()){
-        const d = snap.data();
-        ultimo = (d.anio === anioActual) ? (Number(d.ultimo||0)+1) : 1;
-        await updateDoc(ref, {anio:anioActual, ultimo});
-    } else {
-        await setDoc(ref, {anio:anioActual, ultimo:1});
-    }
-    // Nota: esto no es una transacción atómica (setDoc/updateDoc simples según
-    // los helpers disponibles). En el caso extremo de dos envíos simultáneos
-    // al mismo segundo podría repetirse un folio; si eso llega a pasar en
-    // producción, conviene mover esto a runTransaction.
+    if(!window.tcOpsIncrementar) throw new Error('No se pudo generar el folio: recarga la página e intenta de nuevo.');
+    const ultimo = await window.tcOpsIncrementar('ops_contadores/mkt_solicitudes_' + anioActual, 'ultimo', 1);
     return `MKT-${anioActual}-${String(ultimo).padStart(6,'0')}`;
 }
 

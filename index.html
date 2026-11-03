@@ -4768,7 +4768,7 @@ function mostrarNavMobile(show, esVentas=false){
 // ── Módulo Marketing — cargado dinámicamente ──
 async function cargarModuloMarketing() {
     try {
-        const mod = await import('./marketing.js?v=2');
+        const mod = await import('./marketing.js?v=3');
         window.toggleMktDash = mod.toggleMktDash;
     } catch(e) {
         console.warn('[Marketing] No se pudo cargar marketing.js:', e.message);
@@ -6248,7 +6248,7 @@ window.irAlmacen = function(btn){
 <script src="roles-modulos.js"></script>
 <script src="pagos.js?v=fs2"></script>
 <script src="material-pdf.js?v=4"></script>
-<script src="ventas.js?v=fs3"></script>
+<script src="ventas.js?v=fs4"></script>
 <script src="contabilidad.js?v=fs2"></script>
 <script src="egresos.js?v=fs2"></script>
 <script src="rh-indicadores.js?v=fs2"></script>
