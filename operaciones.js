@@ -2424,6 +2424,7 @@
                 try { opsAvisosProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos de programación:", e); }
                 try { opsAvisarVentasEstado(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Ventas:", e); }
                 try { opsCalidadRevisarCierres(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Calidad:", e); }
+                try { opsCalTickerProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] franja de avisos:", e); }
                 if (tabActual === "folios") opsRenderFolios();
                 if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
                 if (tabActual === "resumen") opsRenderResumen();
@@ -8065,6 +8066,59 @@
         if (idx === dias - 1 && resto > 0 && resto < (FIN - INI)) return { fecha: fechaISO, horaDecimal: INI, traslado: base.traslado, ejecucion: resto, dia: idx + 1, dias, multiDia: true };
         return { fecha: fechaISO, horaDecimal: INI, traslado: 0, ejecucion: FIN - INI, dia: idx + 1, dias, multiDia: true };
     }
+    // ═══ Franja de avisos de servicios en el Calendario (3-nov-2026) ═══
+    // Mismos avisos que la pantalla TV (operaciones-tv.html): servicio nuevo, reprogramación, cambio de
+    // técnico, aviso o evidencia del técnico, terminado, cancelado y atrasado. Clic en un aviso = abre el servicio.
+    let opsCalAvisos = [], opsCalPrevio = null;
+    const opsCalAvisados = new Set();
+    function opsCalEstadoTV(f) {
+        if (f.completadoEn || f.fechaSolucion || f.cerradoPorCuadrilla) return "hecho";
+        if (f.iniciadoEn) return "curso";
+        if (opsFolioEsAbierto(f)) return "";
+        const t = Date.parse(f.fechaProgramada || "");
+        if (t && String(f.fechaProgramada).includes("T") && Date.now() - t > 3600000) return "atrasado";
+        return "";
+    }
+    function opsCalAvisar(tipo, tit, det, id) {
+        opsCalAvisos.unshift({ tipo, tit, det, id, h: new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) });
+        opsCalAvisos = opsCalAvisos.slice(0, 15);
+    }
+    function opsCalTickerProcesar(lista) {
+        const hoy = opsHoyLocal();
+        const m = new Map();
+        lista.forEach(f => { if (f && f.id && !f.esDemo && (!f.cancelado || (opsCalPrevio && opsCalPrevio.has(f.id)))) m.set(f.id, f); });
+        const titulo = f => f.estacion || f.clienteNombre || f.conceptoGeneral || "Servicio";
+        const tecs = f => (f.tecnicosAsignadosNombres || []).join(", ") || f.tecnicoResponsableNombre || "Sin técnico";
+        if (!opsCalPrevio) {
+            // Al abrir: se listan los atrasados de hoy (sin repetirlos después).
+            m.forEach((f, id) => { if (opsCalEstadoTV(f) === "atrasado") { opsCalAvisados.add(id); if (String(f.fechaProgramada).slice(0, 10) === hoy) opsCalAvisar("urg", "Servicio atrasado", titulo(f) + " · " + tecs(f) + " · no ha iniciado", id); } });
+        } else {
+            m.forEach((f, id) => {
+                const a = opsCalPrevio.get(id), q = titulo(f) + " · " + tecs(f);
+                if (!a) {
+                    if (f.completadoEn || f.fechaSolucion) opsCalAvisar("ok", "Servicio terminado", q, id);
+                    else opsCalAvisar("", "Servicio nuevo", q + (f.fechaProgramada ? " · " + String(f.fechaProgramada).replace("T", " ") : ""), id);
+                } else {
+                    if (String(a.fechaProgramada || "").slice(0, 16) !== String(f.fechaProgramada || "").slice(0, 16) && f.fechaProgramada) opsCalAvisar("cam", "Reprogramación", titulo(f) + ": ahora " + String(f.fechaProgramada).replace("T", " "), id);
+                    else if (tecs(a) !== tecs(f)) opsCalAvisar("cam", "Cambio de técnico", titulo(f) + ": " + tecs(f), id);
+                    if ((f.atenciones || []).length > (a.atenciones || []).length && !(f.completadoEn || f.fechaSolucion)) opsCalAvisar("", "Evidencia del técnico", q, id);
+                    if (String(f.comentarios || "").length > String(a.comentarios || "").length) opsCalAvisar("", "Aviso de técnico", q, id);
+                    if (!(a.completadoEn || a.fechaSolucion) && (f.completadoEn || f.fechaSolucion)) opsCalAvisar("ok", "Servicio terminado", q, id);
+                    if (!a.cancelado && f.cancelado) opsCalAvisar("urg", "Servicio cancelado", q, id);
+                }
+                if (opsCalEstadoTV(f) === "atrasado" && !opsCalAvisados.has(id)) { opsCalAvisados.add(id); opsCalAvisar("urg", "Servicio atrasado", q + " · no ha iniciado", id); }
+            });
+        }
+        opsCalPrevio = m;
+        opsCalTickerPintar();
+    }
+    function opsCalTickerPintar() {
+        const el = document.getElementById("ops-cal-ticker"); if (!el) return;
+        const col = { urg: "#E7402B", ok: "#15803d", cam: "#b45309" };
+        el.innerHTML = opsCalAvisos.length ? opsCalAvisos.slice(0, 6).map(a => `<span onclick="opsAbrirPanelFolio('${opsEsc(a.id)}')" title="Clic para abrir el servicio" style="cursor:pointer;white-space:nowrap;"><b style="color:${col[a.tipo] || "#1D2E73"};">${opsEsc(a.h)} ${opsEsc(a.tit)}:</b> ${opsEsc(a.det)}</span>`).join(`<span style="color:#cbd5e1;margin:0 10px;">|</span>`)
+            : `<span style="color:#94a3b8;">Sin avisos nuevos</span>`;
+    }
+
     // ═══ Lo que el técnico ya hizo se llena solo en su día (3-nov-2026, a petición de Paloma) ═══
     // Cuando un técnico cierra un servicio en la app de Flotilla con evidencia, cada visita queda en
     // f.atenciones (quién, inicio, fin, auxiliar). Antes el calendario solo enseñaba lo PROGRAMADO, así
@@ -8292,6 +8346,7 @@
                 </div>
             </div>
 
+            <div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;padding:7px 12px;margin-bottom:8px;border-left:4px solid #E7402B;box-shadow:0 1px 2px rgba(15,23,42,.05);"><span style="font-size:10px;font-weight:800;color:#E7402B;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;">Avisos</span><div id="ops-cal-ticker" style="flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-size:12px;color:#334155;scrollbar-width:thin;"></div></div>
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
             <div class="ops-cal-layout">
@@ -8312,6 +8367,7 @@
             </div>` : ""}
           ${opsCalFull ? "" : "</div>"}
         `;
+        opsCalTickerPintar();
         opsCalRenderBody();
         opsCalPintarPedidosVentas();
     }
@@ -18092,6 +18148,9 @@
                     fechaAtencion: iAt >= 0 ? toISO(fila[iAt]) : null,
                     fechaSolucion: iSlc >= 0 ? toISO(fila[iSlc]) : null,
                 };
+                // 3-nov-2026: renglones con solo el nombre de la estación (sin folio, fechas ni tareas) no son servicios;
+                // antes entraban vacíos y llenaban la lista "Sin fecha programada".
+                if (!registro.folioOS && !registro.folioClienteId && !registro.fechaSolicitud && !registro.vencimiento && !registro.fechaAtencion && !registro.fechaSolucion && !registro.comentarios) { omitidos++; continue; }
                 if (existentesSet.has(clave(registro))) { omitidos++; continue; }
                 await fs.addDoc(fs.collection(db, COL_FOLIOS), { ...registro, origen: "connecteam", hojaOrigen: nombreHoja, creadoEn: opsFechaHora() });
                 existentesSet.add(clave(registro));
