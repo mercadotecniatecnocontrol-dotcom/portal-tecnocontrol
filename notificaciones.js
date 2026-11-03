@@ -4,7 +4,9 @@
    Un solo sistema para TODO el portal:
      · Tarjetas abajo a la derecha, en 3 estilos (los que eligió Glen):
          normal    → borde azul, "ding" suave de 2 notas
-         urgente   → borde naranja, se sacude, 3 notas (solo lo que vence)
+         urgente   → borde naranja, 3 notas una sola vez (solo lo que vence)
+     · 3-nov-2026: sin alarma tipo sísmica (ya no se sacude ni repite el sonido);
+       cada aviso nuevo se dice en voz (motor único tcHablar, respeta "Avisos con voz").
          pendiente → borde gris, "toc" grave y corto
      · Se juntan: si llegan varias del mismo módulo seguidas, la tarjeta
        dice "3 nuevas" en vez de encimar tarjetas.
@@ -74,7 +76,6 @@
       '#tcn-pila{position:fixed;right:18px;bottom:78px;z-index:100050;display:flex;flex-direction:column-reverse;gap:8px;width:350px;max-width:calc(100vw - 28px);pointer-events:none;font-family:inherit}',
       '.tcn-card{pointer-events:auto;display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid #cbd5e1;border-left:4px solid #185FA5;padding:10px 12px;box-shadow:0 8px 24px rgba(15,23,42,.16);cursor:pointer;animation:tcnIn .18s ease}',
       '.tcn-card.urgente{border:2px solid #D85A30;border-radius:8px}',
-      '.tcn-card.sacude{animation:tcnSac 1.6s ease-in-out 3}',
       '.tcn-t1{font-size:13px;font-weight:700;color:#1e293b;margin:0;line-height:1.3}',
       '.tcn-t2{font-size:12px;color:#475569;margin:2px 0 0;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}',
       '.tcn-mod{font-size:10.5px;color:#64748b;margin-top:3px}',
@@ -87,7 +88,6 @@
       '.tcn-item{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer}',
       '.tcn-item:hover{background:#f8fafc}',
       '@keyframes tcnIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}',
-      '@keyframes tcnSac{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}}',
       '@media (max-width:768px){#tcn-campana{bottom:84px}#tcn-pila{left:12px;right:12px;width:auto;bottom:' + (window.TC_NOTIF_ABAJO_MOVIL || 142) + 'px}#tcn-panel{bottom:142px}}'
     ].join('\n');
     document.head.appendChild(s);
@@ -120,7 +120,7 @@
       tarjetas[g] = t;
       pila().appendChild(t);
     }
-    t.className = 'tcn-card' + (n.nivel === 'urgente' ? ' urgente sacude' : '');
+    t.className = 'tcn-card' + (n.nivel === 'urgente' ? ' urgente' : '');
     if (n.nivel !== 'urgente') t.style.borderLeftColor = est.borde;
     var titulo = mismas > 1 ? (n.modulo || 'Portal') + ' · ' + mismas + ' nuevas' : n.titulo;
     t.innerHTML = svg(est.icono, est.borde) +
@@ -139,10 +139,6 @@
     // Normal y pendiente se ocultan solas a los 15 s (quedan en la campanita); urgente se queda.
     clearTimeout(t._tm);
     if (n.nivel !== 'urgente') t._tm = setTimeout(function () { quitarTarjeta(g); }, 15000);
-    else {
-      clearTimeout(t._rep);
-      t._rep = setTimeout(function () { if (tarjetas[g]) { SONIDO.urgente(); t.classList.remove('sacude'); void t.offsetWidth; t.classList.add('sacude'); } }, 30000);
-    }
   }
   function quitarTarjeta(g) { var t = tarjetas[g]; if (t) { clearTimeout(t._tm); clearTimeout(t._rep); t.remove(); delete tarjetas[g]; } }
 
@@ -203,8 +199,10 @@
       irArea(ir.area || (t && t.area));
       cuando(function () { return typeof window.abrirChat === 'function'; }, function () { window.abrirChat(ir.id, (t && t.actividad) || ir.nombre || 'Tarea', ir.area || (t && t.area) || ''); });
     } else if (ir.tipo === 'ops_folio') {
+      // 3-nov-2026: lleva a la programación (Calendario, en el día del servicio) y abre el servicio.
       irArea('Operaciones');
-      cuando(function () { return typeof window.opsAbrirPanelFolio === 'function' && document.getElementById('ops-tab-content'); }, function () { window.opsAbrirPanelFolio(ir.id); }, 60);
+      cuando(function () { return (typeof window.opsIrAProgramacion === 'function' || typeof window.opsAbrirPanelFolio === 'function') && document.getElementById('ops-tab-content'); },
+        function () { if (typeof window.opsIrAProgramacion === 'function') window.opsIrAProgramacion(ir.id); else window.opsAbrirPanelFolio(ir.id); }, 60);
     } else if (ir.tipo === 'ops_tab') {
       irArea('Operaciones');
       cuando(function () { return typeof window.opsCambiarTab === 'function' && document.getElementById('ops-tab-content'); }, function () { window.opsCambiarTab(ir.tab); }, 60);
@@ -234,8 +232,16 @@
     if (lista.some(function (x) { return x.id === n.id; })) return;
     lista.unshift(n); lista = lista.slice(0, MAX); guardar(); pintarBadge();
     if (panelAbierto) pintarPanel(); else tarjeta(n);
-    if (!o.silencio) (SONIDO[n.nivel] || SONIDO.normal)();
+    if (!o.silencio) { (SONIDO[n.nivel] || SONIDO.normal)(); hablar(o, n); }
     return n.id;
+  }
+  // Voz del aviso: espera un momento; si otro módulo ya lo dijo en voz (Operaciones, Almacén…), no se repite.
+  function hablar(o, n) {
+    if (o.sinVoz || typeof window.tcHablar !== 'function') return;
+    var frase = String(o.voz || (n.titulo + (n.texto ? '. ' + n.texto : ''))).replace(/\s+/g, ' ').trim();
+    if (!frase) return;
+    var desde = Date.now();
+    setTimeout(function () { if ((window.tcHablar.ultimo || 0) > desde - 4000) return; window.tcHablar(frase); }, 1500);
   }
   function nivelDe(titulo, texto, extra) {
     var t = (String(titulo) + ' ' + String(texto)).toLowerCase();

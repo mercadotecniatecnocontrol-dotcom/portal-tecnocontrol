@@ -7097,6 +7097,9 @@
     // Solo suena mientras el portal está abierto en esta pestaña — misma limitación
     // honesta que el resto de las alarmas del portal (Flotilla/siniestros).
     function opsReproducirAlarmaFolio() {
+        // 3-nov-2026 (Glen): se quitó la alarma tipo sísmica del portal. El aviso llega como ventana
+        // del centro de notificaciones, con su sonido y voz, y al darle clic lleva a la programación.
+        return;
         if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         if (window.tcNotif) return; // el centro de notificaciones del portal ya suena (tono urgente)
         try {
@@ -8180,7 +8183,100 @@
             hechos.push({ f, d: v.d });
             ya.add(f.id);
         });
+        // 3-nov-2026 (Paloma): también lo que el técnico cerró en la app de Pólizas o en Connecteam.
+        const ext = opsCalExtIndice().porTec.get(t.id + "|" + fechaISO) || [];
+        if (ext.length) {
+            const ok = opsCalExtPermitidos(), base = new Set(foliosBase.map(f => f.id));
+            ext.forEach(o => {
+                if (ya.has(o.f.id) || !(o.f._ext ? ok.has(o.f.id) : base.has(o.f.id))) return;
+                hechos.push({ f: o.f, d: o.d }); ya.add(o.f.id);
+            });
+        }
         return prog.concat(hechos).sort((a, b) => a.d.horaDecimal - b.d.horaDecimal);
+    }
+
+    // ═══ Trabajos cerrados fuera del alta de servicio (3-nov-2026, Paloma) ═══
+    // Pólizas de la app de Pólizas (j2tecno-app) y de Connecteam: se pintan solas en el calendario,
+    // en la fila del técnico y en el día que las hizo, con la etiqueta HECHO. No se guarda nada nuevo.
+    // Si la póliza ya está ligada a un servicio del portal, se muestra ese servicio.
+    let opsCalExt = { clave: "", en: 0, cargando: false, pol: [], ct: [], ver: 0 };
+    let opsCalExtIdx = { clave: "", porTec: new Map(), porDia: new Map(), lista: [] }, opsCalExtOk = { clave: "", ids: new Set() };
+    async function opsCalExtCargar() {
+        if (opsAccFiltroEmpresa() || opsCalExt.cargando) return;
+        const a = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth(), 1 - 7);
+        const b = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth() + 1, 8);
+        const clave = opsCalFechaISO(a) + "|" + opsCalFechaISO(b);
+        if (clave === opsCalExt.clave && Date.now() - opsCalExt.en < 300000) return; // se refresca cada 5 min
+        opsCalExt.cargando = true;
+        let cambio = false;
+        try {
+            const sb = await opsSb();
+            const [r1, r2] = await Promise.all([
+                sb.rpc("ops_polizas_para_revision", { p_desde: a.toISOString(), p_hasta: b.toISOString() }),
+                sb.from("connecteam_polizas").select("id,tecnico,fecha_servicio,estacion,cliente,os,folio_id,completado_en")
+                    .gte("fecha_servicio", a.toISOString()).lt("fecha_servicio", b.toISOString()).limit(3000)]);
+            if (r1 && r1.error) console.warn("[calendario] pólizas de la app:", r1.error.message);
+            if (r2 && r2.error) console.warn("[calendario] pólizas de Connecteam:", r2.error.message);
+            const pol = (r1 && !r1.error && r1.data) || [], ct = (r2 && !r2.error && r2.data) || [];
+            const firma = l => l.length + ":" + l.map(x => x.id).join(",").length;
+            cambio = clave !== opsCalExt.clave || firma(pol) !== firma(opsCalExt.pol) || firma(ct) !== firma(opsCalExt.ct);
+            opsCalExt.pol = pol; opsCalExt.ct = ct;
+            if (cambio) opsCalExt.ver++;
+        } catch (e) { console.warn("[calendario] trabajos de las apps:", e); }
+        finally { opsCalExt.clave = clave; opsCalExt.en = Date.now(); opsCalExt.cargando = false; }
+        if (cambio && tabActual === "calendario" && document.getElementById("ops-cal-body")) opsCalRenderBody();
+    }
+    function opsCalExtIndice() {
+        const clave = opsCalExt.ver + "|" + cacheTec.length + "|" + cacheFolios.length;
+        if (opsCalExtIdx.clave === clave) return opsCalExtIdx;
+        const porTec = new Map(), porDia = new Map(), lista = [];
+        const porPoliza = new Map(cacheFolios.filter(f => f.polizaApp && f.polizaApp.id).map(f => [f.polizaApp.id, f]));
+        const porId = new Map(cacheFolios.map(f => [f.id, f]));
+        const poner = (tecTexto, cuando, real, falso) => {
+            if (!cuando) return;
+            const ids = opsCalTecnicosDeTexto(tecTexto); if (!ids.length) return; // sin técnico reconocido no se adivina
+            const fecha = opsCalFechaLocalDe(cuando), h = opsCalHoraDec(cuando);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+            let f = real;
+            if (!f || f.cancelado) {
+                f = Object.assign({ tipoFolio: "servicio", categoriaServicio: "Póliza de mantenimiento", tipoServicioDemo: "Póliza", fechaProgramada: fecha + "T" + String(Math.floor(h !== null ? h : 9)).padStart(2, "0") + ":00",
+                    fechaSolucion: cuando, completadoEn: cuando, tecnicosAsignadosIds: ids }, falso);
+                lista.push(f);
+            }
+            const d = { fecha, horaDecimal: h !== null ? h : 9, traslado: 0, ejecucion: 1, realizado: true, rol: "tecnico", resultado: "finalizado" };
+            ids.forEach(tid => { const k = tid + "|" + fecha; if (!porTec.has(k)) porTec.set(k, []); porTec.get(k).push({ f, d }); });
+            if (!porDia.has(fecha)) porDia.set(fecha, []);
+            porDia.get(fecha).push(f);
+        };
+        opsCalExt.pol.forEach(p => poner(p.tecnico_nombre, p.fecha, porPoliza.get(p.id),
+            { id: "ext:pol:" + p.id, _ext: { tipo: "pol", p }, estacion: p.estacion_nombre || "Póliza", clienteNombre: String(p.cliente_razon_social || "").trim(), folioOS: p.folio || "" }));
+        opsCalExt.ct.forEach(x => poner(x.tecnico, x.fecha_servicio, x.folio_id ? porId.get(x.folio_id) : null,
+            { id: "ext:ct:" + x.id, _ext: { tipo: "ct", x }, estacion: x.estacion || "Póliza", clienteNombre: x.cliente || "", folioOS: x.os || "", fechaSolucion: x.completado_en || x.fecha_servicio, completadoEn: x.completado_en || x.fecha_servicio }));
+        opsCalExtIdx = { clave, porTec, porDia, lista };
+        return opsCalExtIdx;
+    }
+    // Los mismos filtros del calendario (plaza, tipo, cliente, texto…) aplicados a esas pólizas.
+    function opsCalExtPermitidos() {
+        const idx = opsCalExtIndice();
+        const clave = [idx.clave, opsAccFiltroEmpresa(), opsCalFiltroTipo, opsCalFiltroCliente, opsCalFiltroOrigen, opsCalFiltroEstado, opsCalFiltroCategoria, opsCalFiltroPlaza, opsCalFiltroTexto].join("|");
+        if (opsCalExtOk.clave !== clave) opsCalExtOk = { clave, ids: new Set(opsCalFoliosFiltrados(idx.lista).map(f => f.id)) };
+        return opsCalExtOk.ids;
+    }
+    // Para la vista Mes: lo hecho en las apps ese día (sin repetir lo que ya cuenta el calendario).
+    function opsCalExtDelDia(fechaISO, yaContados) {
+        const l = opsCalExtIndice().porDia.get(fechaISO) || []; if (!l.length) return [];
+        const ok = opsCalExtPermitidos(), base = new Set(opsCalFoliosFiltrados().map(f => f.id)), ya = new Set(yaContados.map(f => f.id)), r = [];
+        l.forEach(f => { if (!ya.has(f.id) && (f._ext ? ok.has(f.id) : base.has(f.id))) { ya.add(f.id); r.push(f); } });
+        return r;
+    }
+    // Clic en una póliza que no está ligada a un servicio: abre su revisión (app de Pólizas) o la pestaña de Connecteam.
+    function opsCalAbrirExterno(id) {
+        const f = opsCalExtIndice().lista.find(x => x.id === id);
+        if (!f) { alert("No se encontró esa póliza — recarga la página e intenta otra vez."); return; }
+        if (f._ext.tipo === "pol") {
+            if (!opsRevPolizas.some(p => p.id === f._ext.p.id)) opsRevPolizas.push(f._ext.p);
+            window.opsRevAbrirPoliza(f._ext.p.id);
+        } else window.opsCambiarTab("connecteam");
     }
     function opsCalEtiquetaHecho(d) {
         if (!d || !d.realizado) return "";
@@ -8207,8 +8303,8 @@
 
     // Folios visibles según los filtros del Calendario. Es la ÚNICA función que aplica filtros de folio:
     // las tarjetas de arriba, la detección de choques y las tres vistas la comparten.
-    function opsCalFoliosFiltrados() {
-        let l = cacheFolios;
+    function opsCalFoliosFiltrados(lista) {
+        let l = lista || cacheFolios;
         const fe = opsAccFiltroEmpresa();
         if (fe) l = l.filter(f => opsFolioDeEmpresa(f, fe)); // usuario limitado a una empresa (ej. VH)
         if (opsCalFiltroTipo === "inspeccion") l = l.filter(f => f.tipoFolio === "inspeccion");
@@ -9244,6 +9340,21 @@
     };
     window.opsCalToggleCategoria = function (cat) { opsCalSetFiltro("categoria", opsCalFiltroCategoria === cat ? "todas" : cat); };
     window.opsCalIrAFecha = function (fechaISO) { if (!fechaISO) return; opsCalFecha = new Date(fechaISO + "T00:00:00"); opsRenderCalendario(); };
+    // 3-nov-2026: clic en una notificación → Calendario en el día del servicio (vista Día) y se abre el servicio.
+    window.opsIrAProgramacion = function (folioId) {
+        const f = cacheFolios.find(x => x.id === folioId);
+        if (f) {
+            const v = (f.atenciones || []).filter(x => x && (x.fin || x.inicio)).slice(-1)[0];
+            const fecha = String(f.fechaProgramada || "").slice(0, 10) || (v ? opsCalFechaLocalDe(v.fin || v.inicio) : "") || String(f.fechaSolucion || "").slice(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+                opsCalFecha = new Date(fecha + "T00:00:00"); opsCalVista = "dia";
+                const pl = opsPlazaFolio(f);
+                if (pl && opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" && pl !== opsCalFiltroPlaza) opsCalFiltroPlaza = pl;
+                if (tabActual !== "calendario") window.opsCambiarTab("calendario"); else opsRenderCalendario();
+            }
+        }
+        window.opsAbrirPanelFolio(folioId);
+    };
     window.opsCalIrADia = function (fechaISO) { opsCalFecha = new Date(fechaISO + "T00:00:00"); opsCalVista = "dia"; opsRenderCalendario(); };
 
     function opsCalEtiquetaFecha() {
@@ -9280,6 +9391,8 @@
         const cont = document.getElementById("ops-cal-body");
         if (!cont) return;
         opsCalAuxCache = new Map(); // los nombres de auxiliares se vuelven a buscar con la lista de técnicos al día
+        opsCalExtIdx.clave = ""; // con la lista de técnicos al día también se vuelven a ligar las pólizas de las apps
+        opsCalExtCargar();
         // Turno de folios y guardia del día que se ve (Día) o de hoy (Semana/Mes), para las etiquetas de cada técnico.
         try { opsCalTurnoCache = opsTurnoFolios(opsCalVista === "dia" ? opsCalFechaISO(opsCalFecha) : opsHoyLocal()); } catch (e) { opsCalTurnoCache = null; }
         if (opsCalVista === "dia") cont.innerHTML = opsCalRenderDia();
@@ -9579,7 +9692,8 @@
         function contarDia(d) {
             const fechaISO = opsCalFechaISO(d);
             // También los servicios hechos ese día con evidencia, aunque no estuvieran programados ese día.
-            return opsCalFoliosFiltrados().filter(f => opsCalDatosFolioDia(f, fechaISO) || (f.atenciones || []).some(v => v && (v.fin || v.inicio) && opsCalFechaLocalDe(v.fin || v.inicio) === fechaISO));
+            const l = opsCalFoliosFiltrados().filter(f => opsCalDatosFolioDia(f, fechaISO) || (f.atenciones || []).some(v => v && (v.fin || v.inicio) && opsCalFechaLocalDe(v.fin || v.inicio) === fechaISO));
+            return l.concat(opsCalExtDelDia(fechaISO, l)); // + pólizas cerradas en la app de Pólizas o Connecteam (3-nov-2026)
         }
 
         return `
@@ -11026,6 +11140,7 @@
 
     window.opsAbrirPanelFolio = async function (folioId) {
       try {
+        if (String(folioId).startsWith("ext:")) { opsCalAbrirExterno(folioId); return; } // póliza de la app de Pólizas / Connecteam
         const f = cacheFolios.find(x => x.id === folioId);
         if (!f) { alert("No se encontró ese folio en memoria — recarga la página e intenta otra vez."); return; }
         const feP = opsAccFiltroEmpresa();
