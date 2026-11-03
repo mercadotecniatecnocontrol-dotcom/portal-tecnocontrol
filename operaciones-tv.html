@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operaciones · Pantalla TV</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1D2E73;--rojo:#E7402B;--fondo:#0B1440;--card:#fff;--txt:#1e293b;--sub:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--fondo);color:#fff;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;overflow:hidden}
+#top{display:flex;align-items:center;gap:24px;padding:14px 28px;background:var(--navy);border-bottom:4px solid var(--rojo)}
+#top h1{font-size:26px;font-weight:800}
+#plaza{font-size:18px;background:rgba(255,255,255,.12);padding:6px 14px;border-radius:10px}
+#reloj{margin-left:auto;font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+#estado{font-size:13px;opacity:.7}
+#main{display:grid;grid-template-columns:1fr 360px;height:calc(100% - 70px)}
+#semana{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;padding:14px;overflow:hidden}
+.dia{background:rgba(255,255,255,.06);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+.dia.hoy{background:rgba(255,255,255,.13);outline:3px solid #60A5FA}
+.dia h2{font-size:17px;font-weight:800;padding:10px 12px;text-transform:capitalize;display:flex;justify-content:space-between}
+.dia h2 span{font-size:14px;background:rgba(255,255,255,.18);border-radius:999px;padding:1px 10px}
+.lista{flex:1;overflow:hidden;padding:0 8px 8px;display:flex;flex-direction:column;gap:7px}
+.srv{background:var(--card);color:var(--txt);border-radius:10px;padding:8px 10px;border-left:6px solid var(--navy)}
+.srv .h{font-size:13px;font-weight:800;color:var(--navy)}
+.srv .t{font-size:15px;font-weight:800;line-height:1.2;margin:2px 0}
+.srv .e{font-size:13px;color:#334155}
+.srv .p{font-size:12px;color:var(--sub);margin-top:2px}
+.srv.hecho{opacity:.55;border-left-color:#16A34A}
+.srv.curso{border-left-color:#0891B2}
+.srv.atrasado{border-left-color:var(--rojo);background:#FEF2F2}
+.srv.nuevo{animation:brillo 1.2s ease-in-out 6}
+@keyframes brillo{50%{box-shadow:0 0 0 5px #FACC15}}
+.mas{font-size:13px;opacity:.8;text-align:center}
+#avisos{background:rgba(0,0,0,.25);padding:14px;overflow:hidden;display:flex;flex-direction:column;gap:10px}
+#avisos h3{font-size:18px;font-weight:800}
+.av{background:#fff;color:var(--txt);border-radius:12px;padding:10px 12px;border-left:6px solid #3B82F6}
+.av.urg{border-left-color:var(--rojo)}.av.ok{border-left-color:#16A34A}.av.cam{border-left-color:#F59E0B}
+.av b{display:block;font-size:14px}.av div{font-size:13px;color:#334155;margin-top:2px}.av small{font-size:11px;color:var(--sub)}
+#flash{position:fixed;inset:auto 40px 40px auto;max-width:620px;background:#fff;color:var(--txt);border-radius:18px;padding:22px 26px;border-left:12px solid var(--rojo);box-shadow:0 20px 60px rgba(0,0,0,.5);display:none;z-index:9}
+#flash b{font-size:26px;display:block}#flash div{font-size:20px;margin-top:6px}
+#activar{position:fixed;inset:0;background:rgba(11,20,64,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:10;cursor:pointer;text-align:center}
+#activar b{font-size:34px}#activar span{font-size:18px;opacity:.8}
+</style>
+</head>
+<body>
+<div id="top">
+  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+  <h1>Calendario de Operaciones</h1>
+  <div id="plaza"></div>
+  <div id="estado">Cargando…</div>
+  <div id="reloj"></div>
+</div>
+<div id="main">
+  <div id="semana"></div>
+  <div id="avisos"><h3>Últimos avisos</h3><div id="avLista" style="display:flex;flex-direction:column;gap:10px"></div></div>
+</div>
+<div id="flash"></div>
+<div id="activar" onclick="tvActivar()">
+  <svg width="70" height="70" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+  <b>Toca la pantalla para activar el sonido</b>
+  <span>Solo se hace una vez. Después la pantalla avisa sola.</span>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// Pantalla TV de Operaciones: solo lectura, sin botones. Se actualiza cada 20 s.
+// Filtro de plaza por link: operaciones-tv.html?plaza=Juárez (si no, Chihuahua).
+const SB=supabase.createClient('https://vlbyjoqessxcmkejcujp.supabase.co','sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8');
+const PLAZA=new URLSearchParams(location.search).get('plaza')||'Chihuahua';
+const norm=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+let previo=null, avisos=[], ac=null, sonido=false;
+const avisados=new Set();
+document.getElementById('plaza').textContent='Plaza '+PLAZA;
+
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function hora(fp){const m=String(fp||'').match(/T(\d{2}:\d{2})/);return m?m[1]:'';}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function titulo(f){
+  if(f.tipoFolio==='inspeccion') return 'Inspección '+(f.normaInspeccion||'');
+  const sp=Array.isArray(f.serviciosProgramados)&&f.serviciosProgramados[0];
+  return f.conceptoGeneral||f.categoriaServicio||(typeof sp==='string'?sp:(sp&&(sp.nombre||sp.servicio)))||'Servicio';
+}
+function tecnicos(f){return (f.tecnicosAsignadosNombres||[]).join(', ')||f.tecnicoResponsableNombre||'Sin técnico';}
+function folio(f){return f.folioOS||f.folioClienteId||(f.folioNumero?'#'+f.folioNumero:'');}
+function estado(f){
+  if(f.completadoEn||f.cerradoPorCuadrilla) return 'hecho';
+  if(f.iniciadoEn) return 'curso';
+  const t=Date.parse(f.fechaProgramada); if(t&&Date.now()-t>60*60*1000) return 'atrasado';
+  return '';
+}
+
+function tvActivar(){
+  try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();ac.resume();}catch(e){}
+  sonido=true; document.getElementById('activar').remove();
+  if('speechSynthesis' in window) speechSynthesis.getVoices();
+}
+function tono(urgente){
+  if(!sonido||!ac) return;
+  const notas=urgente?[880,660,880,660]:[660,880];
+  notas.forEach((f,i)=>{const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime+i*0.28;
+    o.frequency.value=f;o.type='sine';g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.4,t+0.03);g.gain.exponentialRampToValueAtTime(0.0001,t+0.25);
+    o.connect(g).connect(ac.destination);o.start(t);o.stop(t+0.27);});
+}
+function voz(txt){
+  if(!sonido||!('speechSynthesis' in window)) return;
+  const u=new SpeechSynthesisUtterance(txt);u.lang='es-MX';u.rate=0.95;
+  const v=speechSynthesis.getVoices().find(x=>/^es/i.test(x.lang));if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+let colaFlash=[],flashOn=false;
+function avisar(tipo,tit,det,urg){
+  avisos.unshift({tipo,tit,det,hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})});
+  avisos=avisos.slice(0,12); pintarAvisos();
+  colaFlash.push({tit,det,urg}); if(!flashOn) sigFlash();
+}
+function sigFlash(){
+  const a=colaFlash.shift(); const el=document.getElementById('flash');
+  if(!a){flashOn=false;el.style.display='none';return;}
+  flashOn=true; el.style.borderLeftColor=a.urg?'#E7402B':'#3B82F6';
+  el.innerHTML='<b>'+esc(a.tit)+'</b><div>'+esc(a.det)+'</div>'; el.style.display='block';
+  tono(a.urg); setTimeout(()=>voz(a.tit+'. '+a.det),900);
+  setTimeout(sigFlash,9000);
+}
+function pintarAvisos(){
+  document.getElementById('avLista').innerHTML=avisos.length?avisos.map(a=>
+    '<div class="av '+a.tipo+'"><b>'+esc(a.tit)+'</b><div>'+esc(a.det)+'</div><small>'+a.hora+'</small></div>').join(''):
+    '<div style="opacity:.7;font-size:14px">Sin avisos nuevos. Aquí aparecerán servicios nuevos, cambios, reprogramaciones, comentarios de técnicos y atrasos.</div>';
+}
+
+function comparar(nuevos){
+  if(!previo) return; // primera carga: sin sonido
+  nuevos.forEach((f,id)=>{
+    const a=previo.get(id), lugar=(f.estacion||f.clienteNombre||''), q=titulo(f)+' en '+lugar;
+    if(!a){avisar('', 'Servicio nuevo', q+' · '+tecnicos(f)+' · '+(f.fechaProgramada||'').replace('T',' '), false); f._nuevo=true; return;}
+    if(String(a.fechaProgramada).slice(0,16)!==String(f.fechaProgramada).slice(0,16))
+      avisar('cam','Reprogramación',q+': ahora '+String(f.fechaProgramada).replace('T',' '),false);
+    else if(tecnicos(a)!==tecnicos(f)) avisar('cam','Cambio de técnico',q+': '+tecnicos(f),false);
+    if(String(f.comentarios||'').length>String(a.comentarios||'').length) avisar('','Aviso de técnico',q+' · '+tecnicos(f),false);
+    if(!a.completadoEn&&f.completadoEn) avisar('ok','Servicio terminado',q,false);
+    if(!a.cancelado&&f.cancelado) avisar('urg','Servicio cancelado',q,true);
+  });
+}
+function revisarAtrasos(mapa){
+  if(!previo) { mapa.forEach((f,id)=>{ if(estado(f)==='atrasado') avisados.add(id); }); return; }
+  mapa.forEach((f,id)=>{ if(estado(f)==='atrasado'&&!avisados.has(id)){avisados.add(id);
+    avisar('urg','Servicio atrasado',titulo(f)+' en '+(f.estacion||'')+' · '+tecnicos(f)+' no ha iniciado',true);} });
+}
+
+async function cargar(){
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const ini=iso(new Date(hoy.getTime()-86400000)), fin=iso(new Date(hoy.getTime()+8*86400000));
+  try{
+    const {data,error}=await SB.from('ops_docs').select('doc_id,datos').eq('coleccion','ops_folios')
+      .gte('datos->>fechaProgramada',ini).lte('datos->>fechaProgramada',fin+'T23:59');
+    if(error) throw error;
+    const mapa=new Map();
+    (data||[]).forEach(r=>{const f=r.datos||{}; if(f.cancelado&&!(previo&&previo.has(r.doc_id))) return;
+      if(norm(f.plaza||'Chihuahua')!==norm(PLAZA)) return; mapa.set(r.doc_id,f);});
+    comparar(mapa); revisarAtrasos(mapa); previo=mapa;
+    pintar(mapa,hoy);
+    document.getElementById('estado').textContent='Actualizado '+new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){document.getElementById('estado').textContent='Sin conexión, reintentando…';}
+}
+function pintar(mapa,hoy){
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(hoy.getTime()+i*86400000), k=iso(d);
+    const del=[...mapa.values()].filter(f=>!f.cancelado&&String(f.fechaProgramada||'').slice(0,10)===k)
+      .sort((a,b)=>String(a.fechaProgramada).localeCompare(String(b.fechaProgramada)));
+    const max=7, vis=del.slice(0,max);
+    html+='<div class="dia'+(i===0?' hoy':'')+'"><h2>'+(i===0?'Hoy':d.toLocaleDateString('es-MX',{weekday:'long'}))+' '+d.getDate()+'<span>'+del.length+'</span></h2><div class="lista">'+
+      vis.map(f=>'<div class="srv '+estado(f)+(f._nuevo?' nuevo':'')+'"><div class="h">'+(hora(f.fechaProgramada)||'Sin hora')+' · '+esc(folio(f))+'</div><div class="t">'+esc(titulo(f))+'</div><div class="e">'+esc(f.estacion||f.clienteNombre||'')+'</div><div class="p">'+esc(tecnicos(f))+(f.empresaServicio?' · '+esc(f.empresaServicio):'')+'</div></div>').join('')+
+      (del.length>max?'<div class="mas">+'+(del.length-max)+' más</div>':'')+(del.length?'':'<div class="mas">Sin servicios</div>')+'</div></div>';
+  }
+  document.getElementById('semana').innerHTML=html;
+}
+setInterval(()=>{document.getElementById('reloj').textContent=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});},1000);
+pintarAvisos(); cargar(); setInterval(cargar,20000);
+</script>
+</body>
+</html>

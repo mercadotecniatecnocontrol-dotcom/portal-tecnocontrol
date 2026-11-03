@@ -2786,8 +2786,9 @@
         const gestion = opsPuedeGestionar();
         if (opsHerrComprasTec === null) opsHerrCargarComprasTec();
         let lista = cacheHerr.slice();
-        const b = filtroCat.busca.trim().toLowerCase();
-        if (b) lista = lista.filter(h => (h.folio || "").toLowerCase().includes(b) || (h.descripcion || "").toLowerCase().includes(b) || (h.marca || "").toLowerCase().includes(b) || opsNombreTecnico(h.tecnicoActualId).toLowerCase().includes(b));
+        const opsNorm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const b = opsNorm(filtroCat.busca.trim());
+        if (b) lista = lista.filter(h => [h.folio, h.folioLegado, h.descripcion, h.marca, h.modelo, h.serie, h.ubicacionActual, opsNombreTecnico(h.tecnicoActualId)].some(v => opsNorm(v).includes(b)));
         if (filtroCat.categoria) lista = lista.filter(h => (h.categoria || "") === filtroCat.categoria);
         if (filtroCat.departamento) lista = lista.filter(h => (h.departamento || "") === filtroCat.departamento);
         if (filtroCat.plaza) lista = lista.filter(h => (h.plaza || "Chihuahua") === filtroCat.plaza);
@@ -2824,7 +2825,7 @@
                     <button onclick="opsImportarExcelReal()" class="mkt-add-btn" style="background:#15803D;">${ICON.file} Importar Excel real (12 técnicos)</button>` : ""}
                 </div>
             </div>
-            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen() : (vistaHerr === "revisiones" ? opsFragmentoVistaRevisiones() : (vistaHerr === "galeria" ? opsFragmentoVistaGaleria(lista) : opsFragmentoVistaTipo(lista)))}
+            ${vistaHerr === "almacen" ? opsFragmentoVistaAlmacen(b ? lista : null, b, gestion) : (vistaHerr === "revisiones" ? opsFragmentoVistaRevisiones() : (vistaHerr === "galeria" ? opsFragmentoVistaGaleria(lista) : opsFragmentoVistaTipo(lista)))}
         `;
     }
 
@@ -2909,10 +2910,28 @@
         }).join("");
     }
 
-    function opsFragmentoVistaAlmacen() {
-        const enGeneral = cacheHerr.filter(h => !h.tecnicoActualId && !h.almacenId && h.estado !== "baja");
-        const tecnicosActivos = opsTecOperativos();
-        const ubicaciones = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false);
+    function opsFragmentoVistaAlmacen(listaFiltrada, busca, gestion) {
+        // Con texto en el buscador: solo se ven los almacenes que coinciden por nombre
+        // o que tienen piezas que coinciden, y el conteo es de esas piezas.
+        const base = listaFiltrada || cacheHerr;
+        const nrm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const nombreCoincide = nom => !!busca && nrm(nom).includes(busca);
+        const enGeneral = base.filter(h => !h.tecnicoActualId && !h.almacenId && h.estado !== "baja");
+        let tecnicosActivos = opsTecOperativos();
+        let ubicaciones = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false);
+        if (busca) {
+            ubicaciones = ubicaciones.filter(a => nombreCoincide(a.nombre) || base.some(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja"));
+            tecnicosActivos = tecnicosActivos.filter(t => nombreCoincide(t.nombre) || base.some(h => h.tecnicoActualId === t.id && h.estado !== "baja"));
+        }
+        const cuenta = (filtro, nom) => (busca && nombreCoincide(nom) ? cacheHerr : base).filter(filtro).length;
+        const verGeneral = !busca || enGeneral.length > 0 || nombreCoincide("Almacén General");
+        const piezas = busca ? listaFiltrada.filter(h => h.estado !== "baja") : [];
+        const tablaPiezas = !busca ? "" : (piezas.length === 0 && !ubicaciones.length && !tecnicosActivos.length && !verGeneral
+            ? `<div style="background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:22px;text-align:center;color:#64748b;font-size:12.5px;">No hay almacenes, técnicos ni piezas que coincidan con “${opsEsc(filtroCat.busca)}”.</div>`
+            : (piezas.length ? `<div style="font-size:12px;font-weight:700;color:#1e293b;margin:18px 0 8px;">${piezas.length} pieza(s) que coinciden con “${opsEsc(filtroCat.busca)}”</div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;"><th style="padding:8px 10px;">Folio</th><th style="padding:8px 10px;">Descripción</th><th style="padding:8px 10px;">Estado</th><th style="padding:8px 10px;">Técnico</th><th style="padding:8px 10px;">Ubicación</th><th></th></tr></thead>
+                <tbody>${piezas.slice(0, 200).map((h, i) => opsFilaHerramienta(h, i, gestion)).join("")}</tbody></table></div>` : ""));
         return `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
                 <div style="font-size:11px;color:#94a3b8;">${ubicaciones.length} ubicación(es) física(s) además del almacén general y los de técnico.</div>
@@ -2923,16 +2942,16 @@
                 </div>
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;">
-                <div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
+                ${verGeneral ? `<div onclick="opsAbrirAlmacenPiezas(null)" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #1D2E73;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderLeftColor='#1D2E73';this.style.borderColor='#e2e8f0';this.style.borderLeftColor='#1D2E73'">
                     <div style="font-size:13.5px;font-weight:700;color:#1e293b;">Almacén General</div>
                     <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Sin técnico asignado</div>
                     <div style="display:flex;align-items:baseline;gap:5px;">
                         <span style="font-size:22px;font-weight:800;color:#1D2E73;">${enGeneral.length}</span>
                         <span style="font-size:11px;color:#64748b;">pieza(s)</span>
                     </div>
-                </div>
+                </div>` : ""}
                 ${ubicaciones.map(a => {
-                    const n = cacheHerr.filter(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja").length;
+                    const n = cuenta(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja", a.nombre);
                     return `<div onclick="opsAbrirAlmacenPiezas('${a.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #E7402B;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(a.nombre)}</div>
                         <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Ubicación física${a.requiereAutorizacion ? " · requiere autorización" : ""}</div>
@@ -2943,7 +2962,7 @@
                     </div>`;
                 }).join("")}
                 ${tecnicosActivos.map(t => {
-                    const n = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").length;
+                    const n = cuenta(h => h.tecnicoActualId === t.id && h.estado !== "baja", t.nombre);
                     return `<div onclick="opsAbrirAlmacenPiezas('${t.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(t.nombre)}</div>
                         <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">N.° ${opsEsc(t.numeroOperativo)}</div>
@@ -2953,7 +2972,7 @@
                         </div>
                     </div>`;
                 }).join("")}
-            </div>`;
+            </div>${tablaPiezas}`;
     }
 
     window.opsAbrirModalNuevaUbicacion = function () {
@@ -8207,7 +8226,7 @@
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
             <div class="ops-cal-layout">
-                ${opsCalFull || opsAccFiltroEmpresa() ? "" : `<aside id="ops-cal-lado" class="ops-cal-lado${opsPedVentasAbierto ? "" : " cerrado"}"><div id="ops-cal-por-reasignar"></div><div id="ops-cal-pedidos-ventas"></div></aside>`}
+                ${opsCalFull || opsAccFiltroEmpresa() ? "" : `<aside id="ops-cal-lado" class="ops-cal-lado${opsPedVentasAbierto ? "" : " cerrado"}"><div id="ops-cal-por-reasignar"></div><div id="ops-cal-derivados"></div><div id="ops-cal-pedidos-ventas"></div></aside>`}
                 <div class="ops-cal-principal"><div id="ops-cal-body"></div></div>
             </div>
           ${opsCalFull ? "</div>" : ""}
@@ -8244,7 +8263,7 @@
             .ops-cal-principal{flex:1;min-width:0;}
             .ops-cal-lado{width:100%;min-width:0;}
             .ops-cal-lado.cerrado{width:100%;}
-            .ops-cal-lado.cerrado #ops-cal-por-reasignar{display:none;}
+            .ops-cal-lado.cerrado #ops-cal-por-reasignar,.ops-cal-lado.cerrado #ops-cal-derivados{display:none;}
             .ops-cal-tira{writing-mode:horizontal-tb;}
             .ops-ped-fila{display:flex;gap:10px;padding:0 12px 14px;overflow-x:auto;align-items:flex-start;scroll-snap-type:x proximity;}
             .ops-ped-fila > div{flex:0 0 330px;max-width:330px;scroll-snap-align:start;}
@@ -8259,8 +8278,8 @@
     // Oculta la columna si no tiene nada que mostrar y le pone el estado abierto/cerrado.
     function opsCalAjustarLado() {
         const lado = document.getElementById("ops-cal-lado"); if (!lado) return;
-        const r = document.getElementById("ops-cal-por-reasignar"), p = document.getElementById("ops-cal-pedidos-ventas");
-        const hay = (r && r.innerHTML.trim()) || (p && p.innerHTML.trim());
+        const r = document.getElementById("ops-cal-por-reasignar"), p = document.getElementById("ops-cal-pedidos-ventas"), dv = document.getElementById("ops-cal-derivados");
+        const hay = (r && r.innerHTML.trim()) || (p && p.innerHTML.trim()) || (dv && dv.innerHTML.trim());
         lado.style.display = hay ? "" : "none";
         lado.classList.toggle("cerrado", !opsPedVentasAbierto);
     }
@@ -8532,6 +8551,30 @@
         </div>`;
         opsCalAjustarLado();
     }
+    // ── Trabajos derivados abiertos en el panel del Calendario (3-nov-2026), igual que "Servicios por reasignar". ──
+    function opsCalPintarDerivados() {
+        const box = document.getElementById("ops-cal-derivados"); if (!box) return;
+        opsTDSuscribir();
+        const pri = { urgente: 0, alta: 1, normal: 2 };
+        const l = cacheDerivados.filter(d => !["resuelto", "descartado", "programado"].includes(d.estatus))
+            .sort((a, b) => (pri[a.prioridad] ?? 3) - (pri[b.prioridad] ?? 3) || String(b.reportadoEn || "").localeCompare(String(a.reportadoEn || "")));
+        if (!l.length) { box.innerHTML = ""; opsCalAjustarLado(); return; }
+        const gestiona = opsPuedeGestionar();
+        box.innerHTML = `<div style="margin:0 0 10px;background:#fff;border-radius:14px;border:1px solid #c7d2fe;border-left:5px solid #1D2E73;padding:12px 16px;">
+            <div style="font-size:13px;font-weight:800;color:#1D2E73;margin-bottom:6px;">Trabajos derivados <span style="background:#e0e7ff;border-radius:999px;padding:1px 8px;">${l.length}</span>
+            <span style="font-weight:500;color:#475569;font-size:11.5px;"> · Daños que encontró el técnico. Hay que diagnosticar, cotizar si va fuera de póliza y programar.</span></div>
+            ${l.map(d => { const e = OPS_TD_EST[d.estatus] || OPS_TD_EST.reportado, col = d.prioridad === "urgente" ? "#b91c1c" : d.prioridad === "alta" ? "#ea580c" : "#64748b";
+              return `<div style="border-top:1px dashed #c7d2fe;padding:8px 0;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><b style="font-size:12.5px;">${opsEsc(d.estacion || "")}</b>
+                  <span style="font-size:10.5px;font-weight:800;color:${col};">${opsEsc((d.prioridad || "normal").toUpperCase())}</span>
+                  <span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:1px 7px;">${opsEsc(e[0])}</span>
+                  <span style="font-size:11.5px;color:#64748b;">${opsEsc(d.reportadoPor || "")} · ${opsEsc(opsFmtFechaCorta(d.reportadoEn))}${(d.fotos || []).length ? " · " + d.fotos.length + " foto(s)" : ""}</span>
+                  ${gestiona ? `<span style="margin-left:auto;display:flex;gap:6px;"><button onclick="opsTDProgramar('${d.id}')" style="border:none;background:#0e7490;color:#fff;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">Programar servicio</button><button onclick="opsCambiarTab('derivados')" style="border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver detalle</button></span>` : ""}</div>
+                <div style="font-size:12px;color:#334155;margin-top:2px;">${opsEsc(d.descripcion || "")}</div>
+              </div>`; }).join("")}
+        </div>`;
+        opsCalAjustarLado();
+    }
     window.opsVerArchivoFirmado = async function (bucket, ruta) {
         try { const sb = await opsSb(); const r = await sb.storage.from(bucket).createSignedUrl(ruta, 3600); if (r.error) throw r.error; window.open(r.data.signedUrl, "_blank"); }
         catch (e) { alert("No se pudo abrir: " + (e.message || e)); }
@@ -8589,6 +8632,7 @@
     }
     function opsCalPintarPedidosVentas() {
         try { opsCalPintarPorReasignar(); } catch (e) { console.warn("[por reasignar]", e); }
+        try { opsCalPintarDerivados(); } catch (e) { console.warn("[derivados calendario]", e); }
         const box = document.getElementById("ops-cal-pedidos-ventas");
         if (!box) return;
         if (!opsElimCargados) { opsElimCargados = true; opsCargarEliminados().then(() => opsCalPintarPedidosVentas()); }
@@ -14276,7 +14320,7 @@
     async function opsTDSuscribir() {
         if (opsTDCargado) return; opsTDCargado = true;
         const { db, fs } = await opsGetFB();
-        unsubTD = fs.onSnapshot(fs.collection(db, COL_DERIVADOS), snap => { cacheDerivados = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "derivados") opsRenderDerivados(); }, e => console.warn("[derivados]", e));
+        unsubTD = fs.onSnapshot(fs.collection(db, COL_DERIVADOS), snap => { cacheDerivados = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "derivados") opsRenderDerivados(); try { opsCalPintarDerivados(); } catch (e) {} }, e => console.warn("[derivados]", e));
         unsubSH = fs.onSnapshot(fs.collection(db, COL_SOL_HERR), snap => { cacheSolHerr = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (tabActual === "herrsol") opsRenderSolHerr(); }, e => console.warn("[sol. herramienta]", e));
     }
     function opsTDFotosHTML(fotos, idPref) {
