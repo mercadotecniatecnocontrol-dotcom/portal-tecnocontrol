@@ -1450,6 +1450,7 @@
     const OPS_ACC_DINERO_SEED = [
         "clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "m.delao@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx",
         "mercadotecnia@tecnocontrol.com.mx", "mercadotecniatecnocontrol@gmail.com", "rh@tecnocontrol.com.mx", "c.acosta@tecnocontrol.com.mx",
+        "i.ruiz@jomarverifica.com.mx", "ricardo.t@tecnocontrol.com.mx",
     ];
     function opsAccMatrizTodas(acciones, excepto) {
         const m = {};
@@ -1477,7 +1478,9 @@
     }
     function opsAccUsuariosSeed() {
         const u = {};
-        ["clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx"].forEach(c => { u[c] = { rol: "administrador", soloLectura: false }; });
+        // 4-nov-2026: Idaly (JOMAR) y Ricardo (gerente de Operaciones) también en el respaldo de fábrica,
+        // para que no pierdan acceso si la matriz guardada tarda en cargar.
+        ["clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "i.ruiz@jomarverifica.com.mx", "ricardo.t@tecnocontrol.com.mx"].forEach(c => { u[c] = { rol: "administrador", soloLectura: false }; });
         ["gestoria@tecnocontrol.com.mx", "gestoria1@tecnocontrol.com.mx", "gestoria2@tecnocontrol.com.mx", "gestoria3@tecnocontrol.com.mx",
             "gestoria4@tecnocontrol.com.mx", "gestoria5@tecnocontrol.com.mx", "d.gutierrez@tecnocontrol.com.mx", "calidad@tecnocontrol.com.mx",
             "contabilidad@tecnocontrol.com.mx", "compras@tecnocontrol.com.mx", "aux.compras@tecnocontrol.com.mx"]
@@ -1555,12 +1558,16 @@
         try {
             const { db, fs } = await opsGetFB();
             const ref = fs.doc(db, COL_CONFIG_PERMISOS, "general");
-            const snap = await Promise.race([fs.getDoc(ref), new Promise((_, ko) => setTimeout(() => ko(new Error("tiempo agotado")), 8000))]);
+            // 4-nov-2026: con 8 s a veces no alcanzaba y la persona entraba con permisos de fábrica (ej. Idaly sin comisiones).
+            // Ahora espera hasta 20 s y reintenta una vez.
+            const leer = ms => Promise.race([fs.getDoc(ref), new Promise((_, ko) => setTimeout(() => ko(new Error("tiempo agotado")), ms))]);
+            let snap; try { snap = await leer(20000); } catch (e1) { snap = await leer(20000); }
             if (snap.exists() && snap.data().roles) {
                 const d = snap.data();
                 if (d.roles && !d.roles.consulta_vh) d.roles.consulta_vh = opsAccRolesSeed().consulta_vh;
                 opsAccCfg = { roles: d.roles || {}, usuarios: d.usuarios || {}, dinero: Array.isArray(d.dinero) ? d.dinero : OPS_ACC_DINERO_SEED.slice(), rolPorDefecto: d.rolPorDefecto || "", version: d.version || 1, avisos: d.avisos, empresasServicio: d.empresasServicio || {} };
                 const cambios = opsAccNormalizarV2(opsAccCfg);
+                try { localStorage.setItem("ops_acc_cfg_cache", JSON.stringify(opsAccCfg)); } catch (e3) {}
                 // Solo un admin del portal guarda la actualización (queda en la bitácora).
                 if (cambios.length && window.esAdminTotal && window.esAdminTotal(opsUsuarioActual())) {
                     try {
@@ -1579,8 +1586,10 @@
         } catch (e) {
             // Respaldo: mismas reglas sembradas, en memoria y SIN permitir editar (para no
             // sobrescribir la configuración real con la de fábrica si fue solo un fallo de red).
-            console.warn("[operaciones.js] Control de acceso no cargó; se usa el respaldo de fábrica:", e.message);
-            opsAccCfg = opsAccCfgFabrica();
+            // 4-nov-2026: primero la última matriz real que cargó en esta computadora; si no hay, la de fábrica.
+            console.warn("[operaciones.js] Control de acceso no cargó; se usa el respaldo:", e.message);
+            let guardada = null; try { guardada = JSON.parse(localStorage.getItem("ops_acc_cfg_cache") || "null"); } catch (e4) {}
+            opsAccCfg = guardada && guardada.roles ? guardada : opsAccCfgFabrica();
             opsAccRespaldo = true;
         }
     }
