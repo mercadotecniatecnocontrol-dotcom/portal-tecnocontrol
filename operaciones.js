@@ -1437,6 +1437,7 @@
         ["solicitudes", "Solicitudes"], ["dashboard", "Herramientas"], ["guardias", "Guardias"], ["vencimientos", "Vencimientos"],
         ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías"], ["polizas", "Pólizas (próximamente)"],
         ["tecnicos", "Técnicos"], ["externos", "Externos"], ["permisos", "Permisos y vacaciones"], ["movimientos", "Movimientos"], ["resumen", "Resumen"],
+        ["comisiones", "Comisiones"],
     ];
     const OPS_ACC_ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"], ["dinero", "Ver dinero"]];
     // Pestañas que no son sección propia de la matriz: se rigen por otra sección.
@@ -20638,7 +20639,7 @@
         if (opsViaVista === "pagos") return opsRenderViaPagos(el, autoriza);
         if (opsViaVista === "empresas") return opsRenderViaEmpresas(el);
         const filas = opsViaLista.map(s => { const canc = s.estatus === "Cancelada" || s.estatus === "Rechazada"; const tach = canc ? "text-decoration:line-through;" : ""; const sc = !canc && (s.tarifas || {}).servicioCancelado; return `
-            <tr style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : sc ? "background:#fee2e2;box-shadow:inset 4px 0 0 #dc2626;" : ""}">
+            <tr data-busca="${opsEsc(opsViaTextoBusca(s))}" style="border-bottom:1px solid #f1f5f9;${canc ? "opacity:.55;background:#f8fafc;" : sc ? "background:#fee2e2;box-shadow:inset 4px 0 0 #dc2626;" : ""}">
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;${tach}">${opsEsc(s.folio || s.id)}${sc ? `<div style="font-size:9.5px;font-weight:900;color:#fff;background:#dc2626;border-radius:5px;padding:1px 6px;margin-top:3px;display:inline-block;">SERVICIO CANCELADO</div>` : ""}</td>
                 <td style="padding:9px 8px;">${s.rol_viaje ? `<span style="font-size:10px;font-weight:800;color:#1e3a8a;background:#e0e7ff;border-radius:6px;padding:1px 6px;margin-right:5px;">CUADRILLA · HOJA ${(s.tarifas || {}).hoja || 1}/${(s.tarifas || {}).hojas || 2}</span>` : ""}<span style="${tach}">${opsEsc(s.destino || "")}</span><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.folio_servicio ? opsViaFolioLegible(s.folio_servicio) : "")}</div>${canc && s.motivo ? `<div style="font-size:10.5px;color:#b91c1c;font-weight:700;">${opsEsc(s.motivo)}</div>` : ""}</td>
                 <td style="padding:9px 8px;font-size:11.5px;">${opsEsc(s.integrantes || "")}</td>
@@ -20669,6 +20670,11 @@
                     ${opsPuedeCrear() || autoriza ? `<button onclick="opsViaAbrirFormulario()" class="mkt-add-btn" style="background:#E7402B;">+ Nueva solicitud de viáticos</button>` : `<span style="font-size:12px;color:#94a3b8;align-self:center;">Solo lectura</span>`}
                 </div>
             </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                <input id="ops-via-busca" type="search" value="${opsEsc(opsViaBuscaLista)}" oninput="opsViaFiltrarFilas(this.value)" placeholder="Buscar por folio, destino, estación, cliente, técnico o estatus…"
+                    style="flex:1;min-width:240px;max-width:520px;border:1px solid #cbd5e1;border-radius:9px;padding:9px 12px;font-size:13px;">
+                <span id="ops-via-busca-n" style="font-size:12px;color:#64748b;"></span>
+            </div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
                     <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
@@ -20679,7 +20685,24 @@
                 </table>
             </div>
         </div>`;
+        if (opsViaBuscaLista) opsViaFiltrarFilas(opsViaBuscaLista);
     }
+    // Buscador de la lista de solicitudes (4-nov-2026): filtra en pantalla sin recargar, sin importar acentos.
+    let opsViaBuscaLista = "";
+    function opsViaNorm(t) { return String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+    function opsViaTextoBusca(s) {
+        return opsViaNorm([s.folio, s.id, s.destino, s.folio_servicio, s.cliente, s.estacion, s.estacion_nombre, s.integrantes, s.responsable_nombre,
+            s.estatus, s.fecha_salida, s.fecha_regreso, s.solicitante, s.solicitante_nombre].filter(Boolean).join(" "));
+    }
+    window.opsViaFiltrarFilas = function (q) {
+        opsViaBuscaLista = q || "";
+        const palabras = opsViaNorm(q).split(/\s+/).filter(Boolean);
+        const filas = document.querySelectorAll("#ops-tab-content tr[data-busca]");
+        let n = 0;
+        filas.forEach(tr => { const ok = palabras.every(w => tr.getAttribute("data-busca").includes(w)); tr.style.display = ok ? "" : "none"; if (ok) n++; });
+        const et = document.getElementById("ops-via-busca-n");
+        if (et) et.textContent = palabras.length ? `${n} de ${filas.length}` : "";
+    };
 
     window.opsViaCambiarEstatus = async function (id, estatus) {
         // Marcar como Pagada = registrar la entrega (forma, monto, responsable, plazo):
