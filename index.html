@@ -933,6 +933,9 @@ function portalGenerarPDFCot(id){ if(window._portalGenPDFReal) window._portalGen
                 <span class="rh-mes-label" id="conta-mes-label"></span>
                 <button class="rh-mes-btn" onclick="contaMesNext()">›</button>
             </div>
+            <button class="mkt-add-btn ops-btn-herramientas" onclick="typeof opsAbrirRemisionados==='function'?opsAbrirRemisionados():(window.mostrarPush?mostrarPush('Remisionados','Módulo cargando, intenta en un momento','⏳'):null)" title="Servicios con remisión en Aspel: pedido, remisión, factura y evidencias">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:5px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>Servicios remisionados
+            </button>
             <button class="mkt-add-btn" onclick="abrirContaRegistro()" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);">➕ Nuevo registro</button>
         </div>
     </div>

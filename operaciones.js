@@ -2219,7 +2219,7 @@
     };
 
     // ═══════════════════════ MONTAJE / OVERLAY ═══════════════════════
-    window.opsAbrirHerramientas = async function () {
+    window.opsAbrirHerramientas = async function (tabInicial) {
         const cont = document.getElementById("ops-herramientas-overlay");
         if (!cont) return;
         await opsAccCargar();
@@ -2231,8 +2231,10 @@
         await opsSembrarClientesSiNecesario();
         await opsSuscribirTodo();
         opsIniciarVigilanciaFolios();
-        opsCambiarTab("calendario");
+        opsCambiarTab(typeof tabInicial === "string" && tabInicial ? tabInicial : "calendario");
     };
+    // Botón "Servicios remisionados" del área de Contabilidad (4-nov-2026): abre Operaciones directo en esa pestaña.
+    window.opsAbrirRemisionados = function () { return window.opsAbrirHerramientas("remisionados"); };
 
     window.opsCerrarHerramientas = function () {
         if (window.opsNotifToggle) window.opsNotifToggle(false);
@@ -2431,6 +2433,7 @@
                 try { opsCalidadRevisarCierres(cacheFolios); } catch (e) { console.warn("[operaciones.js] avisos a Calidad:", e); }
                 try { opsCalTickerProcesar(cacheFolios); } catch (e) { console.warn("[operaciones.js] franja de avisos:", e); }
                 if (tabActual === "folios") opsRenderFolios();
+                if (tabActual === "remisionados") opsRenderRemisionados();
                 if (tabActual === "revision" && !document.querySelector("#ops-modal-wrap > *")) opsRenderRevision();
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "vencimientos") opsPintarVencimientos();
@@ -14203,19 +14206,49 @@
         const peds = (cacheSurtidos || []).filter(p => p && !p.eliminada && (ids.has(p.id) || (p.opsFolioId && p.opsFolioId === f.id)));
         return peds.sort((a, b) => String(a.folio || "").localeCompare(String(b.folio || ""), "es"));
     }
-    function opsRemEsRemisionado(p) { return !!(p && (p.remisionado || p.remisionAspelFolio)); }
-    function opsRemFecha(p) { return p.remisionAspelFecha || p.remisionadoEn || ""; }
+    // Remisión = documento R de Aspel SAE cuyo DOC_ANT es el folio del pedido del portal (CHH…, SER…, OXXO…).
+    // Se lee de aspel_documentos (lo llena el sincronizador de Aspel cada 5 min). También se respeta la marca
+    // manual de Almacén (surtidos.remisionado / remision_aspel_folio) por si Aspel aún no se sincroniza.
+    let opsRemAspel = {}, opsRemAspelEst = { cargando: false, error: null, hasta: 0, clave: "" };
+    function opsRemFolioPed(p) { return String((p && p.folio) || "").trim().toUpperCase(); }
+    async function opsRemCargarAspel(forzar) {
+        const folios = [...new Set(cacheFolios.filter(f => !f.cancelado).flatMap(f => opsRemPedidosDe(f).map(opsRemFolioPed)).filter(x => /^[A-Z]{2,6}\d{4,}$/.test(x)))];
+        const clave = folios.length + "|" + folios.slice(-5).join(",");
+        if (!folios.length) return;
+        if (!forzar && (opsRemAspelEst.cargando || (opsRemAspelEst.clave === clave && Date.now() < opsRemAspelEst.hasta))) return;
+        if (typeof window.tcSbSesion !== "function") { opsRemAspelEst = { cargando: false, error: "Falta portal-supabase.js actualizado", hasta: Date.now() + 60000, clave }; return; }
+        opsRemAspelEst.cargando = true;
+        try {
+            const sb = await window.tcSbSesion(), mapa = {};
+            for (let i = 0; i < folios.length; i += 150) {
+                const r = await sb.from("aspel_documentos").select("empresa,cve_doc,status,fecha_doc,fecha_cancela,cve_clpv,subtotal,iva,total,doc_ant,tip_doc_sig,doc_sig,cve_pedi")
+                    .eq("tip_doc", "R").in("doc_ant", folios.slice(i, i + 150));
+                if (r.error) throw r.error;
+                (r.data || []).forEach(d => { if (d.status === "C" || d.fecha_cancela) return; const k = String(d.doc_ant || "").trim().toUpperCase(); (mapa[k] = mapa[k] || []).push(d); });
+            }
+            opsRemAspel = mapa; opsRemAspelEst = { cargando: false, error: null, hasta: Date.now() + 5 * 60000, clave };
+        } catch (e) { opsRemAspelEst = { cargando: false, error: e.message || String(e), hasta: Date.now() + 60000, clave }; }
+        if (tabActual === "remisionados") opsRenderRemisionados();
+        const box = document.getElementById("ops-panel-docs"); if (box && box.dataset.folio) { const f = cacheFolios.find(x => x.id === box.dataset.folio); if (f) opsPanelDocsPintar(f); }
+    }
+    // Remisiones de un pedido: primero las de Aspel; si no hay, la marca de Almacén.
+    function opsRemDePedido(p) {
+        const out = (opsRemAspel[opsRemFolioPed(p)] || []).map(d => ({ fuente: "aspel", folio: d.cve_doc, fecha: d.fecha_doc, total: Number(d.total) || 0, factura: d.tip_doc_sig === "F" ? d.doc_sig : null, oc: d.cve_pedi || null, empresa: d.empresa, pedido: opsRemFolioPed(p), d, p }));
+        if (!out.length && (p.remisionado || p.remisionAspelFolio)) out.push({ fuente: "almacen", folio: p.remisionAspelFolio || "", fecha: String(p.remisionAspelFecha || p.remisionadoEn || "").slice(0, 10), total: 0, factura: null, pedido: opsRemFolioPed(p), por: p.remisionadoPor || "", p });
+        return out;
+    }
     let opsRemFiltro = { mes: new Date().toISOString().slice(0, 7), estado: "remisionados", q: "" };
     window.opsRemSet = function (k, v) {
         opsRemFiltro[k] = v; opsRenderRemisionados();
         if (k === "q") { const i = document.getElementById("ops-rem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
     };
+    window.opsRemRecargar = function () { opsRemCargarAspel(true); };
     function opsRemFilas() {
         const out = [];
         cacheFolios.filter(f => !f.cancelado).forEach(f => {
             const peds = opsRemPedidosDe(f); if (!peds.length) return;
-            const rem = peds.filter(opsRemEsRemisionado);
-            const fechaRem = rem.map(opsRemFecha).filter(Boolean).sort()[0] || "";
+            const rem = peds.flatMap(opsRemDePedido);
+            const fechaRem = rem.map(r => r.fecha).filter(Boolean).sort()[0] || "";
             const fechaRef = String(fechaRem || f.fechaSolucion || f.fechaProgramada || "").slice(0, 10);
             out.push({ f, peds, rem, fechaRem, fechaRef });
         });
@@ -14224,72 +14257,117 @@
     function opsRenderRemisionados() {
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         if (!opsRemVer()) { el.innerHTML = `<div style="padding:30px;color:#64748b;">Tu usuario no tiene acceso a esta sección.</div>`; return; }
+        opsRemCargarAspel(false);
         const F = opsRemFiltro, q = opsAsNorm(F.q), dinero = opsAccVerDinero("remisionados");
         const todas = opsRemFilas();
         const lista = todas.filter(x => {
             if (F.estado === "remisionados" && !x.rem.length) return false;
             if (F.estado === "sin_remision" && (x.rem.length || !x.f.fechaSolucion)) return false;
+            if (F.estado === "sin_factura" && (!x.rem.length || x.rem.some(r => r.factura))) return false;
             if (F.mes && x.fechaRef.slice(0, 7) !== F.mes) return false;
             if (q && !opsAsNorm([x.f.estacion, x.f.clienteNombre, x.f.estacionRazonSocial, x.f.folioNumero, x.f.folioOS, x.f.osTecnico, opsCalTipoTexto(x.f),
-                x.peds.map(p => [p.folio, p.cliente, p.remisionAspelFolio].join(" ")).join(" ")].join(" ")).includes(q)) return false;
+                x.peds.map(p => [p.folio, p.cliente].join(" ")).join(" "), x.rem.map(r => [r.folio, r.factura, r.oc].join(" ")).join(" ")].join(" ")).includes(q)) return false;
             return true;
         }).sort((a, b) => String(a.f.estacion || a.f.clienteNombre || "").localeCompare(String(b.f.estacion || b.f.clienteNombre || ""), "es") || a.fechaRef.localeCompare(b.fechaRef));
-        const cuenta = k => todas.filter(x => (!F.mes || x.fechaRef.slice(0, 7) === F.mes) && (k === "remisionados" ? x.rem.length : k === "sin_remision" ? !x.rem.length && x.f.fechaSolucion : true)).length;
-        const total = lista.reduce((a, x) => a + (Number((x.f.costosServicio || {}).totalCobrar) || Number((x.f.precioServicio || {}).precio) || 0), 0);
+        const enMes = x => !F.mes || x.fechaRef.slice(0, 7) === F.mes;
+        const cuenta = k => todas.filter(x => enMes(x) && (k === "remisionados" ? x.rem.length : k === "sin_remision" ? !x.rem.length && x.f.fechaSolucion : k === "sin_factura" ? x.rem.length && !x.rem.some(r => r.factura) : true)).length;
+        const totRem = lista.reduce((a, x) => a + x.rem.reduce((s, r) => s + r.total, 0), 0);
         const chip = (k, t, c) => `<button onclick="opsRemSet('estado','${k}')" style="border:1px solid ${F.estado === k ? c : "#cbd5e1"};background:${F.estado === k ? c : "#fff"};color:${F.estado === k ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">${t} (${cuenta(k)})</button>`;
         const pedTxt = p => `<div style="white-space:nowrap;"><b>${opsEsc(p.folio || "s/folio")}</b>${p.tienePdfOriginal ? ` <button onclick="opsCalVerPdfPedido('${p.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">PDF</button>` : ""}</div>`;
-        const remTxt = x => x.rem.length ? x.rem.map(p => `<div style="white-space:nowrap;"><b style="color:#15803d;">${opsEsc(p.remisionAspelFolio || "Remisionado")}</b> <span style="color:#64748b;font-size:11px;">${opsRemFecha(p) ? opsEsc(opsFmtFechaCorta(String(opsRemFecha(p)).slice(0, 10))) : ""}</span></div>`).join("")
+        const remTxt = x => x.rem.length ? x.rem.map(r => `<div style="white-space:nowrap;"><b style="color:#15803d;">${opsEsc(r.folio || "Remisionado")}</b> <span style="color:#64748b;font-size:11px;">${r.fecha ? opsEsc(opsFmtFechaCorta(r.fecha)) : ""}</span>${r.fuente === "aspel" ? ` <button onclick="opsRemHoja('${opsEsc(r.pedido)}','${opsEsc(r.folio)}')" style="border:none;background:#dcfce7;color:#166534;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Ver</button>` : ` <span style="font-size:10px;color:#94a3b8;">(marcado en Almacén)</span>`}${r.factura ? `<div style="font-size:11px;color:#1D2E73;">Factura ${opsEsc(r.factura)}</div>` : ""}</div>`).join("")
             : `<span style="color:#b45309;font-weight:700;">Sin remisión</span>`;
+        const est = opsRemAspelEst;
         el.innerHTML = `
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
             <div><div style="font-size:18px;font-weight:800;color:#1D2E73;">Servicios remisionados</div>
-            <div style="font-size:12.5px;color:#64748b;max-width:640px;">Servicios cuyo pedido ya tiene remisión en Aspel (la captura Almacén). Da clic en "Ver" para abrir el servicio con su pedido, remisión y evidencias al final.</div></div>
+            <div style="font-size:12.5px;color:#64748b;max-width:680px;">Se lee directo de <b>Aspel SAE</b>: la remisión que sale del pedido del servicio. Da clic en "Ver" para la hoja de remisión, o en "Abrir" para el servicio con su pedido, remisión y evidencias.</div>
+            <div style="font-size:11px;margin-top:3px;color:${est.error ? "#b91c1c" : "#94a3b8"};">${est.cargando ? "Consultando Aspel…" : est.error ? "No se pudo leer Aspel: " + opsEsc(est.error) + " (se muestran solo las remisiones marcadas por Almacén)" : est.hasta ? "Aspel consultado " + new Date(est.hasta - 5 * 60000).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : ""} · <a href="javascript:opsRemRecargar()" style="color:#1D2E73;">actualizar</a></div></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                 <label style="font-size:12px;color:#475569;">Mes <input type="month" value="${opsEsc(F.mes)}" onchange="opsRemSet('mes',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;"></label>
                 <button onclick="opsRemSet('mes','')" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">Todos los meses</button>
             </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-            ${chip("remisionados", "Remisionados", "#15803d")}${chip("sin_remision", "Terminados sin remisión", "#b45309")}${chip("todos", "Todos con pedido", "#1D2E73")}
-            <input id="ops-rem-q" value="${opsEsc(F.q)}" oninput="opsRemSet('q',this.value)" placeholder="Buscar estación, cliente, pedido, remisión…" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+            ${chip("remisionados", "Remisionados", "#15803d")}${chip("sin_factura", "Remisionados sin factura", "#1d4ed8")}${chip("sin_remision", "Terminados sin remisión", "#b45309")}${chip("todos", "Todos con pedido", "#1D2E73")}
+            <input id="ops-rem-q" value="${opsEsc(F.q)}" oninput="opsRemSet('q',this.value)" placeholder="Buscar estación, cliente, pedido, remisión, factura…" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
         </div>
-        ${dinero && lista.length ? `<div style="font-size:12.5px;color:#334155;margin-bottom:8px;">${lista.length} servicio(s) · Total a cobrar capturado: <b>${opsDinero(total)}</b></div>` : `<div style="font-size:12.5px;color:#334155;margin-bottom:8px;">${lista.length} servicio(s)</div>`}
+        <div style="font-size:12.5px;color:#334155;margin-bottom:8px;">${lista.length} servicio(s)${dinero && totRem ? ` · Total remisionado (Aspel): <b>${opsDinero(totRem)}</b>` : ""}</div>
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
                 <thead><tr style="background:#f8fafc;color:#475569;text-align:left;">
                     <th style="padding:9px 8px;">Estación</th><th style="padding:9px 8px;">Servicio</th><th style="padding:9px 8px;">Fecha</th>
-                    <th style="padding:9px 8px;">Pedido</th><th style="padding:9px 8px;">Remisión Aspel</th><th style="padding:9px 8px;">Estatus</th>
-                    ${dinero ? `<th style="padding:9px 8px;text-align:right;">Total</th>` : ""}<th></th></tr></thead>
-                <tbody>${lista.map(x => { const f = x.f, tot = Number((f.costosServicio || {}).totalCobrar) || Number((f.precioServicio || {}).precio) || 0;
+                    <th style="padding:9px 8px;">Pedido</th><th style="padding:9px 8px;">Remisión (Aspel)</th><th style="padding:9px 8px;">Estatus</th>
+                    ${dinero ? `<th style="padding:9px 8px;text-align:right;">Importe</th>` : ""}<th></th></tr></thead>
+                <tbody>${lista.map(x => { const f = x.f, tot = x.rem.reduce((s, r) => s + r.total, 0);
                     return `<tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
                     <td style="padding:9px 8px;"><b style="color:#1D2E73;">${opsEsc(f.estacion || f.clienteNombre || "Sin estación")}</b>${f.estacionRazonSocial ? `<div style="font-size:11px;color:#64748b;">${opsEsc(f.estacionRazonSocial)}</div>` : ""}${f.plaza ? `<div style="font-size:11px;color:#94a3b8;">${opsEsc(f.plaza)}</div>` : ""}</td>
                     <td style="padding:9px 8px;">${opsEsc(opsCalTipoTexto(f) || "Servicio")}<div style="font-size:11px;color:#64748b;">${f.folioNumero ? "N.º " + opsEsc(f.folioNumero) : ""}${opsRevOS(f) ? " · O.S. " + opsEsc(opsRevOS(f)) : ""}</div></td>
                     <td style="padding:9px 8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(String(f.fechaSolucion || f.fechaProgramada || "").slice(0, 10)))}</td>
                     <td style="padding:9px 8px;">${x.peds.map(pedTxt).join("")}</td>
                     <td style="padding:9px 8px;">${remTxt(x)}</td>
-                    <td style="padding:9px 8px;white-space:nowrap;">${f.fechaSolucion ? `<span style="color:#15803d;font-weight:700;">Terminado</span>` : `<span style="color:#64748b;">En curso</span>`}${f.facturado ? `<div style="font-size:11px;color:#1D2E73;font-weight:700;">Facturado ${opsEsc(f.facturaNumero || "")}</div>` : ""}</td>
+                    <td style="padding:9px 8px;white-space:nowrap;">${f.fechaSolucion ? `<span style="color:#15803d;font-weight:700;">Terminado</span>` : `<span style="color:#64748b;">En curso</span>`}</td>
                     ${dinero ? `<td style="padding:9px 8px;text-align:right;white-space:nowrap;">${tot ? opsDinero(tot) : "—"}</td>` : ""}
-                    <td style="padding:9px 8px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#1D2E73;color:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver</button></td></tr>`; }).join("")
+                    <td style="padding:9px 8px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#1D2E73;color:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir</button></td></tr>`; }).join("")
                     || `<tr><td colspan="8" style="padding:18px;color:#94a3b8;text-align:center;">No hay servicios con este filtro.</td></tr>`}</tbody>
             </table>
         </div>`;
     }
+    // Hoja de remisión armada con los datos de Aspel (encabezado de la remisión + partidas de su pedido).
+    window.opsRemHoja = async function (pedido, remFolio) {
+        const r = (opsRemAspel[String(pedido).toUpperCase()] || []).find(x => x.cve_doc === remFolio); if (!r) { alert("No encontré esa remisión en Aspel."); return; }
+        const w = window.open("", "_blank"); if (!w) { alert("Permite ventanas emergentes."); return; }
+        w.document.write('<p style="font-family:sans-serif;padding:20px;">Cargando datos de Aspel…</p>');
+        let cli = null, ped = null;
+        try { const sb = await window.tcSbSesion(); const c = await sb.from("aspel_clientes").select("nombre,rfc,municipio,estado").eq("empresa", r.empresa || "01").eq("clave", String(r.cve_clpv || "").trim()).maybeSingle(); cli = c.data || null; } catch (e) {}
+        try { ped = await opsAspelPedido(pedido, "P"); } catch (e) {}
+        const parts = (ped && !ped.error && ped.partidas) || [];
+        const $ = n => opsDinero(n);
+        w.document.open();
+        w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Remisión ${opsEsc(r.cve_doc)}</title><style>
+            body{font-family:Arial,sans-serif;font-size:12.5px;color:#111;margin:28px}.top{display:flex;justify-content:space-between;border-bottom:3px solid #1D2E73;padding-bottom:8px;margin-bottom:12px}
+            h1{margin:0;font-size:18px;color:#1D2E73}.k{color:#555;font-size:11px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #bbb;padding:6px;vertical-align:top}th{background:#eef2ff;text-align:left}
+            .r{text-align:right}.tot td{border:none;padding:3px 6px}.nota{font-size:10.5px;color:#777;margin-top:16px}@media print{button{display:none}}</style></head><body>
+            <div class="top"><div><h1>REMISIÓN ${opsEsc(r.cve_doc)}</h1><div class="k">HEDMA TECNOCONTROL · Aspel SAE (empresa ${opsEsc(r.empresa || "01")})</div></div>
+            <div style="text-align:right"><div><span class="k">Fecha:</span> <b>${opsEsc(String(r.fecha_doc || "").split("-").reverse().join("/"))}</b></div><div><span class="k">Pedido:</span> <b>${opsEsc(pedido)}</b></div>${r.cve_pedi ? `<div><span class="k">Referencia / OC:</span> <b>${opsEsc(r.cve_pedi)}</b></div>` : ""}${r.doc_sig ? `<div><span class="k">Factura:</span> <b>${opsEsc(r.doc_sig)}</b></div>` : ""}</div></div>
+            <div><span class="k">Cliente:</span> <b>${opsEsc(cli ? cli.nombre : "Clave " + (r.cve_clpv || ""))}</b>${cli && cli.rfc ? ` · RFC ${opsEsc(cli.rfc)}` : ""}${cli && cli.municipio ? ` · ${opsEsc(cli.municipio)}${cli.estado ? ", " + opsEsc(cli.estado) : ""}` : ""}</div>
+            ${parts.length ? `<table><thead><tr><th style="width:60px" class="r">Cant.</th><th style="width:120px">Clave</th><th>Descripción</th><th style="width:110px" class="r">Importe</th></tr></thead><tbody>
+                ${parts.map(x => `<tr><td class="r">${opsEsc(x.cant)}</td><td>${opsEsc(x.clave || "")}</td><td>${opsEsc(String(x.extra || x.descripcion || "").replace(/\s+/g, " "))}</td><td class="r">${$(x.importe)}</td></tr>`).join("")}</tbody></table>`
+                : `<p class="k" style="margin:14px 0;">Las partidas de este pedido aún no se sincronizan desde Aspel.</p>`}
+            <table class="tot" style="width:260px;margin-left:auto"><tr><td class="k">Subtotal</td><td class="r">${$(r.subtotal)}</td></tr><tr><td class="k">IVA</td><td class="r">${$(r.iva)}</td></tr><tr><td><b>Total</b></td><td class="r"><b>${$(r.total)}</b></td></tr></table>
+            <div class="nota">Hoja generada con los datos sincronizados de Aspel SAE (remisión y partidas de su pedido). Para la impresión oficial con formato de Aspel, imprímela desde Aspel.</div>
+            <button onclick="print()" style="margin-top:18px;padding:9px 16px;">Imprimir</button></body></html>`);
+        w.document.close();
+    };
+    // Foto(s) de la remisión firmada que Almacén sube al pedido (surtido_evidencias, categoría "remision").
+    window.opsRemFotos = async function (surtidoId) {
+        try {
+            const ev = (await window.tcSbListarEvidencias(surtidoId)).filter(e => e.categoria === "remision" && (e.imagen || e.url));
+            if (!ev.length) { alert("Este pedido no tiene foto de remisión."); return; }
+            const w = window.open("", "_blank"); if (!w) { alert("Permite ventanas emergentes."); return; }
+            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Remisión firmada</title></head><body style="margin:0;background:#111;text-align:center;">${ev.map(e => `<img src="${opsEsc(e.imagen && e.imagen !== "pendiente" ? e.imagen : e.url)}" style="max-width:100%;display:block;margin:10px auto;">`).join("")}</body></html>`);
+            w.document.close();
+        } catch (e) { alert("No se pudo abrir: " + (e.message || e)); }
+    };
     // Sección "Documentos del servicio" al final del panel: pedido(s), remisión de Aspel y evidencias.
     async function opsPanelDocsPintar(f) {
         const box = document.getElementById("ops-panel-docs"); if (!box || box.dataset.folio !== f.id) return;
+        opsRemCargarAspel(false);
         const peds = opsRemPedidosDe(f);
-        const fila = (tit, cuerpo) => `<div style="display:flex;gap:10px;padding:7px 0;border-top:1px solid #f1f5f9;"><div style="width:96px;flex-shrink:0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">${tit}</div><div style="flex:1;font-size:12px;color:#334155;line-height:1.6;">${cuerpo}</div></div>`;
-        const pedHTML = peds.length ? peds.map(p => `<div><b>${opsEsc(p.folio || "s/folio")}</b>${p.cliente ? " · " + opsEsc(p.cliente) : ""}${p.tienePdfOriginal ? ` <button onclick="opsCalVerPdfPedido('${p.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ` <span style="color:#94a3b8;">(sin PDF adjunto)</span>`}</div>`).join("")
+        const btn = (fn, t) => `<button onclick="${fn}" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;">${t}</button>`;
+        const fila = (tit, cuerpo) => `<div style="display:flex;gap:10px;padding:7px 0;border-top:1px solid #f1f5f9;"><div style="width:96px;flex-shrink:0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">${tit}</div><div style="flex:1;font-size:12px;color:#334155;line-height:1.7;">${cuerpo}</div></div>`;
+        const pedHTML = peds.length ? peds.map(p => `<div><b>${opsEsc(p.folio || "s/folio")}</b>${p.cliente ? " · " + opsEsc(p.cliente) : ""}${p.tienePdfOriginal ? btn(`opsCalVerPdfPedido('${p.id}')`, "Ver PDF") : ` <span style="color:#94a3b8;">(sin PDF)</span>`}</div>`).join("")
             : `<span style="color:#94a3b8;">Este servicio no tiene pedido ligado.</span>`;
-        const rem = peds.filter(opsRemEsRemisionado);
-        const remHTML = rem.length ? rem.map(p => `<div><b style="color:#15803d;">${opsEsc(p.remisionAspelFolio || "Remisionado")}</b>${opsRemFecha(p) ? " · " + opsEsc(opsFmtFechaCorta(String(opsRemFecha(p)).slice(0, 10))) : ""}${p.remisionadoPor ? ` <span style="color:#64748b;">· lo capturó ${opsEsc(p.remisionadoPor)}</span>` : ""} <span style="color:#94a3b8;">(pedido ${opsEsc(p.folio || "")})</span></div>`).join("")
-            : `<span style="color:${peds.length ? "#b45309" : "#94a3b8"};">${peds.length ? "Almacén todavía no captura la remisión de Aspel." : "Sin remisión."}</span>`;
+        const rem = peds.flatMap(opsRemDePedido);
+        const remHTML = rem.length ? rem.map(r => `<div><b style="color:#15803d;">${opsEsc(r.folio || "Remisionado")}</b>${r.fecha ? " · " + opsEsc(opsFmtFechaCorta(r.fecha)) : ""}${r.total ? " · " + opsDinero(r.total) : ""} <span style="color:#94a3b8;">(pedido ${opsEsc(r.pedido)})</span>
+                ${r.fuente === "aspel" ? btn(`opsRemHoja('${opsEsc(r.pedido)}','${opsEsc(r.folio)}')`, "Hoja de remisión") : ` <span style="color:#94a3b8;">marcado en Almacén${r.por ? " por " + opsEsc(r.por) : ""}</span>`}
+                ${btn(`opsRemFotos('${r.p.id}')`, "Foto firmada")}${r.factura ? `<div style="font-size:11.5px;color:#1D2E73;">Factura ${opsEsc(r.factura)}</div>` : ""}</div>`).join("")
+            : `<span style="color:${peds.length ? "#b45309" : "#94a3b8"};">${peds.length ? (opsRemAspelEst.cargando ? "Consultando Aspel…" : "Todavía no hay remisión en Aspel para este pedido.") : "Sin remisión."}</span>`;
         const pintar = evTxt => { const b = document.getElementById("ops-panel-docs"); if (!b || b.dataset.folio !== f.id) return;
             b.innerHTML = `<section class="opf-sec"><div class="opf-sec-tit"><span>Documentos del servicio</span></div>${fila("Pedido", pedHTML)}${fila("Remisión", remHTML)}${fila("Evidencias", evTxt)}</section>`; };
         pintar(`<span style="color:#94a3b8;">Contando…</span>`);
         let n = 0;
         try { const { db, fs } = await opsGetFB(); const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias")); n = snap.docs.length; } catch (e) { console.warn("[documentos] evidencias:", e); }
-        pintar(n ? `${n} archivo(s) <button onclick="(document.getElementById('ops-panel-evidencias')||{}).scrollIntoView&&document.getElementById('ops-panel-evidencias').scrollIntoView({behavior:'smooth',block:'start'})" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">Ver evidencias</button>` : `<span style="color:#94a3b8;">Sin evidencias subidas.</span>`);
+        pintar(n ? `${n} archivo(s) ${btn("(document.getElementById('ops-panel-evidencias')||{}).scrollIntoView&&document.getElementById('ops-panel-evidencias').scrollIntoView({behavior:'smooth',block:'start'})", "Ver evidencias")}` : `<span style="color:#94a3b8;">Sin evidencias subidas.</span>`);
     }
 
     function opsRenderComisiones() {
