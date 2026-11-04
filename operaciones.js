@@ -7201,6 +7201,7 @@
         opsFoliosVigilanciaBase = false;
         opsFoliosAlertaState.clear();
         opsFoliosEvidenciaAlertados.clear();
+        opsFoliosEvidenciaVistos.clear();
     }
 
     // ── Alerta de acta administrativa: 3 días sin evidencia (comentario) en un
@@ -7217,13 +7218,36 @@
             const base = f.ultimaEvidenciaEn || f.creadoEn || f.fechaSolicitud;
             if (!base) continue;
             const dias = (ahora - new Date(base).getTime()) / 86400000;
-            if (dias >= OPS_DIAS_ALERTA_EVIDENCIA && !opsFoliosEvidenciaAlertados.has(f.id)) {
+            const pasado = dias >= OPS_DIAS_ALERTA_EVIDENCIA;
+            // 3-nov-2026: solo avisa al CRUZAR los 3 días con el portal abierto. Lo que ya venía atrasado
+            // (al abrir o mientras cargan los folios) no genera un aviso por folio: va en un solo resumen al día.
+            if (!opsFoliosEvidenciaVistos.has(f.id)) { opsFoliosEvidenciaVistos.set(f.id, pasado); if (pasado) continue; }
+            if (pasado && !opsFoliosEvidenciaVistos.get(f.id) && !opsFoliosEvidenciaAlertados.has(f.id)) {
                 opsFoliosEvidenciaAlertados.add(f.id);
-                if (opsFoliosVigilanciaBase) { // no avalancha al cargar folios viejos por primera vez
-                    opsMostrarFlotanteGenerica(`Folio ${f.folioOS ? "O.S. " + f.folioOS + " — " : ""}${f.estacion}: ${Math.floor(dias)} días sin evidencia. Se sugiere acta administrativa.`, "#E7402B");
-                }
+                opsNotifAgregar({ titulo: "Servicio sin evidencia", color: "#E7402B", accion: "folio", folioId: f.id,
+                    texto: `${f.estacion}${f.folioOS ? " · O.S. " + f.folioOS : ""}: ${Math.floor(dias)} días sin evidencia. Se sugiere acta administrativa.` });
             }
+            opsFoliosEvidenciaVistos.set(f.id, pasado);
         }
+        opsResumenSinEvidencia();
+    }
+    let opsFoliosEvidenciaVistos = new Map();
+    // Un solo aviso al día con cuántos servicios llevan 3 días o más sin evidencia (lleva al calendario).
+    function opsResumenSinEvidencia() {
+        if (!cacheFolios.length) return;
+        // Limpieza única por persona (3-nov-2026): quita de la campanita la avalancha de avisos "sin evidencia" (uno por folio).
+        try { const k = "ops_limpia_sin_evidencia_v1_" + opsUsuarioActual();
+            if (window.tcNotif && window.tcNotif.quitar && !localStorage.getItem(k)) {
+                window.tcNotif.quitar(n => /días sin evidencia\. Se sugiere acta administrativa/.test(n.texto || "") && n.titulo !== "Servicio sin evidencia");
+                localStorage.setItem(k, "1"); } } catch (e) {}
+        if (!opsPuedeGestionar()) return;
+        const clave = "ops_resumen_sin_evidencia_" + opsUsuarioActual() + "_" + opsHoyLocal();
+        try { if (localStorage.getItem(clave)) return; } catch (e) { return; }
+        const n = [...opsFoliosEvidenciaVistos.values()].filter(Boolean).length;
+        try { localStorage.setItem(clave, "1"); } catch (e) {}
+        if (!n) return;
+        opsNotifAgregar({ titulo: "Servicios sin evidencia", color: "#b45309", accion: "calendario",
+            texto: `${n} servicio(s) abiertos llevan ${OPS_DIAS_ALERTA_EVIDENCIA} días o más sin evidencia. Revísalos en el calendario.` });
     }
 
     // ═══════════════════ MESA DE FOLIOS (17-oct-2026, junta con Sandra/Paloma/Miguel) ═══════════════════
@@ -9349,7 +9373,14 @@
     window.opsCalToggleCategoria = function (cat) { opsCalSetFiltro("categoria", opsCalFiltroCategoria === cat ? "todas" : cat); };
     window.opsCalIrAFecha = function (fechaISO) { if (!fechaISO) return; opsCalFecha = new Date(fechaISO + "T00:00:00"); opsRenderCalendario(); };
     // 3-nov-2026: clic en una notificación → Calendario en el día del servicio (vista Día) y se abre el servicio.
-    window.opsIrAProgramacion = function (folioId) {
+    // Si el módulo está cerrado (tachita de arriba), primero se abre el módulo nuevo, no la pantalla vieja del área.
+    async function opsAsegurarModuloAbierto() {
+        const ov = document.getElementById("ops-herramientas-overlay");
+        if (ov && ov.style.display !== "block" && typeof window.opsAbrirHerramientas === "function") await window.opsAbrirHerramientas();
+    }
+    window.opsIrATab = async function (tab) { await opsAsegurarModuloAbierto(); window.opsCambiarTab(tab || "calendario"); };
+    window.opsIrAProgramacion = async function (folioId) {
+        await opsAsegurarModuloAbierto();
         const f = cacheFolios.find(x => x.id === folioId);
         if (f) {
             const v = (f.atenciones || []).filter(x => x && (x.fin || x.inicio)).slice(-1)[0];

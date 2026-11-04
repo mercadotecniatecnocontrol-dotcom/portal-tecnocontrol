@@ -30,7 +30,9 @@
   var SB_URL = 'https://vlbyjoqessxcmkejcujp.supabase.co';
   var SB_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
   var FN_MIGRAR = SB_URL + '/functions/v1/auth-migrar';
-  var LLAVE = 'tc-sesion-supabase';
+  // Kioscos (nov-2026): cada kiosco guarda su sesión aparte para no mezclarse con la del portal.
+  var LLAVE = window.TC_SESION_LLAVE || 'tc-sesion-supabase';
+  var ALMACEN = window.TC_SESION_ALMACEN === 'sesion' ? window.sessionStorage : undefined; // 'sesion' = se borra al cerrar la pestaña
   var POSPUESTO = 'tcSesionPospuesta';
 
   var _cliP = null;
@@ -46,7 +48,7 @@
       : import('https://esm.sh/@supabase/supabase-js@2')
     ).then(function (m) {
       return m.createClient(SB_URL, SB_KEY, {
-        auth: { storageKey: LLAVE, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+        auth: { storageKey: LLAVE, storage: ALMACEN, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
       });
     }).catch(function (e) { _cliP = null; throw e; });
     return _cliP;

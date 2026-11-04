@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<!-- Etapa 2b/2c del login (nov-2026): firebase-auth.js se sustituye por Supabase Auth (firebase-auth-supabase.js). Debe ir antes de cualquier script de módulo -->
+<script type="importmap">{ "imports": { "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js": "./firebase-auth-supabase.js?v=2" } }</script>
+<script>window.TC_SESION_LLAVE='tc-sesion-kiosco-requisicion'; window.TC_SESION_ALMACEN='sesion';</script>
+<script src="sesion-supabase.js?v=2"></script>
+<script src="auth-supabase.js?v=1"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Requisición de Compra · Tecnocontrol</title>

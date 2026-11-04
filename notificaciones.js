@@ -199,10 +199,12 @@
       irArea(ir.area || (t && t.area));
       cuando(function () { return typeof window.abrirChat === 'function'; }, function () { window.abrirChat(ir.id, (t && t.actividad) || ir.nombre || 'Tarea', ir.area || (t && t.area) || ''); });
     } else if (ir.tipo === 'ops_folio') {
-      // 3-nov-2026: lleva a la programación (Calendario, en el día del servicio) y abre el servicio.
-      irArea('Operaciones');
-      cuando(function () { return (typeof window.opsIrAProgramacion === 'function' || typeof window.opsAbrirPanelFolio === 'function') && document.getElementById('ops-tab-content'); },
-        function () { if (typeof window.opsIrAProgramacion === 'function') window.opsIrAProgramacion(ir.id); else window.opsAbrirPanelFolio(ir.id); }, 60);
+      // 3-nov-2026: abre el módulo de Operaciones (no la pantalla vieja del área), va al Calendario en el día
+      // del servicio y lo abre. Si el módulo estaba cerrado con la tachita, se vuelve a abrir solo.
+      if (typeof window.opsIrAProgramacion === 'function') window.opsIrAProgramacion(ir.id);
+      else { irArea('Operaciones'); cuando(function () { return typeof window.opsAbrirPanelFolio === 'function' && document.getElementById('ops-tab-content'); }, function () { window.opsAbrirPanelFolio(ir.id); }, 60); }
+    } else if (ir.tipo === 'ops_tab' && typeof window.opsIrATab === 'function') {
+      window.opsIrATab(ir.tab);
     } else if (ir.tipo === 'ops_tab') {
       irArea('Operaciones');
       cuando(function () { return typeof window.opsCambiarTab === 'function' && document.getElementById('ops-tab-content'); }, function () { window.opsCambiarTab(ir.tab); }, 60);
@@ -298,7 +300,14 @@
     setTimeout(function () { if (c.parentNode) c.remove(); }, (tt + tx).length > 70 || est === 'error' ? 7000 : 4000);
   }
 
-  window.tcNotif = { agregar: agregar, aviso: aviso, abrir: abrir, abrirPanel: abrirPanel, cerrarPanel: cerrarPanel };
+  // Quitar de la campanita las que cumplan una condición (limpiezas puntuales, p. ej. avalanchas viejas).
+  function quitar(fn) {
+    var antes = lista.length;
+    lista = lista.filter(function (n) { try { return !fn(n); } catch (e) { return true; } });
+    if (lista.length !== antes) { guardar(); pintarBadge(); if (panelAbierto) pintarPanel(); }
+    return antes - lista.length;
+  }
+  window.tcNotif = { agregar: agregar, aviso: aviso, abrir: abrir, abrirPanel: abrirPanel, cerrarPanel: cerrarPanel, quitar: quitar };
   function iniciar() { cargar(); campana(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
   // Cuando cambia el usuario (login), se cargan sus notificaciones

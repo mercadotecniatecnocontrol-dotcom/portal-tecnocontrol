@@ -12,7 +12,7 @@
     <meta name="version" content="1776262807">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <!-- Etapa 2a del login (nov-2026): todo import de firebase-auth.js usa Supabase Auth (firebase-auth-supabase.js). Debe ir ANTES de cualquier script de módulo -->
-    <script type="importmap">{ "imports": { "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js": "./firebase-auth-supabase.js?v=1" } }</script>
+    <script type="importmap">{ "imports": { "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js": "./firebase-auth-supabase.js?v=2" } }</script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -25,7 +25,7 @@
     <script src="portal-supabase.js?v=6"></script>
     <!-- Puente Firestore→Supabase (Operaciones, Marketing…): cargado una sola vez para todo el portal -->
     <script src="operaciones-supabase.js?v=ops8"></script>
-    <script src="sesion-supabase.js?v=1"></script>
+    <script src="sesion-supabase.js?v=2"></script>
     <!-- Etapa 2a: el inicio de sesión es Supabase Auth con la misma forma que Firebase (window.tcAuth) -->
     <script src="auth-supabase.js?v=1"></script>
     <link rel="stylesheet" href="CSS/style.css">
@@ -2161,7 +2161,7 @@ function cerrarPush(el) {
 </script>
 <!-- 3-nov-2026: centro de notificaciones del portal (tarjeta en la esquina + voz + clic que lleva a lo que avisa).
      Va DESPUÉS del script de arriba: reemplaza mostrarPush/mostrarToast y la ventana central vieja. -->
-<script src="notificaciones.js?v=3"></script>
+<script src="notificaciones.js?v=4"></script>
 
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";

@@ -8,10 +8,10 @@
    cambiar nada, pero por dentro ya es Supabase (window.tcAuth, de
    auth-supabase.js).
 
-   Excepción temporal (hasta la etapa 2c): las altas de cuentas con una app
-   SECUNDARIA de Firebase ("Agregar usuario" y "Acceso al kiosco" de
-   técnicos) siguen usando el Firebase Auth real; al primer inicio de sesión
-   esa cuenta pasa sola a Supabase con auth-migrar.
+   Etapa 2c (3-nov-2026): las altas de cuentas con una app SECUNDARIA
+   ("Agregar usuario", "Acceso al kiosco" y admin-directorio) ya crean la
+   cuenta directo en Supabase con la Edge Function crear-usuario; regresan
+   { user: { uid } } igual que Firebase, así el código que las llama no cambia.
    ════════════════════════════════════════════════════════════════════ */
 
 // "?original" hace que la dirección no coincida con el import map y se cargue el Firebase Auth real.
@@ -19,16 +19,31 @@ const REAL = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js?origin
 let _real = null;
 const real = () => _real || (_real = import(REAL));
 
-function esPrincipal(app) { return !app || app.name === '[DEFAULT]'; }
+// Las apps con nombre de los kioscos ('kiosco-material', 'kiosco-requisicion', 'admin-directorio'…) también
+// son Supabase. Las apps temporales para CREAR cuentas usan la Edge Function crear-usuario (etapa 2c).
+function esPrincipal(app) { return !app || !/^(alta-usuario|acceso-kiosco|crear-usuario)-/.test(String(app.name || '')); }
 function tc() {
   if (!window.tcAuth) throw new Error('Falta auth-supabase.js antes del código del portal');
   return window.tcAuth;
 }
 
 // Auth de una app secundaria: envoltura que resuelve al Firebase Auth real cuando se usa.
+// El Firebase real solo se carga si de verdad se usa (ya no para crear cuentas).
 function secundaria(app) {
-  const p = real().then(m => m.getAuth(app));
-  return { __secundaria: true, app, name: app.name, _p: p, get currentUser() { return null; } };
+  let p = null;
+  return { __secundaria: true, app, name: app.name, get _p() { return p || (p = real().then(m => m.getAuth(app))); }, get currentUser() { return null; } };
+}
+// Alta de cuenta en Supabase (Edge Function crear-usuario) con la sesión de quien la crea.
+const FN_CREAR = 'https://vlbyjoqessxcmkejcujp.supabase.co/functions/v1/crear-usuario';
+const SB_KEY = 'sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+async function crearEnSupabase(correo, clave) {
+  const yo = tc().currentUser;
+  if (!yo) throw Object.assign(new Error('Inicia sesión para crear cuentas'), { code: 'auth/requires-recent-login' });
+  const token = await yo.getIdToken();
+  const r = await fetch(FN_CREAR, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + token }, body: JSON.stringify({ email: correo, password: clave }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.uid) throw Object.assign(new Error(j.error || ('No se pudo crear la cuenta (HTTP ' + r.status + ')')), { code: j.codigo || 'auth/internal-error' });
+  return { user: { uid: j.uid, email: j.email || correo, getIdToken: async () => null } };
 }
 
 export function getAuth(app) { return esPrincipal(app) ? tc() : secundaria(app); }
@@ -45,12 +60,12 @@ export async function signInWithEmailAndPassword(auth, correo, clave) {
 }
 
 export async function signOut(auth) {
-  if (auth && auth.__secundaria) { const m = await real(); return m.signOut(await auth._p); }
+  if (auth && auth.__secundaria) return; // las cuentas nuevas no abren sesión: no hay nada que cerrar
   return tc().signOut();
 }
 
 export async function createUserWithEmailAndPassword(auth, correo, clave) {
-  if (auth && auth.__secundaria) { const m = await real(); return m.createUserWithEmailAndPassword(await auth._p, correo, clave); }
+  if (auth && auth.__secundaria) return crearEnSupabase(correo, clave);
   throw Object.assign(new Error('Para crear cuentas usa una app secundaria (no cierra tu sesión).'), { code: 'auth/operation-not-allowed' });
 }
 
