@@ -1437,7 +1437,7 @@
         ["solicitudes", "Solicitudes"], ["dashboard", "Herramientas"], ["guardias", "Guardias"], ["vencimientos", "Vencimientos"],
         ["viaticos", "Viáticos"], ["alertas", "Alertas"], ["garantias", "Garantías"], ["polizas", "Pólizas (próximamente)"],
         ["tecnicos", "Técnicos"], ["externos", "Externos"], ["permisos", "Permisos y vacaciones"], ["movimientos", "Movimientos"], ["resumen", "Resumen"],
-        ["comisiones", "Comisiones"],
+        ["comisiones", "Comisiones"], ["remisionados", "Servicios remisionados (Contabilidad)"],
     ];
     const OPS_ACC_ACCIONES = [["ver", "Ver"], ["crear", "Crear"], ["editar", "Editar"], ["eliminar", "Eliminar"], ["aprobar", "Aprobar"], ["contacto", "Ver contacto"], ["dinero", "Ver dinero"]];
     // Pestañas que no son sección propia de la matriz: se rigen por otra sección.
@@ -2277,6 +2277,7 @@
         extras: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></svg>',
         pendientes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M4 4l3 3"/></svg>',
         herrsol: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>',
+        remisionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>',
         comisiones: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5"/><path d="M12 6.5v11"/></svg>',
         vehiculos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="14" height="10" rx="1"/><path d="M15 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
         gestionados: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M5 6l1 14h12l1-14"/><path d="M10 11l2 2 3-4"/></svg>',
@@ -2288,8 +2289,8 @@
         const items = ["calendario:Calendario", "vehiculos:Vehículos", "resumen:Resumen", "dashboard:Herramientas", "guardias:Guardias", "tecnicos:Técnicos", "servicios:Servicios",
             "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "reportesapp:Pólizas y reportes (app)", "estaciones:Estaciones por plaza", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
-            "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "estaciones" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
+            "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), ...(opsRemVer() ? ["remisionados:Servicios remisionados"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
+            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); if (id === "remisionados") return opsRemVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "estaciones" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -2325,7 +2326,7 @@
 
     window.opsCambiarTab = function (tab) {
         if (tab === "accesos" && !(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones"))) tab = "calendario";
-        if (tab !== "accesos" && !opsAccPuedeVer(tab)) {
+        if (tab !== "accesos" && !(tab === "remisionados" ? opsRemVer() : opsAccPuedeVer(tab))) {
             const primera = OPS_ACC_SECCIONES.map(x => x[0]).find(s => opsAccPuedeVer(s) && document.getElementById("ops-tab-" + s));
             if (!primera) { const c = document.getElementById("ops-tab-content"); if (c) c.innerHTML = `<div style="padding:30px;color:#64748b;font-size:13px;">Tu usuario no tiene secciones visibles en Operaciones. Pide acceso a un administrador.</div>`; return; }
             tab = primera;
@@ -2351,6 +2352,7 @@
         else if (tab === "gestionados") opsRenderGestionados();
         else if (tab === "viaticos") opsRenderViaticos();
         else if (tab === "comisiones") opsRenderComisiones();
+        else if (tab === "remisionados") opsRenderRemisionados();
         else if (tab === "derivados") opsRenderDerivados();
         else if (tab === "extras") opsRenderExtras();
         else if (tab === "tableros") opsRenderTableros();
@@ -2402,6 +2404,7 @@
                 if (tabActual === "resumen") opsRenderResumen();
                 if (tabActual === "solicitudes") opsRenderSolicitudes();
                 if (tabActual === "alertas") opsRenderAlertas();
+                if (tabActual === "remisionados") opsRenderRemisionados();
             }, err => { console.warn("[operaciones.js] error en suscripción de Supabase (surtidos):", err && err.message); });
             if (!unsubSurtPoll) {
                 // Respaldo del tiempo real: cada 3 min y solo con la pestaña visible (antes 30 s siempre).
@@ -2414,6 +2417,7 @@
                             if (tabActual === "resumen") opsRenderResumen();
                             if (tabActual === "solicitudes") opsRenderSolicitudes();
                             if (tabActual === "alertas") opsRenderAlertas();
+                            if (tabActual === "remisionados") opsRenderRemisionados();
                         }).catch(() => {});
                     }
                 }, 180000);
@@ -11342,6 +11346,7 @@
                 <div id="ops-panel-evidencias" data-folio="${f.id}"></div>
                 ${opsPanelCambiosHTML(f)}
                 ${sec("Historial", `<div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>`, ico.historial)}
+                <div id="ops-panel-docs" data-folio="${f.id}"></div>
 
                 ${opsRevFechaCierre(f) ? (() => { const e = OPS_REV_ESTATUS[(f.revisionCierre || {}).estatus || "por_revisar"] || OPS_REV_ESTATUS.por_revisar;
                     return `<button onclick="opsPanelRevisionCierre('${f.id}')" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;border-radius:10px;padding:9px;font-weight:800;font-size:12.5px;cursor:pointer;margin-bottom:8px;">Revisión de cierre <span style="font-size:10px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 7px;">${e[0]}</span></button>`; })() : ""}
@@ -11357,6 +11362,7 @@
         try { opsPanelMaterialPintar(f); } catch (e) { console.warn("[material] panel:", e); }
         try { opsPanelExtraPintar(f); } catch (e) { console.warn("[dictamen/avión] panel:", e); }
         opsPanelEvidenciasPintar(f);
+        try { opsPanelDocsPintar(f); } catch (e) { console.warn("[documentos] panel:", e); }
 
         // ── Vehículo de cada técnico (async, no bloquea el resto del panel) ──
         tecnicos.forEach(async t => {
@@ -13758,6 +13764,115 @@
             .filter(c => !partes.length || partes.every(p => opsNormalizaTexto([c.tecnico_nombre, c.estacion, c.servicio_nombre, c.concepto, (c.checklist || {}).os, (c.checklist || {}).ref, c.notas].join(" ")).includes(p)))
             .sort((a, b) => String(a.tecnico_nombre || "").localeCompare(String(b.tecnico_nombre || ""), "es") || String(a.fecha_servicio || "").localeCompare(String(b.fecha_servicio || "")));
     }
+    // ═══ Servicios remisionados para Contabilidad (4-nov-2026, Glen) ═══
+    // Un servicio está "remisionado" cuando alguno de sus pedidos (de Ventas o de material) ya tiene
+    // remisión en Aspel capturada por Almacén (surtidos.remisionado / remision_aspel_folio).
+    // Visible para admins del portal, rol Administrador de Operaciones y quien tenga "Ver" en la
+    // sección "Servicios remisionados (Contabilidad)" de Control de acceso.
+    function opsRemVer() {
+        if (opsAccEsAdminPortal()) return true;
+        const r = opsAccTiene("remisionados", "ver");
+        if (r === true) return true;
+        const a = opsAccAsignacion();
+        return !!(a && a.rol === "administrador" && !a.soloLectura);
+    }
+    function opsRemPedidosDe(f) {
+        const ids = new Set();
+        (f.pedidosVentas || []).forEach(x => { if (x && x.id) ids.add(x.id); });
+        if (f.pedidoVentasId) ids.add(f.pedidoVentasId);
+        (f.pedidosMaterial || []).forEach(x => { if (x && x.surtidoId) ids.add(x.surtidoId); });
+        const peds = (cacheSurtidos || []).filter(p => p && !p.eliminada && (ids.has(p.id) || (p.opsFolioId && p.opsFolioId === f.id)));
+        return peds.sort((a, b) => String(a.folio || "").localeCompare(String(b.folio || ""), "es"));
+    }
+    function opsRemEsRemisionado(p) { return !!(p && (p.remisionado || p.remisionAspelFolio)); }
+    function opsRemFecha(p) { return p.remisionAspelFecha || p.remisionadoEn || ""; }
+    let opsRemFiltro = { mes: new Date().toISOString().slice(0, 7), estado: "remisionados", q: "" };
+    window.opsRemSet = function (k, v) {
+        opsRemFiltro[k] = v; opsRenderRemisionados();
+        if (k === "q") { const i = document.getElementById("ops-rem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+    };
+    function opsRemFilas() {
+        const out = [];
+        cacheFolios.filter(f => !f.cancelado).forEach(f => {
+            const peds = opsRemPedidosDe(f); if (!peds.length) return;
+            const rem = peds.filter(opsRemEsRemisionado);
+            const fechaRem = rem.map(opsRemFecha).filter(Boolean).sort()[0] || "";
+            const fechaRef = String(fechaRem || f.fechaSolucion || f.fechaProgramada || "").slice(0, 10);
+            out.push({ f, peds, rem, fechaRem, fechaRef });
+        });
+        return out;
+    }
+    function opsRenderRemisionados() {
+        const el = document.getElementById("ops-tab-content"); if (!el) return;
+        if (!opsRemVer()) { el.innerHTML = `<div style="padding:30px;color:#64748b;">Tu usuario no tiene acceso a esta sección.</div>`; return; }
+        const F = opsRemFiltro, q = opsAsNorm(F.q), dinero = opsAccVerDinero("remisionados");
+        const todas = opsRemFilas();
+        const lista = todas.filter(x => {
+            if (F.estado === "remisionados" && !x.rem.length) return false;
+            if (F.estado === "sin_remision" && (x.rem.length || !x.f.fechaSolucion)) return false;
+            if (F.mes && x.fechaRef.slice(0, 7) !== F.mes) return false;
+            if (q && !opsAsNorm([x.f.estacion, x.f.clienteNombre, x.f.estacionRazonSocial, x.f.folioNumero, x.f.folioOS, x.f.osTecnico, opsCalTipoTexto(x.f),
+                x.peds.map(p => [p.folio, p.cliente, p.remisionAspelFolio].join(" ")).join(" ")].join(" ")).includes(q)) return false;
+            return true;
+        }).sort((a, b) => String(a.f.estacion || a.f.clienteNombre || "").localeCompare(String(b.f.estacion || b.f.clienteNombre || ""), "es") || a.fechaRef.localeCompare(b.fechaRef));
+        const cuenta = k => todas.filter(x => (!F.mes || x.fechaRef.slice(0, 7) === F.mes) && (k === "remisionados" ? x.rem.length : k === "sin_remision" ? !x.rem.length && x.f.fechaSolucion : true)).length;
+        const total = lista.reduce((a, x) => a + (Number((x.f.costosServicio || {}).totalCobrar) || Number((x.f.precioServicio || {}).precio) || 0), 0);
+        const chip = (k, t, c) => `<button onclick="opsRemSet('estado','${k}')" style="border:1px solid ${F.estado === k ? c : "#cbd5e1"};background:${F.estado === k ? c : "#fff"};color:${F.estado === k ? "#fff" : "#334155"};border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">${t} (${cuenta(k)})</button>`;
+        const pedTxt = p => `<div style="white-space:nowrap;"><b>${opsEsc(p.folio || "s/folio")}</b>${p.tienePdfOriginal ? ` <button onclick="opsCalVerPdfPedido('${p.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">PDF</button>` : ""}</div>`;
+        const remTxt = x => x.rem.length ? x.rem.map(p => `<div style="white-space:nowrap;"><b style="color:#15803d;">${opsEsc(p.remisionAspelFolio || "Remisionado")}</b> <span style="color:#64748b;font-size:11px;">${opsRemFecha(p) ? opsEsc(opsFmtFechaCorta(String(opsRemFecha(p)).slice(0, 10))) : ""}</span></div>`).join("")
+            : `<span style="color:#b45309;font-weight:700;">Sin remisión</span>`;
+        el.innerHTML = `
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+            <div><div style="font-size:18px;font-weight:800;color:#1D2E73;">Servicios remisionados</div>
+            <div style="font-size:12.5px;color:#64748b;max-width:640px;">Servicios cuyo pedido ya tiene remisión en Aspel (la captura Almacén). Da clic en "Ver" para abrir el servicio con su pedido, remisión y evidencias al final.</div></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label style="font-size:12px;color:#475569;">Mes <input type="month" value="${opsEsc(F.mes)}" onchange="opsRemSet('mes',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;"></label>
+                <button onclick="opsRemSet('mes','')" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">Todos los meses</button>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            ${chip("remisionados", "Remisionados", "#15803d")}${chip("sin_remision", "Terminados sin remisión", "#b45309")}${chip("todos", "Todos con pedido", "#1D2E73")}
+            <input id="ops-rem-q" value="${opsEsc(F.q)}" oninput="opsRemSet('q',this.value)" placeholder="Buscar estación, cliente, pedido, remisión…" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+        </div>
+        ${dinero && lista.length ? `<div style="font-size:12.5px;color:#334155;margin-bottom:8px;">${lista.length} servicio(s) · Total a cobrar capturado: <b>${opsDinero(total)}</b></div>` : `<div style="font-size:12.5px;color:#334155;margin-bottom:8px;">${lista.length} servicio(s)</div>`}
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+                <thead><tr style="background:#f8fafc;color:#475569;text-align:left;">
+                    <th style="padding:9px 8px;">Estación</th><th style="padding:9px 8px;">Servicio</th><th style="padding:9px 8px;">Fecha</th>
+                    <th style="padding:9px 8px;">Pedido</th><th style="padding:9px 8px;">Remisión Aspel</th><th style="padding:9px 8px;">Estatus</th>
+                    ${dinero ? `<th style="padding:9px 8px;text-align:right;">Total</th>` : ""}<th></th></tr></thead>
+                <tbody>${lista.map(x => { const f = x.f, tot = Number((f.costosServicio || {}).totalCobrar) || Number((f.precioServicio || {}).precio) || 0;
+                    return `<tr style="border-top:1px solid #f1f5f9;vertical-align:top;">
+                    <td style="padding:9px 8px;"><b style="color:#1D2E73;">${opsEsc(f.estacion || f.clienteNombre || "Sin estación")}</b>${f.estacionRazonSocial ? `<div style="font-size:11px;color:#64748b;">${opsEsc(f.estacionRazonSocial)}</div>` : ""}${f.plaza ? `<div style="font-size:11px;color:#94a3b8;">${opsEsc(f.plaza)}</div>` : ""}</td>
+                    <td style="padding:9px 8px;">${opsEsc(opsCalTipoTexto(f) || "Servicio")}<div style="font-size:11px;color:#64748b;">${f.folioNumero ? "N.º " + opsEsc(f.folioNumero) : ""}${opsRevOS(f) ? " · O.S. " + opsEsc(opsRevOS(f)) : ""}</div></td>
+                    <td style="padding:9px 8px;white-space:nowrap;">${opsEsc(opsFmtFechaCorta(String(f.fechaSolucion || f.fechaProgramada || "").slice(0, 10)))}</td>
+                    <td style="padding:9px 8px;">${x.peds.map(pedTxt).join("")}</td>
+                    <td style="padding:9px 8px;">${remTxt(x)}</td>
+                    <td style="padding:9px 8px;white-space:nowrap;">${f.fechaSolucion ? `<span style="color:#15803d;font-weight:700;">Terminado</span>` : `<span style="color:#64748b;">En curso</span>`}${f.facturado ? `<div style="font-size:11px;color:#1D2E73;font-weight:700;">Facturado ${opsEsc(f.facturaNumero || "")}</div>` : ""}</td>
+                    ${dinero ? `<td style="padding:9px 8px;text-align:right;white-space:nowrap;">${tot ? opsDinero(tot) : "—"}</td>` : ""}
+                    <td style="padding:9px 8px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#1D2E73;color:#fff;border-radius:7px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver</button></td></tr>`; }).join("")
+                    || `<tr><td colspan="8" style="padding:18px;color:#94a3b8;text-align:center;">No hay servicios con este filtro.</td></tr>`}</tbody>
+            </table>
+        </div>`;
+    }
+    // Sección "Documentos del servicio" al final del panel: pedido(s), remisión de Aspel y evidencias.
+    async function opsPanelDocsPintar(f) {
+        const box = document.getElementById("ops-panel-docs"); if (!box || box.dataset.folio !== f.id) return;
+        const peds = opsRemPedidosDe(f);
+        const fila = (tit, cuerpo) => `<div style="display:flex;gap:10px;padding:7px 0;border-top:1px solid #f1f5f9;"><div style="width:96px;flex-shrink:0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">${tit}</div><div style="flex:1;font-size:12px;color:#334155;line-height:1.6;">${cuerpo}</div></div>`;
+        const pedHTML = peds.length ? peds.map(p => `<div><b>${opsEsc(p.folio || "s/folio")}</b>${p.cliente ? " · " + opsEsc(p.cliente) : ""}${p.tienePdfOriginal ? ` <button onclick="opsCalVerPdfPedido('${p.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">Ver PDF</button>` : ` <span style="color:#94a3b8;">(sin PDF adjunto)</span>`}</div>`).join("")
+            : `<span style="color:#94a3b8;">Este servicio no tiene pedido ligado.</span>`;
+        const rem = peds.filter(opsRemEsRemisionado);
+        const remHTML = rem.length ? rem.map(p => `<div><b style="color:#15803d;">${opsEsc(p.remisionAspelFolio || "Remisionado")}</b>${opsRemFecha(p) ? " · " + opsEsc(opsFmtFechaCorta(String(opsRemFecha(p)).slice(0, 10))) : ""}${p.remisionadoPor ? ` <span style="color:#64748b;">· lo capturó ${opsEsc(p.remisionadoPor)}</span>` : ""} <span style="color:#94a3b8;">(pedido ${opsEsc(p.folio || "")})</span></div>`).join("")
+            : `<span style="color:${peds.length ? "#b45309" : "#94a3b8"};">${peds.length ? "Almacén todavía no captura la remisión de Aspel." : "Sin remisión."}</span>`;
+        const pintar = evTxt => { const b = document.getElementById("ops-panel-docs"); if (!b || b.dataset.folio !== f.id) return;
+            b.innerHTML = `<section class="opf-sec"><div class="opf-sec-tit"><span>Documentos del servicio</span></div>${fila("Pedido", pedHTML)}${fila("Remisión", remHTML)}${fila("Evidencias", evTxt)}</section>`; };
+        pintar(`<span style="color:#94a3b8;">Contando…</span>`);
+        let n = 0;
+        try { const { db, fs } = await opsGetFB(); const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias")); n = snap.docs.length; } catch (e) { console.warn("[documentos] evidencias:", e); }
+        pintar(n ? `${n} archivo(s) <button onclick="(document.getElementById('ops-panel-evidencias')||{}).scrollIntoView&&document.getElementById('ops-panel-evidencias').scrollIntoView({behavior:'smooth',block:'start'})" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">Ver evidencias</button>` : `<span style="color:#94a3b8;">Sin evidencias subidas.</span>`);
+    }
+
     function opsRenderComisiones() {
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         if (!opsComVer()) { el.innerHTML = `<div style="padding:30px;color:#64748b;">Tu usuario no tiene acceso a comisiones.</div>`; return; }
