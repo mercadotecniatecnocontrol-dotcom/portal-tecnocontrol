@@ -7748,6 +7748,7 @@
         const cambios = {
             tecnicosAsignadosIds: [tec.id], tecnicosAsignadosNombres: [tec.nombre || ""],
             tecnicoResponsableId: tec.id, tecnicoResponsableNombre: tec.nombre || "", tecnicoResponsableCorreo: String(tec.correo || "").toLowerCase().trim() || null,
+            ...(opsTecPorId(tec.id) ? opsCamposEquipo(f, [tec.id], tipo === "guardia" ? "Asignado a guardia" : "Asignado a turno de folios") : {}), // 5-nov-2026: registra a quién se le quitó
             fechaProgramada: f.fechaProgramada || opsAhoraLocal(),
             turnoFolios: { tipo, dia, por: yo, en: ahora },
             asignaciones: (f.asignaciones || []).concat([{ dia, tecnicoId: tec.id, nombre: tec.nombre || "", turno: tipo, por: yo, en: ahora }]),
@@ -12739,12 +12740,14 @@
             const previo = cacheFolios.find(x => x.id === id);
             if (previo) Object.assign(datos, opsCamposReprogramacion(previo, datos.fechaProgramada));
             // Si se cambió el responsable, el equipo cambia con él (antes el anterior lo seguía viendo).
-            if (previo && datos.tecnicoResponsableId && datos.tecnicoResponsableId !== previo.tecnicoResponsableId) {
-                const act = (previo.tecnicosAsignadosIds || []).slice();
-                const ids = act.includes(datos.tecnicoResponsableId) ? act
-                    : (previo.tecnicoResponsableId && act.includes(previo.tecnicoResponsableId)) ? act.map(x => x === previo.tecnicoResponsableId ? datos.tecnicoResponsableId : x)
-                    : act.length === 1 ? [datos.tecnicoResponsableId] : act.concat([datos.tecnicoResponsableId]);
-                const eq = opsCamposEquipo({ ...previo, tecnicosAsignadosIds: act.concat(previo.tecnicoResponsableId ? [previo.tecnicoResponsableId] : []), tecnicoResponsableId: datos.tecnicoResponsableId }, ids, "Cambio de responsable en Editar folio");
+            // 5-nov-2026: se respeta el equipo que se palomeó en el formulario (antes, al cambiar el
+            // responsable, se recalculaba con el equipo viejo y el técnico anterior lo seguía viendo).
+            // También se registra a quién se le quitó, aunque el responsable no cambie.
+            const actEq = previo ? [...new Set([...(previo.tecnicosAsignadosIds || []), previo.tecnicoResponsableId].filter(Boolean))] : [];
+            const nuevoEq = (datos.tecnicosAsignadosIds || []).slice();
+            const cambioEq = previo && nuevoEq.length && datos.tecnicoResponsableId && (datos.tecnicoResponsableId !== previo.tecnicoResponsableId || actEq.length !== nuevoEq.length || actEq.some(x => !nuevoEq.includes(x)));
+            if (cambioEq) {
+                const eq = opsCamposEquipo({ ...previo, tecnicosAsignadosIds: actEq, tecnicoResponsableId: datos.tecnicoResponsableId }, nuevoEq, "Cambio de técnicos en Editar folio");
                 Object.assign(datos, eq);
             }
             await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), datos);

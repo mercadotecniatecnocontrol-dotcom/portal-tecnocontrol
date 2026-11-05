@@ -6912,6 +6912,7 @@ window.reqEnviar=async function(){
 //   de Operaciones (campanita/alarma del portal).
 // ══════════════════════════════════════════════════════════════
 const _opsAvisosVistos=new Set();
+let _opsFoliosMapa=null; // 5-nov-2026: todos los folios (id → folio) para no avisar servicios que ya no son del técnico
 const OPS_COL_FOLIOS='ops_folios', OPS_COL_NOTIF='ops_notificaciones';
 
 function opsSvEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -7059,6 +7060,7 @@ async function fmOpsServCargar(){
   if(!_unsubOpsServ){
     _unsubOpsServ=opsDb().collection(OPS_COL_FOLIOS).onSnapshot(function(snap){
       const todos=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      _opsFoliosMapa=new Map(todos.map(function(f){return [f.id,f];}));
       misOpsServ=todos
         .filter(function(f){return opsSvEsMio(f,correo)&&!_fmColaIds.has(f.id)&&!(f.pendienteReasignar&&!f.fechaSolucion);})
         .sort(function(a,b){return String(a.fechaProgramada||'').localeCompare(String(b.fechaProgramada||''));});
@@ -7170,7 +7172,15 @@ function fmOpsAlarmaParar(){if(_opsAlarmaStop)_opsAlarmaStop();}
 const _opsAvisosCola=[]; let _opsAvisoAbierto=false;
 function fmOpsAvisoEncolar(n){_opsAvisosCola.push(n);if(!_opsAvisoAbierto)fmOpsAvisoSiguiente();}
 function fmOpsAvisoSiguiente(){
-  const n=_opsAvisosCola.shift();
+  // 5-nov-2026: antes de mostrar "Nuevo servicio asignado" se revisa que el servicio siga siendo
+  // del técnico. Si ya se pasó a otro técnico, se cerró o se canceló, el aviso se marca como leído
+  // sin mostrarse (antes le seguía saliendo al técnico anterior cada vez que abría la app).
+  if(_opsAvisosCola.length&&!_opsFoliosMapa){_opsAvisoAbierto=true;setTimeout(fmOpsAvisoSiguiente,1500);return;}
+  let n=_opsAvisosCola.shift();
+  while(n&&n.folioId&&_opsFoliosMapa&&_opsFoliosMapa.has(n.folioId)&&!opsSvEsMio(_opsFoliosMapa.get(n.folioId),opsSvMiCorreo())){
+    try{opsDb().collection(OPS_COL_NOTIF).doc(n.id).update({leida:true,leidaEn:new Date().toISOString(),acuseTecnico:'Automático: el servicio ya no es de este técnico'});}catch(e){}
+    n=_opsAvisosCola.shift();
+  }
   if(!n){_opsAvisoAbierto=false;return;}
   _opsAvisoAbierto=true;
   const fila=function(k,v){return v?'<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:13px"><div style="width:78px;color:#64748B;flex-shrink:0">'+k+'</div><div style="color:#0A1628;font-weight:700">'+opsSvEsc(v)+'</div></div>':'';};
