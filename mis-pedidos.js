@@ -255,6 +255,12 @@
       }
       if (e && e.tecnicos && e.tecnicos.length) det.push('T\u00e9cnico'+(e.tecnicos.length>1?'s':'')+': '+esc(e.tecnicos.join(', ')));
       if (e && e.k==='sin_terminar') det.push(esc(e.texto||''));
+      // 5-nov-2026: diagnóstico del técnico ligado al pedido
+      var dg = e && e.diagnostico;
+      if (dg && (dg.texto || dg.motivo)){
+        det.push('<b>Diagn\u00f3stico del t\u00e9cnico'+(dg.tecnico?' ('+esc(dg.tecnico)+')':'')+':</b> '+esc(dg.texto||'')+(dg.motivo?' <i>\u00b7 '+esc(dg.motivo)+'</i>':'')+(dg.os?' \u00b7 O.S. '+esc(dg.os):'')+(dg.fotos?' \u00b7 '+dg.fotos+' foto(s) en Operaciones':''));
+        if (dg.requiereCotizacion) det.push('<span style="display:inline-block;background:#fef3c7;color:#92400e;font-weight:700;border-radius:6px;padding:2px 8px;">Requiere cotizaci\u00f3n al cliente</span>');
+      }
       if (p.clasificacion==='servicio_piezas') det.push('Lleva piezas que surte Almac\u00e9n');
       html += '<div class="mp-area" style="--c:'+s.c+'"><span class="lb">Operaciones \u00b7 servicio</span><b>'+esc(s.t)+(e && e.folioNumero ? ' \u00b7 servicio N.\u00ba '+esc(e.folioNumero) : '')+'</b>'
         + (det.length ? '<span class="dt" style="flex-basis:100%;">'+det.join('<br>')+'</span>' : (s.k==='programado' && !e ? '<span class="dt">Abre el detalle con Operaciones para ver fecha y t\u00e9cnico.</span>' : ''))+'</div>';

@@ -1847,7 +1847,7 @@
         if ((h.mantenimientos || []).length) { sec("MANTENIMIENTO Y CALIBRACIÓN (" + h.mantenimientos.length + ")"); h.mantenimientos.forEach(m => campo(String(m.fecha || "") + ":", [(m.tipo || ""), m.descripcion, m.proveedor, m.costo ? opsDinero(m.costo) : "", m.requisicion ? "requisición " + m.requisicion : "", m.proximo ? "próximo " + m.proximo : "", m.abierto ? "EN PROCESO" : (m.terminado ? "terminó " + m.terminado : "")].filter(Boolean).join(" · "))); }
         if ((h.usoLab || []).length) { sec("SALIDAS DE LABORATORIO (" + h.usoLab.length + ")"); h.usoLab.forEach(u => campo(String(u.salida || "") + " → " + String(u.regreso || ""), [u.quien, u.dias ? u.dias + " día(s)" : "", u.ubicacion, u.razonSocial, u.servicio, u.autorizo ? "autorizó " + u.autorizo : "", u.conDetalle ? "regresó con detalle: " + (u.obsRegreso || "") : "sin detalle"].filter(Boolean).join(" · "))); }
         sec((serv.length ? "4" : "3") + " · HISTORIAL COMPLETO DE MOVIMIENTOS (" + movs.length + ")");
-        const TL = { alta: "Alta en almacén", asignacion: "Asignación", devolucion: "Devolución", reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación", perdida: "Pérdida", danio: "Daño", baja: "Baja", transferencia: "Transferencia", traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento", prestamo: "Préstamo", devolucion_prestamo: "Regresó del préstamo" };
+        const TL = { alta: "Alta en almacén", asignacion: "Asignación", devolucion: "Devolución", reparacion: "Enviada a reparación", cambio_codigo: "Cambio de código", retorno_reparacion: "Regresó de reparación", perdida: "Pérdida", danio: "Daño", baja: "Baja", transferencia: "Transferencia", traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento", prestamo: "Préstamo", devolucion_prestamo: "Regresó del préstamo" };
         if (!movs.length) campo("—", "Sin movimientos registrados.");
         movs.forEach(m => { const txt = [TL[m.tipo] || m.tipo, m.tecnico_nuevo_id ? "→ " + opsNombreTecnico(m.tecnico_nuevo_id) : "", m.motivo ? "Motivo: " + m.motivo : "", m.observaciones || "", m.usuario_nombre || m.usuario_email ? "(" + (m.usuario_nombre || m.usuario_email) + ")" : ""].filter(Boolean).join(" · ");
             campo(String(m.fecha || "").slice(0, 16).replace("T", " "), txt); });
@@ -3048,9 +3048,11 @@
                     </div>
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
+                ${opsPuedeGestionar() && piezas.length ? opsMasivoBarraHTML(almacenId) : ""}
                 ${piezas.length ? piezas.map(h => {
                     const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
                     return `<div onclick="opsAbrirFichaHerramienta('${h.id}')" style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center;">
+                        ${opsPuedeGestionar() ? `<input type="checkbox" class="ops-mas-chk" value="${opsEsc(h.id)}" onclick="event.stopPropagation();opsMasivoContar()" style="width:18px;height:18px;flex-shrink:0;cursor:pointer;">` : ""}
                         ${opsThumb(h, 38)}
                         <div style="min-width:0;flex:1;">
                             <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -3063,6 +3065,100 @@
                 }).join("") : '<div style="color:#94a3b8;font-size:12px;padding:10px 0;">Sin piezas en este almacén.</div>'}
             </div>
         </div>`;
+    };
+
+    // ── Traspaso masivo de herramienta (5-nov-2026, Glen) ──────────
+    // Desde el panel de un almacén se palomean varias piezas y se pasan juntas a un técnico o a otro
+    // almacén. Mismas reglas que el movimiento de una pieza: de almacén a técnico se asigna directo;
+    // de técnico a técnico se crea el traspaso que el receptor acepta en Flotilla; a un almacén se
+    // devuelve. Se saltan las piezas prestadas, en reparación, extraviadas o con traspaso pendiente.
+    function opsMasivoBarraHTML(almacenId) {
+        const tecs = opsPersonalHerramienta().filter(t => t.id !== almacenId);
+        const alms = cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.id !== almacenId);
+        return `<div style="position:sticky;top:-22px;z-index:2;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:#334155;font-weight:700;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="ops-mas-todas" onchange="document.querySelectorAll('.ops-mas-chk').forEach(c=>c.checked=this.checked);opsMasivoContar()" style="width:16px;height:16px;"> Todas</label>
+                <span id="ops-mas-n" style="margin-left:auto;color:#64748b;font-weight:600;">0 seleccionadas</span>
+            </div>
+            <select id="ops-mas-dest" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-bottom:6px;">
+                <option value="">Pasar a…</option>
+                <optgroup label="Almacenes">${almacenId ? `<option value="alm:">Almacén General</option>` : ""}${alms.map(a => `<option value="alm:${opsEsc(a.id)}">${opsEsc(a.nombre)}${a.requiereAutorizacion ? " (requiere autorización)" : ""}</option>`).join("")}</optgroup>
+                <optgroup label="Personas">${tecs.map(t => `<option value="tec:${opsEsc(t.id)}">${opsEsc(opsPersonalHerrEtiqueta(t))}</option>`).join("")}</optgroup>
+            </select>
+            <input id="ops-mas-obs" placeholder="Comentario (opcional)" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:6px;">
+            <button id="ops-mas-btn" onclick="opsMasivoTraspasar('${opsEsc(almacenId || "")}')" disabled style="width:100%;background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:700;cursor:pointer;opacity:.5;">Traspasar seleccionadas</button>
+        </div>`;
+    }
+    window.opsMasivoContar = function () {
+        const n = document.querySelectorAll(".ops-mas-chk:checked").length;
+        const el = document.getElementById("ops-mas-n"); if (el) el.textContent = n + " seleccionada" + (n === 1 ? "" : "s");
+        const b = document.getElementById("ops-mas-btn"); if (b) { b.disabled = !n; b.style.opacity = n ? "1" : ".5"; b.textContent = n ? `Traspasar ${n} pieza${n === 1 ? "" : "s"}` : "Traspasar seleccionadas"; }
+    };
+    window.opsMasivoTraspasar = async function (almacenOrigen) {
+        const ids = Array.from(document.querySelectorAll(".ops-mas-chk:checked")).map(c => c.value);
+        const dest = (document.getElementById("ops-mas-dest") || {}).value || "";
+        const obs = ((document.getElementById("ops-mas-obs") || {}).value || "").trim();
+        if (!ids.length) return;
+        if (!dest) { alert("Elige a dónde pasan las piezas."); return; }
+        const aTec = dest.startsWith("tec:") ? dest.slice(4) : null;
+        const almId = dest.startsWith("alm:") ? (dest.slice(4) || null) : undefined;
+        const almObj = almId ? cacheAlmacenes.find(a => a.id === almId) : null;
+        const receptor = aTec ? cacheTec.find(t => t.id === aTec) : null;
+        if (almObj && almObj.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(almObj.nombre + " requiere autorización: solo los autorizadores pueden pasar piezas ahí."); return; }
+        const destNombre = receptor ? receptor.nombre : (almObj ? almObj.nombre : "Almacén General");
+        const piezas = ids.map(id => cacheHerr.find(x => x.id === id)).filter(Boolean);
+        const saltadas = [], ok = [], pendientes = [];
+        const movibles = piezas.filter(h => {
+            const motivo = h.estado === "prestamo" ? "prestada" : h.estado === "reparacion" ? "en reparación" : (h.estado === "extraviada" || h.estado === "baja") ? h.estado : opsTraspasoPendientePara(h.id) ? "ya tiene traspaso pendiente" : (aTec && h.tecnicoActualId === aTec) ? "ya la tiene esa persona" : null;
+            if (motivo) saltadas.push(`${h.folio} (${motivo})`);
+            return !motivo;
+        });
+        if (!movibles.length) { alert("Ninguna pieza se puede mover:\n" + saltadas.join("\n")); return; }
+        const conTec = movibles.filter(h => h.tecnicoActualId);
+        if (aTec && conTec.length && (!receptor || !receptor.correo)) { alert(`${destNombre} no tiene correo en su ficha de Técnicos: no puede aceptar traspasos de piezas que hoy tiene otro técnico. Captúralo primero.`); return; }
+        if (!confirm(`¿Pasar ${movibles.length} pieza(s) a ${destNombre}?` + (aTec && conTec.length ? `\n\n${conTec.length} las tiene otro técnico: quedarán como traspaso pendiente hasta que ${destNombre} las acepte en Flotilla.` : "") + (saltadas.length ? `\n\nSe saltan ${saltadas.length}: ${saltadas.join(", ")}` : ""))) return;
+        const btn = document.getElementById("ops-mas-btn"); if (btn) { btn.disabled = true; btn.textContent = "Traspasando…"; }
+        const { db, fs } = await opsGetFB();
+        const nota = obs ? "Traspaso masivo · " + obs : "Traspaso masivo";
+        for (const h of movibles) {
+            try {
+                if (aTec && h.tecnicoActualId) {
+                    // De técnico a técnico: traspaso que el receptor acepta (igual que una sola pieza).
+                    const entrega = cacheTec.find(t => t.id === h.tecnicoActualId);
+                    const now = new Date(), vence = new Date(now.getTime() + 86400000);
+                    await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
+                        herramientaId: h.id, folio: h.folio || "", descripcion: h.descripcion || "",
+                        entregaTecnicoId: h.tecnicoActualId, entregaEmail: entrega && entrega.correo ? entrega.correo : null, entregaNombre: entrega ? entrega.nombre : "Almacén",
+                        receptorTecnicoId: aTec, receptorEmail: receptor.correo, receptorNombre: receptor.nombre,
+                        almacenOrigenId: opsAlmacenIdDe(h.tecnicoActualId), almacenDestinoId: opsAlmacenIdDe(aTec),
+                        comentario: nota, evidenciaBase64: null, estatus: "Pendiente recepción",
+                        creadoEn: now.toISOString(), venceEn: vence.toISOString(),
+                        origen: "operaciones_masivo", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+                    });
+                    pendientes.push(h.folio);
+                } else if (aTec) {
+                    // Del almacén a una persona: asignación directa.
+                    const update = { estado: "asignada", tecnicoActualId: aTec, fechaAsignacion: opsHoy(), observaciones: obs || h.observaciones || null };
+                    await opsSbHerrActualizar(h.id, update);
+                    await opsRegistrarMovimiento({ herramientaId: h.id, tipo: "asignacion", tecnicoAnteriorId: null, tecnicoNuevoId: aTec, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual, observaciones: nota });
+                    ok.push(h.folio);
+                } else {
+                    // A un almacén: devolución (si la tenía alguien) o traspaso entre almacenes.
+                    if (!h.tecnicoActualId && (almId || null) === (h.almacenId || null)) { saltadas.push(`${h.folio} (ya está ahí)`); continue; }
+                    const tipo = h.tecnicoActualId ? "devolucion" : "traspaso_almacen";
+                    const update = { estado: h.tecnicoActualId ? "disponible" : h.estado, tecnicoActualId: null, fechaAsignacion: null, almacenId: almId || null, ubicacionActual: almObj ? almObj.nombre : "Almacén central", observaciones: obs || h.observaciones || null };
+                    await opsSbHerrActualizar(h.id, update);
+                    await opsRegistrarMovimiento({ herramientaId: h.id, tipo, tecnicoAnteriorId: h.tecnicoActualId || null, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: update.ubicacionActual, observaciones: nota });
+                    ok.push(h.folio);
+                }
+            } catch (e) { saltadas.push(`${h.folio} (error: ${e.message || e})`); }
+        }
+        if (pendientes.length && receptor && receptor.correo) {
+            try { await window.tcNotificar2(fs, db, { tipo: "herramienta_traspaso_iniciada", para: receptor.correo, mensaje: `${opsNombreActual()} te está traspasando ${pendientes.length} herramienta(s): ${pendientes.join(", ")}. Acéptalas desde Flotilla en las próximas 24 h.`, leido: false, creadaEn: new Date().toISOString() }); } catch (e) {}
+        }
+        try { if (typeof opsCargarTraspasosPendientes === "function") await opsCargarTraspasosPendientes(); } catch (e) {}
+        alert(`Listo.\n${ok.length ? ok.length + " pieza(s) movidas a " + destNombre + "." : ""}${pendientes.length ? "\n" + pendientes.length + " traspaso(s) pendientes de que " + destNombre + " los acepte." : ""}${saltadas.length ? "\n\nNo se movieron: " + saltadas.join(", ") : ""}`);
+        window.opsAbrirAlmacenPiezas(almacenOrigen || null);
     };
 
     // ── Catálogo agrupado (vista "por tipo de artículo") ────────────
@@ -3434,7 +3530,7 @@
     function opsTimelineItem(m) {
         const tipoLabel = {
             alta: "Alta en almacén", asignacion: "Asignación", devolucion: "Devolución",
-            reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación",
+            cambio_codigo: "Cambio de código", reparacion: "Enviada a reparación", retorno_reparacion: "Regresó de reparación",
             perdida: "Reportada como pérdida", danio: "Reportada con daño",
             baja: "Baja", transferencia: "Transferencia",
             traspaso_almacen: "Traspaso entre almacenes", cambio_ubicacion: "Cambio de ubicación", seguimiento: "Seguimiento (servicio / factura)",
@@ -3482,6 +3578,9 @@
                     </div>
                 </div>
 
+                ${h && opsPuedeHacer("admin_operaciones") ? `<label style="font-size:11.5px;color:#64748b;font-weight:600;">Código de la pieza (solo administradores)</label>
+                <input id="ops-in-codigo" value="${opsEsc(h.folio || h.id)}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 2px;text-transform:uppercase;font-weight:700;">
+                <div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px;">Cambia el código con el que se ve y se busca. El historial y las asignaciones se conservan.</div>` : ""}
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Descripción</label>
                 <input id="ops-in-desc" value="${opsEsc(h?.descripcion || "")}" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
                 <div style="display:flex;gap:8px;">
@@ -3671,7 +3770,25 @@
                 // ubicación se manejan por separado con "Registrar movimiento"/"Dar de baja".
                 const datos = { descripcion, marca, modelo, categoria, numeroSerie, departamento, plaza, condicion, uso, peso, pesoUnidad, medida, requiereAutorizacion };
                 if (window.__opsFotoPiezaTmp) datos.fotoBase64 = window.__opsFotoPiezaTmp;
+                // 5-nov-2026: los administradores pueden cambiar el código de la pieza. Solo cambia el campo
+                // folio (lo que se ve y se busca); el id interno no cambia, así no se pierde historial.
+                const inCod = document.getElementById("ops-in-codigo");
+                const hPrev = cacheHerr.find(x => x.id === id) || {};
+                const codAntes = String(hPrev.folio || id);
+                const codNuevo = inCod ? inCod.value.trim().toUpperCase().replace(/\s+/g, " ") : codAntes;
+                let cambioCodigo = false;
+                if (inCod && codNuevo !== codAntes) {
+                    if (!opsPuedeHacer("admin_operaciones")) { alert("Solo un administrador puede cambiar el código."); throw new Error("__cancel"); }
+                    if (!codNuevo) { alert("El código no puede quedar vacío."); throw new Error("__cancel"); }
+                    const choca = cacheHerr.find(x => x.id !== id && (String(x.folio || "").toUpperCase() === codNuevo || String(x.id).toUpperCase() === codNuevo));
+                    if (choca) { alert(`El código ${codNuevo} ya lo usa otra pieza: ${choca.descripcion || ""}.`); throw new Error("__cancel"); }
+                    if (!confirm(`¿Cambiar el código ${codAntes} → ${codNuevo}?\nRecuerda cambiar también la etiqueta física.`)) throw new Error("__cancel");
+                    datos.folio = codNuevo;
+                    datos.codigosAnteriores = (hPrev.codigosAnteriores || []).concat([{ codigo: codAntes, cambio: codNuevo, por: opsNombreActual(), en: new Date().toISOString() }]).slice(-20);
+                    cambioCodigo = true;
+                }
                 await opsSbHerrActualizar(id, datos);
+                if (cambioCodigo) { try { await opsRegistrarMovimiento({ herramientaId: id, tipo: "cambio_codigo", tecnicoAnteriorId: hPrev.tecnicoActualId || null, tecnicoNuevoId: hPrev.tecnicoActualId || null, ubicacionAnterior: hPrev.ubicacionActual || null, ubicacionNueva: hPrev.ubicacionActual || null, observaciones: `Cambio de código: ${codAntes} → ${datos.folio}` }); } catch (e) {} }
                 try { await subirDocsPieza(id, cacheHerr.find(x => x.id === id)); } catch (e) { alert("Los datos se guardaron, pero no se pudo subir el manual: " + (e.message || e)); }
                 const idx = cacheHerr.findIndex(x => x.id === id);
                 if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
@@ -3718,6 +3835,7 @@
             opsRequisicionSeleccionada = null;
             document.getElementById("ops-modal-wrap").innerHTML = "";
         } catch (err) {
+            if (err && err.message === "__cancel") { if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.textContent = "Guardar"; } return; }
             console.error("[operaciones.js] error al guardar la pieza:", err);
             alert("No se pudo guardar la pieza: " + (err && err.message ? err.message : err) + "\n\nRevisa la consola del navegador (F12) para más detalle.");
             if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.textContent = "Generar folio y guardar"; }
@@ -5128,7 +5246,7 @@
                         ${gestion ? `<button onclick="opsExportarInventarioPDF()" title="PDF de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.printer} PDF auditoría</button>` : ""}
                         ${gestion ? `<button onclick="opsExportarInventarioExcel()" title="Excel de herramienta por técnico, para auditoría" style="background:#eef2f7;border:none;color:#1f2937;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;">${ICON.file} Excel auditoría</button>` : ""}
                         ${gestion && opsPuedeCrear() ? `<button onclick="opsAbrirModalTecnico()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo técnico</button>` : ""}
-                        ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAlertaSismica()" title="A quién le suena la alarma sísmica de 10 segundos en la app de Flotilla" style="background:#fef2f2;border:none;color:#991b1b;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Alerta sísmica</button>` : ""}
+                        ${false && opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAlertaSismica()" title="A quién le suena la alarma sísmica de 10 segundos en la app de Flotilla" style="background:#fef2f2;border:none;color:#991b1b;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;">Alerta sísmica</button>` : ""}
                         ${opsPuedeHacer("admin_operaciones") ? `<button onclick="opsAbrirModalAccesos()" class="mkt-add-btn" style="background:#7c3aed;">${ICON.key} Accesos a Operaciones</button>` : ""}
                     </div>
                 </div>
@@ -9004,6 +9122,17 @@
         const m = {}; if (f.ventasAvisoEstado) opsVentasPedidosDe(f).forEach(x => { m[x.id] = f.ventasAvisoEstado; });
         return m;
     }
+    // 5-nov-2026: el diagnóstico del técnico (última atención en campo) viaja al pedido del vendedor,
+    // para que vea qué se encontró y si hay que cotizar, sin preguntarle a Operaciones.
+    function opsDiagnosticoParaVentas(f) {
+        const a = (f.atenciones || []).filter(x => x && (x.detalle || x.motivo || x.resultado)).slice(-1)[0];
+        if (!a) return null;
+        const motivo = a.motivo || null;
+        return { texto: String(a.detalle || "").trim().slice(0, 600) || null, motivo, resultado: a.resultado || null,
+            tecnico: a.nombre || null, fecha: a.fin || null, os: a.osTecnico || null,
+            fotos: (a.evidencias && a.evidencias.fotos) || 0,
+            requiereCotizacion: /cotiz/i.test(String(motivo || "") + " " + String(a.detalle || "")) };
+    }
     async function opsAvisarVentasEstado(folios) {
         if (!opsPuedeGestionar() || !window.tcNotificar2) return;
         const limite = Date.now() - 20 * 86400000;
@@ -9028,7 +9157,8 @@
                 const pedsObj = pendientes.map(x => (cacheSurtidos || []).find(p => p.id === x.id)).filter(Boolean);
                 // Estatus en el propio pedido, para "Mis pedidos" de Ventas
                 const opsEstado = { k: est.k.split("|")[0], texto: est.t, fecha: (f.fechaProgramada || "").slice(0, 10) || null, hora: hora || null,
-                    fechaFin: opsFolioFechaFin(f) || null, tecnicos: tecs, folioNumero: f.folioNumero || null, estacion: donde, en: new Date().toISOString() };
+                    fechaFin: opsFolioFechaFin(f) || null, tecnicos: tecs, folioNumero: f.folioNumero || null, estacion: donde, en: new Date().toISOString(),
+                    diagnostico: opsDiagnosticoParaVentas(f) };
                 for (const p of pedsObj) {
                     try { await window.tcSbActualizarSurtido(p.id, { opsEstado }); p.opsEstado = opsEstado; }
                     catch (e) { console.warn("[avisos a Ventas] estatus en el pedido:", e.message || e); }
@@ -9041,7 +9171,8 @@
                     const texto = repro ? est.t.replace("quedó programado", "se reprogramó") : est.t;
                     await window.tcNotificar2(fs, db, {
                         tipo: "ventas_servicio_estado", para, folioId: f.id, modulo: "Ventas",
-                        mensaje: "Tu servicio " + (p.folio ? "(" + p.folio + ") " : "") + "en " + donde + " " + texto + (esProg && hora ? " a las " + hora : "") + ".",
+                        mensaje: "Tu servicio " + (p.folio ? "(" + p.folio + ") " : "") + "en " + donde + " " + texto + (esProg && hora ? " a las " + hora : "") + "."
+                            + (opsEstado.diagnostico && opsEstado.diagnostico.texto && !esProg ? " Diagnóstico: " + opsEstado.diagnostico.texto.slice(0, 160) + (opsEstado.diagnostico.requiereCotizacion ? " · Requiere cotización." : "") : ""),
                         voz: esProg ? "Operaciones " + (repro ? "reprogramó" : "programó") + " tu servicio de " + donde + (tecs.length ? " con " + tecs.join(" y ") : "") + "." : null,
                         leido: false, creadaEn: opsFechaHora(),
                     }).catch(() => {});

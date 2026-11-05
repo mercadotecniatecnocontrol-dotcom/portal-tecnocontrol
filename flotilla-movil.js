@@ -7118,7 +7118,7 @@ async function fmOpsSismicaActiva(){
 }
 // aviso={titulo,texto} — decide entre alerta sísmica (si está activada) o el sonido nuevo del portal
 async function fmOpsAvisoSonoro(aviso){
-  if(await fmOpsSismicaActiva()){fmOpsAlarma(10);return;}
+  // 5-nov-2026: se quitó la alerta sísmica; todos usan el sonido normal del portal.
   try{
     if(window.tcNotif&&typeof window.tcNotif.agregar==='function'){
       window.tcNotif.agregar({titulo:aviso.titulo,texto:aviso.texto||'',nivel:'urgente',modulo:aviso.modulo||'Mis servicios',grupo:'ops_app',ir:aviso.ir||{tipo:'fn',fn:'fmVista',args:['tareas']}});
@@ -7215,6 +7215,7 @@ window.fmOpsAvisoEnterado=async function(id,ver){
 // ── Tarjetas en la vista Tareas ──
 // Tarjetas grises: servicios que Operaciones pasó a otro técnico (solo informativas, 7 días).
 function fmOpsMovidosHTML(){
+  return ''; // 5-nov-2026: ya no se muestra la tarjeta gris «Reprogramado» al técnico anterior.
   if(!misOpsMovidos.length)return '';
   return misOpsMovidos.map(function(f){
     const m=f._movido||{};
