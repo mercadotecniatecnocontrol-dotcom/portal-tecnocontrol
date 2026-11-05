@@ -128,7 +128,7 @@ const iniciales=n=>String(n||'').split(/\s+/).filter(Boolean).slice(0,2).map(x=>
 let ac=null,sonido=false,avisos=[],cola=[],flashOn=false,previo=null;const avisados=new Set();
 function tvActivar(){try{ac=ac||new(window.AudioContext||window.webkitAudioContext)();ac.resume();}catch(e){}sonido=true;document.getElementById('activar').remove();if('speechSynthesis' in window)speechSynthesis.getVoices();}
 function tono(u){if(!sonido||!ac)return;(u?[880,660,880,660]:[660,880]).forEach((fq,i)=>{const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime+i*.28;o.frequency.value=fq;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.4,t+.03);g.gain.exponentialRampToValueAtTime(.0001,t+.25);o.connect(g).connect(ac.destination);o.start(t);o.stop(t+.27);});}
-function voz(t){if(!sonido||!('speechSynthesis' in window))return;const u=new SpeechSynthesisUtterance(t);u.lang='es-MX';u.rate=.95;const v=speechSynthesis.getVoices().find(x=>/^es/i.test(x.lang));if(v)u.voice=v;speechSynthesis.speak(u);}
+function voz(t){return;/* 5-nov-2026: sin voz */if(!sonido||!('speechSynthesis' in window))return;const u=new SpeechSynthesisUtterance(t);u.lang='es-MX';u.rate=.95;const v=speechSynthesis.getVoices().find(x=>/^es/i.test(x.lang));if(v)u.voice=v;speechSynthesis.speak(u);}
 function avisar(tipo,tit,det,urg){avisos.unshift({tipo,tit,det,h:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})});avisos=avisos.slice(0,10);
   document.getElementById('ticker').innerHTML=avisos.slice(0,3).map(a=>'<b>'+a.h+' '+esc(a.tit)+':</b> '+esc(a.det)).join(' &nbsp;|&nbsp; ');
   cola.push({tit,det,urg});if(!flashOn)sigFlash();}

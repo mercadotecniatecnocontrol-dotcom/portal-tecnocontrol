@@ -1257,7 +1257,6 @@ if('speechSynthesis' in window){ window.speechSynthesis.getVoices(); window.spee
     b.onclick=function(){
       try{ AC(); }catch(e){}
       beep();
-      vozNuevoPedido('Sonido activado');
       quitarBoton();
     };
     document.body.appendChild(b);
@@ -1285,7 +1284,6 @@ function flashNuevo(p){
     document.getElementById('npVend').textContent=p.vendedor||'—';
     ov.classList.add('show');
     chimeElegante();
-    setTimeout(()=>vozNuevoPedido(null, p.cliente), 650);
     setTimeout(()=>ov.classList.remove('show'),4800);
   }
 }

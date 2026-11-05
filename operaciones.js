@@ -9431,6 +9431,7 @@
         } catch (e) {}
     }
     function opsHablarServicio(frase) {
+        return; // 5-nov-2026: sin anuncios de voz (quedan tarjeta y campanita).
         if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         if (window.tcHablar) { window.tcHablar(frase); return; } // motor único del portal (respeta "Avisos con voz" de la persona)
         try {
@@ -25447,7 +25448,7 @@
                 <select id="ops-acc-aviso-tipo" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;">${opc("scfi")}</select>
                 <button onclick="opsAccAvisoAgregar()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Agregar</button>
             </div>` : ""}
-            <div style="margin-top:12px;"><button onclick="opsAvisoProbarVoz()" style="background:#f3e8ff;color:#6d28d9;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Probar la voz en esta computadora</button></div>
+            <div style="margin-top:12px;display:none;"><button onclick="opsAvisoProbarVoz()" style="background:#f3e8ff;color:#6d28d9;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Probar la voz en esta computadora</button></div>
         </div>`;
     }
     window.opsAccAvisoAgregar = async function () {

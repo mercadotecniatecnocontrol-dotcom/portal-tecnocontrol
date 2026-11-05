@@ -309,6 +309,7 @@
     window.tcHablar = function (frase) {
       // 3-nov-2026: hora del último aviso hablado; notificaciones.js no repite en voz lo que otro módulo ya dijo.
       window.tcHablar.ultimo = Date.now();
+      return; // 5-nov-2026: se quitan los anuncios de voz en todo el portal (quedan ventana y sonido).
       // 26-oct-2026: UN solo motor de voz para todo el portal. Habla solo si la persona tiene la voz
       // encendida en "Quién recibe qué" → Personas (columna voz de notif_preferencias; sin regla = encendida).
       if (window.tcVozPermitida && !window.tcVozPermitida()) return;
