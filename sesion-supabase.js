@@ -180,5 +180,52 @@
     setTimeout(function () { inp.focus(); }, 50);
   }
 
+  // ───────────── Etapa 2 (5-nov-2026): todas las consultas viajan con la sesión ─────────────
+  // Antes casi todo el portal consultaba Supabase con la llave pública (anon), sin decir quién es.
+  // Ahora, si la persona ya tiene sesión de Supabase, a cada consulta de datos (rest) y archivos
+  // (storage) que vaya con la llave pública se le pone su sesión. No cambia nada visible: las
+  // tablas ya aceptan sesiones. Es el paso previo para cerrar las tablas a quien no tenga sesión.
+  // Si la sesión venció o no existe, la consulta sale como antes (nadie se queda sin trabajar).
+  var _token = null, _exp = 0;
+  function payload(t) {
+    try { var p = String(t).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(p + '==='.slice((p.length + 3) % 4))); }
+    catch (e) { return null; }
+  }
+  function tomarToken(ses) {
+    _token = ses && ses.access_token ? ses.access_token : null;
+    var p = _token ? payload(_token) : null; _exp = p && p.exp ? p.exp * 1000 : 0;
+  }
+  function esLlavePublica(tok) {
+    if (!tok) return true;
+    if (tok === SB_KEY || tok.indexOf('sb_publishable_') === 0) return true;
+    var p = payload(tok); return !!(p && p.role === 'anon');
+  }
+  cliente().then(function (c) {
+    c.auth.getSession().then(function (r) { tomarToken(r && r.data && r.data.session); }).catch(function () {});
+    c.auth.onAuthStateChange(function (_ev, ses) { tomarToken(ses); });
+  }).catch(function () {});
+  if (!window.__tcFetchConSesion && typeof window.fetch === 'function') {
+    window.__tcFetchConSesion = true;
+    var fetchOriginal = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      try {
+        var url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (_token && url.indexOf(SB_URL) === 0 && /\/(rest|storage)\/v1\//.test(url)) {
+          if (Date.now() < _exp - 30000) {
+            var h = new Headers((init && init.headers) || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined));
+            var a = h.get('Authorization') || '';
+            if (esLlavePublica(a.replace(/^Bearer\s+/i, ''))) {
+              h.set('Authorization', 'Bearer ' + _token);
+              init = Object.assign({}, init || {}, { headers: h });
+            }
+          } else {
+            cliente().then(function (c) { return c.auth.getSession(); }).then(function (r) { tomarToken(r && r.data && r.data.session); }).catch(function () {});
+          }
+        }
+      } catch (e) {}
+      return fetchOriginal(input, init);
+    };
+  }
+
   window.tcSesion = { cliente: cliente, entrar: entrar, salir: salir, asegurar: asegurar, correo: correo, recordarClave: recordarClave };
 })();
