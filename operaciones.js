@@ -1358,6 +1358,84 @@
         return match ? match.id : null;
     }
 
+    // ── Clientes con tabla de SLA "vigentes" (nov-2026) ──
+    // ops_clientes es la tabla vieja de SLA; el catálogo real es clientes_catalogo (compartido con SUDI),
+    // que se liga con ops_cliente_id. Solo los ligados se ofrecen en los folios: así no salen registros
+    // sueltos/duplicados (pasó con "Petro Siete" y un segundo "OXXO GAS").
+    let opsCliLigadosMapa = null; // clientes_catalogo.id -> { opsId, nombre }
+    let _opsCliLigadosProm = null;
+    function opsCargarCliLigados(forzar) {
+        if (_opsCliLigadosProm && !forzar) return _opsCliLigadosProm;
+        _opsCliLigadosProm = (async () => {
+            const sb = await opsSb();
+            const { data, error } = await sb.from("clientes_catalogo").select("id,nombre_comercial,razon_social,ops_cliente_id").not("ops_cliente_id", "is", null);
+            if (error) throw error;
+            const m = {};
+            (data || []).forEach(r => { m[r.id] = { opsId: r.ops_cliente_id, nombre: r.nombre_comercial || r.razon_social || "" }; });
+            opsCliLigadosMapa = m;
+            return m;
+        })().catch(e => { _opsCliLigadosProm = null; console.warn("[Operaciones] clientes ligados:", e.message || e); return null; });
+        return _opsCliLigadosProm;
+    }
+    function opsClientesParaFolio(actualId) {
+        const ligados = opsCliLigadosMapa ? new Set(Object.values(opsCliLigadosMapa).map(x => x.opsId)) : null;
+        const lista = (ligados && ligados.size) ? cacheClientes.filter(c => ligados.has(c.id) || c.id === actualId) : cacheClientes.slice();
+        return lista.sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es"));
+    }
+    function opsClientesOpcionesHTML(actualId) {
+        return `<option value="">— Sin clasificar —</option>` +
+            opsClientesParaFolio(actualId).map(c => `<option value="${c.id}" ${actualId === c.id ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("");
+    }
+    // Normaliza nombres de estación para compararlos: sin acentos, sin "ESTACION"/"EST", sin marca.
+    function opsNormEstacion(t) {
+        return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+            .replace(/\b(estacion|est|e\.s\.|eds|gasolinera|petro\s*seven|petro\s*7|petro\s*siete|oxxo\s*gas|oxxo)\b/g, " ")
+            .replace(/[^a-z0-9]+/g, "");
+    }
+    // Detecta el cliente en este orden: (1) estación elegida del catálogo, (2) estación por nombre en el
+    // catálogo de estaciones (estaciones_servicio.cliente_id), (3) nombre de cliente que trae la hoja de
+    // folios (ej. "PETRO SEVEN"), (4) palabras clave viejas. Si hay duda, no adivina (regresa null).
+    async function opsDetectarClienteFolioId(estacion, clienteNombreHoja) {
+        const mapa = await opsCargarCliLigados() || {};
+        const opsDeCatalogo = catId => (catId && mapa[catId]) ? mapa[catId].opsId : null;
+        const cats = await opsCatalogoEstaciones();
+        const meta = window.__opsFolioEstMeta;
+        if (meta && meta.catalogoId) {
+            const e = (cats || []).find(x => x.id === meta.catalogoId);
+            const id = opsDeCatalogo(e && e.clienteId);
+            if (id) return id;
+        }
+        const pistaCli = String(clienteNombreHoja || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const q = opsNormEstacion(estacion);
+        if (q) {
+            let cand = (cats || []).filter(e => e.clienteId && opsNormEstacion(e.nombreComercial) === q);
+            if (!cand.length) cand = (cats || []).filter(e => e.clienteId && q.length >= 4 && opsNormEstacion(e.nombreComercial).includes(q));
+            let ids = [...new Set(cand.map(e => opsDeCatalogo(e.clienteId)).filter(Boolean))];
+            if (ids.length > 1 && pistaCli) {
+                const filtrados = ids.filter(id => { const c = cacheClientes.find(x => x.id === id); return c && opsCliCoincideNombre(c, pistaCli); });
+                if (filtrados.length) ids = filtrados;
+            }
+            if (ids.length === 1) return ids[0];
+        }
+        if (pistaCli) {
+            const ligados = new Set(Object.values(mapa).map(x => x.opsId));
+            const porNombre = Object.values(mapa).filter(x => opsCliCoincideTexto(x.nombre, pistaCli)).map(x => x.opsId);
+            const extra = cacheClientes.filter(c => ligados.has(c.id) && opsCliCoincideNombre(c, pistaCli)).map(c => c.id);
+            const ids = [...new Set(porNombre.concat(extra))];
+            if (ids.length === 1) return ids[0];
+        }
+        return opsDetectarClientePorNombre(estacion);
+    }
+    function opsCliCoincideTexto(nombre, pista) {
+        const n = String(nombre || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const alias = t => t.replace(/petro\s*(seven|siete|7)/g, "petro7").replace(/oxxo\s*gas/g, "oxxo").replace(/\s+/g, " ").trim();
+        const a = alias(n), b = alias(pista);
+        return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+    }
+    function opsCliCoincideNombre(c, pista) {
+        return opsCliCoincideTexto(c.nombre, pista) || (c.palabrasClave || []).some(p => opsCliCoincideTexto(p, pista));
+    }
+
     // Matriz v2 (oct-2026): el rol "de verdad" sale de Control de acceso. Esta función
     // solo traduce ese rol a las 3 etiquetas viejas que todavía usan algunas pantallas.
     function opsRolActual() {
@@ -8545,10 +8623,13 @@
         }
     };
 
-    window.opsDetectarClienteFolio = function () {
+    window.opsDetectarClienteFolio = async function () {
         const estacion = document.getElementById("ops-fol-estacion").value;
-        const id = opsDetectarClientePorNombre(estacion);
-        if (id) { document.getElementById("ops-fol-cliente").value = id; window.opsFolioActualizarVencimientoPreview(); }
+        const f = window.__opsFolEditando;
+        const id = await opsDetectarClienteFolioId(estacion, f && f.clienteNombre);
+        const sel = document.getElementById("ops-fol-cliente");
+        if (id && sel && ![...sel.options].some(o => o.value === id)) sel.innerHTML = opsClientesOpcionesHTML(id);
+        if (id && sel) { sel.value = id; window.opsFolioActualizarVencimientoPreview(); }
         else if (window.mostrarPush) mostrarPush("Operaciones", "No se detectó un cliente por el nombre de la estación.", "🔍");
         else alert("No se detectó un cliente por el nombre de la estación.");
     };
@@ -13391,8 +13472,7 @@
                     <div style="display:flex;gap:8px;align-items:flex-end;">
                         <div style="flex:1;"><label style="font-size:11.5px;color:#64748b;font-weight:600;">Cliente</label>
                         <select id="ops-fol-cliente" onchange="window.opsFolioActualizarVencimientoPreview()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                            <option value="">— Sin clasificar —</option>
-                            ${cacheClientes.map(c => `<option value="${c.id}" ${f?.clienteId === c.id ? "selected" : ""}>${opsEsc(c.nombre)}</option>`).join("")}
+                            ${opsClientesOpcionesHTML(f?.clienteId)}
                         </select></div>
                         <button type="button" onclick="window.opsDetectarClienteFolio()" style="background:#eef2f7;border:none;color:#1f2937;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:11.5px;font-weight:600;margin-bottom:10px;">Detectar</button>
                     </div>
@@ -13507,6 +13587,10 @@
         </div>`;
         window.opsFolioActualizarVencimientoPreview();
         if (f) opsFolViaPintarLista(f);
+        if (!opsCliLigadosMapa) opsCargarCliLigados().then(m => {
+            const sel = document.getElementById("ops-fol-cliente");
+            if (m && sel && window.__opsFolEditando === f) { const v = sel.value; sel.innerHTML = opsClientesOpcionesHTML(v || f?.clienteId); sel.value = v; }
+        });
         window.__opsFolioEstMeta = f?.estacionCatalogoId ? {
             catalogoId: f.estacionCatalogoId, encargado: f.estacionEncargado || null, zona: f.estacionZona || null,
             numeroTanques: f.estacionNumeroTanques || null, numeroDispensarios: f.estacionNumeroDispensarios || null,
@@ -20289,8 +20373,17 @@
                 const horasSLA = {}; OPS_PRIORIDADES.forEach(pr => { const v = document.getElementById("ops-cli-sla-" + pr).value; if (v !== "") horasSLA[pr] = Number(v); });
                 const { db, fs } = await opsGetFB();
                 const datosSla = { nombre: opsCliNombre(c), palabrasClave: c.palabras_clave || [], horasSLA, contactoNombre: p.nombre || null, contactoTelefono: p.telefono || null, facturarA: c.razon_social };
+                if (!c.ops_cliente_id && Object.keys(horasSLA).length) {
+                    // Antes de crear uno nuevo, se liga al registro de SLA que ya exista con ese nombre
+                    // (evita duplicados como "Petro Siete"/"Petro 7" o dos "OXXO GAS").
+                    const pista = opsCliNorm(opsCliNombre(c));
+                    const yaLigados = new Set((opsCliLista || []).filter(x => x.id !== c.id && x.ops_cliente_id).map(x => x.ops_cliente_id));
+                    const existente = cacheClientes.find(x => !yaLigados.has(x.id) && (opsCliCoincideNombre(x, pista) || opsCliCoincideTexto(x.nombre, opsCliNorm(c.razon_social))));
+                    if (existente) c.ops_cliente_id = existente.id;
+                }
                 if (c.ops_cliente_id) await fs.updateDoc(fs.doc(db, COL_CLIENTES, c.ops_cliente_id), datosSla);
                 else if (Object.keys(horasSLA).length) { const ref = await fs.addDoc(fs.collection(db, COL_CLIENTES), datosSla); c.ops_cliente_id = ref.id; }
+                opsCargarCliLigados(true);
                 const snap = await fs.getDocs(fs.collection(db, COL_CLIENTES)); cacheClientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             }
             const fila = {
