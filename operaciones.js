@@ -11121,10 +11121,11 @@
     async function opsRevEvidencias(f, segVideo) {
         const { db, fs } = await opsGetFB();
         const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
-        const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.ruta).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")));
+        const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.ruta || e.url).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")) || (a.orden || 0) - (b.orden || 0));
         const sb = await opsSb();
         for (const e of ev) {
             const seg = e.tipo === "video" ? (segVideo || 3600) : 3600;
+            if (!e.ruta) continue; // liga externa (Connecteam): se usa tal cual
             try { const { data } = await sb.storage.from(e.bucket || "ops-evidencias").createSignedUrl(e.ruta, seg); if (data && data.signedUrl) e.url = data.signedUrl; } catch (er) {}
         }
         return ev;
@@ -11302,7 +11303,8 @@
         try {
             const { db, fs } = await opsGetFB();
             const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
-            const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")));
+            const ev = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.en || "").localeCompare(String(b.en || "")) || (a.orden || 0) - (b.orden || 0));
+            ev.forEach(e => { if (!e.ruta && e.url) e.imagen = e.url; }); // ligas externas (Connecteam)
             // Las imágenes viven en Supabase Storage (bucket privado ops-evidencias): ligas firmadas por 1 hora.
             const conRuta = ev.filter(e => e.ruta);
             if (conRuta.length) {
@@ -12549,16 +12551,99 @@
             ...opsCamposEquipo(f, ids, opc.modo === "realizado" ? "Registrado como ya realizado" : "Registrado como ya programado"),
             asignaciones: (f.asignaciones || []).concat(tecs.map(t => ({ dia: cuando.slice(0, 10), tecnicoId: t.id, nombre: t.nombre || "", turno: opc.modo === "realizado" ? "ya_realizado" : "ya_programado", por: yo, en: ahora }))),
             registradoComo: { modo: opc.modo, origen: x ? "connecteam" : "manual", por: yo, en: ahora } };
-        if (opc.modo === "realizado") Object.assign(cambios, { fechaAtencion: f.fechaAtencion || cuando, fechaSolucion: cuando, completadoEn: ahora, completadoPor: yo });
+        if (opc.modo === "realizado") Object.assign(cambios, { fechaAtencion: f.fechaAtencion || cuando, fechaSolucion: cuando, completadoEn: ahora, completadoPor: tecs[0].nombre || yo, finalizadoDesde: x ? "connecteam" : "registro_manual" });
         if (x) { cambios.connecteam = opsCtsDatosFolio(x); if (!f.osTecnico && x.os) cambios.osTecnico = String(x.os).replace(/\D/g, "") || null; }
         const { db, fs } = await opsGetFB();
         await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
         Object.assign(f, cambios);
+        if (x) await opsCtsCompletarFolio(f, x, tecs);
         const texto = (opc.modo === "realizado" ? "Marcado como YA REALIZADO" : "Marcado como YA PROGRAMADO") + ` el ${cuando.replace("T", " ")} por ${tecs.map(t => t.nombre).join(", ")}`
             + (x ? ` · Connecteam #${x.numero}${x.os ? " (O.S. " + x.os + ")" : ""}${(x.evidencias || []).length ? " · " + x.evidencias.length + " foto(s)" : ""}` : "") + `. Lo registró ${yo}.`;
         fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto, autor: yo, autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: ahora }).catch(() => {});
         if (x) { try { const sb = await opsSb(); await sb.from("connecteam_servicios").update({ folio_id: f.id, ligado_en: ahora }).eq("id", x.id); x.folio_id = f.id; } catch (e) {} }
     }
+
+    // Lo que el técnico subió a Connecteam se pasa al folio igual que si lo hubiera cerrado en la app:
+    // una visita (atenciones) con técnico, auxiliar, si se concluyó y descripción; las fotos, orden de
+    // servicio, firma y video como evidencias del folio (salen en Revisión de cierres, PDF y ZIP); y en la
+    // revisión, la cotización y el ID del folio que Magali anotó en Connecteam. No duplica si se corre otra vez.
+    function opsCtsRutaBase(x) { return "connecteam/" + String(x.numero || x.id).replace(/[^A-Za-z0-9_-]/g, ""); }
+    async function opsCtsCompletarFolio(f, x, tecs) {
+        const { db, fs } = await opsGetFB();
+        const sb = await opsSb();
+        const yo = opsNombreActual(), ahora = opsFechaHora();
+        const cuandoISO = x.fecha_servicio || x.enviado_en || ahora;
+        const tecNom = (tecs && tecs[0] && tecs[0].nombre) || x.tecnico || "";
+        // Evidencias: no repetir las que ya se pasaron.
+        const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, f.id, "evidencias"));
+        const ya = new Set(snap.docs.map(d => (d.data() || {}).fuente).filter(Boolean));
+        let existentes = new Set();
+        try { const { data } = await sb.storage.from("ops-evidencias").list(opsCtsRutaBase(x), { limit: 200 }); existentes = new Set((data || []).map(o => o.name)); } catch (e) {}
+        const lista = [];
+        if (x.orden_url) lista.push(["orden_servicio", x.orden_url]);
+        (x.evidencias || []).forEach(u => lista.push(["foto", u]));
+        if (x.firma_url) lista.push(["firma", x.firma_url]);
+        (x.videos || []).forEach(u => lista.push(["video", u]));
+        let n = { orden_servicio: 0, foto: 0, firma: 0, video: 0 }, i = 0;
+        for (const [tipo, url] of lista) {
+            i++; n[tipo]++;
+            if (ya.has(url)) continue;
+            const ext = tipo === "video" ? ((String(url).match(/\.([a-z0-9]{2,5})(?:\?|$)/i) || [])[1] || "mp4") : "jpg";
+            const nombre = tipo + "_" + i + "." + ext, ruta = opsCtsRutaBase(x) + "/" + nombre;
+            let doc = { tipo, por: tecNom, en: cuandoISO, origen: "connecteam", fuente: url, nota: "Connecteam #" + x.numero, orden: i };
+            if (existentes.has(nombre)) Object.assign(doc, { bucket: "ops-evidencias", ruta });
+            else {
+                try {
+                    const b = await (await fetch(url)).blob();
+                    const up = await sb.storage.from("ops-evidencias").upload(ruta, b, { contentType: b.type || (tipo === "video" ? "video/mp4" : "image/jpeg"), upsert: true });
+                    if (up.error) throw up.error;
+                    Object.assign(doc, { bucket: "ops-evidencias", ruta, bytes: b.size });
+                } catch (e) { doc.url = url; } // Connecteam no deja copiarla desde aquí: se guarda la liga.
+            }
+            await fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "evidencias"), doc);
+        }
+        const cambios = {};
+        if (!(f.atenciones || []).some(v => v && v.origen === "connecteam" && v.connecteamNumero === x.numero)) {
+            const res = x.concluyo === false ? "no_finalizado" : "finalizado";
+            cambios.atenciones = (f.atenciones || []).concat([{ tecnicoId: (tecs && tecs[0] && tecs[0].id) || null, nombre: tecNom, inicio: cuandoISO, fin: cuandoISO, resultado: res,
+                motivo: x.motivo_no || null, detalle: x.descripcion || null, tecnicoAuxiliar: x.auxiliar && !/^(na|n\/a|no)$/i.test(x.auxiliar.trim()) ? x.auxiliar.trim() : null,
+                materialAlmacen: x.material == null ? null : { usado: !!x.material, almacen: x.almacen || null }, osTecnico: x.os || null,
+                evidencias: { documentos: n.orden_servicio, fotos: n.foto, videos: n.video, firma: !!n.firma }, origen: "connecteam", connecteamNumero: x.numero }]);
+            cambios.evidenciasDocumentos = (Number(f.evidenciasDocumentos) || 0) + n.orden_servicio;
+            cambios.evidenciasFotos = (Number(f.evidenciasFotos) || 0) + n.foto;
+            cambios.evidenciasVideos = (Number(f.evidenciasVideos) || 0) + n.video;
+            if (n.orden_servicio + n.foto) cambios.ultimaEvidenciaEn = cuandoISO;
+            const aux = cambios.atenciones[cambios.atenciones.length - 1].tecnicoAuxiliar;
+            if (aux && !f.tecnicoAuxiliar) cambios.tecnicoAuxiliar = aux;
+            if (x.material != null && !f.materialAlmacen) cambios.materialAlmacen = { usado: !!x.material, almacen: x.almacen || null };
+            if (x.os && !f.folioOS) cambios.folioOS = String(x.os).replace(/\D/g, "") || null;
+        }
+        if (f.fechaSolucion && f.completadoPor === yo && tecNom && tecNom !== yo && f.registradoComo && f.registradoComo.origen === "connecteam") cambios.completadoPor = tecNom;
+        // Revisión de cierre: cotización (C#…) y estatus Done de Connecteam.
+        const rc0 = f.revisionCierre || {};
+        const cot = ((x.nota || "").match(/C\s*[#*]\s*[A-Z]{2,4}\s*-?\s*\d+/i) || [])[0];
+        if (!rc0.estatus || rc0.estatus === "por_revisar") {
+            const rc = Object.assign({}, rc0, { nota: rc0.nota || (x.nota ? "Connecteam: " + x.nota : null), origenConnecteam: x.numero });
+            if (cot && !rc0.cotizacion) { rc.cotizacion = cot.replace(/\s+/g, "").toUpperCase(); rc.cobro = rc0.cobro || { si: true }; }
+            if (/done/i.test(x.status || "")) Object.assign(rc, { estatus: "revisado", revisadoPor: "Connecteam (Done)", revisadoEn: ahora, idEnHoja: true });
+            else if (/working/i.test(x.status || "")) rc.estatus = "en_revision";
+            cambios.revisionCierre = rc;
+        }
+        if (Object.keys(cambios).length) { await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios); Object.assign(f, cambios); }
+    }
+    // Para los folios que ya se registraron antes de que existiera lo anterior: rellena visita, evidencias y revisión.
+    window.opsCtsCompletarRegistrados = async function (soloIds) {
+        if (!opsPuedeGestionar()) return { error: "sin permiso" };
+        await opsCtsCargar(true);
+        const fol = cacheFolios.filter(f => f.connecteam && f.connecteam.id && (!soloIds || soloIds.includes(f.id)));
+        const out = { ok: 0, fallas: [] };
+        for (const f of fol) {
+            const x = cacheCts.find(c => c.id === f.connecteam.id); if (!x) { out.fallas.push(f.id + ": envío no encontrado"); continue; }
+            try { await opsCtsCompletarFolio(f, x, (f.tecnicosAsignadosIds || []).map(opsTecPorId).filter(Boolean)); out.ok++; }
+            catch (e) { out.fallas.push(f.id + ": " + (e.message || e)); }
+        }
+        return out;
+    };
 
     // ── Ventana "Ya realizado" (un folio) ──
     window.opsYrAbrir = async function (id) {
