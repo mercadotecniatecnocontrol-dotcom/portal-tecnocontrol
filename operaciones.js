@@ -11898,6 +11898,7 @@
                         ${(f.comisiones || []).map(c => `Comisión ${opsEsc(c.nombre)}${c.norma ? " · " + opsEsc(c.norma) : ""}${c.concepto ? " · " + opsEsc(c.concepto) : ""}: <b>${opsDinero(c.monto)}</b>`).join("<br>")}
                     </div>`, ico.dinero) : ""}
 
+                ${opsCtsPanelHTML(f)}
                 <div id="ops-panel-evidencias" data-folio="${f.id}"></div>
                 ${opsPanelCambiosHTML(f)}
                 ${sec("Historial", `<div id="ops-panel-historial" style="font-size:11.5px;color:#94a3b8;">Cargando…</div>`, ico.historial)}
@@ -12162,7 +12163,7 @@
         .opsfp-pill{border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
         .opsfp-pill.on{background:#1D2E73;border-color:#1D2E73;color:#fff}
         .opsfp-q{border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:200px;font-family:inherit}
-        .opsfp-row{display:grid;grid-template-columns:44px minmax(0,1.6fr) minmax(0,1fr) 120px 96px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f4f8;font-size:12px;color:#334155}
+        .opsfp-row{display:grid;grid-template-columns:44px minmax(0,1.6fr) minmax(0,1fr) 120px 200px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f4f8;font-size:12px;color:#334155}
         .opsfp-row:hover{background:#fafbfd}
         .opsfp-row .est{font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .opsfp-row .sub{color:#64748b;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
@@ -12185,7 +12186,7 @@
         .opsfp-opt input{accent-color:#1D2E73;width:16px;height:16px;flex-shrink:0}
         .opsfp-tag{font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;white-space:nowrap}
         .opsfp-dia{font-size:10.5px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px}
-        @media (max-width:760px){.opsfp-row{grid-template-columns:40px minmax(0,1fr) 92px}.opsfp-row .c-cli,.opsfp-row .c-ven{display:none}}`;
+        @media (max-width:760px){.opsfp-row{grid-template-columns:40px minmax(0,1fr) 170px}.opsfp-row .c-cli,.opsfp-row .c-ven{display:none}}`;
         document.head.appendChild(st);
     }
 
@@ -12193,6 +12194,8 @@
     function opsFpBandejaHTML(lista) {
         opsFpCss();
         const gestion = opsPuedeGestionar();
+        if (gestion) opsCtsPrecargar();
+        const nCt = opsCtsCargado ? lista.filter(f => opsCtsDeFolio(f).length).length : 0;
         const clientes = [...new Set(lista.map(opsFpCliTxt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
         const q = opsAsNorm(opsFpBusca).trim();
         let ver = lista.filter(f => opsFpCliente === "todos" || (opsFpCliente === "otros" ? !opsFpCliTxt(f) : opsFpCliTxt(f) === opsFpCliente))
@@ -12207,7 +12210,8 @@
                 <span class="opsfp-tit">Folios por programar</span><span class="opsfp-num">${lista.length}</span>
                 ${venc ? `<span class="opsfp-tag" style="background:#fee2e2;color:#b91c1c;">${venc} vencido${venc > 1 ? "s" : ""}</span>` : ""}
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:8px;">${pill("todos", "Todos")}${clientes.map(c => pill(c, c)).join("")}${lista.some(f => !opsFpCliTxt(f)) ? pill("otros", "Sin cliente") : ""}</div>
-                <input class="opsfp-q" style="margin-left:auto;" id="opsfp-q" value="${opsEsc(opsFpBusca)}" placeholder="Buscar estación, folio o falla…" oninput="opsFpBuscar(this.value)">
+                ${gestion && nCt ? `<button class="opsfp-pill" style="margin-left:auto;border-color:#15803d;color:#15803d;" onclick="opsCtsLoteAbrir()" title="Folios de esta bandeja que ya se subieron a Connecteam con su número">Ya en Connecteam · ${nCt}</button>` : ""}
+                <input class="opsfp-q" style="margin-left:${gestion && nCt ? "0" : "auto"};" id="opsfp-q" value="${opsEsc(opsFpBusca)}" placeholder="Buscar estación, folio o falla…" oninput="opsFpBuscar(this.value)">
             </div>
             ${ver.length ? ver.map(f => {
                 const s = opsCalcularSemaforoFolio(f), c = OPS_SEMAFORO[s.semaforo] || OPS_SEMAFORO.gris;
@@ -12217,7 +12221,7 @@
                     <div style="min-width:0;"><div class="est">${opsEsc(f.estacion || "Sin estación")}</div><div class="sub" title="${opsEsc(f.comentarios || "")}">${opsEsc(f.comentarios || "Sin descripción")}</div></div>
                     <div class="c-cli" style="min-width:0;"><div class="sub" style="color:#334155;font-weight:700;">${opsEsc(opsFpCliTxt(f) || "—")}</div><div class="sub">${opsEsc(opsFpFolioTxt(f) || "—")}${resp ? " · " + opsEsc(resp) : ""}</div></div>
                     <div class="c-ven"><span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:${c.fg};"><span style="width:7px;height:7px;border-radius:50%;background:${c.dot};"></span>${opsEsc(s.semaforo === "gris" ? "Sin vencimiento" : s.estado === "VENCIDO" ? "Vencido" : s.diasTexto)}</span></div>
-                    <div style="text-align:right;">${gestion ? `<button class="opsfp-btn" onclick="opsFpAbrir('${f.id}')">Programar</button>` : `<button class="opsfp-ghost" style="padding:6px 10px;" onclick="opsAbrirPanelFolio('${f.id}')">Ver</button>`}</div>
+                    <div style="text-align:right;display:flex;gap:6px;justify-content:flex-end;">${gestion ? `<button class="opsfp-ghost" style="padding:6px 10px;font-size:11.5px;${opsCtsCargado && opsCtsDeFolio(f).length ? "border-color:#15803d;color:#15803d;" : ""}" onclick="opsYrAbrir('${f.id}')" title="Ya se hizo o ya estaba programado: sácalo de la lista y cárgaselo al técnico">Ya realizado</button><button class="opsfp-btn" onclick="opsFpAbrir('${f.id}')">Programar</button>` : `<button class="opsfp-ghost" style="padding:6px 10px;" onclick="opsAbrirPanelFolio('${f.id}')">Ver</button>`}</div>
                 </div>`; }).join("") : `<div style="padding:26px;text-align:center;color:#94a3b8;font-size:12.5px;">Nada por programar con ese filtro.</div>`}
             ${total > OPS_FP_MAX ? `<div class="opsfp-foot"><button class="opsfp-link" onclick="opsFpToggleTodos()">${opsFpVerTodos ? "Ver solo los más urgentes" : `Ver los ${total} folios`}</button></div>` : ""}
         </div>`;
@@ -12460,6 +12464,359 @@
             if (btn) { btn.disabled = false; btn.textContent = "Programar"; }
         }
     };
+
+    // ═══════════════════ FOLIOS YA ATENDIDOS · cruce con Connecteam (6-nov-2026, Glen) ═══════════════════
+    // Muchos folios de la bandeja ya se hicieron (o ya estaban programados) y la evidencia está en Connecteam
+    // (formulario SERVICIO TECNICO). Los envíos se guardan en Supabase (tabla connecteam_servicios) y aquí se
+    // cruzan con cada folio por su número (MC… de Petro Seven o el folio de OXXO GAS), que Magali anota en la
+    // nota del envío o el técnico escribe en "No. FOLIO / O.S.".
+    // Botón "Ya realizado" por folio + "Cruzar con Connecteam" para marcar varios de golpe.
+    // Al guardar: el folio sale de la bandeja, queda a nombre del técnico (y auxiliar) en la fecha real
+    // del servicio, y guarda los datos y las fotos de Connecteam (se ven en el panel del folio).
+    let cacheCts = [], opsCtsCargado = false, opsCtsCargando = null, opsCtsIdx = new Map(), opsYr = null, opsCtsLote = null;
+    // Saca los números de folio de un texto: MC0536765 / MC 536765 → "MC0536765"; OXXO: 6 dígitos que empiezan en 14–19.
+    function opsCtsFoliosDeTexto(t) {
+        const s = String(t || "").toUpperCase(), out = new Set();
+        (s.match(/MC\s*-?\s*\d{5,8}/g) || []).forEach(m => out.add("MC" + m.replace(/\D/g, "").padStart(7, "0")));
+        (s.match(/(?<!\d)1[4-9]\d{4}(?!\d)/g) || []).forEach(m => out.add(m));
+        return [...out];
+    }
+    function opsCtsLlaveFolio(f) {
+        const v = String(f.folioClienteId || "").toUpperCase().replace(/\s+/g, "");
+        if (!v) return null;
+        if (/^MC/.test(v)) return "MC" + v.replace(/\D/g, "").padStart(7, "0");
+        return v.replace(/\D/g, "") || null;
+    }
+    async function opsCtsCargar(forzar) {
+        if (opsCtsCargado && !forzar) return cacheCts;
+        if (opsCtsCargando && !forzar) return opsCtsCargando;
+        opsCtsCargando = (async () => {
+            const sb = await opsSb(); let todos = [], desde = 0;
+            while (true) {
+                const { data, error } = await sb.from("connecteam_servicios").select("*").order("numero", { ascending: false }).range(desde, desde + 999);
+                if (error) throw error;
+                todos = todos.concat(data || []); if (!data || data.length < 1000) break; desde += 1000;
+            }
+            cacheCts = todos; opsCtsIdx = new Map();
+            todos.forEach(x => (x.folios || []).forEach(k => { if (!opsCtsIdx.has(k)) opsCtsIdx.set(k, []); opsCtsIdx.get(k).push(x); }));
+            opsCtsCargado = true; opsCtsCargando = null;
+            return todos;
+        })().catch(e => { opsCtsCargando = null; console.warn("[connecteam_servicios]", e.message || e); throw e; });
+        return opsCtsCargando;
+    }
+    // Envíos de Connecteam con el mismo número de folio.
+    function opsCtsDeFolio(f) { const k = opsCtsLlaveFolio(f); return k ? (opsCtsIdx.get(k) || []) : []; }
+    // Sugerencias cuando no hay número: misma estación (por palabras del nombre), enviados después de la solicitud.
+    function opsCtsSugerencias(f) {
+        const pal = opsAsNorm(f.estacion).replace(/\bestacion\b|\bes\b|\beds\b/g, " ").split(/[^a-z0-9]+/).filter(p => p.length > 3);
+        if (!pal.length) return [];
+        const desde = String(f.fechaSolicitud || "").slice(0, 10);
+        return cacheCts.filter(x => { const t = opsAsNorm([x.razon_social, x.ubicacion].join(" ")); return pal.every(p => t.includes(p)); })
+            .filter(x => !desde || String(x.fecha_servicio || x.enviado_en || "").slice(0, 10) >= desde)
+            .filter(x => !x.folio_id || x.folio_id === f.id)
+            .sort((a, b) => String(a.fecha_servicio || "").localeCompare(String(b.fecha_servicio || ""))).slice(0, 8);
+    }
+    function opsCtsFechaLocal(iso) {
+        if (!iso) return null; const d = new Date(iso); if (isNaN(d)) return null;
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+    function opsCtsFechaTxt(iso) { return iso ? new Date(iso).toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
+    // Técnico y auxiliar de Connecteam → fichas de técnicos del portal.
+    function opsCtsTecnicos(x) {
+        const ids = [], sinFicha = [];
+        [x.tecnico, x.auxiliar].forEach(n => {
+            const nombre = String(n || "").trim(); if (!nombre || /^(na|n\/a|no|ninguno|-)$/i.test(nombre)) return;
+            nombre.split(/\s*(?:,|\/| y )\s*/i).filter(Boolean).forEach(p => {
+                const t = opsComImpTecnico(p) || (() => { const w = opsNormalizaTexto(p).split(" ").filter(Boolean); const c = cacheTec.filter(tt => { const tn = opsNormalizaTexto(tt.nombre).split(" "); return w.length && w.every(x2 => tn.includes(x2)); }); return c.length === 1 ? c[0] : null; })();
+                if (t) { if (!ids.includes(t.id)) ids.push(t.id); } else sinFicha.push(p);
+            });
+        });
+        return { ids, sinFicha };
+    }
+    function opsCtsDatosFolio(x) {
+        return { numero: x.numero, id: x.id, tecnico: x.tecnico || null, auxiliar: x.auxiliar || null, fechaServicio: x.fecha_servicio || null, enviadoEn: x.enviado_en || null,
+            razonSocial: x.razon_social || null, os: x.os || null, descripcion: x.descripcion || null, concluyo: x.concluyo, motivoNo: x.motivo_no || null,
+            nota: x.nota || null, status: x.status || null, orden: x.orden_url || null, evidencias: x.evidencias || [], videos: x.videos || [], firma: x.firma_url || null };
+    }
+    // Guarda un folio como realizado (o solo programado) con los datos de Connecteam. modo: "realizado" | "programado".
+    async function opsCtsAplicar(f, x, opc) {
+        const ids = (opc.tecs || []).filter(id => opsTecPorId(id));
+        if (!ids.length) throw new Error("Falta elegir al técnico.");
+        const cuando = opc.fecha || (x ? opsCtsFechaLocal(x.fecha_servicio || x.enviado_en) : null);
+        if (!cuando) throw new Error("Falta la fecha.");
+        const yo = opsNombreActual(), ahora = opsFechaHora(), tecs = ids.map(opsTecPorId);
+        const cambios = { fechaProgramada: cuando, tiempoEjecucionHrs: Number(f.tiempoEjecucionHrs) || 1, tipoFolio: f.tipoFolio || "servicio",
+            ...opsCamposEquipo(f, ids, opc.modo === "realizado" ? "Registrado como ya realizado" : "Registrado como ya programado"),
+            asignaciones: (f.asignaciones || []).concat(tecs.map(t => ({ dia: cuando.slice(0, 10), tecnicoId: t.id, nombre: t.nombre || "", turno: opc.modo === "realizado" ? "ya_realizado" : "ya_programado", por: yo, en: ahora }))),
+            registradoComo: { modo: opc.modo, origen: x ? "connecteam" : "manual", por: yo, en: ahora } };
+        if (opc.modo === "realizado") Object.assign(cambios, { fechaAtencion: f.fechaAtencion || cuando, fechaSolucion: cuando, completadoEn: ahora, completadoPor: yo });
+        if (x) { cambios.connecteam = opsCtsDatosFolio(x); if (!f.osTecnico && x.os) cambios.osTecnico = String(x.os).replace(/\D/g, "") || null; }
+        const { db, fs } = await opsGetFB();
+        await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+        Object.assign(f, cambios);
+        const texto = (opc.modo === "realizado" ? "Marcado como YA REALIZADO" : "Marcado como YA PROGRAMADO") + ` el ${cuando.replace("T", " ")} por ${tecs.map(t => t.nombre).join(", ")}`
+            + (x ? ` · Connecteam #${x.numero}${x.os ? " (O.S. " + x.os + ")" : ""}${(x.evidencias || []).length ? " · " + x.evidencias.length + " foto(s)" : ""}` : "") + `. Lo registró ${yo}.`;
+        fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto, autor: yo, autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: ahora }).catch(() => {});
+        if (x) { try { const sb = await opsSb(); await sb.from("connecteam_servicios").update({ folio_id: f.id, ligado_en: ahora }).eq("id", x.id); x.folio_id = f.id; } catch (e) {} }
+    }
+
+    // ── Ventana "Ya realizado" (un folio) ──
+    window.opsYrAbrir = async function (id) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        opsFpCss();
+        opsYr = { id, cargando: true, error: "", modo: "realizado", xId: null, tecs: [], tecQ: "", fecha: "" };
+        opsYrPintar();
+        try { await opsCtsCargar(); } catch (e) { opsYr.error = /relation|does not exist|schema cache/i.test(e.message || "") ? "Falta crear la tabla connecteam_servicios en Supabase." : (e.message || String(e)); }
+        if (!opsYr || opsYr.id !== id) return;
+        opsYr.cargando = false;
+        const exactos = opsCtsDeFolio(f);
+        if (exactos.length) opsYrElegir(exactos[0].id, true);
+        else { opsYr.tecs = opsFpTecsSugeridos(f); opsYr.fecha = opsHoyLocal() + "T09:00"; }
+        opsYrPintar();
+    };
+    function opsYrElegir(xId, sinPintar) {
+        const s = opsYr; if (!s) return;
+        const x = cacheCts.find(c => c.id === xId);
+        s.xId = x ? x.id : null;
+        if (x) { s.tecs = opsCtsTecnicos(x).ids; s.fecha = opsCtsFechaLocal(x.fecha_servicio || x.enviado_en) || s.fecha; s.modo = x.concluyo === false ? "programado" : "realizado"; }
+        if (!sinPintar) opsYrPintar();
+    }
+    window.opsYrElegir = opsYrElegir;
+    window.opsYrSet = function (k, v, repintar) { if (!opsYr) return; opsYr[k] = v; if (repintar !== false) opsYrPintar(); };
+    window.opsYrTec = function (tid) { if (!opsYr) return; const i = opsYr.tecs.indexOf(tid); if (i >= 0) opsYr.tecs.splice(i, 1); else opsYr.tecs.push(tid); opsYrPintar(); };
+    window.opsYrCerrar = function () { document.getElementById("opsyr-ov")?.remove(); opsYr = null; };
+    function opsCtsTarjeta(x, on, radio) {
+        const tec = opsCtsTecnicos(x), ev = (x.evidencias || []).length;
+        return `<label class="opsfp-opt${on ? " on" : ""}" style="align-items:flex-start;">${radio ? `<input type="radio" name="opsyr-x" ${on ? "checked" : ""} onchange="opsYrElegir('${opsEsc(x.id)}')" style="margin-top:3px;">` : ""}
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b style="font-size:12.5px;color:#0f172a;">Connecteam #${opsEsc(x.numero)}</b>
+                    ${x.concluyo === false ? `<span class="opsfp-tag" style="background:#fee2e2;color:#b91c1c;">NO se concluyó</span>` : x.concluyo ? `<span class="opsfp-tag" style="background:#dcfce7;color:#166534;">Concluido</span>` : ""}
+                    ${x.status ? `<span class="opsfp-tag" style="background:#f1f5f9;color:#475569;">${opsEsc(x.status)}</span>` : ""}
+                    ${x.folio_id && opsYr && x.folio_id !== opsYr.id ? `<span class="opsfp-tag" style="background:#fef3c7;color:#92400e;">Ya ligado a otro folio</span>` : ""}</div>
+                <div style="font-size:11.5px;color:#334155;margin-top:3px;"><b>${opsEsc(x.tecnico || "—")}</b>${x.auxiliar && !/^(na|n\/a)$/i.test(x.auxiliar.trim()) ? " + " + opsEsc(x.auxiliar) : ""} · ${opsEsc(opsCtsFechaTxt(x.fecha_servicio || x.enviado_en))}${x.os ? " · O.S. " + opsEsc(x.os) : ""}</div>
+                <div style="font-size:11.5px;color:#64748b;margin-top:2px;">${opsEsc(x.razon_social || "")}${x.descripcion ? " — " + opsEsc(x.descripcion) : ""}</div>
+                ${x.concluyo === false && x.motivo_no ? `<div style="font-size:11.5px;color:#b91c1c;margin-top:2px;">Por qué no: ${opsEsc(x.motivo_no)}</div>` : ""}
+                ${tec.sinFicha.length ? `<div style="font-size:11px;color:#b45309;margin-top:2px;">Sin ficha en el portal: ${opsEsc(tec.sinFicha.join(", "))}</div>` : ""}
+                ${ev || x.orden_url ? `<div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;">${x.orden_url ? `<a href="${opsEsc(x.orden_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;font-weight:700;color:#1D2E73;border:1px solid #c7d2fe;border-radius:6px;padding:3px 8px;text-decoration:none;">O.S.</a>` : ""}${(x.evidencias || []).slice(0, 6).map(u => `<a href="${opsEsc(u)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><img src="${opsEsc(u)}" loading="lazy" style="width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;"></a>`).join("")}${ev > 6 ? `<span style="font-size:11px;color:#64748b;align-self:center;">+${ev - 6}</span>` : ""}</div>` : ""}
+            </div></label>`;
+    }
+    function opsYrPintar() {
+        const s = opsYr; if (!s) return;
+        const f = cacheFolios.find(x => x.id === s.id); if (!f) { window.opsYrCerrar(); return; }
+        let ov = document.getElementById("opsyr-ov");
+        const scroll = ov ? (ov.querySelector("[data-yr-scroll]")?.scrollTop || 0) : 0;
+        const foco = document.activeElement && document.activeElement.id;
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsyr-ov"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov) window.opsYrCerrar(); }; document.body.appendChild(ov); }
+        const meta = [opsFpCliTxt(f), opsFpFolioTxt(f), f.fechaSolicitud ? "Solicitado " + opsCtsFechaTxt(f.fechaSolicitud) : ""].filter(Boolean).map(opsEsc).join(" · ");
+        let cuerpo = "";
+        if (s.cargando) cuerpo = `<div style="padding:30px;text-align:center;color:#94a3b8;">Buscando en Connecteam…</div>`;
+        else {
+            const exactos = opsCtsDeFolio(f), sug = exactos.length ? [] : opsCtsSugerencias(f);
+            const x = cacheCts.find(c => c.id === s.xId);
+            const qt = opsAsNorm(s.tecQ).trim();
+            const tecs = opsTecOperativos().slice().filter(t => !qt || opsAsNorm(t.nombre).includes(qt) || s.tecs.includes(t.id))
+                .sort((a, b) => (s.tecs.includes(b.id) - s.tecs.includes(a.id)) || (a.nombre || "").localeCompare(b.nombre || "", "es"));
+            const lista = qt ? tecs : tecs.filter(t => s.tecs.includes(t.id)).concat(tecs.filter(t => !s.tecs.includes(t.id)).slice(0, Math.max(0, 6 - s.tecs.length)));
+            const antes = f.fechaSolicitud && s.fecha && s.fecha.slice(0, 10) < String(f.fechaSolicitud).slice(0, 10);
+            cuerpo = `
+                ${s.error ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:10px;">${opsEsc(s.error)} Puedes registrarlo a mano.</div>` : ""}
+                <div class="opsfp-dia" style="margin-top:0;">1 · ¿Dónde está la evidencia?</div>
+                ${exactos.length ? `<div style="font-size:11.5px;color:#15803d;font-weight:700;margin:0 2px 6px;">Encontrado en Connecteam con el folio ${opsEsc(opsCtsLlaveFolio(f))}</div>${exactos.map(c => opsCtsTarjeta(c, s.xId === c.id, true)).join("")}`
+                    : sug.length ? `<div style="font-size:11.5px;color:#b45309;font-weight:700;margin:0 2px 6px;">No hay envío con este número de folio. Estos son de la misma estación; elige el correcto solo si estás seguro.</div>${sug.map(c => opsCtsTarjeta(c, s.xId === c.id, true)).join("")}`
+                    : !s.error ? `<div style="font-size:12px;color:#64748b;background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:6px;">No se encontró en Connecteam. Puedes registrarlo a mano (sin fotos).</div>` : ""}
+                ${exactos.length || sug.length ? `<label class="opsfp-opt${!s.xId ? " on" : ""}"><input type="radio" name="opsyr-x" ${!s.xId ? "checked" : ""} onchange="opsYrSet('xId',null)"><div style="font-size:12.5px;color:#334155;"><b>Ninguno</b> — registrarlo a mano, sin Connecteam</div></label>` : ""}
+                <div class="opsfp-dia">2 · ¿Qué pasó con este folio?</div>
+                <div class="opsfp-seg">
+                    <button class="${s.modo === "realizado" ? "on" : ""}" onclick="opsYrSet('modo','realizado')">Ya se realizó</button>
+                    <button class="${s.modo === "programado" ? "on" : ""}" onclick="opsYrSet('modo','programado')">Ya estaba programado</button>
+                </div>
+                <div style="font-size:11.5px;color:#94a3b8;margin:6px 2px 0;">${s.modo === "realizado" ? "El folio queda terminado en esa fecha, a nombre del técnico." : "El folio queda en el calendario de ese técnico en esa fecha, todavía sin terminar."}</div>
+                ${x && x.concluyo === false && s.modo === "realizado" ? `<div style="font-size:11.5px;color:#b91c1c;font-weight:700;margin:6px 2px 0;">Ojo: en Connecteam el técnico puso que NO se concluyó.</div>` : ""}
+                <div class="opsfp-dia">3 · ¿Cuándo y quién?</div>
+                <div style="max-width:260px;"><input type="datetime-local" class="opsfp-in" value="${opsEsc(s.fecha || "")}" onchange="opsYrSet('fecha',this.value)"></div>
+                ${antes ? `<div style="font-size:11.5px;color:#b45309;font-weight:700;margin:6px 2px 0;">Esta fecha es anterior a la solicitud del folio. Revisa que sea el envío correcto.</div>` : ""}
+                <div style="display:flex;align-items:flex-end;gap:10px;margin:12px 0 6px;"><span style="font-size:11.5px;color:#64748b;">${s.tecs.length ? s.tecs.length + " técnico(s) elegido(s)" : "Elige al menos un técnico"}</span>
+                    <input class="opsfp-in" id="opsyr-tq" style="margin-left:auto;max-width:240px;padding:6px 10px;font-size:12px;" placeholder="Buscar técnico…" value="${opsEsc(s.tecQ)}" oninput="opsYrSet('tecQ',this.value)"></div>
+                ${lista.map(t => { const on = s.tecs.includes(t.id); return `<label class="opsfp-opt${on ? " on" : ""}" style="padding:8px 12px;"><input type="checkbox" ${on ? "checked" : ""} onchange="opsYrTec('${t.id}')"><div style="flex:1;min-width:0;"><b style="font-size:12.5px;color:#0f172a;">${opsEsc(t.nombre || "")}</b><div style="font-size:11px;color:#94a3b8;">${opsEsc(t.plaza || "Chihuahua")}</div></div></label>`; }).join("")}`;
+        }
+        const listo = !s.cargando && s.tecs.length && s.fecha;
+        ov.innerHTML = `<div class="opsfp-card">
+            <div style="padding:18px 22px 14px;border-bottom:1px solid #eef1f6;">
+                <div style="display:flex;align-items:flex-start;gap:12px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:10.5px;font-weight:800;color:#94a3b8;letter-spacing:.6px;text-transform:uppercase;">Folio ya atendido</div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">${opsFpBadgePrio(f.prioridad)}<span style="font-size:17px;font-weight:800;color:#0f172a;">${opsEsc(f.estacion || "Sin estación")}</span></div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;">${meta || "&nbsp;"}</div>
+                    </div>
+                    <button onclick="opsYrCerrar()" title="Cerrar" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
+                </div>
+                ${f.comentarios ? `<div style="margin-top:12px;background:#f8fafc;border:1px solid #eef1f6;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;line-height:1.45;">${opsEsc(f.comentarios)}</div>` : ""}
+            </div>
+            <div data-yr-scroll style="overflow-y:auto;padding:14px 22px 16px;flex:1;">${cuerpo}</div>
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid #eef1f6;background:#fcfcfd;">
+                <button class="opsfp-ghost" onclick="opsYrCerrar()">Cancelar</button>
+                <button id="opsyr-ok" class="opsfp-btn" style="padding:9px 18px;font-size:12.5px;${listo ? "" : "background:#94a3b8;cursor:not-allowed;"}" ${listo ? "" : "disabled"} onclick="opsYrGuardar()">${s.modo === "realizado" ? "Guardar como realizado" : "Guardar como programado"}</button>
+            </div></div>`;
+        const sc = ov.querySelector("[data-yr-scroll]"); if (sc) sc.scrollTop = scroll;
+        if (foco) { const el = document.getElementById(foco); if (el && el.setSelectionRange) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+    }
+    window.opsYrGuardar = async function () {
+        const s = opsYr; if (!s) return;
+        const f = cacheFolios.find(x => x.id === s.id); if (!f) return;
+        const x = s.xId ? cacheCts.find(c => c.id === s.xId) : null;
+        const btn = document.getElementById("opsyr-ok"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+        try {
+            await opsCtsAplicar(f, x, { modo: s.modo, tecs: s.tecs, fecha: s.fecha });
+            window.opsYrCerrar(); opsFpRepintarBandeja();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `${f.estacion || "Folio"} registrado como ${s.modo === "realizado" ? "realizado" : "programado"}.`, "");
+        } catch (e) {
+            console.error("[opsYrGuardar]", e);
+            alert("No se pudo guardar: " + (e && e.code === "permission-denied" ? "tu usuario no tiene permiso de escritura." : (e.message || e)));
+            if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
+        }
+    };
+
+    // ── "Cruzar con Connecteam": todos los folios de la bandeja que ya tienen envío con su número ──
+    window.opsCtsLoteAbrir = async function () {
+        if (!opsPuedeGestionar()) return;
+        opsFpCss();
+        opsCtsLote = { cargando: true, error: "", marcados: {}, guardando: false, hechos: 0 };
+        opsCtsLotePintar();
+        try { await opsCtsCargar(true); } catch (e) { opsCtsLote.error = /relation|does not exist|schema cache/i.test(e.message || "") ? "Falta crear la tabla connecteam_servicios en Supabase." : (e.message || String(e)); }
+        if (!opsCtsLote) return;
+        opsCtsLote.cargando = false;
+        opsCtsLoteFilas().forEach(r => { opsCtsLote.marcados[r.f.id] = r.ok; });
+        opsCtsLotePintar();
+    };
+    function opsCtsLoteFilas() {
+        return opsCalFoliosFiltrados().filter(opsFpEsPorProgramar).map(f => {
+            const l = opsCtsDeFolio(f); if (!l.length) return null;
+            const x = l[0], tec = opsCtsTecnicos(x), fecha = opsCtsFechaLocal(x.fecha_servicio || x.enviado_en);
+            const avisos = [];
+            if (!tec.ids.length) avisos.push("Técnico sin ficha en el portal: " + (tec.sinFicha.join(", ") || "—"));
+            else if (tec.sinFicha.length) avisos.push("Sin ficha: " + tec.sinFicha.join(", "));
+            if (x.concluyo === false) avisos.push("NO se concluyó" + (x.motivo_no ? ": " + x.motivo_no : "") + " (quedará como programado)");
+            if (l.length > 1) avisos.push(l.length + " envíos con este folio; se toma el #" + x.numero);
+            if (x.folio_id && x.folio_id !== f.id) avisos.push("Ese envío ya está ligado a otro folio");
+            if (f.fechaSolicitud && fecha && fecha.slice(0, 10) < String(f.fechaSolicitud).slice(0, 10)) avisos.push("La fecha del servicio es anterior a la solicitud");
+            return { f, x, tec, fecha, avisos, ok: tec.ids.length > 0 && !(x.folio_id && x.folio_id !== f.id) && !(f.fechaSolicitud && fecha && fecha.slice(0, 10) < String(f.fechaSolicitud).slice(0, 10)) };
+        }).filter(Boolean).sort((a, b) => (a.ok - b.ok) || opsFpOrden(a.f, b.f));
+    }
+    window.opsCtsLoteMarca = function (id, v) { if (opsCtsLote) { opsCtsLote.marcados[id] = v; opsCtsLotePintar(); } };
+    window.opsCtsLoteCerrar = function () { document.getElementById("opsct-lote")?.remove(); opsCtsLote = null; };
+    function opsCtsLotePintar() {
+        const L = opsCtsLote; if (!L) return;
+        let ov = document.getElementById("opsct-lote");
+        const scroll = ov ? (ov.querySelector("[data-cl-scroll]")?.scrollTop || 0) : 0;
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsct-lote"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov && !L.guardando) window.opsCtsLoteCerrar(); }; document.body.appendChild(ov); }
+        const filas = L.cargando ? [] : opsCtsLoteFilas();
+        const n = filas.filter(r => L.marcados[r.f.id] && r.tec.ids.length).length;
+        const cuerpo = L.cargando ? `<div style="padding:30px;text-align:center;color:#94a3b8;">Leyendo Connecteam…</div>`
+            : L.error ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;padding:12px;font-size:12.5px;">${opsEsc(L.error)}</div>`
+            : !filas.length ? `<div style="padding:30px;text-align:center;color:#94a3b8;">Ningún folio de la bandeja tiene envío en Connecteam con su número.</div>`
+            : filas.map(r => `<div class="opsfp-opt${L.marcados[r.f.id] ? " on" : ""}" style="align-items:flex-start;cursor:default;">
+                <input type="checkbox" ${L.marcados[r.f.id] ? "checked" : ""} ${r.tec.ids.length && !L.guardando ? "" : "disabled"} onchange="opsCtsLoteMarca('${r.f.id}',this.checked)" style="margin-top:3px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${opsFpBadgePrio(r.f.prioridad)}<b style="font-size:12.5px;color:#0f172a;">${opsEsc(r.f.estacion || "")}</b><span style="font-size:11.5px;color:#64748b;">${opsEsc(opsFpCliTxt(r.f))} · ${opsEsc(opsFpFolioTxt(r.f))}</span></div>
+                    <div style="font-size:11.5px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(r.f.comentarios || "")}</div>
+                    <div style="font-size:11.5px;color:#334155;margin-top:3px;"><b>${opsEsc(r.tec.ids.map(id => (opsTecPorId(id) || {}).nombre).join(" + ") || r.x.tecnico || "—")}</b> · ${opsEsc(opsCtsFechaTxt(r.x.fecha_servicio || r.x.enviado_en))} · Connecteam #${opsEsc(r.x.numero)}${r.x.os ? " · O.S. " + opsEsc(r.x.os) : ""} · ${(r.x.evidencias || []).length} foto(s)</div>
+                    ${r.x.descripcion ? `<div style="font-size:11.5px;color:#15803d;margin-top:1px;">${opsEsc(r.x.descripcion)}</div>` : ""}
+                    ${r.avisos.length ? `<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:3px;">${r.avisos.map(opsEsc).join(" · ")}</div>` : ""}
+                </div>
+                <button class="opsfp-ghost" style="padding:5px 9px;font-size:11px;" ${L.guardando ? "disabled" : ""} onclick="opsCtsLoteCerrar();opsYrAbrir('${r.f.id}')">Revisar</button>
+            </div>`).join("");
+        ov.innerHTML = `<div class="opsfp-card" style="width:820px;">
+            <div style="padding:18px 22px 12px;border-bottom:1px solid #eef1f6;display:flex;gap:12px;align-items:flex-start;">
+                <div style="flex:1;"><div style="font-size:17px;font-weight:800;color:#0f172a;">Folios que ya están en Connecteam</div>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.45;">Estos folios siguen en la bandeja, pero el técnico ya subió su servicio a Connecteam con el mismo número de folio. Palomea los que quieres cerrar: quedan a nombre del técnico, en la fecha del servicio y con sus fotos. Los que tienen aviso en naranja revísalos uno por uno.</div></div>
+                <button onclick="opsCtsLoteCerrar()" ${L.guardando ? "disabled" : ""} style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
+            </div>
+            <div data-cl-scroll style="overflow-y:auto;padding:12px 22px;flex:1;">${cuerpo}</div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid #eef1f6;background:#fcfcfd;">
+                <span style="flex:1;font-size:12px;color:#475569;">${L.guardando ? `Guardando ${L.hechos} de ${n}…` : `${filas.length} encontrados · ${n} palomeados`}</span>
+                <button class="opsfp-ghost" ${L.guardando ? "disabled" : ""} onclick="opsCtsLoteCerrar()">Cerrar</button>
+                <button class="opsfp-btn" style="padding:9px 18px;font-size:12.5px;${n && !L.guardando ? "" : "background:#94a3b8;cursor:not-allowed;"}" ${n && !L.guardando ? "" : "disabled"} onclick="opsCtsLoteGuardar()">Registrar ${n} folio${n === 1 ? "" : "s"}</button>
+            </div></div>`;
+        const sc = ov.querySelector("[data-cl-scroll]"); if (sc) sc.scrollTop = scroll;
+    }
+    window.opsCtsLoteGuardar = async function () {
+        const L = opsCtsLote; if (!L || L.guardando) return;
+        const filas = opsCtsLoteFilas().filter(r => L.marcados[r.f.id] && r.tec.ids.length);
+        if (!filas.length || !confirm(`Se registrarán ${filas.length} folio(s) con los datos de Connecteam. ¿Continuar?`)) return;
+        L.guardando = true; L.hechos = 0; opsCtsLotePintar();
+        const fallas = [];
+        for (const r of filas) {
+            try { await opsCtsAplicar(r.f, r.x, { modo: r.x.concluyo === false ? "programado" : "realizado", tecs: r.tec.ids, fecha: r.fecha }); }
+            catch (e) { fallas.push((r.f.estacion || r.f.id) + ": " + (e.message || e)); }
+            L.hechos++; opsCtsLotePintar();
+        }
+        L.guardando = false; L.marcados = {};
+        opsCtsLoteFilas().forEach(r => { L.marcados[r.f.id] = false; });
+        opsCtsLotePintar(); opsFpRepintarBandeja();
+        alert(`Listo: ${filas.length - fallas.length} folio(s) registrados.` + (fallas.length ? `\n\nNo se pudieron guardar:\n` + fallas.join("\n") : ""));
+    };
+    // Carga en segundo plano para mostrar el contador en la bandeja.
+    function opsCtsPrecargar() { if (!opsCtsCargado && !opsCtsCargando) opsCtsCargar().then(() => { if (document.getElementById("opsfp-bandeja")) opsFpRepintarBandeja(); }).catch(() => {}); }
+
+    // ── En el panel del folio: lo que se trajo de Connecteam ──
+    function opsCtsPanelHTML(f) {
+        const c = f && f.connecteam; if (!c) return "";
+        const ev = c.evidencias || [];
+        return `<section class="opf-sec"><div class="opf-sec-tit"><span>Evidencia de Connecteam · #${opsEsc(c.numero)}</span></div>
+            <div style="font-size:12px;color:#334155;line-height:1.6;">
+                <b>${opsEsc(c.tecnico || "—")}</b>${c.auxiliar && !/^(na|n\/a)$/i.test(String(c.auxiliar).trim()) ? " + " + opsEsc(c.auxiliar) : ""} · ${opsEsc(opsCtsFechaTxt(c.fechaServicio || c.enviadoEn))}${c.os ? " · O.S. " + opsEsc(c.os) : ""}<br>
+                ${c.descripcion ? opsEsc(c.descripcion) + "<br>" : ""}
+                ${c.concluyo === false ? `<span style="color:#b91c1c;font-weight:700;">No se concluyó${c.motivoNo ? ": " + opsEsc(c.motivoNo) : ""}</span><br>` : c.concluyo ? `<span style="color:#15803d;font-weight:700;">Se concluyó satisfactoriamente</span><br>` : ""}
+                ${c.nota ? `<span style="color:#64748b;">Nota: ${opsEsc(c.nota)}</span>` : ""}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+                ${c.orden ? `<a href="${opsEsc(c.orden)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#1D2E73;border:1px solid #c7d2fe;border-radius:6px;padding:4px 9px;text-decoration:none;">Orden de servicio</a>` : ""}
+                ${c.firma ? `<a href="${opsEsc(c.firma)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#1D2E73;border:1px solid #c7d2fe;border-radius:6px;padding:4px 9px;text-decoration:none;">Firma</a>` : ""}
+                ${(c.videos || []).map((u, i) => `<a href="${opsEsc(u)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#1D2E73;border:1px solid #c7d2fe;border-radius:6px;padding:4px 9px;text-decoration:none;">Video ${i + 1}</a>`).join("")}
+            </div>
+            ${ev.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;">${ev.map(u => `<a href="${opsEsc(u)}" target="_blank" rel="noopener"><img src="${opsEsc(u)}" loading="lazy" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"></a>`).join("")}</div>` : ""}
+        </section>`;
+    }
+
+    // ── Importar el Excel de SERVICIO TECNICO de Connecteam (para tener la tabla al día) ──
+    function opsCtsParsearHoja(ws, XLSXlib) {
+        const ref = XLSXlib.utils.decode_range(ws["!ref"]);
+        const cab = []; for (let c = ref.s.c; c <= ref.e.c; c++) { const cell = ws[XLSXlib.utils.encode_cell({ r: ref.s.r, c })]; cab.push(cell ? String(cell.v).trim() : ""); }
+        const col = rx => cab.findIndex(h => rx.test(h));
+        const iId = col(/^#$/), iNom = col(/^full name$|^user$|^usuario$/i), iEnv = col(/^submission date$/i), iSerD = col(/fecha del servicio(?!.*time)/i), iSerT = col(/fecha del servicio - time/i),
+            iCli = col(/^cliente$/i), iRs = col(/raz[oó]n social/i), iOs = col(/folio\s*\/\s*o\.?s|no\.? folio/i), iEst = col(/^estaci[oó]n de servicio$/i), iDesc = col(/descripci[oó]n/i),
+            iMat = col(/material de almac/i), iAlm = col(/cu[aá]l almac/i), iConc = col(/conclu/i), iPq = col(/si tu respuesta fue no/i), iAux = col(/auxiliar/i), iNota = col(/^note$/i), iSt = col(/^status$/i);
+        if (iId < 0 || iEnv < 0 || iOs < 0) throw new Error("Este Excel no parece la exportación de SERVICIO TECNICO de Connecteam (faltan columnas #, Submission Date o No. FOLIO / O.S.).");
+        const val = (r, i) => { if (i < 0) return null; const cell = ws[XLSXlib.utils.encode_cell({ r, c: i })]; return cell ? cell.v : null; };
+        const txt = (r, i) => { const v = val(r, i); if (v == null) return null; const t = String(v).trim(); return t && !/^(none|nan|null)$/i.test(t) ? t : null; };
+        const filas = [];
+        for (let r = ref.s.r + 1; r <= ref.e.r; r++) {
+            const id = txt(r, iId); if (!id) continue;
+            const ligas = [];
+            for (let c = 0; c < cab.length; c++) { const cell = ws[XLSXlib.utils.encode_cell({ r, c })]; if (cell && cell.l && cell.l.Target && /^https?:/i.test(cell.l.Target)) ligas.push({ campo: cab[c], url: cell.l.Target }); }
+            let fs = opsCtFecha(val(r, iSerD)); const hora = txt(r, iSerT);
+            if (fs && hora && /^\d{1,2}:\d{2}/.test(hora)) { const d = new Date(fs); const [h, m] = hora.split(":"); d.setHours(+h, +m, 0, 0); fs = d.toISOString(); }
+            const conc = txt(r, iConc), mat = txt(r, iMat), nota = txt(r, iNota), os = txt(r, iOs), desc = txt(r, iDesc);
+            const cliCod = txt(r, iCli) ? String(parseInt(txt(r, iCli), 10)) : null;
+            filas.push({ id: "ST-" + id, numero: parseInt(id, 10) || null, formulario: "SERVICIO TECNICO", tecnico: txt(r, iNom), auxiliar: txt(r, iAux),
+                enviado_en: opsCtFecha(val(r, iEnv)), fecha_servicio: fs, cliente: OPS_CT_CLIENTES[cliCod] || txt(r, iCli), razon_social: txt(r, iRs), os, ubicacion: txt(r, iEst),
+                descripcion: desc, concluyo: conc == null ? null : /^(s[ií]|yes)/i.test(conc), motivo_no: txt(r, iPq), material: mat == null ? null : /^(s[ií]|yes)/i.test(mat), almacen: txt(r, iAlm),
+                nota, status: txt(r, iSt), folios: opsCtsFoliosDeTexto([nota, os, desc].join(" ")),
+                orden_url: (ligas.find(g => /orden de servicio/i.test(g.campo)) || {}).url || null,
+                evidencias: ligas.filter(g => /evidencia/i.test(g.campo) && !/video/i.test(g.campo)).map(g => g.url),
+                videos: ligas.filter(g => /video/i.test(g.campo)).map(g => g.url),
+                firma_url: (ligas.find(g => /firma/i.test(g.campo)) || {}).url || null });
+        }
+        return filas;
+    }
+    async function opsCtsGuardarFilas(filas) {
+        const sb = await opsSb(), yo = opsUsuarioActual(), ahora = new Date().toISOString();
+        filas.forEach(x => { x.importado_por = yo; x.importado_en = ahora; delete x.folio_id; });
+        for (let i = 0; i < filas.length; i += 200) { const { error } = await sb.from("connecteam_servicios").upsert(filas.slice(i, i + 200), { onConflict: "id" }); if (error) throw error; }
+        await opsCtsCargar(true);
+    }
+
 
     window.opsExportarFoliosExcel = function () {
         if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
@@ -17072,7 +17429,7 @@
         const btnF = (k, t) => `<button onclick="opsCtFiltrar('${k}')" style="border:1px solid ${opsCtFiltro === k ? "#1D2E73" : "#cbd5e1"};background:${opsCtFiltro === k ? "#1D2E73" : "#fff"};color:${opsCtFiltro === k ? "#fff" : "#334155"};border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;">${t}</button>`;
         el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:12px;">
             <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center;">
-              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pólizas de Connecteam</div><div style="font-size:11.5px;color:#64748b;max-width:640px;">Sube el Excel exportado del formulario POLIZA MTTO. No se duplican: si vuelves a subirlo se actualizan (por ejemplo cuando ya quedaron en Done).</div></div>
+              <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pólizas de Connecteam</div><div style="font-size:11.5px;color:#64748b;max-width:640px;">Sube el Excel exportado del formulario POLIZA MTTO o SERVICIO TECNICO (este último alimenta el botón "Ya realizado" de Folios por programar). No se duplican: si vuelves a subirlo se actualizan (por ejemplo cuando ya quedaron en Done).</div></div>
               ${opsPuedeGestionar() ? `<label class="mkt-add-btn" style="background:#1D2E73;cursor:pointer;">Importar Excel de Connecteam<input type="file" accept=".xlsx,.xls" onchange="opsCtImportar(this.files[0]);this.value=''" style="display:none;"></label>` : ""}
             </div>
             <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px;">
@@ -17100,7 +17457,17 @@
         if (!file) return; if (!window.XLSX) { alert("La librería de Excel no está cargada. Recarga la página."); return; }
         try {
             const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-            const filas = opsCtParsearHoja(wb.Sheets[wb.SheetNames[0]], XLSX);
+            const ws0 = wb.Sheets[wb.SheetNames[0]];
+            // SERVICIO TECNICO (6-nov-2026): se reconoce por la columna "No. FOLIO / O.S." y va a connecteam_servicios.
+            const cab0 = XLSX.utils.sheet_to_json(ws0, { header: 1, range: 0 })[0] || [];
+            if (cab0.some(h => /no\.?\s*folio/i.test(String(h || "")))) {
+                const st = opsCtsParsearHoja(ws0, XLSX);
+                if (!st.length) { alert("El archivo no trae servicios."); return; }
+                await opsCtsGuardarFilas(st);
+                alert(`Listo: ${st.length} servicio(s) técnicos de Connecteam importados o actualizados (${st.filter(x => x.folios.length).length} traen número de folio). Ya puedes usar "Ya realizado" en la bandeja de Folios por programar.`);
+                return;
+            }
+            const filas = opsCtParsearHoja(ws0, XLSX);
             if (!filas.length) { alert("El archivo no trae pólizas."); return; }
             const yo = opsUsuarioActual();
             filas.forEach(x => { x.importado_por = yo; x.importado_en = new Date().toISOString(); const f = opsCtFolioDe(x); x.folio_id = f ? f.id : null; });
