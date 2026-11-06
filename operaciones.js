@@ -9023,6 +9023,7 @@
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsMvAbrir()" title="Buscar servicios y cambiar la fecha de varios a la vez" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Buscar y mover servicios</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsTareaExtraAbrir('${opsCalFechaISO(opsCalFecha)}')" title="Un favor o pendiente que solo necesita programarse (ej. llevar un sobre a una estación)" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Tarea extra</button>` : ""}
+                    <button onclick="opsExpAbrir()" title="Descargar la programación de uno o varios técnicos (día, semana o mes) en PDF o Excel" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Exportar programación</button>
                     ${btnIcono("opsCalToggleLeyenda()", opsCalVerLeyenda ? "Ocultar tipificaciones" : "Ver tipificaciones (colores)", svgOjo, opsCalVerLeyenda)}
                     ${btnIcono("opsCalTogglePantallaCompleta()", opsCalFull ? "Salir de pantalla completa (Esc)" : "Ver calendario en pantalla completa", svgFull, opsCalFull)}
                 </div>
@@ -12902,6 +12903,223 @@
         await opsCtsCargar(true);
     }
 
+
+    // ═══════════════════ EXPORTAR PROGRAMACIÓN (6-nov-2026, Glen) ═══════════════════
+    // Saca la programación de uno, varios o todos los técnicos por día, semana o mes, igual que el
+    // calendario (mismos filtros de plaza/tipo/búsqueda), pero con el nombre completo de la estación,
+    // la fecha y la hora. PDF (cuadrícula como el calendario en Día/Semana; lista por técnico en Mes) o Excel.
+    let opsExp = null;
+    window.opsExpAbrir = function () {
+        opsFpCss();
+        const vis = opsCalTecnicosFiltrados();
+        opsExp = { vista: opsCalVista, fecha: opsCalFechaISO(opsCalFecha), tecs: vis.map(t => t.id), q: "", formato: "pdf" };
+        opsExpPintar();
+    };
+    window.opsExpCerrar = function () { document.getElementById("opsexp-ov")?.remove(); opsExp = null; };
+    window.opsExpSet = function (k, v, rep) { if (!opsExp) return; opsExp[k] = v; if (rep !== false) opsExpPintar(); };
+    window.opsExpTec = function (id) { if (!opsExp) return; const i = opsExp.tecs.indexOf(id); if (i >= 0) opsExp.tecs.splice(i, 1); else opsExp.tecs.push(id); opsExpPintar(); };
+    window.opsExpTodos = function (on) { if (!opsExp) return; opsExp.tecs = on ? opsExpTecnicosBase().map(t => t.id) : []; opsExpPintar(); };
+    // Técnicos que se pueden elegir: los del calendario con su filtro de plaza, pero sin el filtro de un solo técnico.
+    function opsExpTecnicosBase() {
+        const antes = opsCalFiltroTecnico; opsCalFiltroTecnico = "";
+        try { return opsCalTecnicosFiltrados(); } finally { opsCalFiltroTecnico = antes; }
+    }
+    function opsExpDias(s) {
+        const base = new Date(s.fecha + "T00:00:00");
+        if (s.vista === "dia") return [base];
+        if (s.vista === "semana") { const ini = opsCalInicioSemana(base); return Array.from({ length: 7 }, (_, i) => opsCalSumarDias(ini, i)); }
+        const out = [], ult = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+        for (let d = new Date(base.getFullYear(), base.getMonth(), 1); d <= ult; d = opsCalSumarDias(d, 1)) out.push(new Date(d));
+        return out;
+    }
+    function opsExpTituloRango(s) {
+        const dias = opsExpDias(s), f = d => d.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+        if (s.vista === "dia") return f(dias[0]);
+        if (s.vista === "semana") return "Semana del " + dias[0].toLocaleDateString("es-MX", { day: "numeric", month: "long" }) + " al " + dias[6].toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+        const m = dias[0].toLocaleDateString("es-MX", { month: "long", year: "numeric" }); return m.charAt(0).toUpperCase() + m.slice(1);
+    }
+    function opsExpHora(h) { const hh = Math.floor(h), mm = Math.round((h - hh) * 60); return String(hh).padStart(2, "0") + ":" + String(mm === 60 ? 0 : mm).padStart(2, "0"); }
+    // Un renglón por servicio por día: lo mismo que pinta el calendario.
+    function opsExpDatos(s) {
+        const dias = opsExpDias(s), foliosBase = opsCalFoliosFiltrados();
+        const tecs = opsExpTecnicosBase().filter(t => s.tecs.includes(t.id));
+        return tecs.map(t => {
+            const porDia = dias.map(dia => {
+                const iso = opsCalFechaISO(dia);
+                const aus = cacheAusencias.find(a => a.tecnicoId === t.id && a.fechaInicio <= iso && a.fechaFin >= iso);
+                const items = opsCalOcupacionesTecDia(foliosBase, t, iso).map(({ f, d }) => {
+                    const sinHora = !d.realizado && !(f.fechaProgramada || "").includes("T");
+                    const cat = (() => { try { return opsCalColorFolio(f); } catch (e) { return {}; } })();
+                    return { iso, hora: sinHora ? "Sin hora" : opsExpHora(d.horaDecimal), fin: sinHora || !(d.ejecucion > 0) ? "" : opsExpHora(d.horaDecimal + (d.traslado || 0) + d.ejecucion),
+                        estacion: f.estacion || f.conceptoGeneral || "Sin estación", razon: f.estacionRazonSocial || "", pl: f.estacionPermiso || "",
+                        servicio: (() => { try { return opsPanelTituloServicio(f); } catch (e) { return opsCalTipoTexto(f); } })() + (d.diaTraslado ? " (día de traslado)" : ""),
+                        cliente: (typeof opsClienteFolioNombre === "function" ? opsClienteFolioNombre(f) : f.clienteNombre) || "",
+                        folio: [f.folioClienteId ? "Folio " + f.folioClienteId : "", f.folioOS ? "O.S. " + f.folioOS : ""].filter(Boolean).join(" · "),
+                        plaza: (() => { try { return opsPlazaFolio(f); } catch (e) { return ""; } })(),
+                        equipo: (f.tecnicosAsignadosNombres || []).filter(n => n && n !== t.nombre).join(", "),
+                        estatus: d.realizado ? "Realizado" : (cat.nombre || ""), detalle: f.comentarios || "" };
+                });
+                return { iso, dia, ausencia: aus ? (aus.tipo || "Ausente") : "", items };
+            });
+            return { t, porDia, total: porDia.reduce((n, x) => n + x.items.length, 0) };
+        });
+    }
+    function opsExpPintar() {
+        const s = opsExp; if (!s) return;
+        let ov = document.getElementById("opsexp-ov");
+        const scroll = ov ? (ov.querySelector("[data-exp-scroll]")?.scrollTop || 0) : 0, foco = document.activeElement && document.activeElement.id;
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsexp-ov"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov) window.opsExpCerrar(); }; document.body.appendChild(ov); }
+        const base = opsExpTecnicosBase(), q = opsAsNorm(s.q).trim();
+        const lista = base.filter(t => !q || opsAsNorm(t.nombre).includes(q));
+        const datos = opsExpDatos(s), nServ = datos.reduce((n, x) => n + x.total, 0);
+        const seg = (k, arr) => `<div class="opsfp-seg">${arr.map(([v, t]) => `<button class="${s[k] === v ? "on" : ""}" onclick="opsExpSet('${k}','${v}')">${t}</button>`).join("")}</div>`;
+        ov.innerHTML = `<div class="opsfp-card" style="width:640px;">
+            <div style="padding:18px 22px 12px;border-bottom:1px solid #eef1f6;display:flex;gap:12px;align-items:flex-start;">
+                <div style="flex:1;"><div style="font-size:17px;font-weight:800;color:#0f172a;">Exportar programación</div>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;">Sale igual que el calendario (misma plaza y filtros), con el nombre completo de la estación, fecha y hora.</div></div>
+                <button onclick="opsExpCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
+            </div>
+            <div data-exp-scroll style="overflow-y:auto;padding:14px 22px;flex:1;">
+                <div class="opsfp-dia" style="margin-top:0;">Periodo</div>
+                <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:10px;align-items:center;">${seg("vista", [["dia", "Día"], ["semana", "Semana"], ["mes", "Mes"]])}
+                    <input type="date" class="opsfp-in" value="${opsEsc(s.fecha)}" onchange="opsExpSet('fecha',this.value)"></div>
+                <div style="font-size:12px;color:#1D2E73;font-weight:700;margin:6px 2px 0;">${opsEsc(opsExpTituloRango(s))}</div>
+                <div class="opsfp-dia">Formato</div>
+                ${seg("formato", [["pdf", "PDF (como el calendario)"], ["excel", "Excel (lista)"]])}
+                <div style="display:flex;align-items:flex-end;gap:8px;margin:14px 0 6px;">
+                    <span class="opsfp-dia" style="margin:0;">Técnicos · ${s.tecs.length} de ${base.length}</span>
+                    <button class="opsfp-link" style="margin-left:8px;" onclick="opsExpTodos(true)">Todos</button><button class="opsfp-link" onclick="opsExpTodos(false)">Ninguno</button>
+                    <input class="opsfp-in" id="opsexp-q" style="margin-left:auto;max-width:220px;padding:6px 10px;font-size:12px;" placeholder="Buscar técnico…" value="${opsEsc(s.q)}" oninput="opsExpSet('q',this.value)">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 8px;">
+                ${lista.map(t => { const on = s.tecs.includes(t.id), d = datos.find(x => x.t.id === t.id);
+                    return `<label class="opsfp-opt${on ? " on" : ""}" style="padding:7px 10px;"><input type="checkbox" ${on ? "checked" : ""} onchange="opsExpTec('${t.id}')"><div style="flex:1;min-width:0;font-size:12px;"><b style="color:#0f172a;">${opsEsc(t.nombre || "")}</b><div style="font-size:10.5px;color:#94a3b8;">${opsEsc(t.plaza || "Chihuahua")}${on ? " · " + (d ? d.total : 0) + " servicio(s)" : ""}</div></div></label>`; }).join("")}
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid #eef1f6;background:#fcfcfd;">
+                <span style="flex:1;font-size:12px;color:#475569;">${s.tecs.length} técnico(s) · ${nServ} servicio(s)</span>
+                <button class="opsfp-ghost" onclick="opsExpCerrar()">Cancelar</button>
+                <button class="opsfp-btn" style="padding:9px 18px;font-size:12.5px;${s.tecs.length ? "" : "background:#94a3b8;cursor:not-allowed;"}" ${s.tecs.length ? "" : "disabled"} onclick="opsExpDescargar()">Descargar ${s.formato === "pdf" ? "PDF" : "Excel"}</button>
+            </div></div>`;
+        const sc = ov.querySelector("[data-exp-scroll]"); if (sc) sc.scrollTop = scroll;
+        if (foco) { const el = document.getElementById(foco); if (el && el.setSelectionRange) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+    }
+    window.opsExpDescargar = function () {
+        const s = opsExp; if (!s || !s.tecs.length) return;
+        try { if (s.formato === "excel") opsExpExcel(s); else opsExpPdf(s); }
+        catch (e) { console.error("[exportar programación]", e); alert("No se pudo exportar: " + (e.message || e)); }
+    };
+    function opsExpNombreArchivo(s, ext) {
+        const datos = opsExpTecnicosBase().filter(t => s.tecs.includes(t.id));
+        const quien = datos.length === 1 ? opsNormalizaTexto(datos[0].nombre).replace(/\s+/g, "_") : datos.length + "_tecnicos";
+        return `Programacion_${quien}_${s.vista}_${s.fecha}.${ext}`;
+    }
+    function opsExpExcel(s) {
+        if (typeof XLSX === "undefined") throw new Error("La librería de Excel no está cargada. Recarga la página.");
+        const filas = [];
+        opsExpDatos(s).forEach(({ t, porDia }) => porDia.forEach(pd => {
+            if (pd.ausencia) filas.push({ "Técnico": t.nombre, "Fecha": pd.iso, "Día": pd.dia.toLocaleDateString("es-MX", { weekday: "long" }), "Hora": "", "Termina": "", "Estación": "AUSENTE: " + pd.ausencia });
+            pd.items.forEach(x => filas.push({ "Técnico": t.nombre, "Fecha": x.iso, "Día": pd.dia.toLocaleDateString("es-MX", { weekday: "long" }), "Hora": x.hora, "Termina": x.fin,
+                "Estación": x.estacion, "Razón social": x.razon, "PL": x.pl, "Servicio": x.servicio, "Cliente": x.cliente, "Folio / O.S.": x.folio, "Plaza": x.plaza, "Va con": x.equipo, "Estatus": x.estatus, "Descripción": x.detalle }));
+        }));
+        if (!filas.length) throw new Error("No hay servicios en ese periodo para los técnicos elegidos.");
+        const ws = XLSX.utils.json_to_sheet(filas);
+        ws["!cols"] = [26, 11, 11, 7, 7, 34, 30, 18, 30, 16, 24, 11, 24, 14, 50].map(w => ({ wch: w }));
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Programación");
+        XLSX.writeFile(wb, opsExpNombreArchivo(s, "xlsx"));
+    }
+    function opsExpPdf(s) {
+        if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("La librería de PDF no está cargada. Recarga la página.");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "letter", orientation: "landscape" });
+        const W = 279.4, H = 215.9, M = 10, NAVY = [29, 46, 115], GRIS = [100, 116, 139], TINTA = [30, 41, 59], LINEA = [226, 232, 240];
+        const limpio = v => String(v ?? "").replace(/[^\x20-\x7E -ÿ—–•·\n]/g, "");
+        const datos = opsExpDatos(s), dias = opsExpDias(s);
+        const plaza = opsCalFiltroPlaza && opsCalFiltroPlaza !== "todas" ? "Plaza " + opsCalFiltroPlaza : "Todas las plazas";
+        let y = 0, pag = 0;
+        const encabezado = () => {
+            pag++;
+            doc.setFillColor(...NAVY); doc.rect(0, 0, W, 4, "F");
+            doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("PROGRAMACIÓN DE TÉCNICOS", M, 13);
+            doc.setFontSize(10.5); doc.setTextColor(...TINTA); doc.text(limpio(opsExpTituloRango(s)), M, 19);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRIS);
+            doc.text(limpio(`HEDMA TECNOCONTROL · Operaciones · ${plaza} · generado ${new Date().toLocaleString("es-MX", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} por ${opsNombreActual()}`), M, 24);
+            doc.text("Pág. " + pag, W - M, 24, { align: "right" });
+            y = 29;
+        };
+        const lineasItem = (x, ancho, fs) => {
+            doc.setFontSize(fs);
+            const a = doc.splitTextToSize(limpio(x.hora + (x.fin ? "–" + x.fin : "") + "  " + x.estacion), ancho);
+            const b = doc.splitTextToSize(limpio([x.servicio, x.cliente, x.folio].filter(Boolean).join(" · ")), ancho);
+            const c = x.equipo ? doc.splitTextToSize(limpio("Con: " + x.equipo), ancho) : [];
+            return { a, b, c, alto: (a.length + b.length + c.length) * fs * 0.42 + 2 };
+        };
+        encabezado();
+        if (s.vista !== "mes") {
+            // Cuadrícula como el calendario: técnicos en renglones, días en columnas.
+            const colT = 42, n = dias.length, colD = (W - 2 * M - colT) / n, fs = n === 1 ? 9 : 7;
+            const cabDias = () => {
+                doc.setFillColor(248, 250, 252); doc.rect(M, y, W - 2 * M, 8, "F");
+                doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...GRIS); doc.text("TÉCNICO", M + 2, y + 5.3);
+                dias.forEach((d, i) => doc.text(limpio(d.toLocaleDateString("es-MX", { weekday: n === 1 ? "long" : "short", day: "numeric", month: "short" }).toUpperCase()), M + colT + i * colD + colD / 2, y + 5.3, { align: "center" }));
+                y += 8;
+            };
+            cabDias();
+            datos.forEach(({ t, porDia, total }) => {
+                const celdas = porDia.map(pd => pd.ausencia ? { aus: pd.ausencia, alto: 7 } : { items: pd.items.map(x => lineasItem(x, colD - 4, fs)) });
+                celdas.forEach(c => { if (c.items) c.alto = c.items.reduce((h, it) => h + it.alto + 1.5, 2) || 7; });
+                const alto = Math.max(12, ...celdas.map(c => c.alto));
+                if (y + alto > H - 8) { doc.addPage(); encabezado(); cabDias(); }
+                doc.setDrawColor(...LINEA); doc.line(M, y + alto, W - M, y + alto);
+                doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(...TINTA);
+                doc.text(doc.splitTextToSize(limpio(t.nombre || ""), colT - 4), M + 2, y + 4.5);
+                doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRIS);
+                doc.text(limpio((t.plaza || "Chihuahua") + " · " + total + " serv."), M + 2, y + alto - 2);
+                celdas.forEach((c, i) => {
+                    const x0 = M + colT + i * colD;
+                    doc.setDrawColor(...LINEA); doc.line(x0, y, x0, y + alto);
+                    if (c.aus) { doc.setFillColor(241, 245, 249); doc.rect(x0 + 0.5, y + 0.5, colD - 1, alto - 1, "F"); doc.setFontSize(7.5); doc.setTextColor(...GRIS); doc.text(limpio("AUSENTE · " + c.aus), x0 + colD / 2, y + alto / 2 + 1, { align: "center" }); return; }
+                    let yy = y + 2;
+                    c.items.forEach(it => {
+                        doc.setFillColor(238, 242, 255); doc.rect(x0 + 1, yy - 0.5, colD - 2, it.alto, "F");
+                        let ly = yy + fs * 0.42;
+                        doc.setFont("helvetica", "bold"); doc.setFontSize(fs); doc.setTextColor(...NAVY); doc.text(it.a, x0 + 2, ly); ly += it.a.length * fs * 0.42;
+                        doc.setFont("helvetica", "normal"); doc.setTextColor(...TINTA); doc.text(it.b, x0 + 2, ly); ly += it.b.length * fs * 0.42;
+                        if (it.c.length) { doc.setTextColor(...GRIS); doc.text(it.c, x0 + 2, ly); }
+                        yy += it.alto + 1.5;
+                    });
+                });
+                y += alto;
+            });
+        } else {
+            // Mes: lista por técnico y por día (en cuadrícula no cabe el nombre completo de la estación).
+            const cols = [["Fecha", 26], ["Hora", 20], ["Estación", 70], ["Servicio", 62], ["Cliente / Folio", 58], ["Va con", 23.4]];
+            const cab = () => { doc.setFillColor(248, 250, 252); doc.rect(M, y, W - 2 * M, 7, "F"); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(...GRIS); let x = M + 1.5; cols.forEach(([c, w]) => { doc.text(c.toUpperCase(), x, y + 4.8); x += w; }); y += 7; };
+            datos.forEach(({ t, porDia, total }, k) => {
+                if (y + 20 > H - 8) { doc.addPage(); encabezado(); }
+                else if (k) y += 4;
+                doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...NAVY); doc.text(limpio(t.nombre), M, y + 4); const anchoNom = doc.getTextWidth(limpio(t.nombre));
+                doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...GRIS); doc.text(limpio((t.plaza || "Chihuahua") + " · " + total + " servicio(s) en el mes"), M + anchoNom + 4, y + 4);
+                y += 7; cab();
+                const filas = [];
+                porDia.forEach(pd => { if (pd.ausencia) filas.push({ iso: pd.iso, dia: pd.dia, aus: pd.ausencia }); pd.items.forEach(x => filas.push({ iso: pd.iso, dia: pd.dia, x })); });
+                if (!filas.length) { doc.setFontSize(8.5); doc.setTextColor(...GRIS); doc.text("Sin servicios programados en el mes.", M + 1.5, y + 5); y += 8; return; }
+                filas.forEach(r => {
+                    doc.setFontSize(8);
+                    const celdas = r.aus ? [[r.dia.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })], [""], ["AUSENTE · " + r.aus], [""], [""], [""]]
+                        : [[r.dia.toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })], [r.x.hora + (r.x.fin ? "–" + r.x.fin : "")], [r.x.estacion + (r.x.razon ? "\n" + r.x.razon : "")], [r.x.servicio + (r.x.estatus ? " · " + r.x.estatus : "")], [[r.x.cliente, r.x.folio].filter(Boolean).join("\n")], [r.x.equipo]];
+                    const partes = celdas.map((c, i) => doc.splitTextToSize(limpio(c[0] || ""), cols[i][1] - 3));
+                    const alto = Math.max(...partes.map(p => p.length)) * 3.5 + 2.5;
+                    if (y + alto > H - 8) { doc.addPage(); encabezado(); cab(); }
+                    let x = M + 1.5;
+                    partes.forEach((p, i) => { doc.setFont("helvetica", i === 2 ? "bold" : "normal"); doc.setTextColor(...(i === 2 ? NAVY : TINTA)); doc.text(p, x, y + 4); x += cols[i][1]; });
+                    y += alto; doc.setDrawColor(...LINEA); doc.line(M, y, W - M, y);
+                });
+            });
+        }
+        if (!datos.some(d => d.total)) { doc.setFontSize(10); doc.setTextColor(...GRIS); doc.text("No hay servicios en ese periodo para los técnicos elegidos.", M, y + 8); }
+        doc.save(opsExpNombreArchivo(s, "pdf"));
+    }
 
     window.opsExportarFoliosExcel = function () {
         if (typeof XLSX === "undefined") { alert("Falta cargar SheetJS (XLSX) en index.html."); return; }
