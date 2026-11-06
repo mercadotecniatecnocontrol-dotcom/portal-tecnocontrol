@@ -8982,7 +8982,7 @@
 
         // 26-oct-2026 (Glen): se quitaron las tarjetas de conteo de arriba del calendario; no se usaban.
         const foliosVista = opsCalFoliosFiltrados();
-        const sinFecha = foliosVista.filter(f => !f.fechaProgramada && !f.fechaSolucion);
+        const sinFecha = foliosVista.filter(opsFpEsPorProgramar); // 6-nov-2026: solo BORRADOR de la hoja de Magali
         // Avisos del turno de folios/guardia: antes era una franja arriba; ahora los técnicos llevan su
         // etiqueta en el calendario y aquí solo sale un aviso cuando falta alguien.
         const avisosTurno = opsAccFiltroEmpresa() ? "" : opsCalAvisosTurnoHTML();
@@ -9037,16 +9037,7 @@
             </div>
           ${opsCalFull ? "</div>" : ""}
 
-            ${sinFecha.length && !opsCalFull ? `
-            <div style="margin-top:12px;background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 4px 14px rgba(15,23,42,.06);border-top:3px solid #b45309;">
-                <div style="font-size:11px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">Sin fecha programada (${sinFecha.length})${opsCalVista === "dia" ? " — arrástralos a la fila de un técnico" : ""}</div>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                    ${sinFecha.map(f => `
-                        <div onclick="${opsPuedeGestionar() ? `opsAbrirModalFolio('${f.id}')` : `opsAbrirPanelFolio('${f.id}')`}" ${opsPuedeGestionar() ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""} style="padding:9px 13px;background:#fffbeb;border:1px solid #fde8c8;border-radius:10px;cursor:${opsPuedeGestionar() && opsCalVista === "dia" ? "grab" : "pointer"};font-size:11.5px;color:#334155;font-weight:600;transition:box-shadow .12s;">
-                            ${opsEsc(f.estacion)}${f.folioOS ? " · O.S. " + opsEsc(f.folioOS) : ""}${opsPuedeGestionar() ? ` — <span style="color:#b45309;font-weight:500;">${opsCalVista === "dia" ? "arrastra o da clic" : "clic para programar"}</span>` : ""}
-                        </div>`).join("")}
-                </div>
-            </div>` : ""}
+            ${sinFecha.length && !opsCalFull ? opsFpBandejaHTML(sinFecha) : ""}
           ${opsCalFull ? "" : "</div>"}
         `;
         opsCalTickerPintar();
@@ -12127,6 +12118,346 @@
         } catch (e) {
             console.error("[opsCalSoltarFolio]", e);
             alert("No se pudo programar el folio: " + e.message);
+        }
+    };
+
+
+    // ═══════════════════ FOLIOS POR PROGRAMAR · bandeja y "Programar folio" (6-nov-2026, Glen) ═══════════════════
+    // Los folios que llegan de la hoja de Magali (pestaña BORRADOR) y de Connecteam sin fecha ya no se programan
+    // con la ficha completa de 75 campos. Una bandeja compacta (ordenada por urgencia) y una ventana corta con
+    // dos caminos: LIGAR el folio a una programación que ya existe (turno de Atención a folios o un servicio de
+    // la semana: hereda técnicos y día) o PROGRAMARLO DIRECTO (técnico, día, hora y duración).
+    // La ficha completa sigue a un clic ("Editar ficha completa").
+    let opsFpBusca = "", opsFpCliente = "todos", opsFpVerTodos = false, opsFp = null;
+    const OPS_FP_MAX = 12;
+    // Regla 6-nov-2026: de la hoja de Magali solo cuenta la pestaña BORRADOR.
+    function opsFpEsPorProgramar(f) {
+        if (!f || f.cancelado || f.fechaProgramada || f.fechaSolucion) return false;
+        if (f.origen === "hoja-folios" && f.hojaPestana && String(f.hojaPestana).toUpperCase() !== "BORRADOR") return false;
+        return true;
+    }
+    const OPS_FP_RANGO_SEM = { rojo: 0, naranja: 1, amarillo: 2, verde: 3, gris: 4 };
+    function opsFpOrden(a, b) {
+        const sa = opsCalcularSemaforoFolio(a), sb = opsCalcularSemaforoFolio(b);
+        const r = (OPS_FP_RANGO_SEM[sa.semaforo] ?? 5) - (OPS_FP_RANGO_SEM[sb.semaforo] ?? 5); if (r) return r;
+        const pa = OPS_PRIORIDADES.indexOf(a.prioridad), pb = OPS_PRIORIDADES.indexOf(b.prioridad);
+        const p = (pa < 0 ? 9 : pa) - (pb < 0 ? 9 : pb); if (p) return p;
+        return String(a.vencimiento || a.fechaSolicitud || "9").localeCompare(String(b.vencimiento || b.fechaSolicitud || "9"));
+    }
+    function opsFpCliTxt(f) { return (typeof opsClienteFolioNombre === "function" ? opsClienteFolioNombre(f) : f.clienteNombre) || ""; }
+    function opsFpFolioTxt(f) { return [f.folioClienteId ? "Folio " + f.folioClienteId : "", f.folioOS ? "O.S. " + f.folioOS : ""].filter(Boolean).join(" · "); }
+    function opsFpBadgePrio(p) {
+        if (!p) return `<span class="opsfp-prio" style="background:#f1f5f9;color:#94a3b8;">—</span>`;
+        const c = p === "P1" ? ["#fee2e2", "#b91c1c"] : p === "P2" ? ["#ffedd5", "#9a3412"] : p === "P3" ? ["#eef2ff", "#1D2E73"] : ["#f1f5f9", "#475569"];
+        return `<span class="opsfp-prio" style="background:${c[0]};color:${c[1]};">${opsEsc(p)}</span>`;
+    }
+    function opsFpCss() {
+        if (document.getElementById("opsfp-css")) return;
+        const st = document.createElement("style"); st.id = "opsfp-css";
+        st.textContent = `
+        .opsfp-box{margin-top:12px;background:#fff;border:1px solid #e5e9f0;border-radius:14px;overflow:hidden}
+        .opsfp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #eef1f6}
+        .opsfp-tit{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.1px}
+        .opsfp-num{font-size:11px;font-weight:800;color:#1D2E73;background:#eef2ff;border-radius:999px;padding:2px 9px}
+        .opsfp-pill{border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
+        .opsfp-pill.on{background:#1D2E73;border-color:#1D2E73;color:#fff}
+        .opsfp-q{border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:200px;font-family:inherit}
+        .opsfp-row{display:grid;grid-template-columns:44px minmax(0,1.6fr) minmax(0,1fr) 120px 96px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f4f8;font-size:12px;color:#334155}
+        .opsfp-row:hover{background:#fafbfd}
+        .opsfp-row .est{font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .opsfp-row .sub{color:#64748b;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+        .opsfp-prio{display:inline-flex;justify-content:center;min-width:30px;font-size:10.5px;font-weight:800;border-radius:6px;padding:3px 6px}
+        .opsfp-btn{background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+        .opsfp-btn:hover{background:#16245c}
+        .opsfp-ghost{background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
+        .opsfp-foot{padding:10px 16px;text-align:center}
+        .opsfp-link{background:none;border:none;color:#1D2E73;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
+        .opsfp-ov{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px}
+        .opsfp-card{background:#fff;border-radius:16px;width:720px;max-width:100%;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,.28)}
+        .opsfp-seg{display:flex;background:#f1f5f9;border-radius:10px;padding:3px;gap:3px}
+        .opsfp-seg button{flex:1;border:none;background:transparent;border-radius:8px;padding:9px 10px;font-size:12.5px;font-weight:700;color:#475569;cursor:pointer;font-family:inherit}
+        .opsfp-seg button.on{background:#fff;color:#1D2E73;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+        .opsfp-lb{display:block;font-size:11px;font-weight:700;color:#64748b;margin:0 0 5px;text-transform:uppercase;letter-spacing:.3px}
+        .opsfp-in{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:9px 10px;font-size:13px;color:#0f172a;background:#fff;font-family:inherit}
+        .opsfp-in:focus{outline:none;border-color:#1D2E73;box-shadow:0 0 0 3px rgba(29,46,115,.12)}
+        .opsfp-opt{display:flex;align-items:center;gap:10px;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:6px;background:#fff}
+        .opsfp-opt.on{border-color:#1D2E73;background:#f5f7ff}
+        .opsfp-opt input{accent-color:#1D2E73;width:16px;height:16px;flex-shrink:0}
+        .opsfp-tag{font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px;white-space:nowrap}
+        .opsfp-dia{font-size:10.5px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 6px}
+        @media (max-width:760px){.opsfp-row{grid-template-columns:40px minmax(0,1fr) 92px}.opsfp-row .c-cli,.opsfp-row .c-ven{display:none}}`;
+        document.head.appendChild(st);
+    }
+
+    // ── Bandeja (va debajo del calendario) ──
+    function opsFpBandejaHTML(lista) {
+        opsFpCss();
+        const gestion = opsPuedeGestionar();
+        const clientes = [...new Set(lista.map(opsFpCliTxt).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+        const q = opsAsNorm(opsFpBusca).trim();
+        let ver = lista.filter(f => opsFpCliente === "todos" || (opsFpCliente === "otros" ? !opsFpCliTxt(f) : opsFpCliTxt(f) === opsFpCliente))
+            .filter(f => !q || opsAsNorm([f.estacion, f.comentarios, f.folioClienteId, f.folioOS, opsFpCliTxt(f), f.responsable, f.prioridad].join(" ")).includes(q))
+            .sort(opsFpOrden);
+        const total = ver.length;
+        if (!opsFpVerTodos) ver = ver.slice(0, OPS_FP_MAX);
+        const venc = lista.filter(f => opsCalcularSemaforoFolio(f).semaforo === "rojo").length;
+        const pill = (k, t) => `<button class="opsfp-pill${opsFpCliente === k ? " on" : ""}" onclick="opsFpFiltro('${opsEsc(k)}')">${opsEsc(t)}</button>`;
+        return `<div class="opsfp-box" id="opsfp-bandeja">
+            <div class="opsfp-head">
+                <span class="opsfp-tit">Folios por programar</span><span class="opsfp-num">${lista.length}</span>
+                ${venc ? `<span class="opsfp-tag" style="background:#fee2e2;color:#b91c1c;">${venc} vencido${venc > 1 ? "s" : ""}</span>` : ""}
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:8px;">${pill("todos", "Todos")}${clientes.map(c => pill(c, c)).join("")}${lista.some(f => !opsFpCliTxt(f)) ? pill("otros", "Sin cliente") : ""}</div>
+                <input class="opsfp-q" style="margin-left:auto;" id="opsfp-q" value="${opsEsc(opsFpBusca)}" placeholder="Buscar estación, folio o falla…" oninput="opsFpBuscar(this.value)">
+            </div>
+            ${ver.length ? ver.map(f => {
+                const s = opsCalcularSemaforoFolio(f), c = OPS_SEMAFORO[s.semaforo] || OPS_SEMAFORO.gris;
+                const resp = f.responsable && f.responsable !== "-" ? f.responsable : "";
+                return `<div class="opsfp-row" ${gestion ? `draggable="true" ondragstart="opsCalArrastrarFolio(event,'${f.id}')"` : ""}>
+                    <div>${opsFpBadgePrio(f.prioridad)}</div>
+                    <div style="min-width:0;"><div class="est">${opsEsc(f.estacion || "Sin estación")}</div><div class="sub" title="${opsEsc(f.comentarios || "")}">${opsEsc(f.comentarios || "Sin descripción")}</div></div>
+                    <div class="c-cli" style="min-width:0;"><div class="sub" style="color:#334155;font-weight:700;">${opsEsc(opsFpCliTxt(f) || "—")}</div><div class="sub">${opsEsc(opsFpFolioTxt(f) || "—")}${resp ? " · " + opsEsc(resp) : ""}</div></div>
+                    <div class="c-ven"><span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:${c.fg};"><span style="width:7px;height:7px;border-radius:50%;background:${c.dot};"></span>${opsEsc(s.semaforo === "gris" ? "Sin vencimiento" : s.estado === "VENCIDO" ? "Vencido" : s.diasTexto)}</span></div>
+                    <div style="text-align:right;">${gestion ? `<button class="opsfp-btn" onclick="opsFpAbrir('${f.id}')">Programar</button>` : `<button class="opsfp-ghost" style="padding:6px 10px;" onclick="opsAbrirPanelFolio('${f.id}')">Ver</button>`}</div>
+                </div>`; }).join("") : `<div style="padding:26px;text-align:center;color:#94a3b8;font-size:12.5px;">Nada por programar con ese filtro.</div>`}
+            ${total > OPS_FP_MAX ? `<div class="opsfp-foot"><button class="opsfp-link" onclick="opsFpToggleTodos()">${opsFpVerTodos ? "Ver solo los más urgentes" : `Ver los ${total} folios`}</button></div>` : ""}
+        </div>`;
+    }
+    function opsFpRepintarBandeja() {
+        const el = document.getElementById("opsfp-bandeja"); if (!el) { opsRenderCalendario(); return; }
+        const tmp = document.createElement("div"); tmp.innerHTML = opsFpBandejaHTML(opsCalFoliosFiltrados().filter(opsFpEsPorProgramar));
+        el.replaceWith(tmp.firstElementChild);
+    }
+    window.opsFpFiltro = function (k) { opsFpCliente = k; opsFpVerTodos = false; opsFpRepintarBandeja(); };
+    window.opsFpToggleTodos = function () { opsFpVerTodos = !opsFpVerTodos; opsFpRepintarBandeja(); };
+    window.opsFpBuscar = function (v) {
+        opsFpBusca = v; opsFpRepintarBandeja();
+        const i = document.getElementById("opsfp-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+    };
+
+    // ── Técnicos sugeridos: el responsable que viene en la hoja ("RICARDO G", "SAUL / BRUNO") ──
+    function opsFpTecsSugeridos(f) {
+        const txt = [f.responsable, f.hojaQuienRealizo].filter(x => x && x !== "-").join(" / ");
+        if (!txt) return [];
+        let ids = opsCalTecnicosDeTexto(txt);
+        if (ids.length) return ids;
+        const tecs = opsTecOperativos().map(t => ({ id: t.id, w: opsNormalizaTexto(t.nombre).split(/\s+/).filter(Boolean) }));
+        const out = new Set();
+        txt.split(/[,;\/\n]+|\s+y\s+/i).map(x => opsNormalizaTexto(x).split(/\s+/).filter(Boolean)).filter(w => w.length).forEach(pal => {
+            const [nom, ...resto] = pal;
+            const cand = tecs.filter(t => t.w[0] === nom && resto.every(r => t.w.slice(1).some(tp => tp.startsWith(r))));
+            if (cand.length === 1) out.add(cand[0].id);
+        });
+        return [...out];
+    }
+    function opsFpCargaDia(tecId, dia) {
+        return cacheFolios.filter(x => !x.cancelado && !x.fechaSolucion && (x.tecnicosAsignadosIds || []).includes(tecId) && opsFolioCubreDia(x, dia)).length;
+    }
+    // Programaciones a las que se puede ligar: de hoy a 14 días, sin terminar. Un renglón por programación
+    // (las de varias estaciones salen una sola vez). Primero: turnos de Atención a folios, misma estación, mismo cliente.
+    function opsFpProgramaciones(f) {
+        const hoy = opsHoyLocal(), hasta = opsDiaISOmas(hoy, 14);
+        const vistos = new Set(), out = [];
+        const nEst = opsAsNorm(f.estacion), nCli = opsAsNorm(opsFpCliTxt(f));
+        cacheFolios.filter(x => !x.cancelado && !x.fechaSolucion && x.fechaProgramada && x.id !== f.id && (x.tecnicosAsignadosIds || []).length)
+            .filter(x => { const ini = x.fechaProgramada.slice(0, 10), fin = opsFolioFechaFin(x) || ini; return fin >= hoy && ini <= hasta; })
+            .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada)))
+            .forEach(x => {
+                const llave = x.grupoProgramacionId || x.id; if (vistos.has(llave)) return; vistos.add(llave);
+                const abierta = opsFolioEsAbierto(x);
+                const n = x.grupoProgramacionId ? cacheFolios.filter(y => y.grupoProgramacionId === x.grupoProgramacionId && !y.cancelado).length : 1;
+                let score = 0;
+                if (x.conceptoGeneral === "Atención a folios") score += 50 + ((x.clientesAtencion || []).some(c => opsAsNorm(c) === nCli) || !(x.clientesAtencion || []).length ? 20 : 0);
+                if (nEst && opsAsNorm(x.estacion) === nEst) score += 60;
+                if (nCli && opsAsNorm(opsFpCliTxt(x)) === nCli) score += 10;
+                if (opsPlazaFolio(x) === opsPlazaFolio(f)) score += 5;
+                out.push({ f: x, abierta, n, score, dia: x.fechaProgramada.slice(0, 10) < hoy ? hoy : x.fechaProgramada.slice(0, 10) });
+            });
+        return out;
+    }
+
+    // ── Ventana "Programar folio" ──
+    window.opsFpAbrir = function (id) {
+        if (!opsPuedeGestionar()) { window.opsAbrirPanelFolio(id); return; }
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        opsFpCss();
+        const progs = opsFpProgramaciones(f);
+        const sug = opsFpTecsSugeridos(f);
+        const recomendada = progs.slice().sort((a, b) => b.score - a.score)[0];
+        const urg = ["rojo", "naranja"].includes(opsCalcularSemaforoFolio(f).semaforo) || f.prioridad === "P1";
+        const hoy = opsHoyLocal();
+        opsFp = { id, modo: recomendada && recomendada.score >= 50 ? "ligar" : "directo", progId: recomendada && recomendada.score >= 50 ? recomendada.f.id : null,
+            q: "", tecs: sug, tecQ: "", dia: urg ? hoy : opsDiaISOmas(hoy, 1), hora: "09:00", dur: f.tiempoEjecucionHrs ? String(f.tiempoEjecucionHrs) : "2", avisar: true };
+        opsFpPintar();
+    };
+    window.opsFpCerrar = function () { document.getElementById("opsfp-ov")?.remove(); opsFp = null; };
+    window.opsFpSet = function (k, v, repintar) { if (!opsFp) return; opsFp[k] = v; if (repintar !== false) opsFpPintar(); };
+    window.opsFpTec = function (tid) {
+        if (!opsFp) return; const i = opsFp.tecs.indexOf(tid);
+        if (i >= 0) opsFp.tecs.splice(i, 1); else opsFp.tecs.push(tid); opsFpPintar();
+    };
+    function opsFpNomDia(d) { return new Date(d + "T12:00:00").toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" }); }
+    function opsFpPintar() {
+        const s = opsFp; if (!s) return;
+        const f = cacheFolios.find(x => x.id === s.id); if (!f) { opsFpCerrar(); return; }
+        let ov = document.getElementById("opsfp-ov");
+        const scroll = ov ? (ov.querySelector("[data-fp-scroll]")?.scrollTop || 0) : 0;
+        const foco = document.activeElement && document.activeElement.id;
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsfp-ov"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov) opsFpCerrar(); }; document.body.appendChild(ov); }
+        const sem = opsCalcularSemaforoFolio(f), c = OPS_SEMAFORO[sem.semaforo] || OPS_SEMAFORO.gris;
+        const meta = [opsFpCliTxt(f), opsFpFolioTxt(f), opsPlazaFolio(f)].filter(Boolean).map(opsEsc).join(" · ");
+
+        // Ligar
+        let ligarHTML = "";
+        if (s.modo === "ligar") {
+            const q = opsAsNorm(s.q).trim();
+            const progs = opsFpProgramaciones(f).filter(p => !q || opsAsNorm([p.f.estacion, p.f.conceptoGeneral, (p.f.tecnicosAsignadosNombres || []).join(" "), opsFpCliTxt(p.f), opsCalTipoTexto(p.f), p.f.plaza].join(" ")).includes(q));
+            const sugeridas = progs.filter(p => p.score >= 50).sort((a, b) => b.score - a.score);
+            const resto = progs.filter(p => p.score < 50);
+            const porDia = {}; resto.forEach(p => { (porDia[p.dia] = porDia[p.dia] || []).push(p); });
+            const opt = p => {
+                const x = p.f, on = s.progId === x.id;
+                const tag = x.conceptoGeneral === "Atención a folios" ? `<span class="opsfp-tag" style="background:#ecfeff;color:#0e7490;">Atención a folios</span>`
+                    : x.conceptoGeneral ? `<span class="opsfp-tag" style="background:#f1f5f9;color:#475569;">${opsEsc(x.conceptoGeneral)}</span>`
+                    : p.n > 1 ? `<span class="opsfp-tag" style="background:#eef2ff;color:#1D2E73;">${p.n} servicios</span>` : "";
+                const fin = opsFolioFechaFin(x), ini = x.fechaProgramada.slice(0, 10);
+                return `<label class="opsfp-opt${on ? " on" : ""}"><input type="radio" name="opsfp-prog" ${on ? "checked" : ""} onchange="opsFpSet('progId','${x.id}')">
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:8px;"><b style="font-size:12.5px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc(x.conceptoGeneral === "Atención a folios" ? (x.estacion || "Atención a folios") : (x.estacion || x.conceptoGeneral || "Servicio"))}</b>${tag}</div>
+                        <div style="font-size:11.5px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${opsEsc((x.tecnicosAsignadosNombres || []).join(", "))} · ${opsEsc(opsCalTipoTexto(x))}</div>
+                    </div>
+                    <div style="text-align:right;font-size:11.5px;color:#334155;font-weight:700;white-space:nowrap;">${opsEsc(opsFpNomDia(ini))}${fin && fin !== ini ? ` – ${opsEsc(opsFpNomDia(fin))}` : ""}<div style="color:#94a3b8;font-weight:600;">${opsEsc(x.fechaProgramada.slice(11, 16) || "")}</div></div>
+                </label>`;
+            };
+            ligarHTML = `
+                <input class="opsfp-in" id="opsfp-q2" placeholder="Buscar técnico, estación o servicio…" value="${opsEsc(s.q)}" oninput="opsFpSet('q',this.value)">
+                ${sugeridas.length ? `<div class="opsfp-dia" style="color:#15803d;">Sugeridas</div>${sugeridas.map(opt).join("")}` : ""}
+                ${Object.keys(porDia).sort().map(d => `<div class="opsfp-dia">${opsEsc(opsFpNomDia(d))}</div>${porDia[d].map(opt).join("")}`).join("")}
+                ${!progs.length ? `<div style="padding:22px;text-align:center;color:#94a3b8;font-size:12.5px;">No hay programaciones en los próximos 14 días${q ? " con esa búsqueda" : ""}. Usa <b>Programar directo</b>.</div>` : ""}`;
+        }
+
+        // Directo
+        let directoHTML = "";
+        if (s.modo === "directo") {
+            const qt = opsAsNorm(s.tecQ).trim();
+            const sug = opsFpTecsSugeridos(f);
+            const plaza = opsPlazaFolio(f);
+            const tecs = opsTecOperativos().slice()
+                .filter(t => !qt || opsAsNorm(t.nombre).includes(qt) || s.tecs.includes(t.id))
+                .sort((a, b) => (s.tecs.includes(b.id) - s.tecs.includes(a.id)) || (sug.includes(b.id) - sug.includes(a.id))
+                    || (((b.plaza || "Chihuahua") === plaza) - ((a.plaza || "Chihuahua") === plaza)) || (a.nombre || "").localeCompare(b.nombre || "", "es"));
+            const lista = qt ? tecs : tecs.slice(0, 10);
+            directoHTML = `
+                <div style="display:grid;grid-template-columns:1.2fr .8fr .9fr;gap:10px;">
+                    <div><label class="opsfp-lb">Día</label><input type="date" class="opsfp-in" value="${opsEsc(s.dia)}" onchange="opsFpSet('dia',this.value)"></div>
+                    <div><label class="opsfp-lb">Hora</label><input type="time" class="opsfp-in" value="${opsEsc(s.hora)}" onchange="opsFpSet('hora',this.value,false)"></div>
+                    <div><label class="opsfp-lb">Duración</label><select class="opsfp-in" onchange="opsFpSet('dur',this.value,false)">${[["0.5", "30 min"], ["1", "1 h"], ["2", "2 h"], ["3", "3 h"], ["4", "4 h"], ["6", "6 h"], ["9", "Día completo"]].map(([v, t]) => `<option value="${v}" ${String(s.dur) === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:10px;margin:16px 0 6px;">
+                    <label class="opsfp-lb" style="margin:0;">Técnico${s.tecs.length > 1 ? "s" : ""}</label>
+                    <input class="opsfp-in" id="opsfp-tq" style="margin-left:auto;max-width:240px;padding:6px 10px;font-size:12px;" placeholder="Buscar técnico…" value="${opsEsc(s.tecQ)}" oninput="opsFpSet('tecQ',this.value)">
+                </div>
+                ${lista.map(t => { const on = s.tecs.includes(t.id), n = opsFpCargaDia(t.id, s.dia);
+                    return `<label class="opsfp-opt${on ? " on" : ""}" style="padding:8px 12px;"><input type="checkbox" ${on ? "checked" : ""} onchange="opsFpTec('${t.id}')">
+                        <div style="flex:1;min-width:0;"><b style="font-size:12.5px;color:#0f172a;">${opsEsc(t.nombre || "")}</b>${sug.includes(t.id) ? ` <span class="opsfp-tag" style="background:#dcfce7;color:#166534;">Viene en la hoja</span>` : ""}<div style="font-size:11px;color:#94a3b8;">${opsEsc(t.plaza || "Chihuahua")}${t.puesto ? " · " + opsEsc(t.puesto) : ""}</div></div>
+                        <span style="font-size:11px;font-weight:700;color:${n ? "#b45309" : "#15803d"};white-space:nowrap;">${n ? n + " servicio" + (n > 1 ? "s" : "") + " ese día" : "Libre ese día"}</span>
+                    </label>`; }).join("")}
+                ${!qt && tecs.length > lista.length ? `<div style="font-size:11.5px;color:#94a3b8;padding:4px 2px;">Escribe para ver a los otros ${tecs.length - lista.length} técnicos.</div>` : ""}`;
+        }
+
+        // Resumen y botón
+        const p = s.modo === "ligar" ? cacheFolios.find(x => x.id === s.progId) : null;
+        const listo = s.modo === "ligar" ? !!p : (s.tecs.length && s.dia);
+        const resumen = s.modo === "ligar"
+            ? (p ? `Se suma a <b>${opsEsc(p.conceptoGeneral === "Atención a folios" ? "Atención a folios" : (p.estacion || "la programación"))}</b> · ${opsEsc((p.tecnicosAsignadosNombres || []).join(", "))} · ${opsEsc(opsFpNomDia(opsFpProgramaciones(f).find(x => x.f.id === p.id)?.dia || p.fechaProgramada.slice(0, 10)))}` : "Elige la programación a la que se suma este folio.")
+            : (s.tecs.length ? `${opsEsc(s.tecs.map(id => (opsTecPorId(id) || {}).nombre).filter(Boolean).join(", "))} · ${opsEsc(opsFpNomDia(s.dia))}` : "Elige al menos un técnico.");
+
+        ov.innerHTML = `<div class="opsfp-card">
+            <div style="padding:18px 22px 14px;border-bottom:1px solid #eef1f6;">
+                <div style="display:flex;align-items:flex-start;gap:12px;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:10.5px;font-weight:800;color:#94a3b8;letter-spacing:.6px;text-transform:uppercase;">Programar folio</div>
+                        <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">${opsFpBadgePrio(f.prioridad)}<span style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.2px;">${opsEsc(f.estacion || "Sin estación")}</span></div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;">${meta || "&nbsp;"}</div>
+                    </div>
+                    <span style="display:inline-flex;align-items:center;gap:6px;background:${c.bg};color:${c.fg};font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap;"><span style="width:7px;height:7px;border-radius:50%;background:${c.dot};"></span>${opsEsc(sem.semaforo === "gris" ? "Sin vencimiento" : sem.estado === "VENCIDO" ? "Vencido " + sem.diasTexto.replace(/^-/, "") : sem.diasTexto)}</span>
+                    <button onclick="opsFpCerrar()" title="Cerrar" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
+                </div>
+                ${f.comentarios ? `<div style="margin-top:12px;background:#f8fafc;border:1px solid #eef1f6;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;line-height:1.45;">${opsEsc(f.comentarios)}</div>` : ""}
+            </div>
+            <div style="padding:14px 22px 0;">
+                <div class="opsfp-seg">
+                    <button class="${s.modo === "ligar" ? "on" : ""}" onclick="opsFpSet('modo','ligar')">Ligar a una programación</button>
+                    <button class="${s.modo === "directo" ? "on" : ""}" onclick="opsFpSet('modo','directo')">Programar directo</button>
+                </div>
+                <div style="font-size:11.5px;color:#94a3b8;margin:8px 2px 0;">${s.modo === "ligar" ? "El folio toma los técnicos y el día de la programación que elijas. No se crea nada nuevo." : "Elige día, hora y quién va. El técnico lo ve en su app."}</div>
+            </div>
+            <div data-fp-scroll style="overflow-y:auto;padding:12px 22px 16px;flex:1;">${s.modo === "ligar" ? ligarHTML : directoHTML}</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 22px;border-top:1px solid #eef1f6;background:#fcfcfd;">
+                <button class="opsfp-link" style="padding:0;" onclick="opsFpCerrar();opsAbrirModalFolio('${f.id}')">Editar ficha completa</button>
+                <div style="flex:1;min-width:180px;font-size:12px;color:#475569;text-align:right;">${resumen}</div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;"><input type="checkbox" ${s.avisar ? "checked" : ""} onchange="opsFpSet('avisar',this.checked,false)" style="accent-color:#1D2E73;">Avisar al técnico</label>
+                <button class="opsfp-ghost" onclick="opsFpCerrar()">Cancelar</button>
+                <button id="opsfp-ok" class="opsfp-btn" style="padding:9px 18px;font-size:12.5px;${listo ? "" : "background:#94a3b8;cursor:not-allowed;"}" ${listo ? "" : "disabled"} onclick="opsFpGuardar()">Programar</button>
+            </div>
+        </div>`;
+        const sc = ov.querySelector("[data-fp-scroll]"); if (sc) sc.scrollTop = scroll;
+        if (foco) { const el = document.getElementById(foco); if (el && el.setSelectionRange) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+    }
+    window.opsFpPintar = opsFpPintar;
+
+    window.opsFpGuardar = async function () {
+        const s = opsFp; if (!s) return;
+        const f = cacheFolios.find(x => x.id === s.id); if (!f) return;
+        const btn = document.getElementById("opsfp-ok"); if (btn) { btn.disabled = true; btn.textContent = "Programando…"; }
+        const yo = opsNombreActual(), ahora = opsFechaHora();
+        let cambios, texto, tecs, base = null, cambiosBase = null;
+        if (s.modo === "ligar") {
+            base = cacheFolios.find(x => x.id === s.progId);
+            if (!base) { alert("Elige una programación."); opsFpPintar(); return; }
+            const dia = (opsFpProgramaciones(f).find(x => x.f.id === base.id) || {}).dia || base.fechaProgramada.slice(0, 10);
+            const hora = base.fechaProgramada.slice(11, 16) || "09:00";
+            const ids = (base.tecnicosAsignadosIds || []).filter(id => opsTecPorId(id));
+            tecs = ids.map(opsTecPorId);
+            cambios = { fechaProgramada: dia + "T" + hora, tiempoEjecucionHrs: Number(f.tiempoEjecucionHrs) || 1, tipoFolio: f.tipoFolio || "servicio",
+                ...opsCamposEquipo(f, ids, "Ligado a programación"),
+                programacionLigadaId: base.id, programacionLigadaTxt: base.conceptoGeneral === "Atención a folios" ? "Atención a folios" : (base.estacion || base.conceptoGeneral || ""),
+                asignaciones: (f.asignaciones || []).concat(ids.map(id => ({ dia, tecnicoId: id, nombre: (opsTecPorId(id) || {}).nombre || "", turno: "programacion", por: yo, en: ahora }))) };
+            if (opsFolioEsAbierto(base)) {
+                // Turno abierto (Atención a folios / Guardia): el folio se le asigna al técnico de ese turno, como la Mesa de folios.
+                cambios.turnoFolios = { tipo: base.conceptoGeneral === "Guardia" ? "guardia" : "dia", dia, por: yo, en: ahora };
+            } else {
+                // Programación con estación(es): el folio entra al mismo grupo y sale en su panel.
+                const gid = base.grupoProgramacionId || ("grp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+                const n = cacheFolios.filter(y => y.grupoProgramacionId === gid && !y.cancelado).length || 1;
+                Object.assign(cambios, { grupoProgramacionId: gid, grupoTotal: n + 1, grupoOrden: n + 1, ventanaInicio: base.ventanaInicio || base.fechaProgramada.slice(0, 10), ventanaFin: base.ventanaFin || opsFolioFechaFin(base) || base.fechaProgramada.slice(0, 10), ordenLibre: true });
+                if (!base.grupoProgramacionId) cambiosBase = { grupoProgramacionId: gid, grupoTotal: 2, grupoOrden: 1, ventanaInicio: cambios.ventanaInicio, ventanaFin: cambios.ventanaFin, ordenLibre: true };
+            }
+            texto = `Folio ligado a la programación "${cambios.programacionLigadaTxt}" (${tecs.map(t => t.nombre).join(", ")}) para el ${dia}, por ${yo}.`;
+        } else {
+            if (!s.tecs.length || !s.dia) { alert("Elige técnico y día."); opsFpPintar(); return; }
+            const hora = /^\d{2}:\d{2}$/.test(s.hora || "") ? s.hora : "09:00";
+            tecs = s.tecs.map(opsTecPorId).filter(Boolean);
+            cambios = { fechaProgramada: s.dia + "T" + hora, tiempoEjecucionHrs: Number(s.dur) || 2, tipoFolio: f.tipoFolio || "servicio",
+                ...opsCamposEquipo(f, s.tecs, "Programado desde Folios por programar"),
+                asignaciones: (f.asignaciones || []).concat(tecs.map(t => ({ dia: s.dia, tecnicoId: t.id, nombre: t.nombre || "", turno: "programado", por: yo, en: ahora }))) };
+            texto = `Folio programado para ${s.dia} ${hora} (${opsAsTxtHoras(Number(s.dur) || 2)}) con ${tecs.map(t => t.nombre).join(", ")}, por ${yo}.`;
+        }
+        try {
+            const { db, fs } = await opsGetFB();
+            if (cambiosBase) { await fs.updateDoc(fs.doc(db, COL_FOLIOS, base.id), cambiosBase); Object.assign(base, cambiosBase); }
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+            Object.assign(f, cambios);
+            fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto, autor: yo, autorEmail: opsUsuarioActual(), tipo: "asignacion", createdAt: ahora }).catch(() => {});
+            if (s.avisar && tecs.length) { try { await opsAvisarTecnicosAsignados(f, tecs, `Folio ${f.folioClienteId || f.folioOS || ""}${f.prioridad ? " (" + f.prioridad + ")" : ""}`.trim()); } catch (e) {} }
+            const dia = cambios.fechaProgramada.slice(0, 10);
+            opsFpCerrar();
+            if (opsCalFiltroPlaza !== "todas" && opsCalFiltroPlaza !== opsPlazaFolio(f)) opsCalFiltroPlaza = opsPlazaFolio(f);
+            if (typeof window.opsCalIrAFecha === "function") window.opsCalIrAFecha(dia); else opsRenderCalendario();
+            if (window.mostrarPush) window.mostrarPush("Operaciones", `${f.estacion || "Folio"} programado · ${opsFpNomDia(dia)}.`, "");
+        } catch (e) {
+            console.error("[opsFpGuardar]", e);
+            alert("No se pudo programar el folio: " + (e && e.code === "permission-denied" ? "tu usuario no tiene permiso de escritura." : (e.message || e)));
+            if (btn) { btn.disabled = false; btn.textContent = "Programar"; }
         }
     };
 
