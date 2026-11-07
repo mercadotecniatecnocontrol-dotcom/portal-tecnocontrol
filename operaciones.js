@@ -2794,7 +2794,8 @@
         const chip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:2px 8px;white-space:nowrap;">${t}</span>`;
         const fila = (izq, der, fn) => `<div onclick="${fn || ""}" style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:#f8fafc;margin-bottom:6px;${fn ? "cursor:pointer;" : ""}"><div style="font-size:12px;color:#1e293b;min-width:0;">${izq}</div><div style="flex-shrink:0;">${der}</div></div>`;
         const col = (tit, n, color, cuerpo) => `<div style="flex:1;min-width:260px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;color:${color};margin-bottom:8px;">${tit} (${n})</div>${cuerpo || `<div style="font-size:11.5px;color:#94a3b8;">Nada pendiente.</div>`}</div>`;
-        const cuerpoTr = trasp.slice(0, 8).map(t => fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Almacén")} → ${opsEsc(t.receptorNombre || t.receptorEmail || "")}</div>`,
+        const cuerpoTr = trasp.slice(0, 8).map(t => t.destinoTipo === "almacen" ? fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Técnico")} la regresa a <b>${opsEsc(t.almacenDestinoNombre || "Almacén General")}</b></div>`,
+            gestion ? chip("Recibir", "#fff", "#15803d") : chip("Por recibir", "#166534", "#dcfce7"), gestion ? `opsRecibirEnAlmacen('${t.id}')` : "") : fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Almacén")} → ${opsEsc(t.receptorNombre || t.receptorEmail || "")}</div>`,
             t.venceEn ? chip((t.venceEn < new Date().toISOString() ? "Venció " : "Vence ") + opsFmtFechaCorta(t.venceEn), t.venceEn.slice(0, 10) <= en3 ? "#b45309" : "#475569", t.venceEn.slice(0, 10) <= en3 ? "#fef3c7" : "#f1f5f9") : "", t.herramientaId ? `opsAbrirModalMovimiento('${t.herramientaId}')` : "")).join("");
         const cuerpoPr = prest.slice(0, 8).map(h => fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:11px;color:#64748b;">Prestada a ${opsEsc(h.prestamo.aNombre || "")}${h.prestamo.folioEstacion ? " · " + opsEsc(h.prestamo.folioEstacion) : ""}</div>`,
             chip((venc(h.prestamo.hasta) ? "Debió regresar " : "Regresa ") + opsFmtFechaCorta(h.prestamo.hasta), venc(h.prestamo.hasta) ? "#b91c1c" : pronto(h.prestamo.hasta) ? "#b45309" : "#3730a3", venc(h.prestamo.hasta) ? "#fee2e2" : pronto(h.prestamo.hasta) ? "#fef3c7" : "#e0e7ff"), `opsAbrirModalMovimiento('${h.id}')`)).join("");
@@ -3051,7 +3052,7 @@
                 <div style="font-size:11px;color:#94a3b8;">${ubicaciones.length} ubicación(es) física(s) además del almacén general y los de técnico.</div>
                 <div style="display:flex;gap:10px;">
                     <a href="javascript:void(0)" onclick="opsImportarEquipoEspecializado()" style="font-size:11px;color:#E7402B;font-weight:600;text-decoration:underline;">Importar Saltillo + TecnoLab</a>
-                    <a href="javascript:void(0)" onclick="opsAbrirModalNuevaUbicacion()" style="font-size:11px;color:#1D2E73;font-weight:600;text-decoration:underline;">+ Nueva ubicación física</a>
+                    ${gestion ? `<button onclick="opsAbrirModalNuevaUbicacion()" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;">+ Nuevo almacén</button>` : ""}
                     <a href="javascript:void(0)" onclick="opsBackfillAlmacenes()" style="font-size:11px;color:#94a3b8;text-decoration:underline;">Verificar/crear almacenes faltantes</a>
                 </div>
             </div>
@@ -3089,37 +3090,108 @@
             </div>${tablaPiezas}`;
     }
 
+    // 7-nov-2026 (Glen): botón "+ Nuevo almacén" (ej. Equipo de seguridad STPS). Cada almacén tiene su propia
+    // serie de folios (prefijo) y aparece en la app de Flotilla para que los técnicos regresen herramienta ahí.
+    function opsPrefijoDeNombre(nombre) {
+        const palabras = String(nombre || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\(.*?\)/g, " ").split(/[^A-Z0-9]+/)
+            .filter(w => w && !["Y", "DE", "DEL", "LA", "LAS", "EL", "LOS", "E", "ALMACEN"].includes(w));
+        let pref = palabras.slice(0, 3).map(w => /^\d+$/.test(w) ? w : w[0]).join("") || "AL";
+        return pref.slice(0, 5);
+    }
     window.opsAbrirModalNuevaUbicacion = function () {
+        if (!opsPuedeGestionar()) return;
         const wrap = document.getElementById("ops-modal-wrap");
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;";
         wrap.innerHTML = `
-        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:14px;width:360px;max-width:92vw;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:14px;">Nueva ubicación física</div>
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:420px;max-width:94vw;padding:22px;">
+                <div style="font-weight:800;font-size:16px;color:#1e293b;">Nuevo almacén</div>
+                <div style="font-size:11.5px;color:#64748b;margin:3px 0 14px;">Aparece en Almacenes, al dar de alta piezas y en la app de Flotilla para que los técnicos regresen herramienta aquí.</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nombre</label>
-                <input id="ops-in-ubic-nombre" placeholder="Ej. Banco de trabajo 1 (Saltillo)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 12px;">
+                <input id="ops-in-ubic-nombre" placeholder="Ej. Equipo de seguridad STPS" oninput="opsNuevoAlmPrefijo()" style="${inp}">
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Prefijo de folios (serie propia)</label>
+                <input id="ops-in-ubic-prefijo" placeholder="Ej. ESS" maxlength="5" oninput="this.dataset.manual='1';this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')" style="${inp}text-transform:uppercase;">
+                <div id="ops-in-ubic-ejemplo" style="font-size:11px;color:#94a3b8;margin:-8px 0 12px;">Las piezas saldrán como AL-000001…</div>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">Responsable (opcional)</label>
+                <input id="ops-in-ubic-resp" placeholder="Nombre o correo de quien lo cuida" style="${inp}">
                 <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:#334155;cursor:pointer;margin-bottom:16px;">
                     <input type="checkbox" id="ops-in-ubic-autorizacion" style="width:15px;height:15px;">
                     Requiere autorización previa para mover herramienta de aquí
                 </label>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
                     <button onclick="document.getElementById('ops-modal-wrap').innerHTML=''" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
-                    <button onclick="opsCrearUbicacion()" class="mkt-add-btn" style="background:#1D2E73;">Crear</button>
+                    <button id="ops-in-ubic-btn" onclick="opsCrearUbicacion()" class="mkt-add-btn" style="background:#1D2E73;">Crear almacén</button>
                 </div>
             </div>
         </div>`;
+        setTimeout(() => document.getElementById("ops-in-ubic-nombre")?.focus(), 50);
+    };
+    window.opsNuevoAlmPrefijo = function () {
+        const n = document.getElementById("ops-in-ubic-nombre"), p = document.getElementById("ops-in-ubic-prefijo"), ej = document.getElementById("ops-in-ubic-ejemplo");
+        if (!n || !p) return;
+        if (!p.dataset.manual) p.value = n.value.trim() ? opsPrefijoDeNombre(n.value) : "";
+        if (ej) ej.textContent = "Las piezas saldrán como " + (p.value || "AL") + "-000001…";
     };
     window.opsCrearUbicacion = async function () {
-        const nombre = document.getElementById("ops-in-ubic-nombre").value.trim();
-        if (!nombre) { alert("Captura el nombre"); return; }
+        if (!opsPuedeGestionar()) return;
+        const nombre = document.getElementById("ops-in-ubic-nombre").value.trim().replace(/\s+/g, " ");
+        if (!nombre) { alert("Escribe el nombre del almacén."); return; }
+        const prefijo = (document.getElementById("ops-in-ubic-prefijo").value || opsPrefijoDeNombre(nombre)).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+        const resp = document.getElementById("ops-in-ubic-resp").value.trim();
         const requiereAutorizacion = document.getElementById("ops-in-ubic-autorizacion").checked;
+        const id = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        if (!id) { alert("El nombre no es válido."); return; }
+        const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+        if (cacheAlmacenes.some(a => a.id === id || norm(a.nombre) === norm(nombre))) { alert("Ya existe un almacén con ese nombre."); return; }
+        if (prefijo === "HT" || cacheAlmacenes.some(a => a.prefijoFolio && String(a.prefijoFolio).toUpperCase() === prefijo)) { alert(`El prefijo ${prefijo} ya lo usa otro almacén. Elige otro.`); return; }
+        const btn = document.getElementById("ops-in-ubic-btn"); if (btn) { btn.disabled = true; btn.textContent = "Creando…"; }
         try {
             const { db, fs } = await opsGetFB();
-            const id = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-            await fs.setDoc(fs.doc(db, COL_ALMACENES, id), { nombre, tipo: "ubicacion", tecnicoId: null, activo: true, requiereAutorizacion }, { merge: true });
+            await fs.setDoc(fs.doc(db, COL_ALMACENES, id), { nombre, tipo: "ubicacion", tecnicoId: null, activo: true, requiereAutorizacion, prefijoFolio: prefijo,
+                responsable: resp.includes("@") ? null : (resp || null), responsableCorreo: resp.includes("@") ? resp.toLowerCase() : null,
+                creadoPor: opsNombreActual(), creadoPorEmail: opsUsuarioActual(), creadoEn: opsFechaHora() }, { merge: true });
             document.getElementById("ops-modal-wrap").innerHTML = "";
+            if (window.mostrarPush) window.mostrarPush("Herramientas", `Almacén "${nombre}" creado (folios ${prefijo}-000001…).`, "");
         } catch (err) {
             alert("No se pudo crear: " + err.message);
+            if (btn) { btn.disabled = false; btn.textContent = "Crear almacén"; }
         }
+    };
+
+    // Devolución a almacén que un técnico mandó desde Flotilla: Almacén confirma que la pieza llegó.
+    window.opsRecibirEnAlmacen = async function (traspasoId) {
+        if (!opsPuedeGestionar()) return;
+        const t = (cacheTraspasosPend || []).find(x => x.id === traspasoId); if (!t) return;
+        const h = cacheHerr.find(x => x.id === t.herramientaId);
+        if (!h) { alert("No se encontró la pieza " + (t.folio || "") + "."); return; }
+        const almId = t.almacenDestinoId && t.almacenDestinoId !== ALMACEN_GENERAL_ID ? t.almacenDestinoId : null;
+        const almObj = almId ? cacheAlmacenes.find(a => a.id === almId) : null;
+        const destNombre = almObj ? almObj.nombre : (t.almacenDestinoNombre || "Almacén General");
+        const accion = prompt(`${t.entregaNombre || "El técnico"} regresa ${t.folio || ""} (${t.descripcion || ""}) a ${destNombre}.\n\nEscribe RECIBIR si ya llegó, o RECHAZAR si no llegó. Puedes agregar un comentario después de la palabra.`, "RECIBIR");
+        if (accion === null) return;
+        const m = accion.trim().match(/^(recibir|rechazar)\b\s*(.*)$/i);
+        if (!m) { alert("Escribe RECIBIR o RECHAZAR."); return; }
+        const recibe = m[1].toLowerCase() === "recibir", com = m[2].trim();
+        try {
+            const { db, fs } = await opsGetFB();
+            const ahora = opsFechaHora();
+            if (recibe) {
+                const update = { estado: "disponible", tecnicoActualId: null, fechaAsignacion: null, almacenId: almId, ubicacionActual: almObj ? almObj.nombre : "Almacén central" };
+                await opsSbHerrActualizar(h.id, update);
+                await opsRegistrarMovimiento({ herramientaId: h.id, tipo: "devolucion", tecnicoAnteriorId: h.tecnicoActualId || t.entregaTecnicoId || null, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: update.ubicacionActual,
+                    observaciones: `Devolución desde Flotilla a ${destNombre}; recibió ${opsNombreActual()}` + (com ? ` · "${com}"` : "") });
+                Object.assign(h, update);
+            }
+            await fs.updateDoc(fs.doc(db, COL_HERR_TRASPASOS, traspasoId), recibe
+                ? { estatus: "Completado", completadoEn: ahora, recibidoPor: opsNombreActual(), recibidoPorEmail: opsUsuarioActual(), recepcionComentario: com || null }
+                : { estatus: "Rechazado", rechazadoEn: ahora, rechazadoPor: opsNombreActual(), motivoRechazo: com || "No llegó al almacén" });
+            if (t.entregaEmail && window.tcNotificar2) {
+                window.tcNotificar2(fs, db, { tipo: recibe ? "herramienta_traspaso_completada" : "herramienta_traspaso_rechazado", para: t.entregaEmail, traspasoId,
+                    mensaje: recibe ? `${destNombre} recibió ${t.folio || ""} (${t.descripcion || ""}). Ya no está a tu nombre.` : `${destNombre} no recibió ${t.folio || ""}: ${com || "no llegó al almacén"}. Sigue a tu nombre.`,
+                    leido: false, creadaEn: ahora }).catch(() => {});
+            }
+            if (window.mostrarPush) window.mostrarPush("Herramientas", recibe ? `${t.folio || "Pieza"} recibida en ${destNombre}.` : `Devolución de ${t.folio || ""} rechazada.`, "");
+        } catch (err) { alert("No se pudo guardar: " + (err.message || err)); }
     };
 
     // ── Panel: piezas de un almacén (General o de un técnico) ─────
@@ -4256,7 +4328,7 @@
                         ${(() => { const actual = h.tecnicoActualId ? null : (h.almacenId || ""); const ops = [{ id: "", nombre: "Almacén General" }].concat(cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")));
                             return ops.filter(a => h.estado === "asignada" || a.id !== actual).map(a => `<option value="${opsEsc(a.id)}">${opsEsc(a.nombre)}${a.requiereAutorizacion ? " (requiere autorización)" : ""}</option>`).join(""); })()}
                     </select>
-                    <div style="font-size:10.5px;color:#94a3b8;margin-bottom:12px;">Está en: <b>${opsEsc(h.tecnicoActualId ? "técnico " + opsNombreTecnico(h.tecnicoActualId) : ((cacheAlmacenes.find(a => a.id === h.almacenId) || {}).nombre || "Almacén General"))}</b>. Para un almacén nuevo usa "+ Nueva ubicación física" en Almacenes.</div>
+                    <div style="font-size:10.5px;color:#94a3b8;margin-bottom:12px;">Está en: <b>${opsEsc(h.tecnicoActualId ? "técnico " + opsNombreTecnico(h.tecnicoActualId) : ((cacheAlmacenes.find(a => a.id === h.almacenId) || {}).nombre || "Almacén General"))}</b>. Para un almacén nuevo usa "+ Nuevo almacén" en Almacenes.</div>
                 </div>
                 <div id="ops-campo-ubicacion" style="display:none;">
                     <label style="font-size:11.5px;color:#64748b;font-weight:600;">Nueva ubicación</label>

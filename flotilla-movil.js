@@ -4544,18 +4544,67 @@ window.herrElegirPieza=function(id){
   herrState.piezaSel=herrState.misPiezas.find(h=>h.id===id)||null;
   if(!herrState.piezaSel)return;
   herrState.paso=2;
+  if(!herrState.destTipo)herrState.destTipo='persona';
   renderUtil();
+  if(herrState.destTipo==='almacen'){ herrCargarAlmacenesDestino(); return; }
   setTimeout(()=>{ cargarPersonalEnSelect().then(()=>herrFiltrarReceptor('')); },50);
+};
+
+// 7-nov-2026 (Glen): el técnico también puede regresar herramienta a CUALQUIER almacén (General, STPS,
+// bancos de trabajo…). Queda pendiente hasta que Almacén la reciba en el portal (Herramientas → Pendientes).
+window.herrDestTipo=function(t){
+  herrState.destTipo=t; herrState.receptorNombre=''; herrState.receptorEmail=''; herrState.almacenDestId=null; herrState.almacenDestNombre='';
+  renderUtil();
+  if(t==='almacen')herrCargarAlmacenesDestino();
+  else setTimeout(()=>{ cargarPersonalEnSelect().then(()=>herrFiltrarReceptor('')); },50);
+};
+async function herrCargarAlmacenesDestino(){
+  if(herrState.almacenesDest&&herrState.almacenesDest.length){ renderUtil(); return; }
+  let lista=[];
+  try{
+    const snap=await opsDb().collection(C.OPS_ALMACENES).get();
+    lista=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.activo!==false&&a.tipo!=='tecnico'&&(a.tipo==='general'||a.tipo==='ubicacion'||a.id==='general'));
+  }catch(e){console.warn('[HERR] almacenes destino',e);}
+  if(!lista.some(a=>a.id==='general'))lista.unshift({id:'general',nombre:'Almacén General',tipo:'general'});
+  lista.sort((a,b)=>a.id==='general'?-1:b.id==='general'?1:String(a.nombre||'').localeCompare(String(b.nombre||''),'es'));
+  herrState.almacenesDest=lista;
+  if(herrState.paso===2)renderUtil();
+}
+window.herrSelAlmacen=function(id){
+  const a=(herrState.almacenesDest||[]).find(x=>x.id===id); if(!a)return;
+  herrState.almacenDestId=a.id; herrState.almacenDestNombre=a.nombre||'Almacén General';
+  renderUtil();
 };
 
 // PASO 2 — elegir receptor (reutiliza el mismo cache de personas que ya
 // carga la transferencia de vehículo — mismo directorio, no se duplica)
 function herrRenderPaso2(){
   const h=herrState.piezaSel;
-  setContent(`
+  const esAlm=herrState.destTipo==='almacen';
+  const seg=(k,t)=>`<button onclick="herrDestTipo('${k}')" style="flex:1;padding:10px;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;${herrState.destTipo===k?'background:#fff;color:#1D2E73;box-shadow:0 1px 3px rgba(0,0,0,.12)':'background:transparent;color:#64748B'}">${t}</button>`;
+  const cab=`
     <div class="fm-sec-hd">
       <div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">${h?.folio||''} — ${h?.descripcion||''}</div></div>
     </div>
+    <div style="display:flex;gap:4px;background:#F1F5F9;border-radius:11px;padding:3px;margin-bottom:10px">${seg('persona','A una persona')}${seg('almacen','A un almacén')}</div>`;
+  if(esAlm){
+    const l=herrState.almacenesDest||[];
+    setContent(cab+`
+    <div class="fm-card" style="padding:14px">
+      <div style="font-size:11.5px;font-weight:700;color:#374151;margin-bottom:8px">¿A qué almacén la regresas?</div>
+      ${!l.length?`<div style="padding:14px;text-align:center;color:#94A3B8;font-size:12.5px">Cargando almacenes…</div>`:l.map(a=>{const on=herrState.almacenDestId===a.id;return `
+        <div onclick="herrSelAlmacen('${a.id}')" style="cursor:pointer;border:1.5px solid ${on?'#1D2E73':'#E2E8F0'};background:${on?'#EEF2FF':'#fff'};border-radius:11px;padding:11px 13px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-size:13px;font-weight:800;color:#0A0F1E">${a.nombre||a.id}</div>${a.requiereAutorizacion?'<div style="font-size:10.5px;color:#B45309;font-weight:700">Requiere autorización de Almacén</div>':''}</div>
+          ${on?`<span style="color:#1D2E73">${IC.check}</span>`:''}
+        </div>`;}).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="fm-btn ghost" style="flex:1" onclick="herrIrAPaso1()">Atrás</button>
+      <button class="fm-btn primary" style="flex:1" onclick="herrConfirmarReceptor()">Continuar</button>
+    </div>`);
+    return;
+  }
+  setContent(cab+`
     <div class="fm-card" style="padding:16px" id="herr-receptor-wrap">
       <label style="font-size:11.5px;font-weight:700;color:#374151;display:block;margin-bottom:6px">¿A quién se la entregas?</label>
       <input id="herr-receptor-inp" placeholder="Buscar por nombre o email…" autocomplete="off"
@@ -4604,6 +4653,10 @@ window.herrSelReceptor=function(nombre,email){
 };
 
 window.herrConfirmarReceptor=function(){
+  if(herrState.destTipo==='almacen'){
+    if(!herrState.almacenDestId){toast('Elige el almacén al que la regresas','err');return;}
+    herrState.paso=3; renderUtil(); return;
+  }
   const email=(herrState.receptorEmail||document.getElementById('herr-receptor-email')?.value||'').trim();
   const nombre=(herrState.receptorNombre||document.getElementById('herr-receptor')?.value||'').trim();
   if(!email){toast('Elige un receptor de la lista (necesitamos su correo para notificarle)','err');return;}
@@ -4621,10 +4674,15 @@ function herrRenderPaso3(){
       <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">Vas a entregar</div>
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${h?.folio||''} — ${h?.descripcion||''}</div>
       <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">A</div>
+      ${herrState.destTipo==='almacen'?`
+      <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.almacenDestNombre}</div>
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
+        Entrega la pieza físicamente en el almacén. Sigue apareciendo como tuya hasta que Almacén la reciba en el portal.
+      </div>`:`
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.receptorNombre} (${herrState.receptorEmail})</div>
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
         ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo como tuya.
-      </div>
+      </div>`}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="fm-btn ghost" style="flex:1" onclick="herrIrAPaso2()">Atrás</button>
@@ -4656,6 +4714,23 @@ window.herrEnviarTraspaso=async function(){
     const venceEn=new Date(now.getTime()+24*60*60*1000);
     const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const ubicacion=await herrObtenerUbicacion();
+    if(herrState.destTipo==='almacen'){
+      const docAlm={
+        herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
+        entregaTecnicoId:herrState.miIdInterno, entregaEmail:userEmail, entregaNombre:userName,
+        receptorTecnicoId:null, receptorEmail:null, receptorNombre:herrState.almacenDestNombre,
+        destinoTipo:'almacen', almacenOrigenId:herrState.miIdInterno||'general',
+        almacenDestinoId:herrState.almacenDestId||'general', almacenDestinoNombre:herrState.almacenDestNombre,
+        estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:null,
+        lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
+        origen:'flotilla_movil_devolucion',
+      };
+      await opsDb().collection(C.OPS_TRASP).add(docAlm);
+      try{ await opsSvAvisarAdmins('herramienta_devolucion_almacen',`${userName} regresa ${h.folio||''} (${h.descripcion||''}) a ${herrState.almacenDestNombre}. Recíbela en Herramientas → Pendientes.`,null); }catch(e){}
+      herrState.paso=4; renderUtil();
+      toast('Devolución enviada — Almacén debe recibirla','ok');
+      return;
+    }
     const receptorTec=await herrResolverIdInterno(herrState.receptorEmail,herrState.receptorNombre);
     if(!receptorTec){
       toast(`${herrState.receptorNombre||'Ese técnico'} no tiene ficha vinculada en Operaciones (correo/nombre sin coincidencia). Pide a Almacén que la vincule antes de traspasarle herramienta.`,'err');
@@ -4701,8 +4776,8 @@ function herrRenderPaso4(){
   setContent(`
     <div class="fm-card" style="text-align:center;padding:28px">
       <div style="width:52px;height:52px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#166534">${IC.check}</div>
-      <div style="font-size:15px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Traspaso enviado</div>
-      <p style="font-size:12.5px;color:#64748B;line-height:1.5;margin-bottom:18px">${herrState.receptorNombre} recibió la notificación. En cuanto acepte, la herramienta pasa a su nombre y queda registrado en el historial.</p>
+      <div style="font-size:15px;font-weight:800;color:#0A0F1E;margin-bottom:6px">${herrState.destTipo==='almacen'?'Devolución enviada':'Traspaso enviado'}</div>
+      <p style="font-size:12.5px;color:#64748B;line-height:1.5;margin-bottom:18px">${herrState.destTipo==='almacen'?`Entrega la pieza en ${herrState.almacenDestNombre}. En cuanto Almacén la reciba en el portal, deja de estar a tu nombre.`:`${herrState.receptorNombre} recibió la notificación. En cuanto acepte, la herramienta pasa a su nombre y queda registrado en el historial.`}</p>
       <button class="fm-btn primary" onclick="herrCerrarTraspaso()">Listo</button>
     </div>`);
 }
