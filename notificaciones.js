@@ -221,8 +221,16 @@
   }
 
   // ── Agregar ──
+  // 7-nov-2026 (Glen): Calidad (Jaqueline) solo recibe avisos de SCFI; todo lo demás no le aparece.
+  var SOLO_SCFI = ['calidad@tecnocontrol.com.mx'];
+  function permitido(o) {
+    if (SOLO_SCFI.indexOf(yo()) < 0) return true;
+    if (window.esAdminTotal && window.esAdminTotal(yo())) return true;
+    return !!o.scfi || /\bscfi\b|nom[\s-]*0*05\b|holograma|precinto/i.test(String(o.titulo || '') + ' ' + String(o.texto || ''));
+  }
   function agregar(o) {
     if (!document.body) return;
+    if (!permitido(o)) return;
     campana();
     var n = {
       id: o.id || ('n' + Date.now() + Math.floor(Math.random() * 1000)),

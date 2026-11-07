@@ -1718,6 +1718,22 @@
         const r = opsAccCfg.roles[a.rol] || {};
         return a.filtroEmpresa || r.filtroEmpresa || null;
     }
+    // 7-nov-2026 (Glen): Jaqueline (Calidad) solo ve SCFI: calendario y resumen de servicios que incluyan SCFI
+    // (hologramas, precintos, etc.), sin dinero, viáticos ni otras pestañas; avisos solo de SCFI.
+    const OPS_SOLO_SCFI = ["calidad@tecnocontrol.com.mx"];
+    function opsAccSoloScfi() { return !opsAccEsAdminPortal() && OPS_SOLO_SCFI.includes(opsAccCorreo()); }
+    // Usuario limitado (empresa como VH, o solo SCFI): solo calendario, sin altas, PDF ni alarmas generales.
+    function opsAccLimitado() { return opsAccFiltroEmpresa() || (opsAccSoloScfi() ? "SCFI" : null); }
+    function opsFolioIncluyeScfi(f) {
+        if (!f) return false;
+        const norma = String(f.normaInspeccion || "");
+        if (norma === "SCFI") return true;
+        const progs = Array.isArray(f.serviciosProgramados) ? f.serviciosProgramados : [];
+        const txt = [norma, f.categoriaServicio, f.tipoServicioDemo, f.servicioNombre, f.comentarios, JSON.stringify(progs)].filter(Boolean).join(" ");
+        if (/\bscfi\b|nom[\s-]*0*05\b/i.test(txt)) return true;
+        return !!f.esSCFI && !norma; // folios viejos marcados SCFI sin norma
+    }
+    window.opsFolioIncluyeScfi = opsFolioIncluyeScfi;
     function opsFolioDeEmpresa(f, empresa) { try { return opsEmpresaDoc(opsEmpresaNombreFolio(f)) === opsEmpresaDoc(empresa); } catch (e) { return false; } }
     function opsAccTiene(seccion, accion) {
         const a = opsAccAsignacion();
@@ -1729,6 +1745,7 @@
         return m.includes(accion);
     }
     function opsAccPuedeVer(seccion) {
+        if (opsAccSoloScfi()) return seccion === "calendario";
         const r = opsAccTiene(seccion, "ver");
         return r === null ? true : r;
     }
@@ -1741,6 +1758,7 @@
     }
     // Dinero (precio, costo, utilidad, comisiones): lista "Ver dinero" O casilla del rol.
     function opsAccVerDinero(seccion) {
+        if (opsAccSoloScfi()) return false;
         const lista = (opsAccCfg ? opsAccCfg.dinero : OPS_ACC_DINERO_SEED).map(x => String(x).toLowerCase().trim());
         if (lista.includes(opsAccCorreo())) return true;
         return opsAccTiene(seccion || tabActual, "dinero") === true;
@@ -2379,7 +2397,7 @@
             "folios:Folios", "revision:Revisión de cierres", "derivados:Trabajos derivados", "extras:Extraordinarios semanales", "tableros:Tableros semanales", "gestoria:Gestoría", "comparativa:ServiceNow / Fractal", "connecteam:Pólizas Connecteam", "pendientes:Pendientes y causas", "herrsol:Pedidos de herramienta", "material:Material de servicios", "reportesapp:Pólizas y reportes (app)", "estaciones:Estaciones por plaza", "gestionados:Gestionados y cancelados", "clientes:Clientes",
             ...(opsPuedeHacer("autorizar_material") ? ["solicitudes:Solicitudes"] : []),
             "vencimientos:Vencimientos", "garantias:Garantías", "viaticos:Viáticos", ...(opsComVer() ? ["comisiones:Comisiones"] : []), ...(opsRemVer() ? ["remisionados:Servicios remisionados"] : []), "externos:Externos", "permisos:Permisos", "alertas:Alertas", "movimientos:Movimientos"]
-            .filter(t => { const id = t.split(":")[0]; if (opsAccFiltroEmpresa() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); if (id === "remisionados") return opsRemVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "estaciones" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
+            .filter(t => { const id = t.split(":")[0]; if (opsAccLimitado() && id !== "calendario") return false; if (id === "comisiones") return opsComVer(); if (id === "remisionados") return opsRemVer(); return opsAccPuedeVer(id === "gestionados" || id === "vehiculos" ? "calendario" : id === "material" ? "dashboard" : (id === "reportesapp" || id === "estaciones" || id === "revision" || id === "derivados" || id === "pendientes" || id === "herrsol" || id === "extras" || id === "comparativa" || id === "gestoria" || id === "tableros" || id === "connecteam") ? "folios" : id); })
             .concat(opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones") ? ["accesos:Control de acceso"] : []);
         return `
         <div style="position:fixed;inset:0;z-index:99997;background:#f1f5f9;font-family:'Inter',sans-serif;display:flex;flex-direction:column;">
@@ -7739,7 +7757,7 @@
         // 3-nov-2026 (Glen): se quitó la alarma tipo sísmica del portal. El aviso llega como ventana
         // del centro de notificaciones, con su sonido y voz, y al darle clic lleva a la programación.
         return;
-        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (opsAccLimitado()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         if (window.tcNotif) return; // el centro de notificaciones del portal ya suena (tono urgente)
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -7763,7 +7781,7 @@
 
     // ── Ventana flotante imposible de ignorar (apilable, varias a la vez) ──
     function opsMostrarFlotanteFolio(f, info) {
-        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (opsAccLimitado()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         const c = OPS_SEMAFORO[info.semaforo] || OPS_SEMAFORO.rojo;
         opsNotifAgregar({
             titulo: info.estado + (info.enAtencion ? " · Seguimiento" : ""), color: c.dot, accion: "folio", accionTxt: "Ver servicio", folioId: f.id,
@@ -7775,7 +7793,7 @@
     // lista para surtir", etc.) — mismo estilo/comportamiento que la de folios pero
     // sin datos de folio específicos, para cualquier mensaje de texto simple. ──
     function opsMostrarFlotanteGenerica(mensaje, colorHex) {
-        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (opsAccLimitado()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         opsNotifAgregar({ titulo: "Operaciones", texto: mensaje, color: colorHex || "#1D2E73" });
     }
 
@@ -7805,7 +7823,7 @@
     let opsFoliosVigilanciaTimer = null;
 
     function opsVigilarFoliosSeveridad() {
-        if (opsAccFiltroEmpresa()) return;
+        if (opsAccLimitado()) return;
         for (const f of cacheFolios) {
             if (f.source === OPS_DEMO_SOURCE) continue; // los folios DEMO del Calendario nunca hacen sonar alarmas
             const info = opsCalcularSemaforoFolio(f);
@@ -7841,7 +7859,7 @@
     // sonido repetido para no confundir las dos alarmas entre sí. ──
     let opsFoliosEvidenciaAlertados = new Set();
     function opsVigilarEvidenciasFolios() {
-        if (opsAccFiltroEmpresa()) return;
+        if (opsAccLimitado()) return;
         const ahora = Date.now();
         for (const f of cacheFolios) {
             if (f.fechaSolucion) continue; // folio cerrado, no aplica
@@ -8219,9 +8237,28 @@
     const OPS_ALARMA_ANTES_MIN = 60;
     const opsFolios1hAvisados = new Set();
     // 31-oct-2026 (Magali): además del aviso de 1 hora, una segunda alarma 20 minutos antes de que venza.
-    const OPS_ALARMAS_FOLIO = [{ min: 60, campo: "avisoVence1h", tipo: "ops_folio_vence_1h" }, { min: 20, campo: "avisoVence20m", tipo: "ops_folio_vence_20m" }];
+    // 7-nov-2026 (Glen): las dos alarmas ahora son 1 DÍA y 30 MINUTOS antes de vencer, con VOZ y tarjeta
+    // solo para clientes@ y magali@ (la app del técnico sigue recibiendo su aviso).
+    const OPS_ALARMAS_FOLIO = [{ min: 1440, campo: "avisoVence1d", tipo: "ops_folio_vence_1d" }, { min: 30, campo: "avisoVence30m", tipo: "ops_folio_vence_30m" }];
+    const OPS_ALARMA_VOZ_CORREOS = ["clientes@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx"];
+    function opsAlarmaVozMia() { return OPS_ALARMA_VOZ_CORREOS.includes(String(opsUsuarioActual()).toLowerCase().trim()); }
+    function opsAlarmaYaDicha(clave) { try { const k = "ops_alarma_vence_" + clave; if (localStorage.getItem(k)) return true; localStorage.setItem(k, "1"); } catch (e) {} return false; }
+    // Voz propia de esta alarma (el resto del portal sigue sin voz desde el 5-nov-2026).
+    function opsHablarAlarmaVence(frase) {
+        try {
+            if (!("speechSynthesis" in window)) return;
+            const voces = window.speechSynthesis.getVoices().filter(v => /^es([-_]|$)/i.test(v.lang));
+            if (!voces.length) return;
+            const pts = v => (/natural|neural|online/i.test(v.name) ? 100 : 0) + (/google/i.test(v.name) ? 40 : 0) + (/es[-_]mx/i.test(v.lang) ? 10 : 0);
+            const v = voces.sort((a, b) => pts(b) - pts(a))[0];
+            const u = new SpeechSynthesisUtterance(String(frase).slice(0, 220));
+            u.voice = v; u.lang = v.lang; u.rate = 1; u.pitch = 1.05; u.volume = 0.9;
+            window.speechSynthesis.speak(u); // el navegador las forma en cola, no se enciman
+        } catch (e) {}
+    }
+    function opsFaltaTxt(min) { return min >= 90 ? Math.round(min / 60) + " horas" : Math.round(min) + " minutos"; }
     function opsVigilarVencimiento1h() {
-        if (opsAccFiltroEmpresa()) return;
+        if (opsAccLimitado()) return;
         const ahora = Date.now();
         for (const f of cacheFolios) {
             if (f.source === OPS_DEMO_SOURCE || f.cancelado || f.fechaSolucion || !opsEsFolioCliente(f)) continue;
@@ -8233,18 +8270,24 @@
             const clave = f.id + "|" + v + "|" + al.min;
             if (opsFolios1hAvisados.has(clave)) continue;
             opsFolios1hAvisados.add(clave);
-            if (f[al.campo] === clave || (al.min === 60 && f.avisoVence1h === f.id + "|" + v)) continue; // ya lo mandó otra sesión del portal
-            opsReproducirAlarmaFolio();
             const tecs = (f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico";
-            opsNotifAgregar({ titulo: (al.min === 20 ? "¡ÚLTIMOS MINUTOS! " : "") + "Vence en " + Math.round(falta) + " min", color: al.min === 20 ? "#B91C1C" : "#E7402B", accion: "folio", accionTxt: "Ver folio", folioId: f.id,
-                texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
+            // Tarjeta + voz: solo clientes@ y magali@, una vez por folio y alarma (aunque recarguen la página).
+            if (opsAlarmaVozMia() && !opsAlarmaYaDicha(clave)) {
+                const corto = al.min === 30;
+                opsNotifAgregar({ titulo: (corto ? "¡ÚLTIMOS MINUTOS! Vence en " : "Vence mañana · en ") + opsFaltaTxt(falta), color: corto ? "#B91C1C" : "#E7402B", accion: "folio", accionTxt: "Ver folio", folioId: f.id,
+                    texto: `${f.folioClienteId || f.folioOS || ""} · ${f.estacion || ""} · ${f.prioridad || ""} · ${tecs}` });
+                const hora = new Date(v).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" });
+                opsHablarAlarmaVence(corto ? `Atención. El folio de ${f.estacion || "una estación"} vence en ${Math.round(falta)} minutos.`
+                    : `Aviso. El folio de ${f.estacion || "una estación"}${f.prioridad ? ", prioridad " + f.prioridad.replace(/P\s*/i, "P ") : ""}, vence en menos de un día, a las ${hora}.`);
+            }
+            if (f[al.campo] === clave) continue; // el aviso al técnico ya lo mandó otra sesión del portal
             (async () => {
                 try {
                     const { db, fs } = await opsGetFB();
                     await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { [al.campo]: clave });
                     const correos = [...new Set((f.tecnicosAsignadosIds || []).map(id => (opsTecPorId(id) || {}).correo).concat([f.tecnicoResponsableCorreo]).filter(Boolean).map(c => String(c).toLowerCase().trim()))];
                     for (const para of correos) await window.tcNotificar2(fs, db, { tipo: al.tipo, codigo: f.folioClienteId || f.folioOS || f.estacion, folioId: f.id, para,
-                        mensaje: `${al.min === 20 ? "URGENTE: " : ""}Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${Math.round(falta)} minutos (${new Date(v).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}).`,
+                        mensaje: `${al.min === 30 ? "URGENTE: " : ""}Folio ${f.folioClienteId || f.folioOS || ""} en ${f.estacion || "la estación"} vence en ${opsFaltaTxt(falta)} (${new Date(v).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}).`,
                         leido: false, creadaEn: opsFechaHora() });
                 } catch (e) { console.warn("[Folios] aviso de vencimiento:", e.message || e); }
             })();
@@ -8869,7 +8912,7 @@
     let opsCalExt = { clave: "", en: 0, cargando: false, pol: [], ct: [], ver: 0 };
     let opsCalExtIdx = { clave: "", porTec: new Map(), porDia: new Map(), lista: [] }, opsCalExtOk = { clave: "", ids: new Set() };
     async function opsCalExtCargar() {
-        if (opsAccFiltroEmpresa() || opsCalExt.cargando) return;
+        if (opsAccLimitado() || opsCalExt.cargando) return;
         const a = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth(), 1 - 7);
         const b = new Date(opsCalFecha.getFullYear(), opsCalFecha.getMonth() + 1, 8);
         const clave = opsCalFechaISO(a) + "|" + opsCalFechaISO(b);
@@ -8925,7 +8968,7 @@
     // Los mismos filtros del calendario (plaza, tipo, cliente, texto…) aplicados a esas pólizas.
     function opsCalExtPermitidos() {
         const idx = opsCalExtIndice();
-        const clave = [idx.clave, opsAccFiltroEmpresa(), opsCalFiltroTipo, opsCalFiltroCliente, opsCalFiltroOrigen, opsCalFiltroEstado, opsCalFiltroCategoria, opsCalFiltroPlaza, opsCalFiltroTexto].join("|");
+        const clave = [idx.clave, opsAccLimitado(), opsCalFiltroTipo, opsCalFiltroCliente, opsCalFiltroOrigen, opsCalFiltroEstado, opsCalFiltroCategoria, opsCalFiltroPlaza, opsCalFiltroTexto].join("|");
         if (opsCalExtOk.clave !== clave) opsCalExtOk = { clave, ids: new Set(opsCalFoliosFiltrados(idx.lista).map(f => f.id)) };
         return opsCalExtOk.ids;
     }
@@ -8974,6 +9017,7 @@
         let l = lista || cacheFolios;
         const fe = opsAccFiltroEmpresa();
         if (fe) l = l.filter(f => opsFolioDeEmpresa(f, fe)); // usuario limitado a una empresa (ej. VH)
+        if (opsAccSoloScfi()) l = l.filter(opsFolioIncluyeScfi); // Calidad: solo servicios con SCFI
         if (opsCalFiltroTipo === "inspeccion") l = l.filter(f => f.tipoFolio === "inspeccion");
         else if (opsCalFiltroTipo === "laboratorio") l = l.filter(f => f.tipoFolio === "laboratorio");
         else if (opsCalFiltroTipo === "servicio") l = l.filter(f => f.tipoFolio !== "inspeccion");
@@ -9066,7 +9110,7 @@
         const sinFecha = foliosVista.filter(opsFpEsPorProgramar); // 6-nov-2026: solo BORRADOR de la hoja de Magali
         // Avisos del turno de folios/guardia: antes era una franja arriba; ahora los técnicos llevan su
         // etiqueta en el calendario y aquí solo sale un aviso cuando falta alguien.
-        const avisosTurno = opsAccFiltroEmpresa() ? "" : opsCalAvisosTurnoHTML();
+        const avisosTurno = opsAccLimitado() ? "" : opsCalAvisosTurnoHTML();
 
         const btnIcono = (onclick, titulo, svg, activo) => `<button onclick="${onclick}" title="${titulo}" style="background:${activo ? "#E9ECF5" : "#f8fafc"};border:1px solid ${activo ? "#1D2E73" : "#e2e8f0"};color:${activo ? "#1D2E73" : "#475569"};width:34px;height:34px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${svg}</button>`;
         const svgOjo = opsCalVerLeyenda
@@ -9100,7 +9144,7 @@
                         <option value="laboratorio" ${opsCalFiltroTipo === "laboratorio" ? "selected" : ""}>Solo laboratorio</option>
                     </select>
                     <input id="ops-cal-filtro" value="${opsEsc(opsCalFiltroTexto)}" oninput="opsCalFiltrar(this.value)" placeholder="Buscar técnico, estación, servicio u O.S..." style="border:1px solid #e2e8f0;background:#f8fafc;border-radius:8px;padding:8px 12px;font-size:12.5px;min-width:170px;">
-                    ${opsPuedeCrear() && !opsAccFiltroEmpresa() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
+                    ${opsPuedeCrear() && !opsAccLimitado() ? `<button onclick="opsNeAbrir()" title="Dar de alta una estación / cliente nuevo (catálogo y Clientes de Ventas)" style="background:#fff;border:1.5px solid #15803D;color:#15803D;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Alta de estación</button>` : ""}
                     ${opsPuedeCrear() ? `<button onclick="opsAbrirAltaServicio('${opsCalFechaISO(opsCalFecha)}')" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(29,46,115,.25);">+ Nuevo servicio</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsMvAbrir()" title="Buscar servicios y cambiar la fecha de varios a la vez" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">Buscar y mover servicios</button>` : ""}
                     ${opsPuedeGestionar() ? `<button onclick="opsTareaExtraAbrir('${opsCalFechaISO(opsCalFecha)}')" title="Un favor o pendiente que solo necesita programarse (ej. llevar un sobre a una estación)" style="background:#fff;border:1.5px solid #1D2E73;color:#1D2E73;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;">+ Tarea extra</button>` : ""}
@@ -9114,7 +9158,7 @@
             ${opsCalHTMLFiltros()}
             ${opsCalVerLeyenda ? opsCalHTMLLeyenda() : ""}
             <div class="ops-cal-layout">
-                ${opsCalFull || opsAccFiltroEmpresa() ? "" : `<aside id="ops-cal-lado" class="ops-cal-lado${opsPedVentasAbierto ? "" : " cerrado"}"><div id="ops-cal-por-reasignar"></div><div id="ops-cal-derivados"></div><div id="ops-cal-pedidos-ventas"></div></aside>`}
+                ${opsCalFull || opsAccLimitado() ? "" : `<aside id="ops-cal-lado" class="ops-cal-lado${opsPedVentasAbierto ? "" : " cerrado"}"><div id="ops-cal-por-reasignar"></div><div id="ops-cal-derivados"></div><div id="ops-cal-pedidos-ventas"></div></aside>`}
                 <div class="ops-cal-principal"><div id="ops-cal-body"></div></div>
             </div>
           ${opsCalFull ? "</div>" : ""}
@@ -9637,7 +9681,7 @@
     }
     function opsHablarServicio(frase) {
         return; // 5-nov-2026: sin anuncios de voz (quedan tarjeta y campanita).
-        if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (opsAccLimitado()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
         if (window.tcHablar) { window.tcHablar(frase); return; } // motor único del portal (respeta "Avisos con voz" de la persona)
         try {
             if (!("speechSynthesis" in window)) return;
@@ -10047,7 +10091,7 @@
     function opsCalTecnicosFiltrados() {
         // Orden alfabético por nombre (ignora acentos y mayúsculas) en Día, Semana y Mes.
         let activos = opsTecOperativos().slice().sort((a, b) => (a.nombre || "").localeCompare(b.nombre || "", "es", { sensitivity: "base" }));
-        if (opsAccFiltroEmpresa()) {
+        if (opsAccLimitado()) {
             // Usuario limitado a una empresa: solo los técnicos que tienen servicios de esa empresa.
             const conServ = new Set(opsCalFoliosFiltrados().flatMap(f => (f.tecnicosAsignadosIds || []).concat(f.tecnicoResponsableId ? [f.tecnicoResponsableId] : [])));
             activos = activos.filter(t => conServ.has(t.id));
@@ -11827,6 +11871,7 @@
         if (!f) { alert("No se encontró ese folio en memoria — recarga la página e intenta otra vez."); return; }
         const feP = opsAccFiltroEmpresa();
         if (feP && !opsFolioDeEmpresa(f, feP)) { alert("Este servicio no es de " + feP + "."); return; }
+        if (opsAccSoloScfi() && !opsFolioIncluyeScfi(f)) { alert("Solo puedes ver servicios SCFI."); return; }
         let panel = document.getElementById("ops-panel-folio");
         if (!panel) {
             panel = document.createElement("div");
@@ -11898,7 +11943,7 @@
             </div>
             <div style="display:flex;gap:8px;padding:12px 18px 0;">
                 ${opsPuedeGestionar() ? btnTop(`opsAbrirModalFolio('${f.id}')`, "Editar folio", '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>', true) : ""}
-                ${opsAccFiltroEmpresa() ? "" : btnTop(`opsDescargarPdfFolio('${f.id}')`, "PDF del servicio", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', !opsPuedeGestionar())}
+                ${opsAccLimitado() ? "" : btnTop(`opsDescargarPdfFolio('${f.id}')`, "PDF del servicio", '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>', !opsPuedeGestionar())}
             </div>
             <div class="opf-body" style="padding:12px 18px 18px;">
                 ${sec("Resumen", `<div class="opf-grid">
@@ -12294,7 +12339,8 @@
                 <span class="opsfp-tit">Folios por programar</span><span class="opsfp-num">${lista.length}</span>
                 ${venc ? `<span class="opsfp-tag" style="background:#fee2e2;color:#b91c1c;">${venc} vencido${venc > 1 ? "s" : ""}</span>` : ""}
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:8px;">${pill("todos", "Todos")}${clientes.map(c => pill(c, c)).join("")}${lista.some(f => !opsFpCliTxt(f)) ? pill("otros", "Sin cliente") : ""}</div>
-                ${gestion && nCt ? `<button class="opsfp-pill" style="margin-left:auto;border-color:#15803d;color:#15803d;" onclick="opsCtsLoteAbrir()" title="Folios de esta bandeja que ya se subieron a Connecteam con su número">Ya en Connecteam · ${nCt}</button>` : ""}
+                ${gestion && opsFpCierreFilas().cerrar.length ? `<button class="opsfp-pill" style="margin-left:auto;border-color:#b91c1c;color:#b91c1c;" onclick="opsFpCierreAbrir()" title="Marca como completados los folios viejos o vencidos (sin evidencia); solo se quedan los de la última semana que aún no vencen">Cerrar folios viejos · ${opsFpCierreFilas().cerrar.length}</button>` : ""}
+                ${gestion && nCt ? `<button class="opsfp-pill" style="${gestion && opsFpCierreFilas().cerrar.length ? "" : "margin-left:auto;"}border-color:#15803d;color:#15803d;" onclick="opsCtsLoteAbrir()" title="Folios de esta bandeja que ya se subieron a Connecteam con su número">Ya en Connecteam · ${nCt}</button>` : ""}
                 <input class="opsfp-q" style="margin-left:${gestion && nCt ? "0" : "auto"};" id="opsfp-q" value="${opsEsc(opsFpBusca)}" placeholder="Buscar estación, folio o falla…" oninput="opsFpBuscar(this.value)">
             </div>
             ${ver.length ? ver.map(f => {
@@ -12320,6 +12366,98 @@
     window.opsFpBuscar = function (v) {
         opsFpBusca = v; opsFpRepintarBandeja();
         const i = document.getElementById("opsfp-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+    };
+
+    // ── Cierre masivo de folios viejos (7-nov-2026, Glen) ──
+    // Todo lo pendiente de "Folios por programar" se marca como COMPLETADO aunque no tenga evidencia,
+    // salvo los folios de la última semana que todavía no vencen (ej. un P4 que salió hace unos días
+    // y apenas se va a vencer). Lo de meses anteriores (septiembre, octubre…) siempre se cierra.
+    let opsFpCierre = null;
+    function opsFpCierreFilas() {
+        const ahora = Date.now(), hace7 = ahora - 7 * 864e5;
+        const d = new Date(), iniMes = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+        const cerrar = [], quedan = [];
+        for (const f of cacheFolios) {
+            if (f.source === OPS_DEMO_SOURCE || !opsFpEsPorProgramar(f)) continue;
+            const s = opsCalcularSemaforoFolio(f), sol = opsAFechaObj(f.fechaSolicitud), solMs = sol ? sol.getTime() : null;
+            const vencido = s.horas !== null && s.horas < 0;
+            let motivo = "";
+            if (solMs !== null && solMs < iniMes) motivo = "Es de un mes anterior";
+            else if (vencido) motivo = "Ya venció";
+            else if (solMs === null || solMs < hace7) motivo = "Tiene más de una semana";
+            if (motivo) cerrar.push({ f, s, motivo }); else quedan.push({ f, s });
+        }
+        const ord = (a, b) => String(a.f.fechaSolicitud || "").localeCompare(String(b.f.fechaSolicitud || ""));
+        return { cerrar: cerrar.sort(ord), quedan: quedan.sort((a, b) => opsFpOrden(a.f, b.f)) };
+    }
+    window.opsFpCierreAbrir = function () {
+        if (!opsPuedeGestionar()) return;
+        opsFpCss();
+        const { cerrar } = opsFpCierreFilas();
+        opsFpCierre = { marcados: Object.fromEntries(cerrar.map(r => [r.f.id, true])), guardando: false, hechos: 0, fallas: [] };
+        opsFpCierrePintar();
+    };
+    window.opsFpCierreMarca = function (id, v) { if (opsFpCierre && !opsFpCierre.guardando) { opsFpCierre.marcados[id] = v; opsFpCierrePintar(); } };
+    window.opsFpCierreTodos = function (v) { if (!opsFpCierre || opsFpCierre.guardando) return; opsFpCierreFilas().cerrar.forEach(r => { opsFpCierre.marcados[r.f.id] = v; }); opsFpCierrePintar(); };
+    window.opsFpCierreCerrar = function () { if (opsFpCierre && opsFpCierre.guardando) return; document.getElementById("opsfp-cierre")?.remove(); opsFpCierre = null; };
+    function opsFpCierrePintar() {
+        const C = opsFpCierre; if (!C) return;
+        let ov = document.getElementById("opsfp-cierre");
+        const scroll = ov ? (ov.querySelector("[data-fc-scroll]")?.scrollTop || 0) : 0;
+        if (!ov) { ov = document.createElement("div"); ov.id = "opsfp-cierre"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov) window.opsFpCierreCerrar(); }; document.body.appendChild(ov); }
+        const { cerrar, quedan } = opsFpCierreFilas();
+        const n = cerrar.filter(r => C.marcados[r.f.id]).length;
+        const fila = (r, chk) => `<div class="opsfp-opt${chk && C.marcados[r.f.id] ? " on" : ""}" style="align-items:flex-start;cursor:default;padding:8px 12px;">
+                ${chk ? `<input type="checkbox" ${C.marcados[r.f.id] ? "checked" : ""} ${C.guardando ? "disabled" : ""} onchange="opsFpCierreMarca('${r.f.id}',this.checked)" style="margin-top:3px;">` : ""}
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${opsFpBadgePrio(r.f.prioridad)}<b style="font-size:12.5px;color:#0f172a;">${opsEsc(r.f.estacion || "Sin estación")}</b><span style="font-size:11.5px;color:#64748b;">${opsEsc(opsFpCliTxt(r.f))}${opsFpFolioTxt(r.f) ? " · " + opsEsc(opsFpFolioTxt(r.f)) : ""}</span></div>
+                    <div style="font-size:11.5px;color:#64748b;margin-top:2px;">Solicitado ${opsEsc(opsFmtFechaCorta(r.f.fechaSolicitud))} · ${opsEsc(r.s.semaforo === "gris" ? "sin vencimiento" : r.s.estado === "VENCIDO" ? "vencido" : "vence en " + r.s.diasTexto)}${r.motivo ? ` · <b style="color:#b91c1c;">${opsEsc(r.motivo)}</b>` : ""}</div>
+                </div></div>`;
+        ov.innerHTML = `<div class="opsfp-card" style="width:760px;">
+            <div style="padding:18px 22px 14px;border-bottom:1px solid #eef1f6;display:flex;gap:12px;align-items:flex-start;">
+                <div style="flex:1;"><div style="font-size:17px;font-weight:800;color:#0f172a;">Cerrar folios viejos</div>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.45;">Los folios marcados quedan <b>completados</b> aunque no tengan evidencia y salen de "Folios por programar". Solo se quedan los de la <b>última semana que todavía no vencen</b>. Quita la palomita a los que no quieras cerrar.</div></div>
+                <button onclick="opsFpCierreCerrar()" title="Cerrar" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
+            </div>
+            <div data-fc-scroll style="overflow-y:auto;padding:14px 22px 16px;flex:1;">
+                <div style="display:flex;align-items:center;gap:10px;"><div class="opsfp-dia" style="margin:0;">Se cierran (${cerrar.length})</div>
+                    ${cerrar.length && !C.guardando ? `<button class="opsfp-link" style="margin-left:auto;" onclick="opsFpCierreTodos(${n ? "false" : "true"})">${n ? "Quitar todos" : "Marcar todos"}</button>` : ""}</div>
+                <div style="margin-top:6px;">${cerrar.length ? cerrar.map(r => fila(r, true)).join("") : `<div style="padding:14px;color:#94a3b8;font-size:12.5px;">No hay folios viejos.</div>`}</div>
+                <div class="opsfp-dia">Se quedan pendientes (${quedan.length})</div>
+                ${quedan.length ? quedan.map(r => fila(r, false)).join("") : `<div style="padding:14px;color:#94a3b8;font-size:12.5px;">Ninguno.</div>`}
+                ${C.fallas.length ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;padding:10px 12px;font-size:12px;margin-top:10px;">No se pudieron cerrar ${C.fallas.length}: ${opsEsc(C.fallas.slice(0, 5).join(" · "))}</div>` : ""}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid #eef1f6;background:#fcfcfd;">
+                ${C.guardando ? `<span style="font-size:12px;color:#64748b;margin-right:auto;">Cerrando… ${C.hechos} de ${n}</span>` : ""}
+                <button class="opsfp-ghost" onclick="opsFpCierreCerrar()" ${C.guardando ? "disabled" : ""}>Cancelar</button>
+                <button class="opsfp-btn" style="padding:9px 18px;font-size:12.5px;background:${n && !C.guardando ? "#b91c1c" : "#94a3b8"};${n && !C.guardando ? "" : "cursor:not-allowed;"}" ${n && !C.guardando ? "" : "disabled"} onclick="opsFpCierreGuardar()">Marcar ${n} como completado${n === 1 ? "" : "s"}</button>
+            </div></div>`;
+        const sc = ov.querySelector("[data-fc-scroll]"); if (sc) sc.scrollTop = scroll;
+    }
+    window.opsFpCierreGuardar = async function () {
+        const C = opsFpCierre; if (!C || C.guardando || !opsPuedeGestionar()) return;
+        const filas = opsFpCierreFilas().cerrar.filter(r => C.marcados[r.f.id]);
+        if (!filas.length) return;
+        if (!confirm(`¿Marcar ${filas.length} folio(s) como COMPLETADOS sin evidencia?\n\nSalen de "Folios por programar". Si alguno sí falta, se puede reabrir desde su ficha.`)) return;
+        C.guardando = true; C.hechos = 0; C.fallas = []; opsFpCierrePintar();
+        const yo = opsNombreActual(), ahora = opsFechaHora(), cuando = opsAhoraLocal();
+        const { db, fs } = await opsGetFB();
+        for (const r of filas) {
+            const f = r.f;
+            const cambios = { fechaSolucion: cuando, completadoEn: ahora, completadoPor: yo, finalizadoDesde: "cierre_masivo",
+                cierreMasivo: { por: yo, porEmail: opsUsuarioActual(), en: ahora, motivo: r.motivo, sinEvidencia: true } };
+            try {
+                await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+                Object.assign(f, cambios);
+                fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `Marcado como COMPLETADO en cierre masivo de folios viejos (${r.motivo.toLowerCase()}), sin evidencia. Lo registró ${yo}.`, autor: yo, autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: ahora }).catch(() => {});
+            } catch (e) { C.fallas.push((f.folioClienteId || f.estacion || f.id) + ": " + (e && e.code === "permission-denied" ? "sin permiso" : (e.message || e))); }
+            C.hechos++; if (C.hechos % 5 === 0) opsFpCierrePintar();
+        }
+        C.guardando = false;
+        const ok = C.hechos - C.fallas.length;
+        opsFpRepintarBandeja();
+        if (window.mostrarPush) window.mostrarPush("Operaciones", `${ok} folio(s) viejos marcados como completados.`, "");
+        if (C.fallas.length) opsFpCierrePintar(); else window.opsFpCierreCerrar();
     };
 
     // ── Técnicos sugeridos: el responsable que viene en la hoja ("RICARDO G", "SAUL / BRUNO") ──
@@ -26042,7 +26180,7 @@
         return new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
     }
     function opsNotifBotonHTML() {
-        if (opsAccFiltroEmpresa()) return "";
+        if (opsAccLimitado()) return "";
         if (window.tcNotif) return ""; // una sola campanita para todo el portal (abajo a la derecha)
         const n = opsNotifSinLeer();
         return `<button id="ops-notif-btn" onclick="opsNotifToggle()" title="Notificaciones" style="position:relative;background:rgba(255,255,255,0.08);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;">${ICON.bell}<span id="ops-notif-badge" style="position:absolute;top:-5px;right:-5px;background:#E7402B;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:${n ? "flex" : "none"};align-items:center;justify-content:center;padding:0 4px;box-sizing:border-box;">${n > 99 ? "99+" : n}</span></button>`;
@@ -26053,6 +26191,7 @@
     }
     function opsNotifAgregar(n) {
         if (opsAccFiltroEmpresa()) return; // usuarios limitados (ej. VH): solo ven la programación, sin avisos
+        if (opsAccSoloScfi()) { const fx = n.folioId && cacheFolios.find(x => x.id === n.folioId); if (!fx || !opsFolioIncluyeScfi(fx)) return; n.scfi = true; }
         n.id = "n" + Date.now() + Math.floor(Math.random() * 1000); n.en = new Date().toISOString(); n.leida = false;
         opsNotifs.unshift(n); opsNotifs = opsNotifs.slice(0, 80); opsNotifGuardar(); opsNotifPintarBoton();
         // Centro de notificaciones del portal (19-oct-2026): la tarjeta, el sonido y la campanita
@@ -26062,7 +26201,7 @@
             const ir = n.accion === "folio" && n.folioId ? { tipo: "ops_folio", id: n.folioId }
                 : n.folioId ? { tipo: "ops_folio", id: n.folioId }
                 : n.accion ? { tipo: "ops_tab", tab: n.accion } : { tipo: "ops_tab", tab: "calendario" };
-            window.tcNotif.agregar({ titulo: n.titulo || "Operaciones", texto: n.texto || "", modulo: "Operaciones", grupo: "Operaciones",
+            window.tcNotif.agregar({ titulo: n.titulo || "Operaciones", texto: n.texto || "", modulo: "Operaciones", grupo: "Operaciones", scfi: !!n.scfi,
                 nivel: rojo || /vence|vencid/i.test((n.titulo || "") + " " + (n.texto || "")) ? "urgente" : /sin evidencia|pendiente/i.test((n.titulo || "") + " " + (n.texto || "")) ? "pendiente" : "normal", ir });
             if (opsNotifAbierto) opsNotifPintarPanel();
             return;
