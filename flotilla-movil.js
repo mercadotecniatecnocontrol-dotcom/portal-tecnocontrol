@@ -8530,43 +8530,98 @@ window.fmDanoEnviar=async function(){
   }catch(e){console.warn('[daño adicional]',e); msg.textContent='No se pudo enviar ('+(e.message||e)+'). Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar a Operaciones';}
 };
 window.fmHerrAbrir=function(folioId){
-  window.__fmEv=window.__fmEv||{}; window.__fmEv.herr=[];
+  window.__fmEv=window.__fmEv||{}; window.__fmEv.herr=[]; window.__fmEv.herrvieja=[]; window.__fmEv.herrnueva=[]; window.__fmEv.herrticket=[];
+  const LB='font-size:12px;font-weight:800;color:#334155';
   fmHojaModal('fm-herr','Pedir o reemplazar herramienta',
-    '<label style="font-size:12px;font-weight:800;color:#334155">¿Qué necesitas?</label><select id="fm-herr-tipo" style="'+FM_IN+'"><option value="faltante">Me falta una herramienta</option><option value="reemplazo">Reemplazo: se dañó o se desgastó</option></select>'+
-    '<label style="font-size:12px;font-weight:800;color:#334155">Herramienta *</label><input id="fm-herr-desc" style="'+FM_IN+'" placeholder="Ej. Llave de cadena 18&quot;">'+
-    '<label style="font-size:12px;font-weight:800;color:#334155">Características (marca, medida, modelo)</label><input id="fm-herr-car" style="'+FM_IN+'" placeholder="Ej. Truper, 18 pulgadas">'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:12px;font-weight:800;color:#334155">Cantidad</label><input id="fm-herr-cant" type="number" min="1" value="1" style="'+FM_IN+'"></div><div><label style="font-size:12px;font-weight:800;color:#334155">¿Para cuándo?</label><input id="fm-herr-fecha" type="date" style="'+FM_IN+'"></div></div>'+
-    '<label style="font-size:12px;font-weight:800;color:#334155">¿Para qué servicio?</label><select id="fm-herr-folio" style="'+FM_IN+'">'+fmServOpcionesHTML()+'</select>'+
-    '<label style="font-size:12px;font-weight:800;color:#334155">¿Por qué? *</label><input id="fm-herr-motivo" style="'+FM_IN+'" placeholder="Ej. Se rompió la mordaza / el servicio la pide y no la traigo">'+
-    fmEvPickerHTML('herr','Foto','En un reemplazo es obligatoria: foto de la herramienta dañada. Si es nueva, foto de referencia (opcional).')+
+    '<label style="'+LB+'">¿Qué necesitas?</label><select id="fm-herr-tipo" onchange="fmHerrTipoCambio()" style="'+FM_IN+'"><option value="faltante">Me falta una herramienta</option><option value="reemplazo">Reemplazo: se dañó o se desgastó</option><option value="compra_campo">Ya la compré en campo (cambia una mía)</option></select>'+
+    '<div id="fm-herr-cc-ayuda" style="display:none;font-size:12px;color:#475569;line-height:1.45;background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:9px 11px;margin-bottom:10px">Úsalo cuando en un servicio tu herramienta dejó de servir y <b>tuviste que comprar otra</b>. No va a Compras ni a Almacén: Operaciones revisa tus fotos y el ticket, da de baja la vieja y la nueva queda en tu almacén con folio nuevo.</div>'+
+    '<div id="fm-herr-cc-vieja-box" style="display:none"><label style="'+LB+'">¿Cuál de tus herramientas cambiaste? *</label><select id="fm-herr-vieja" style="'+FM_IN+'"><option value="">Cargando tus herramientas…</option></select></div>'+
+    '<label id="fm-herr-desc-lb" style="'+LB+'">Herramienta *</label><input id="fm-herr-desc" style="'+FM_IN+'" placeholder="Ej. Llave de cadena 18&quot;">'+
+    '<label style="'+LB+'">Características (marca, medida, modelo)</label><input id="fm-herr-car" style="'+FM_IN+'" placeholder="Ej. Truper, 18 pulgadas">'+
+    '<div id="fm-herr-cant-box" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="'+LB+'">Cantidad</label><input id="fm-herr-cant" type="number" min="1" value="1" style="'+FM_IN+'"></div><div><label style="'+LB+'">¿Para cuándo?</label><input id="fm-herr-fecha" type="date" style="'+FM_IN+'"></div></div>'+
+    '<div id="fm-herr-cc-pago" style="display:none">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="'+LB+'">¿Cuánto costó? *</label><input id="fm-herr-monto" type="number" min="0" step="0.01" inputmode="decimal" style="'+FM_IN+'" placeholder="$"></div><div><label style="'+LB+'">¿Dónde la compraste? *</label><input id="fm-herr-prov" style="'+FM_IN+'" placeholder="Ej. Home Depot"></div></div>'+
+      '<label style="'+LB+'">¿Con qué la pagaste? *</label><select id="fm-herr-pago" style="'+FM_IN+'"><option value="">Elige…</option><option value="propio">Con mi dinero (me la tienen que reembolsar)</option><option value="viaticos">Con mis viáticos</option><option value="tarjeta_empresa">Con tarjeta de la empresa</option></select>'+
+    '</div>'+
+    '<label style="'+LB+'">¿Para qué servicio?</label><select id="fm-herr-folio" style="'+FM_IN+'">'+fmServOpcionesHTML()+'</select>'+
+    '<label style="'+LB+'">¿Por qué? *</label><input id="fm-herr-motivo" style="'+FM_IN+'" placeholder="Ej. Se rompió la mordaza / el servicio la pide y no la traigo">'+
+    '<div id="fm-herr-foto-normal">'+fmEvPickerHTML('herr','Foto','En un reemplazo es obligatoria: foto de la herramienta dañada. Si es nueva, foto de referencia (opcional).')+'</div>'+
+    '<div id="fm-herr-foto-cc" style="display:none">'+
+      fmEvPickerHTML('herrvieja','1. Foto de la herramienta vieja *','Que se vea el daño o la falla.')+
+      fmEvPickerHTML('herrnueva','2. Foto de la herramienta nueva *','Que se vea la marca y el modelo.')+
+      fmEvPickerHTML('herrticket','3. Foto del ticket o factura *','Que se lea el total, la fecha y la tienda.')+
+    '</div>'+
     '<div id="fm-herr-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px"></div>'+
     '<button id="fm-herr-btn" onclick="fmHerrEnviar()" style="width:100%;padding:13px;border:none;border-radius:12px;background:#1D2E73;color:#fff;font-family:inherit;font-size:14px;font-weight:900">Enviar a Operaciones</button>');
   if(folioId){const s=document.getElementById('fm-herr-folio'); if(s)s.value=folioId;}
+};
+// Compra en campo (9-nov-2026): lista de las herramientas que el técnico tiene a su nombre.
+window.__fmHerrMias=null;
+async function fmHerrCargarMias(){
+  const sel=document.getElementById('fm-herr-vieja'); if(!sel)return;
+  try{
+    if(!_opsServTecId){sel.innerHTML='<option value="">No encontramos tu ficha de técnico; avisa a Operaciones</option>';return;}
+    const snap=await opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',_opsServTecId).get();
+    window.__fmHerrMias=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).filter(function(h){return h.estado!=='baja';})
+      .sort(function(a,b){return String(a.descripcion||'').localeCompare(String(b.descripcion||''),'es');});
+    sel.innerHTML='<option value="">Elige la herramienta…</option>'+window.__fmHerrMias.map(function(h){return '<option value="'+opsSvEsc(h.id)+'">'+opsSvEsc((h.descripcion||'Herramienta')+(h.marca?' '+h.marca:'')+' · '+(h.folio||h.id))+'</option>';}).join('')+'<option value="__no_esta">No está en la lista</option>';
+  }catch(e){sel.innerHTML='<option value="">No se pudo cargar tu lista (revisa tu señal)</option><option value="__no_esta">No está en la lista</option>';}
+}
+window.fmHerrTipoCambio=function(){
+  const cc=(document.getElementById('fm-herr-tipo')||{}).value==='compra_campo';
+  const ver=function(id,si){const e=document.getElementById(id); if(e)e.style.display=si?'':'none';};
+  ver('fm-herr-cc-ayuda',cc); ver('fm-herr-cc-vieja-box',cc); ver('fm-herr-cc-pago',cc); ver('fm-herr-foto-cc',cc);
+  ver('fm-herr-foto-normal',!cc); ver('fm-herr-cant-box',!cc);
+  const lb=document.getElementById('fm-herr-desc-lb'); if(lb)lb.textContent=cc?'Herramienta nueva que compraste *':'Herramienta *';
+  const btn=document.getElementById('fm-herr-btn'); if(btn)btn.textContent=cc?'Enviar a validación':'Enviar a Operaciones';
+  if(cc&&!window.__fmHerrMias)fmHerrCargarMias();
 };
 window.fmHerrEnviar=async function(){
   const g=function(id){return (document.getElementById(id)||{}).value||'';};
   const msg=document.getElementById('fm-herr-msg'), btn=document.getElementById('fm-herr-btn');
   const tipo=g('fm-herr-tipo'), desc=g('fm-herr-desc').trim(), motivo=g('fm-herr-motivo').trim(), fotos=(window.__fmEv&&window.__fmEv.herr)||[];
-  if(desc.length<3){msg.textContent='Escribe qué herramienta necesitas.';return;}
-  if(motivo.length<4){msg.textContent='Escribe por qué la necesitas.';return;}
+  const cc=tipo==='compra_campo';
+  if(desc.length<3){msg.textContent=cc?'Escribe qué herramienta compraste.':'Escribe qué herramienta necesitas.';return;}
+  if(motivo.length<4){msg.textContent=cc?'Escribe por qué tuviste que comprarla.':'Escribe por qué la necesitas.';return;}
   if(tipo==='reemplazo'&&!fotos.length){msg.textContent='En un reemplazo agrega la foto de la herramienta dañada.';return;}
+  let vieja=null, monto=0;
+  if(cc){
+    const vId=g('fm-herr-vieja'); if(!vId){msg.textContent='Elige cuál de tus herramientas cambiaste.';return;}
+    vieja=vId==='__no_esta'?null:((window.__fmHerrMias||[]).find(function(h){return h.id===vId;})||null);
+    monto=Number(g('fm-herr-monto'))||0; if(monto<=0){msg.textContent='Escribe cuánto costó.';return;}
+    if(g('fm-herr-prov').trim().length<2){msg.textContent='Escribe dónde la compraste.';return;}
+    if(!g('fm-herr-pago')){msg.textContent='Elige con qué la pagaste.';return;}
+    const E=window.__fmEv||{};
+    if(!(E.herrvieja||[]).length){msg.textContent='Falta la foto de la herramienta vieja.';return;}
+    if(!(E.herrnueva||[]).length){msg.textContent='Falta la foto de la herramienta nueva.';return;}
+    if(!(E.herrticket||[]).length){msg.textContent='Falta la foto del ticket o factura.';return;}
+  }
   btn.disabled=true; btn.textContent='Enviando…';
   try{
     const folioId=g('fm-herr-folio'), f=misOpsServ.find(function(x){return x.id===folioId;})||{};
     const id='SH'+Date.now().toString(36);
-    const subidas=fotos.length?await fmSubirFotosA('herramienta/'+id,fotos):[];
-    await opsDb().collection(OPS_COL_SOL_HERR).doc(id).set({
-      tipo:tipo, descripcion:desc, caracteristicas:g('fm-herr-car').trim()||null, cantidad:Math.max(1,Number(g('fm-herr-cant'))||1),
-      fechaRequerida:g('fm-herr-fecha')||(f.fechaProgramada?String(f.fechaProgramada).slice(0,10):null), motivo:motivo, fotos:subidas,
+    let subidas=[], extra={};
+    if(cc){
+      const E=window.__fmEv;
+      const fv=await fmSubirFotosA('herramienta/'+id+'/vieja',E.herrvieja), fn=await fmSubirFotosA('herramienta/'+id+'/nueva',E.herrnueva), ft=await fmSubirFotosA('herramienta/'+id+'/ticket',E.herrticket);
+      subidas=fv.map(function(x){return Object.assign({etiqueta:'vieja'},x);}).concat(fn.map(function(x){return Object.assign({etiqueta:'nueva'},x);}),ft.map(function(x){return Object.assign({etiqueta:'ticket'},x);}));
+      extra={monto:monto, proveedor:g('fm-herr-prov').trim(), formaPago:g('fm-herr-pago'),
+        herramientaAnteriorId:vieja?vieja.id:null, herramientaAnteriorTxt:vieja?((vieja.descripcion||'')+(vieja.marca?' '+vieja.marca:'')+' · '+(vieja.folio||vieja.id)):'No estaba en su lista (lo indicó el técnico)'};
+    }else{
+      subidas=fotos.length?await fmSubirFotosA('herramienta/'+id,fotos):[];
+    }
+    await opsDb().collection(OPS_COL_SOL_HERR).doc(id).set(Object.assign({
+      tipo:tipo, descripcion:desc, caracteristicas:g('fm-herr-car').trim()||null, cantidad:cc?1:Math.max(1,Number(g('fm-herr-cant'))||1),
+      fechaRequerida:cc?null:(g('fm-herr-fecha')||(f.fechaProgramada?String(f.fechaProgramada).slice(0,10):null)), motivo:motivo, fotos:subidas,
       folioId:folioId||null, servicioTxt:f.estacion?(f.estacion+' · '+opsSvFecha(f.fechaProgramada)):null,
       tecnicoId:_opsServTecId||null, tecnicoNombre:opsSvMiNombre(), tecnicoCorreo:opsSvMiCorreo(),
-      estatus:'solicitada', creadoEn:new Date().toISOString(), origen:'app_flotilla',
-      historial:[{accion:'solicitada',nota:motivo,por:opsSvMiNombre(),correo:opsSvMiCorreo(),en:new Date().toISOString()}]
-    });
-    try{await opsSvAvisarAdmins('ops_pedido_herramienta',opsSvMiNombre()+' pide '+(tipo==='reemplazo'?'REEMPLAZO de ':'')+desc+(f.estacion?' para '+f.estacion:'')+': '+motivo,folioId||null);}catch(e){}
-    document.getElementById('fm-herr')?.remove(); window.__fmEv.herr=[];
-    if(typeof toast==='function')toast('Pedido de herramienta enviado','ok');
-  }catch(e){console.warn('[pedido herramienta]',e); msg.textContent='No se pudo enviar ('+(e.message||e)+'). Revisa tu señal.'; btn.disabled=false; btn.textContent='Enviar a Operaciones';}
+      estatus:cc?'por_validar':'solicitada', creadoEn:new Date().toISOString(), origen:'app_flotilla',
+      historial:[{accion:cc?'compra_en_campo':'solicitada',nota:motivo,por:opsSvMiNombre(),correo:opsSvMiCorreo(),en:new Date().toISOString()}]
+    },extra));
+    try{await opsSvAvisarAdmins('ops_pedido_herramienta',cc?(opsSvMiNombre()+' compró en campo '+desc+' ($'+monto.toFixed(2)+') para sustituir '+(extra.herramientaAnteriorTxt||'una herramienta')+'. Falta validarlo en Operaciones → Pedidos de herramienta.'):(opsSvMiNombre()+' pide '+(tipo==='reemplazo'?'REEMPLAZO de ':'')+desc+(f.estacion?' para '+f.estacion:'')+': '+motivo),folioId||null);}catch(e){}
+    document.getElementById('fm-herr')?.remove(); window.__fmEv.herr=[]; window.__fmEv.herrvieja=[]; window.__fmEv.herrnueva=[]; window.__fmEv.herrticket=[]; window.__fmHerrMias=null;
+    if(typeof toast==='function')toast(cc?'Enviado. Operaciones valida tu compra y la nueva queda en tu almacén.':'Pedido de herramienta enviado','ok');
+  }catch(e){console.warn('[pedido herramienta]',e); msg.textContent='No se pudo enviar ('+(e.message||e)+'). Revisa tu señal.'; btn.disabled=false; btn.textContent=cc?'Enviar a validación':'Enviar a Operaciones';}
 };
 // Al cerrar "sin terminar" por falla mayor, se crea solo el trabajo derivado (sin fotos nuevas:
 // las evidencias quedaron en el servicio).

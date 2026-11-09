@@ -16759,7 +16759,23 @@
         solicitada: ["Solicitada", "#b45309", "#fef3c7"], aprobada_almacen: ["Aprobada · la entrega Almacén", "#1d4ed8", "#dbeafe"],
         aprobada_compras: ["Aprobada · en Compras", "#7c3aed", "#ede9fe"], entregada: ["Entregada", "#15803d", "#dcfce7"],
         rechazada: ["Rechazada", "#b91c1c", "#fee2e2"],
+        por_validar: ["Compra en campo · por validar", "#c2410c", "#ffedd5"], validada: ["Validada · ya está en su almacén", "#15803d", "#dcfce7"],
     };
+    // Compra en campo (9-nov-2026, Glen): el técnico compró la herramienta en el servicio porque la suya
+    // dejó de servir. No pasa por Compras ni Almacén: la valida Operaciones con fotos y ticket, se da de
+    // baja la vieja y la nueva entra directo al almacén personal del técnico con folio nuevo.
+    const OPS_SH_VALIDAN_CORREOS = ["ricardo.t@tecnocontrol.com.mx", "p.pinedo@tecnocontrol.com.mx", "magali@tecnocontrol.com.mx", "i.ruiz@jomarverifica.com.mx"];
+    const OPS_SH_VALIDAN_NOMBRES = ["adame", "sandra"];
+    const OPS_SH_PAGO = { propio: "Con su dinero (reembolso)", viaticos: "Con sus viáticos", tarjeta_empresa: "Tarjeta de la empresa" };
+    function opsSHPuedeValidar() {
+        const c = String(opsUsuarioActual() || "").toLowerCase().trim();
+        if (window.esAdminTotal && window.esAdminTotal(c)) return true;
+        if (OPS_SH_VALIDAN_CORREOS.includes(c)) return true;
+        const n = opsNormalizaTexto(opsNombreActual() || "");
+        if (OPS_SH_VALIDAN_NOMBRES.some(x => n.includes(x) || c.includes(x))) return true;
+        try { if (opsPuedeHacer("admin_operaciones")) return true; } catch (e) {}
+        return false;
+    }
     let cacheDerivados = [], cacheSolHerr = [], opsTDCargado = false, unsubTD = null, unsubSH = null;
     const opsUrlCache = {};
     async function opsUrlFirmada(bucket, ruta) {
@@ -16871,31 +16887,38 @@
     let opsSHFiltro = { est: "abiertos" };
     function opsRenderSolHerr() {
         const el = document.getElementById("ops-tab-content"); if (!el) return; opsTDSuscribir();
-        const gest = opsPuedeGestionar();
-        const lista = cacheSolHerr.filter(s => opsSHFiltro.est === "todos" ? true : opsSHFiltro.est === "abiertos" ? !["entregada", "rechazada"].includes(s.estatus) : s.estatus === opsSHFiltro.est)
+        const gest = opsPuedeGestionar(), valida = opsSHPuedeValidar();
+        const lista = cacheSolHerr.filter(s => opsSHFiltro.est === "todos" ? true : opsSHFiltro.est === "abiertos" ? !["entregada", "rechazada", "validada"].includes(s.estatus) : s.estatus === opsSHFiltro.est)
             .sort((a, b) => String(a.fechaRequerida || "9").localeCompare(String(b.fechaRequerida || "9")) || String(b.creadoEn || "").localeCompare(String(a.creadoEn || "")));
         el.innerHTML = `<div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px 18px;">
           <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;">
             <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pedidos de herramienta</div>
-            <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Lo que piden los técnicos desde la app: herramienta que les falta o reemplazo por daño o desgaste, con foto. Operaciones aprueba y decide: <b>Almacén</b> la entrega (si hay) o <b>Compras</b> la compra (se genera la requisición con características y foto). En un reemplazo se liga la herramienta vieja para conservar su historial.</div></div>
+            <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Lo que piden los técnicos desde la app: herramienta que les falta o reemplazo por daño o desgaste, con foto. Operaciones aprueba y decide: <b>Almacén</b> la entrega (si hay) o <b>Compras</b> la compra (se genera la requisición con características y foto). En un reemplazo se liga la herramienta vieja para conservar su historial.<br><b style="color:#c2410c;">Compra en campo:</b> el técnico ya compró la herramienta en el servicio. Se revisan las 3 fotos (vieja, nueva y ticket); al validar, la vieja se da de baja y la nueva entra a su almacén con folio nuevo. Si pagó con su dinero o con viáticos, le llega aviso a Contabilidad.</div></div>
             <select onchange="opsSHFiltro.est=this.value;opsRenderSolHerr()" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;height:36px;">${[["abiertos", "Abiertos"], ...Object.entries(OPS_SH_EST).map(([k, v]) => [k, v[0]]), ["todos", "Todos"]].map(([k, t]) => `<option value="${k}" ${opsSHFiltro.est === k ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>
           </div>
           <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;">
           ${lista.map(s => { const e = OPS_SH_EST[s.estatus] || OPS_SH_EST.solicitada, f = s.folioId && cacheFolios.find(x => x.id === s.folioId), vieja = s.herramientaAnteriorId && cacheHerr.find(h => h.id === s.herramientaAnteriorId);
-            return `<div style="border:1px solid #e2e8f0;border-left:5px solid ${s.tipo === "reemplazo" ? "#ea580c" : "#1D2E73"};border-radius:12px;padding:12px;">
+            const cc = s.tipo === "compra_campo";
+            return `<div style="border:1px solid #e2e8f0;border-left:5px solid ${cc ? "#c2410c" : s.tipo === "reemplazo" ? "#ea580c" : "#1D2E73"};border-radius:12px;padding:12px;">
               <div style="display:flex;justify-content:space-between;gap:8px;"><b style="font-size:13px;color:#1e293b;">${opsEsc(s.descripcion || "")}</b><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 8px;white-space:nowrap;">${opsEsc(e[0])}</span></div>
-              <div style="font-size:11px;color:#64748b;">${s.tipo === "reemplazo" ? "REEMPLAZO" : "LE FALTA"} · ${opsEsc(s.tecnicoNombre || "")} · ${s.cantidad || 1} pza · para ${opsEsc(s.fechaRequerida ? opsFmtFechaCorta(s.fechaRequerida) : "sin fecha")}</div>
+              <div style="font-size:11px;color:#64748b;">${cc ? "COMPRA EN CAMPO · " + opsEsc(s.tecnicoNombre || "") + " · " + opsEsc(opsFmtFechaCorta(s.creadoEn)) : (s.tipo === "reemplazo" ? "REEMPLAZO" : "LE FALTA") + " · " + opsEsc(s.tecnicoNombre || "") + " · " + (s.cantidad || 1) + " pza · para " + opsEsc(s.fechaRequerida ? opsFmtFechaCorta(s.fechaRequerida) : "sin fecha")}</div>
+              ${cc ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;background:#fff7ed;border-radius:8px;padding:6px 8px;"><b>Costó:</b> $${Number(s.monto || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })} · <b>Tienda:</b> ${opsEsc(s.proveedor || "")} · <b>Pagó:</b> ${opsEsc(OPS_SH_PAGO[s.formaPago] || s.formaPago || "")}</div>` : ""}
               ${s.caracteristicas ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;"><b>Características:</b> ${opsEsc(s.caracteristicas)}</div>` : ""}
               <div style="font-size:11.5px;color:#334155;margin-top:2px;"><b>Motivo:</b> ${opsEsc(s.motivo || "")}</div>
               ${f ? `<div style="font-size:11px;margin-top:3px;"><a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="color:#1D2E73;font-weight:700;">Para el servicio: ${opsEsc(f.estacion || "")} · ${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</a></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${opsEsc(s.servicioTxt || "Para el almacén general / uso diario")}</div>`}
               ${vieja ? `<div style="font-size:11px;color:#ea580c;margin-top:3px;">Reemplaza a: ${opsEsc(vieja.descripcion || vieja.nombre || vieja.id)}${vieja.folio ? " (" + opsEsc(vieja.folio) + ")" : ""}</div>` : s.herramientaAnteriorTxt ? `<div style="font-size:11px;color:#ea580c;margin-top:3px;">Reemplaza a: ${opsEsc(s.herramientaAnteriorTxt)}</div>` : ""}
               ${s.surtidoFolio ? `<div style="font-size:11px;color:#1d4ed8;margin-top:3px;">Pedido a Almacén: ${opsEsc(s.surtidoFolio)}</div>` : ""}${s.requisicionFolio ? `<div style="font-size:11px;color:#7c3aed;margin-top:3px;">Requisición de compra: ${opsEsc(s.requisicionFolio)}</div>` : ""}
               ${s.decisionNota ? `<div style="font-size:11px;color:#475569;margin-top:3px;">Nota: ${opsEsc(s.decisionNota)}</div>` : ""}
-              ${opsTDFotosHTML(s.fotos, "sh")}
-              ${gest ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${s.estatus === "solicitada" ? `
+              ${s.herramientaNuevaFolio ? `<div style="font-size:11px;color:#15803d;font-weight:700;margin-top:3px;">Nueva en su almacén: ${opsEsc(s.herramientaNuevaFolio)}${s.validadoPor ? " · validó " + opsEsc(s.validadoPor) : ""}</div>` : ""}
+              ${cc ? [["vieja", "Vieja"], ["nueva", "Nueva"], ["ticket", "Ticket / factura"]].map(([k, t]) => { const fx = (s.fotos || []).filter(x => x.etiqueta === k); return fx.length ? `<div style="font-size:10.5px;font-weight:800;color:#64748b;margin-top:6px;">${t}</div>` + opsTDFotosHTML(fx, "sh" + k) : `<div style="font-size:10.5px;color:#b91c1c;margin-top:6px;">Sin foto: ${t}</div>`; }).join("") : opsTDFotosHTML(s.fotos, "sh")}
+              ${cc && s.estatus === "por_validar" ? (valida ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">
+                <button onclick="opsSHValidarCompra('${s.id}')" style="border:none;background:#15803d;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Validar · pasar a su almacén</button>
+                <button onclick="opsSHRechazar('${s.id}')" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Rechazar</button></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:6px;">La valida Gerencia de Operaciones (Ricardo Torres, Paloma Pinedo, Magali, Adame, Idaly Ruiz o Sandra).</div>`) : ""}
+              ${gest && !cc ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${s.estatus === "solicitada" ? `
                 <button onclick="opsSHAprobar('${s.id}','almacen')" style="border:none;background:#1d4ed8;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Almacén</button>
                 <button onclick="opsSHAprobar('${s.id}','compras')" style="border:none;background:#7c3aed;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Aprobar · Comprar</button>
-                <button onclick="opsSHRechazar('${s.id}')" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Rechazar</button>` : ""}
+                <button onclick="opsSHRechazar('${s.id}')" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Rechazar</button>
+                ${valida ? `<button onclick="opsSHConvertirCompraCampo('${s.id}')" style="border:none;background:#ffedd5;color:#c2410c;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Fue compra en campo</button>` : ""}` : ""}
                 ${s.estatus === "aprobada_almacen" ? `<span style="font-size:11px;color:#1d4ed8;">Se marca entregada sola cuando Almacén entregue ${opsEsc(s.surtidoFolio || "el pedido")}.</span>` : ""}
                 ${s.estatus === "aprobada_compras" ? `<button onclick="opsSHEntregada('${s.id}')" style="border:none;background:#dcfce7;color:#15803d;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:800;cursor:pointer;">Ya se entregó al técnico</button>` : ""}</div>` : ""}
             </div>`; }).join("") || `<div style="color:#94a3b8;font-size:12.5px;padding:20px;">Sin pedidos de herramienta con este filtro.</div>`}
@@ -16966,6 +16989,79 @@
         const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
         if (!confirm(`¿Confirmas que ${s.tecnicoNombre} ya recibió: ${s.descripcion}?${s.herramientaAnteriorTxt ? "\nRecuerda recoger la herramienta anterior: " + s.herramientaAnteriorTxt + "." : ""}`)) return;
         try { await opsTDActualizar(COL_SOL_HERR, id, { estatus: "entregada", entregadaEn: new Date().toISOString() }, "entregada", null); opsRenderSolHerr(); } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+
+    // Pedidos que el técnico mandó con el formulario normal pero que en realidad ya los compró en campo
+    // (caso Ulises, 9-nov-2026): se convierten a "compra en campo" para validarlos con el flujo correcto.
+    window.opsSHConvertirCompraCampo = async function (id) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
+        if (!opsSHPuedeValidar()) { alert("Solo Gerencia de Operaciones puede hacer esto."); return; }
+        const m = prompt(`¿Cuánto costó la herramienta que compró ${s.tecnicoNombre}? ($)`, s.monto || ""); if (m === null) return;
+        const monto = Number(String(m).replace(/[$,\s]/g, "")) || 0; if (monto <= 0) { alert("Escribe el monto."); return; }
+        const prov = prompt("¿Dónde la compró?", s.proveedor || ""); if (prov === null) return;
+        const pg = prompt("¿Con qué la pagó? Escribe el número:\n1) Con su dinero (reembolso)\n2) Con sus viáticos\n3) Tarjeta de la empresa", "1"); if (pg === null) return;
+        const formaPago = { "1": "propio", "2": "viaticos", "3": "tarjeta_empresa" }[String(pg).trim()] || "propio";
+        const fotos = (s.fotos || []).slice();
+        let etiquetas = ["vieja", "nueva", "ticket"];
+        if (fotos.length) {
+            const r = prompt(`El técnico subió ${fotos.length} foto(s). Escribe qué es cada una en orden, separadas por coma (vieja, nueva, ticket).\nEj.: vieja,nueva`, fotos.slice(0, 3).map((_, i) => etiquetas[i]).join(","));
+            if (r === null) return;
+            etiquetas = String(r).toLowerCase().split(",").map(x => x.trim());
+        }
+        const fotosEt = fotos.map((x, i) => ({ ...x, etiqueta: ["vieja", "nueva", "ticket"].includes(etiquetas[i]) ? etiquetas[i] : "otra" }));
+        const vieja = s.herramientaAnteriorId ? cacheHerr.find(h => h.id === s.herramientaAnteriorId) : await opsSHElegirVieja({ ...s, tipo: "reemplazo" });
+        try {
+            await opsTDActualizar(COL_SOL_HERR, id, { tipo: "compra_campo", estatus: "por_validar", monto, proveedor: prov.trim() || null, formaPago, fotos: fotosEt,
+                herramientaAnteriorId: vieja ? vieja.id : null, herramientaAnteriorTxt: vieja ? (vieja.descripcion || vieja.id) + " · " + (vieja.folio || vieja.id) : (s.herramientaAnteriorTxt || null) },
+                "convertida_compra_campo", `$${monto.toFixed(2)} en ${prov.trim()}`);
+            opsRenderSolHerr();
+            if (!fotosEt.some(x => x.etiqueta === "ticket")) alert("Quedó como compra en campo. Falta la foto del ticket: pídesela al técnico antes de validar.");
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsSHValidarCompra = async function (id) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s || s.estatus !== "por_validar") return;
+        if (!opsSHPuedeValidar()) { alert("Solo Gerencia de Operaciones puede validar compras en campo."); return; }
+        const fx = k => (s.fotos || []).filter(x => x.etiqueta === k).length;
+        if (!fx("vieja") || !fx("nueva") || !fx("ticket")) { if (!confirm("Faltan fotos (vieja, nueva o ticket). ¿Validar de todos modos?")) return; }
+        let vieja = s.herramientaAnteriorId ? cacheHerr.find(h => h.id === s.herramientaAnteriorId) : null;
+        if (!vieja) vieja = await opsSHElegirVieja({ ...s, tipo: "reemplazo" });
+        const nota = prompt(`Validar compra en campo de ${s.tecnicoNombre}:\n\nNueva: ${s.descripcion}${s.caracteristicas ? " — " + s.caracteristicas : ""}\nCostó $${Number(s.monto || 0).toFixed(2)} en ${s.proveedor || "—"} (${OPS_SH_PAGO[s.formaPago] || s.formaPago || "—"})\nSe da de baja: ${vieja ? (vieja.descripcion || vieja.id) + " · " + (vieja.folio || vieja.id) : "ninguna (no está registrada)"}\n\nNota (opcional). Aceptar = validar:`, "");
+        if (nota === null) return;
+        try {
+            const tec = cacheTec.find(t => t.id === s.tecnicoId);
+            const ahora = new Date().toISOString(), por = opsNombreActual();
+            // 1) Baja de la vieja
+            if (vieja && vieja.estado !== "baja") {
+                await opsSbHerrActualizar(vieja.id, { estado: "baja", tecnicoActualId: null, fechaAsignacion: null, sustituidaPorSolicitud: id });
+                await opsRegistrarMovimiento({ herramientaId: vieja.id, tipo: "baja", tecnicoAnteriorId: vieja.tecnicoActualId || s.tecnicoId || null, motivo: "Sustituida por compra en campo", observaciones: `Dañada en servicio. La reemplazó una compra en campo de ${s.tecnicoNombre} (${s.proveedor || ""}, $${Number(s.monto || 0).toFixed(2)}). ${nota || ""}`.trim() });
+            }
+            // 2) Alta de la nueva, directo al almacén personal del técnico
+            let fotoNueva = null; const fn = (s.fotos || []).find(x => x.etiqueta === "nueva");
+            if (fn) { try { fotoNueva = await opsFotoADataUrl(fn); } catch (e) {} }
+            const folio = await opsSiguienteFolioHerramienta(null);
+            await opsSbHerrGuardar(folio, {
+                almacenId: null, folio, descripcion: s.descripcion, marca: null, modelo: s.caracteristicas || null, categoria: vieja ? vieja.categoria || null : null,
+                departamento: "Operaciones", plaza: (tec && tec.plaza) || (vieja && vieja.plaza) || "Chihuahua", condicion: "Nueva", fotoBase64: fotoNueva,
+                estado: s.tecnicoId ? "asignada" : "disponible", ubicacionActual: UBICACIONES[0], tecnicoActualId: s.tecnicoId || null, fechaAsignacion: s.tecnicoId ? opsHoy() : null,
+                firmaEntrega: null, firmaRecepcion: null, folioLegado: null, observaciones: `Compra en campo (${s.proveedor || ""}, $${Number(s.monto || 0).toFixed(2)}).`,
+                fechaAlta: opsHoy(), sourceSystem: "compra_campo", syncStatus: "no_sincronizado",
+                compraCampo: { solicitudId: id, monto: s.monto || 0, proveedor: s.proveedor || null, formaPago: s.formaPago || null, ticket: (s.fotos || []).filter(x => x.etiqueta === "ticket"), sustituyeA: vieja ? vieja.id : null, validadoPor: por, validadoEn: ahora },
+                sustituyeA: vieja ? vieja.id : null,
+            });
+            await opsRegistrarMovimiento({ herramientaId: folio, tipo: "alta", ubicacionNueva: UBICACIONES[0], tecnicoNuevoId: null, motivo: "Compra en campo", observaciones: `Comprada por ${s.tecnicoNombre} en ${s.proveedor || ""}. ${vieja ? "Sustituye a " + (vieja.folio || vieja.id) + "." : ""}` });
+            if (s.tecnicoId) await opsRegistrarMovimiento({ herramientaId: folio, tipo: "asignacion", tecnicoAnteriorId: null, tecnicoNuevoId: s.tecnicoId, ubicacionNueva: UBICACIONES[0], motivo: "Compra en campo", observaciones: "La compró el mismo técnico; ya la tiene en su poder." });
+            if (vieja) { try { await opsSbHerrActualizar(vieja.id, { sustituidaPor: folio }); } catch (e) {} }
+            // 3) Cierra la solicitud
+            await opsTDActualizar(COL_SOL_HERR, id, { estatus: "validada", herramientaNuevaFolio: folio, herramientaAnteriorId: vieja ? vieja.id : (s.herramientaAnteriorId || null), validadoPor: por, validadoEn: ahora, decisionNota: nota || null }, "validada", `Baja ${vieja ? vieja.folio || vieja.id : "—"} · alta ${folio}. ${nota || ""}`.trim());
+            // 4) Avisos
+            opsTDAvisarTecnico(s.tecnicoCorreo, `Se validó tu compra en campo: ${s.descripcion} ya está en tu almacén con el folio ${folio}.${vieja ? " La herramienta " + (vieja.folio || vieja.id) + " quedó dada de baja; entrégala en Almacén." : ""}`);
+            if ((s.formaPago === "propio" || s.formaPago === "viaticos") && window.tcNotificar) {
+                window.tcNotificar({ tipo: "ops_compra_campo", para: "contabilidad@tecnocontrol.com.mx", modulo: "Operaciones",
+                    mensaje: `${s.formaPago === "propio" ? "Reembolso pendiente" : "Comprobación de viáticos"}: ${s.tecnicoNombre} compró en campo ${s.descripcion} por $${Number(s.monto || 0).toFixed(2)} en ${s.proveedor || ""}. Validado por ${por}. Ticket en Operaciones → Pedidos de herramienta (folio ${folio}).` }).catch(() => {});
+            }
+            opsRenderSolHerr();
+            alert(`Listo. ${vieja ? "Baja: " + (vieja.folio || vieja.id) + "\n" : ""}Alta en el almacén de ${s.tecnicoNombre}: ${folio}`);
+        } catch (e) { alert("No se pudo validar: " + (e.message || e)); }
     };
 
     // ───────────── 3) PENDIENTES Y CAUSAS ─────────────
