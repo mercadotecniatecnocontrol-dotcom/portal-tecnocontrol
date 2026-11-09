@@ -107,9 +107,10 @@
       (prev.data||[]).forEach(r=>{ligas[r.id_vehiculo_oxxo]=r.eco;});
       filas.forEach(r=>{const e=normEco(r['NúmeroEconómico']);if(e&&r.IdVehiculo!=null)ligas[String(r.IdVehiculo)]=e;});
       const porPlaca={}; st.veh.forEach(v=>{if(v.placas)porPlaca[normPlaca(v.placas)]=normEco(v.eco);});
-      const regs=[]; let sinEco=0;
+      const regs=[]; let sinEco=0; const vistos={};
       filas.forEach(r=>{
-        const despacho=r.Despacho!=null?String(r.Despacho).replace(/\.0+$/,'').trim():'';
+        const despacho=r.Despacho!=null?((r.CR?String(r.CR).trim()+'-':'')+String(r.Despacho).replace(/\.0+$/,'').trim()):'';
+        if(!despacho||vistos[despacho])return; vistos[despacho]=1;
         const f=serialAFecha(r.FechaDespacho); const litros=num(r.Cantidad), importe=num(r.Monto);
         if(!despacho||!f||litros==null||importe==null)return;
         const idv=r.IdVehiculo!=null?String(r.IdVehiculo).replace(/\.0+$/,''):null;
