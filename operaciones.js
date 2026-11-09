@@ -1951,6 +1951,59 @@
         for (let i = 1; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); doc.text("Expediente " + (h.folio || "") + " · página " + i + " de " + doc.getNumberOfPages(), M, 772); }
         doc.save("Expediente_" + (h.folio || herramientaId) + ".pdf");
     };
+    // ── Firma de QUIEN ENTREGA (9-nov-2026, Glen) ──
+    // Al asignar/traspasar una herramienta desde el portal se pide la firma
+    // autógrafa de quien la entrega; queda en la pieza (firmaEntrega) y sale
+    // en la responsiva PDF con nombre, fecha y hora.
+    function opsPedirFirmaEntrega(detalle) {
+        return new Promise(resolve => {
+            const prev = document.getElementById("ops-firma-ent-wrap"); if (prev) prev.remove();
+            const wrap = document.createElement("div");
+            wrap.id = "ops-firma-ent-wrap";
+            wrap.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;";
+            wrap.innerHTML = `
+            <div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.3);font-family:inherit;">
+                <div style="font-size:15px;font-weight:800;color:#1D2E73;margin-bottom:2px;">Firma de quien entrega</div>
+                <div style="font-size:12px;color:#64748B;margin-bottom:12px;">${opsEsc(detalle || "")}</div>
+                <label style="font-size:11px;font-weight:700;color:#334155;">Nombre de quien entrega</label>
+                <input id="ops-firma-ent-nom" value="${opsEsc(opsNombreActual() || "")}" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
+                <div style="border:1.5px solid #cbd5e1;border-radius:10px;background:#fff;"><canvas id="ops-firma-ent-cv" width="400" height="150" style="display:block;width:100%;height:150px;touch-action:none;border-radius:10px;cursor:crosshair;"></canvas></div>
+                <button type="button" id="ops-firma-ent-limpiar" style="background:none;border:none;color:#64748B;font-size:11.5px;font-weight:700;padding:4px 0;cursor:pointer;">Borrar firma</button>
+                <div id="ops-firma-ent-msg" style="font-size:12px;color:#B91C1C;font-weight:700;min-height:16px;"></div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button type="button" id="ops-firma-ent-cancel" style="flex:1;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">Cancelar</button>
+                    <button type="button" id="ops-firma-ent-ok" style="flex:1;background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;">Firmar y continuar</button>
+                </div>
+            </div>`;
+            document.body.appendChild(wrap);
+            const cv = wrap.querySelector("#ops-firma-ent-cv"), ctx = cv.getContext("2d");
+            ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#0F172A";
+            let dib = false, trazo = false;
+            const pos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+            cv.addEventListener("pointerdown", e => { dib = true; cv.setPointerCapture(e.pointerId); const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+            cv.addEventListener("pointermove", e => { if (!dib) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); trazo = true; });
+            const fin = () => { dib = false; };
+            cv.addEventListener("pointerup", fin); cv.addEventListener("pointerleave", fin);
+            wrap.querySelector("#ops-firma-ent-limpiar").onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); trazo = false; };
+            wrap.querySelector("#ops-firma-ent-cancel").onclick = () => { wrap.remove(); resolve(null); };
+            wrap.querySelector("#ops-firma-ent-ok").onclick = () => {
+                const nombre = (wrap.querySelector("#ops-firma-ent-nom").value || "").trim();
+                const msg = wrap.querySelector("#ops-firma-ent-msg");
+                if (!nombre) { msg.textContent = "Escribe el nombre de quien entrega."; return; }
+                if (!trazo) { msg.textContent = "Falta la firma."; return; }
+                const img = cv.toDataURL("image/png");
+                wrap.remove();
+                resolve({ img, nombre, en: new Date().toISOString(), email: opsUsuarioActual() || null, via: "portal" });
+            };
+        });
+    }
+    window.opsPedirFirmaEntrega = opsPedirFirmaEntrega;
+    function opsFmtFirmaFecha(iso) {
+        const d = new Date(iso || "");
+        if (isNaN(d.getTime())) return String(iso || "").slice(0, 16).replace("T", " ");
+        return d.toLocaleString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+
     function opsGenerarResponsivaPDF(herramientaId, silencioso) {
         if (!window.jspdf || !window.jspdf.jsPDF) {
             console.error("[operaciones.js] jsPDF no está cargado.");
@@ -2045,7 +2098,14 @@
         if (fr && fr.img && /^data:image/.test(fr.img)) {
             try { doc.addImage(fr.img, /png/.test(fr.img.slice(0, 30)) ? "PNG" : "JPEG", M + colW + 20 + colW / 2 - 75, y - 50, 150, 47); } catch (e) {}
             doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8);
-            doc.text("Firmó de recibido en la app · " + String(fr.en || "").slice(0, 16).replace("T", " ") + (fr.condicion ? " · " + fr.condicion : ""), M + colW + 20 + colW / 2, y + 34, { align: "center" });
+            doc.text("Firmó de recibido en la app · " + opsFmtFirmaFecha(fr.en) + (fr.condicion ? " · " + fr.condicion : ""), M + colW + 20 + colW / 2, y + 34, { align: "center" });
+        }
+        // Firma de quien entrega (portal o app) — 9-nov-2026
+        const fe = h.firmaEntrega;
+        if (fe && fe.img && /^data:image/.test(fe.img)) {
+            try { doc.addImage(fe.img, /png/.test(fe.img.slice(0, 30)) ? "PNG" : "JPEG", M + colW / 2 - 75, y - 50, 150, 47); } catch (e) {}
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(6.8);
+            doc.text("Firmó de entregado " + (fe.via === "app" ? "en la app" : "en el portal") + " · " + opsFmtFirmaFecha(fe.en), M + colW / 2, y + 34, { align: "center" });
         }
         doc.setDrawColor(...PDF_GRIS_LINEA);
         doc.line(M, y, M + colW, y);
@@ -2056,7 +2116,7 @@
         doc.text("QUIEN RECIBE", M + colW + 20 + colW / 2, y, { align: "center" });
         y += 12;
         doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(7.6);
-        doc.text("Responsable de Operaciones / Almacén", M + colW / 2, y, { align: "center" });
+        doc.text((fe && fe.nombre ? fe.nombre + " — Nombre y firma" : "Responsable de Operaciones / Almacén"), M + colW / 2, y, { align: "center" });
         doc.text(t.nombre + " — Nombre y firma", M + colW + 20 + colW / 2, y, { align: "center" });
 
         doc.setTextColor(...PDF_GRIS); doc.setFontSize(7.3);
@@ -3283,14 +3343,16 @@
         });
         if (!movibles.length) { alert("Ninguna pieza se puede mover:\n" + saltadas.join("\n")); return; }
         const conTec = movibles.filter(h => h.tecnicoActualId);
-        if (aTec && conTec.length && (!receptor || !receptor.correo)) { alert(`${destNombre} no tiene correo en su ficha de Técnicos: no puede aceptar traspasos de piezas que hoy tiene otro técnico. Captúralo primero.`); return; }
-        if (!confirm(`¿Pasar ${movibles.length} pieza(s) a ${destNombre}?` + (aTec && conTec.length ? `\n\n${conTec.length} las tiene otro técnico: quedarán como traspaso pendiente hasta que ${destNombre} las acepte en Flotilla.` : "") + (saltadas.length ? `\n\nSe saltan ${saltadas.length}: ${saltadas.join(", ")}` : ""))) return;
+        if (aTec && (!receptor || !receptor.correo)) { alert(`${destNombre} no tiene correo en su ficha de Técnicos: no puede aceptar traspasos de piezas que hoy tiene otro técnico. Captúralo primero.`); return; }
+        if (!confirm(`¿Pasar ${movibles.length} pieza(s) a ${destNombre}?` + (aTec ? `\n\nQuedarán como traspaso pendiente hasta que ${destNombre} las acepte y firme en Flotilla.` : "") + (saltadas.length ? `\n\nSe saltan ${saltadas.length}: ${saltadas.join(", ")}` : ""))) return;
+        let feMas = null;
+        if (aTec) { feMas = await opsPedirFirmaEntrega(`${movibles.length} pieza(s) → ${destNombre}`); if (!feMas) return; }
         const btn = document.getElementById("ops-mas-btn"); if (btn) { btn.disabled = true; btn.textContent = "Traspasando…"; }
         const { db, fs } = await opsGetFB();
         const nota = obs ? "Traspaso masivo · " + obs : "Traspaso masivo";
         for (const h of movibles) {
             try {
-                if (aTec && h.tecnicoActualId) {
+                if (aTec) {
                     // De técnico a técnico: traspaso que el receptor acepta (igual que una sola pieza).
                     const entrega = cacheTec.find(t => t.id === h.tecnicoActualId);
                     const now = new Date(), vence = new Date(now.getTime() + 86400000);
@@ -3298,15 +3360,16 @@
                         herramientaId: h.id, folio: h.folio || "", descripcion: h.descripcion || "",
                         entregaTecnicoId: h.tecnicoActualId, entregaEmail: entrega && entrega.correo ? entrega.correo : null, entregaNombre: entrega ? entrega.nombre : "Almacén",
                         receptorTecnicoId: aTec, receptorEmail: receptor.correo, receptorNombre: receptor.nombre,
-                        almacenOrigenId: opsAlmacenIdDe(h.tecnicoActualId), almacenDestinoId: opsAlmacenIdDe(aTec),
+                        almacenOrigenId: opsAlmacenIdDe(h), almacenDestinoId: opsAlmacenIdDe(aTec),
                         comentario: nota, evidenciaBase64: null, estatus: "Pendiente recepción",
                         creadoEn: now.toISOString(), venceEn: vence.toISOString(),
                         origen: "operaciones_masivo", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+                        firmaEntrega: feMas,
                     });
                     pendientes.push(h.folio);
                 } else if (aTec) {
                     // Del almacén a una persona: asignación directa.
-                    const update = { estado: "asignada", tecnicoActualId: aTec, fechaAsignacion: opsHoy(), observaciones: obs || h.observaciones || null };
+                    const update = { estado: "asignada", tecnicoActualId: aTec, fechaAsignacion: opsHoy(), observaciones: obs || h.observaciones || null, firmaEntrega: feMas, firmaRecepcion: null };
                     await opsSbHerrActualizar(h.id, update);
                     await opsRegistrarMovimiento({ herramientaId: h.id, tipo: "asignacion", tecnicoAnteriorId: null, tecnicoNuevoId: aTec, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual, observaciones: nota });
                     ok.push(h.folio);
@@ -3980,13 +4043,20 @@
                 requiereAutorizacion, tecnicoDestinoId, requisicion: req,
                 fechaAlta: opsHoy(), capturadoPor: (typeof opsUsuarioActual === "function" ? opsUsuarioActual() : null),
             };
+            if (tecnicoDestinoId) {
+                const tdn = cacheTec.find(t => t.id === tecnicoDestinoId);
+                if (!tdn || !tdn.correo) { alert(`${tdn ? tdn.nombre : "Ese técnico"} no tiene correo en su ficha de Técnicos: no puede aceptar la pieza en Flotilla. Captúralo primero.`); throw new Error("__cancel"); }
+                const fe = await opsPedirFirmaEntrega(`${descripcion} → ${tdn ? tdn.nombre : "técnico"}`);
+                if (!fe) throw new Error("__cancel");
+                pieza.firmaEntrega = fe;
+            }
 
             try {
                 const folio = await opsCrearPiezaNueva(pieza);
                 try { await subirDocsPieza(folio, null); } catch (e) { alert("La pieza " + folio + " se guardó, pero no se pudieron subir sus documentos: " + (e.message || e) + ". Súbelos desde su ficha."); }
                 if (tecnicoDestinoId) {
-                    try { opsGenerarResponsivaPDF(folio, true); }
-                    catch (err) { console.error("[operaciones.js] la pieza se guardó, pero falló la responsiva PDF:", err); }
+                    const tdn2 = cacheTec.find(t => t.id === tecnicoDestinoId);
+                    alert(`Pieza ${folio} guardada. Queda pendiente de que ${tdn2 ? tdn2.nombre : "el técnico"} la acepte y firme en Flotilla; después descarga la responsiva desde su ficha.`);
                 }
             } catch (err) {
                 if (!opsEsErrorDeCuota(err)) throw err;
@@ -4020,10 +4090,11 @@
             folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
             departamento: p.departamento, plaza: p.plaza || "Chihuahua", condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
             fotoBase64: p.fotoBase64 || null,
-            estado: p.tecnicoDestinoId ? "asignada" : "disponible",
+            estado: "disponible",
             ubicacionActual: almAlta ? almAlta.nombre : UBICACIONES[0],
-            tecnicoActualId: p.tecnicoDestinoId || null,
-            fechaAsignacion: p.tecnicoDestinoId ? opsHoy() : null,
+            tecnicoActualId: null,
+            fechaAsignacion: null,
+            firmaEntrega: null, firmaRecepcion: null,
             folioLegado: null, observaciones: null,
             fechaAlta: p.fechaAlta || opsHoy(),
             origenRequisicionId: p.requisicion ? p.requisicion.id : null,
@@ -4033,9 +4104,33 @@
         });
         await opsRegistrarMovimiento({
             herramientaId: folio, tipo: "alta", ubicacionNueva: almAlta ? almAlta.nombre : UBICACIONES[0],
-            tecnicoNuevoId: p.tecnicoDestinoId || null,
+            tecnicoNuevoId: null,
             observaciones: p.requisicion ? `Origen: requisición de compra ${p.requisicion.folio}` : null,
         });
+        // 9-nov-2026: si va directo a un técnico, se crea el traspaso que él acepta y firma en Flotilla.
+        if (p.tecnicoDestinoId) {
+            try {
+                const receptor = cacheTec.find(t => t.id === p.tecnicoDestinoId);
+                const now = new Date(), vence = new Date(now.getTime() + 86400000);
+                const venceTxt = vence.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                const ref = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
+                    herramientaId: folio, folio, descripcion: p.descripcion || "",
+                    entregaTecnicoId: null, entregaEmail: null, entregaNombre: almAlta ? almAlta.nombre : "Almacén",
+                    receptorTecnicoId: p.tecnicoDestinoId, receptorEmail: receptor && receptor.correo ? receptor.correo : null, receptorNombre: receptor ? receptor.nombre : "",
+                    almacenOrigenId: almAlta ? almAlta.id : ALMACEN_GENERAL_ID, almacenDestinoId: opsAlmacenIdDe(p.tecnicoDestinoId),
+                    comentario: "Alta de pieza nueva", evidenciaBase64: null, estatus: "Pendiente recepción",
+                    creadoEn: now.toISOString(), venceEn: vence.toISOString(),
+                    origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+                    firmaEntrega: p.firmaEntrega || null,
+                });
+                if (receptor && receptor.correo) {
+                    await window.tcNotificar2(fs, db, { tipo: "herramienta_traspaso_iniciada", traspasoId: ref.id, para: receptor.correo,
+                        mensaje: `${opsNombreActual()} te está entregando la herramienta ${folio} (${p.descripcion || ""}). Acéptala y fírmala antes del ${venceTxt} desde Flotilla.`,
+                        leido: false, creadaEn: now.toISOString() }).catch(() => {});
+                }
+                try { if (typeof opsCargarTraspasosPendientes === "function") opsCargarTraspasosPendientes(); } catch (e) {}
+            } catch (err) { console.error("[operaciones.js] la pieza se guardó, pero no se creó el traspaso al técnico:", err); alert("La pieza " + folio + " se guardó en almacén, pero no se pudo enviar al técnico. Asígnala desde su ficha."); }
+        }
         // Cierra el círculo del lado de Compras: la requisición queda marcada
         // con la pieza (folio) que resultó de ella y a quién se le entregó.
         // Solo escribe campos NUEVOS — no toca nada que ya use compras.js.
@@ -4056,7 +4151,7 @@
                 console.error("[operaciones.js] no se pudo actualizar la requisición de origen:", err);
             }
         }
-        if (p.tecnicoDestinoId && !cacheHerr.some(x => x.id === folio)) {
+        if (false && p.tecnicoDestinoId && !cacheHerr.some(x => x.id === folio)) {
             // opsGenerarResponsivaPDF lee de cacheHerr, que aún no tiene esta pieza
             // recién creada (el onSnapshot tarda unos ms) — se agrega en caliente.
             cacheHerr.push({
@@ -5128,7 +5223,8 @@
         // traspaso que el receptor debe aceptar desde Flotilla, igual que un
         // vehículo — así ninguna herramienta "brinca" de técnico sin que el
         // que la recibe lo confirme.
-        if (tipo === "transferencia") {
+        // 9-nov-2026 (Glen): la asignación desde almacén también la acepta y firma el técnico en la app.
+        if (tipo === "transferencia" || tipo === "asignacion") {
             return opsIniciarTraspasoDesdeOperaciones(herramientaId, obs);
         }
         if (tipo === "prestamo") return opsRegistrarPrestamo(herramientaId, obs);
@@ -5149,8 +5245,13 @@
             if (tipo === "asignacion") {
                 tecnicoNuevoId = document.getElementById("ops-in-tecnico").value;
                 if (!tecnicoNuevoId) { alert("Selecciona un técnico"); if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
+                const tdn = cacheTec.find(t => t.id === tecnicoNuevoId);
+                const fe = await opsPedirFirmaEntrega(`${h.folio || ""} ${h.descripcion || ""} → ${tdn ? tdn.nombre : "técnico"}`);
+                if (!fe) { if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
                 update.tecnicoActualId = tecnicoNuevoId;
                 update.fechaAsignacion = opsHoy();
+                update.firmaEntrega = fe;
+                update.firmaRecepcion = null;
             } else if (tipo === "devolucion" || tipo === "perdida" || tipo === "danio") {
                 update.tecnicoActualId = null;
                 update.fechaAsignacion = null;
@@ -5220,6 +5321,8 @@
             return;
         }
 
+        const feTr = await opsPedirFirmaEntrega(`${h.folio || ""} ${h.descripcion || ""} → ${receptor.nombre}`);
+        if (!feTr) return;
         if (btn) { btn.disabled = true; btn.textContent = "Enviando..."; }
         try {
             const { db, fs } = await opsGetFB();
@@ -5235,13 +5338,14 @@
                 receptorTecnicoId: tecnicoNuevoId,
                 receptorEmail: receptor.correo,
                 receptorNombre: receptor.nombre,
-                almacenOrigenId: opsAlmacenIdDe(h.tecnicoActualId),
+                almacenOrigenId: opsAlmacenIdDe(h),
                 almacenDestinoId: opsAlmacenIdDe(tecnicoNuevoId),
                 comentario: comentario || null,
                 evidenciaBase64: opsTraspasoFotoBase64 || null,
                 estatus: "Pendiente recepción",
                 creadoEn: now.toISOString(), venceEn: venceEn.toISOString(),
                 origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
+                firmaEntrega: feTr,
             });
 
             await window.tcNotificar2(fs, db, {

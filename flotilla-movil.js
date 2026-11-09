@@ -4682,17 +4682,26 @@ function herrRenderPaso3(){
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.receptorNombre} (${herrState.receptorEmail})</div>
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
         ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo como tuya.
-      </div>`}
+      </div>
+      <div style="font-size:12px;font-weight:800;color:#334155;margin:14px 0 4px">Tu firma de entrega *</div>
+      <div style="border:1.5px solid #CBD5E1;border-radius:10px;background:#fff"><canvas id="herr-ent-firma" width="320" height="140" style="display:block;width:100%;height:140px;touch-action:none;border-radius:10px"></canvas></div>
+      <button type="button" onclick="limpiarFirma('herr-ent-firma')" style="background:none;border:none;color:#64748B;font-size:11.5px;font-weight:700;padding:4px 0;cursor:pointer;font-family:inherit">Borrar firma</button>`}
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="fm-btn ghost" style="flex:1" onclick="herrIrAPaso2()">Atrás</button>
       <button id="herr-btn-confirmar" class="fm-btn primary" style="flex:1" onclick="herrEnviarTraspaso()">Enviar traspaso</button>
     </div>
   `);
+  if(herrState.destTipo!=='almacen') setTimeout(function(){ initFirmaCanvas('herr-ent-firma'); },120);
 }
 
 window.herrEnviarTraspaso=async function(){
   const btn=document.getElementById('herr-btn-confirmar');
+  let firmaEnt=null;
+  if(herrState.destTipo!=='almacen'){
+    if(!firmaTieneTrazo('herr-ent-firma')){ toast('Firma de entrega para enviar el traspaso','err'); return; }
+    firmaEnt=firmaExportar('herr-ent-firma');
+  }
   if(btn){btn.disabled=true;btn.textContent='Enviando...';}
   try{
     const h=herrState.piezaSel;
@@ -4750,6 +4759,7 @@ window.herrEnviarTraspaso=async function(){
       estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
       origen:'flotilla_movil',
+      firmaEntrega:firmaEnt?{ img:firmaEnt, nombre:userName, en:now.toISOString(), email:userEmail, via:'app' }:null,
     };
     const ref=await opsDb().collection(C.OPS_TRASP).add(docObj);
 
@@ -4880,7 +4890,8 @@ window.herrAceptarTraspasoConfirmar=async function(){
 
     const RDf=window.__herrRecDatos||{};
     await herrRef.update({ tecnicoActualId:receptorId, fechaAsignacion:now.slice(0,10), estado:'asignada',
-      ...(RDf.firma?{ firmaRecepcion:{ img:RDf.firma, nombre:userName, en:now, traspasoId:traspasoId, condicion:RDf.condTxt||null } }:{}) });
+      firmaEntrega:t.firmaEntrega||null,
+      firmaRecepcion:RDf.firma?{ img:RDf.firma, nombre:userName, en:now, traspasoId:traspasoId, condicion:RDf.condTxt||null }:null });
     const partesObs=[];
     partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
