@@ -55,8 +55,50 @@ function sumar(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getD
 function fCorta(iso) { if (!iso) return '—'; const d = new Date(String(iso).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? iso : d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }); }
 function fLarga(iso) { if (!iso) return ''; const d = new Date(String(iso).slice(0, 10) + 'T12:00:00'); return isNaN(d) ? iso : d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).toUpperCase(); }
 function fHora(iso) { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-// Días hábiles lunes a sábado (domingo no cuenta).
-function diasHabiles(ini, fin) { if (!ini || !fin || fin < ini) return 0; let n = 0, d = ini; while (d <= fin) { if (new Date(d + 'T12:00:00').getDay() !== 0) n++; d = sumar(d, 1); } return n; }
+// Días de descanso obligatorio (Ley Federal del Trabajo, art. 74). Se calculan solos para cualquier año.
+// Los que no tienen fecha fija (días de elecciones, etc.) se agregan en «Reglas y avisos» → cfg.festivosExtra.
+const _fest = {};
+function festivosLey(y) {
+  if (_fest[y]) return _fest[y];
+  const p = n => String(n).padStart(2, '0'), f = (m, d) => y + '-' + p(m) + '-' + p(d);
+  const lunes = (m, n) => f(m, 1 + ((8 - new Date(y, m - 1, 1, 12).getDay()) % 7) + 7 * (n - 1));
+  const r = {};
+  r[f(1, 1)] = 'Año Nuevo';
+  r[lunes(2, 1)] = 'Día de la Constitución';
+  r[lunes(3, 3)] = 'Natalicio de Benito Juárez';
+  r[f(5, 1)] = 'Día del Trabajo';
+  r[f(9, 16)] = 'Día de la Independencia';
+  if (y >= 2024 && (y - 2024) % 6 === 0) r[f(10, 1)] = 'Transmisión del Poder Ejecutivo';
+  r[lunes(11, 3)] = 'Día de la Revolución';
+  r[f(12, 25)] = 'Navidad';
+  return (_fest[y] = r);
+}
+function festivo(iso) {
+  const l = festivosLey(Number(String(iso).slice(0, 4)));
+  if (l[iso]) return l[iso];
+  const x = (cfg.festivosExtra || []).find(e => e.fecha === iso);
+  return x ? (x.nombre || 'Día de descanso') : '';
+}
+// Días del periodo que NO cuentan: domingos y festivos de ley.
+function diasNoCuentan(ini, fin) {
+  const out = []; if (!ini || !fin || fin < ini) return out;
+  let d = ini, g = 0;
+  while (d <= fin && g++ < 400) { const fe = festivo(d), dom = new Date(d + 'T12:00:00').getDay() === 0; if (fe || dom) out.push({ fecha: d, motivo: fe || 'Domingo', festivo: !!fe }); d = sumar(d, 1); }
+  return out;
+}
+// Días hábiles: lunes a sábado, sin domingos ni días festivos de ley.
+function diasHabiles(ini, fin) { if (!ini || !fin || fin < ini) return 0; let n = 0, d = ini, g = 0; while (d <= fin && g++ < 400) { if (new Date(d + 'T12:00:00').getDay() !== 0 && !festivo(d)) n++; d = sumar(d, 1); } return n; }
+// Días que se muestran: siempre recalculados (las solicitudes viejas se guardaron sin descontar festivos).
+function diasDe(s) { return s && s.fecha_inicio && s.fecha_fin ? diasHabiles(s.fecha_inicio, s.fecha_fin) : (s && s.dias) || 0; }
+function textoNoCuentan(l) { return l.map(x => x.festivo ? esc(x.motivo) + ' (' + fCorta(x.fecha) + ')' : fCorta(x.fecha)).join(', '); }
+// Aviso visible cuando la solicitud abarca domingos o festivos.
+function avisoNoCuentan(ini, fin, compacto) {
+  const l = diasNoCuentan(ini, fin); if (!l.length) return '';
+  const fe = l.filter(x => x.festivo).length, dom = l.length - fe;
+  const titulo = 'Incluye ' + [dom ? dom + ' domingo(s)' : '', fe ? fe + ' día(s) festivo(s) de ley' : ''].filter(Boolean).join(' y ') + ': no se cuentan';
+  if (compacto) return '<div style="font-size:11px;color:#6d28d9;font-weight:700;margin-top:4px">' + titulo + ' — ' + textoNoCuentan(l) + '</div>';
+  return '<div style="background:#f5f3ff;border:1.5px solid #ddd6fe;color:#5b21b6;border-radius:10px;padding:8px 11px;font-size:12px;line-height:1.4;margin-top:8px"><b>' + titulo + '.</b><br>' + textoNoCuentan(l) + '</div>';
+}
 function chip(txt, c, bg) { return '<span style="display:inline-block;background:' + bg + ';color:' + c + ';font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap">' + esc(txt) + '</span>'; }
 function chipEst(e) { const m = EST[e] || ['#334155', '#f1f5f9']; return chip(e, m[0], m[1]); }
 function chipTipo(t) { const m = TIPOS[t] || { t: t, c: '#334155', bg: '#f1f5f9' }; return chip(m.t, m.c, m.bg); }
@@ -251,7 +293,7 @@ function imprimir(s) {
     '<tr><td><span class="l">Departamento</span>' + esc(s.departamento || '') + '</td><td><span class="l">Jefe inmediato</span>' + esc(s.jefe || '') + '</td></tr>' +
     '<tr><td><span class="l">Puesto</span>' + esc(s.puesto || '') + '</td><td><span class="l">Plaza / área</span>' + esc(s.plaza || '') + '</td></tr></table>' +
     '<table><tr><th colspan="2">Días solicitados</th></tr><tr><td><span class="l">Fecha de inicio</span>' + fLarga(s.fecha_inicio) + '</td><td><span class="l">Fecha de término</span>' + fLarga(s.fecha_fin) + '</td></tr>' +
-    '<tr><td colspan="2"><span class="l">No. de días / No. de horas</span>' + esc(s.dias || '') + ' día(s)' + (s.horas ? ' · ' + esc(s.horas) + ' hora(s)' : '') + '</td></tr>' +
+    '<tr><td colspan="2"><span class="l">No. de días / No. de horas</span>' + diasDe(s) + ' día(s) hábiles' + (s.horas ? ' · ' + esc(s.horas) + ' hora(s)' : '') + (diasNoCuentan(s.fecha_inicio, s.fecha_fin).length ? '<br><span class="l">No se cuentan (domingos y festivos de ley): ' + textoNoCuentan(diasNoCuentan(s.fecha_inicio, s.fecha_fin)) + '</span>' : '') + '</td></tr>' +
     '<tr><td><span class="b">' + x(s.tipo === 'ausencia' || s.tipo === 'pago_horas') + '</span>Ausencia &nbsp; <span class="b">' + x(s.goce === 'a_cuenta_vacaciones' || s.tipo === 'vacaciones') + '</span>A cuenta de vacaciones &nbsp; <span class="b">' + x(s.goce === 'pago_horas' || s.tipo === 'pago_horas') + '</span>Pago con horas</td>' +
     '<td><span class="b">' + x(s.tipo === 'permiso' || s.tipo === 'incapacidad') + '</span>Permiso &nbsp; <span class="b">' + x(s.goce === 'con_goce') + '</span>Con goce &nbsp; <span class="b">' + x(s.goce === 'sin_goce') + '</span>Sin goce</td></tr></table>' +
     '<table><tr><th>Motivo del permiso' + (s.tipo === 'vacaciones' ? ' (vacaciones)' : s.tipo === 'incapacidad' ? ' (incapacidad)' : '') + '</th></tr><tr><td style="min-height:40px">' + esc(s.motivo || '') + (s.urgente_motivo ? '<br><b>Urgente:</b> ' + esc(s.urgente_motivo) : '') + '</td></tr></table>' +
@@ -286,7 +328,7 @@ function mRender() {
   const pasadas = M.lista.filter(s => !(s.estatus !== 'Cancelada' && s.fecha_fin >= hoy())).slice(0, 15);
   const card = s => '<div style="background:#fff;border:1.5px solid ' + (s.estatus === 'Rechazada' ? '#FECACA' : '#E2E8F0') + ';border-radius:14px;padding:12px 13px;margin-bottom:10px">' +
     '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-size:13.5px;font-weight:900;color:#0A1628">' + esc(TIPOS[s.tipo] ? TIPOS[s.tipo].t : s.tipo) + (s.goce ? ' · ' + esc(GOCE_TXT[s.goce] || s.goce) : '') + '</div>' +
-    '<div style="font-size:12px;color:#475569">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + esc(s.dias || '') + ' día(s)' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '') + '</div>' +
+    '<div style="font-size:12px;color:#475569">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + diasDe(s) + ' día(s)' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '') + '</div>' + avisoNoCuentan(s.fecha_inicio, s.fecha_fin, true) +
     '<div style="font-size:10.5px;color:#94A3B8">' + esc(s.folio || '') + (s.urgente ? ' · urgente' : '') + '</div></div>' + chipEst(s.estatus) + '</div>' +
     (s.resuelto_nombre && s.estatus !== 'Pendiente' ? '<div style="font-size:11.5px;color:#475569;margin-top:6px">' + esc(s.estatus) + ' por <b>' + esc(s.resuelto_nombre) + '</b> · ' + fHora(s.resuelto_en) + (s.comentario_resolucion ? '<br>"' + esc(s.comentario_resolucion) + '"' : '') + '</div>' : '') +
     (s.estatus === 'Preautorizada' ? '<div style="font-size:11.5px;color:#1d4ed8;margin-top:6px;font-weight:700">Tu jefe ya la preautorizó; falta que RH la acepte.</div>' : '') +
@@ -347,7 +389,7 @@ function mRenderForm() {
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
     '<div>' + lbl('Desde') + '<input type="date" value="' + esc(f.fecha_inicio) + '" onchange="tcPermisos._mSet(\'fecha_inicio\',this.value)" style="' + mEstilo() + '"></div>' +
     '<div>' + lbl('Hasta') + '<input type="date" value="' + esc(f.fecha_fin) + '" min="' + esc(f.fecha_inicio) + '" onchange="tcPermisos._mSet(\'fecha_fin\',this.value)" style="' + mEstilo() + '"></div></div>' +
-    '<div style="font-size:11.5px;color:#475569;margin-top:5px">' + b.dias + ' día(s) hábiles (lunes a sábado)</div>';
+    '<div style="font-size:11.5px;color:#475569;margin-top:5px">' + b.dias + ' día(s) hábiles (lunes a sábado, sin domingos ni festivos de ley)</div>' + avisoNoCuentan(f.fecha_inicio, f.fecha_fin);
   if (f.fecha_inicio === f.fecha_fin && f.tipo !== 'vacaciones' && f.tipo !== 'incapacidad') h += lbl('¿Solo unas horas? (opcional)') + '<input type="number" inputmode="decimal" min="0" max="12" step="0.5" value="' + esc(f.horas) + '" oninput="tcPermisos._mSetSin(\'horas\',this.value)" placeholder="Ej. 3" style="' + mEstilo() + '">';
   h += lbl('Motivo') + '<input type="text" value="' + esc(f.motivo) + '" oninput="tcPermisos._mSetSin(\'motivo\',this.value)" placeholder="Ej. evento personal, trámite, consulta médica" style="' + mEstilo() + '">';
   if (f.tipo === 'ausencia' || f.tipo === 'permiso') h += lbl('¿Cómo lo repones? (opcional)') + '<input type="text" value="' + esc(f.como_repone) + '" oninput="tcPermisos._mSetSin(\'como_repone\',this.value)" placeholder="Ej. con 30 min de comida los días 2, 5 y 6" style="' + mEstilo() + '">';
@@ -428,17 +470,18 @@ function pRender() {
   const dias = []; for (let i = 0; i < 14; i++) dias.push(sumar(H, i));
   const franja = '<div style="display:grid;grid-template-columns:repeat(14,minmax(70px,1fr));gap:4px;overflow-x:auto;padding-bottom:4px">' + dias.map(d => {
     const fuera = P.lista.filter(s => (s.estatus === 'Aprobada' || s.estatus === 'Preautorizada' || s.estatus === 'Pendiente') && s.fecha_inicio <= d && s.fecha_fin >= d && enDepto(s)).sort((a, b) => String(a.colaborador_nombre).localeCompare(String(b.colaborador_nombre), 'es'));
-    const dom = new Date(d + 'T12:00:00').getDay() === 0;
-    return '<div style="background:' + (dom ? '#f8fafc' : '#fff') + ';border:1px solid ' + (d === H ? '#1D2E73' : '#e2e8f0') + ';border-radius:9px;padding:6px;min-height:64px">' +
+    const dom = new Date(d + 'T12:00:00').getDay() === 0, fe = festivo(d);
+    return '<div style="background:' + (fe ? '#f5f3ff' : dom ? '#f8fafc' : '#fff') + ';border:1px solid ' + (d === H ? '#1D2E73' : fe ? '#ddd6fe' : '#e2e8f0') + ';border-radius:9px;padding:6px;min-height:64px">' +
       '<div style="font-size:10.5px;font-weight:700;color:' + (d === H ? '#1D2E73' : '#64748b') + ';margin-bottom:4px">' + fCorta(d) + '</div>' +
+      (fe || dom ? '<div style="font-size:9.5px;font-weight:700;color:' + (fe ? '#6d28d9' : '#94a3b8') + ';margin:-2px 0 4px">' + esc(fe || 'Descanso') + '</div>' : '') +
       fuera.map(s => '<div onclick="tcPermisos._pVer(' + s.id + ')" title="' + esc(s.colaborador_nombre + ' · ' + (TIPOS[s.tipo] || {}).t + ' · ' + s.estatus) + '" style="cursor:pointer;font-size:10px;font-weight:700;padding:2px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:' + (s.estatus === 'Pendiente' ? '#fef3c7' : (TIPOS[s.tipo] || {}).bg) + ';color:' + (s.estatus === 'Pendiente' ? '#92400e' : (TIPOS[s.tipo] || {}).c) + (s.estatus === 'Pendiente' ? ';border:1px dashed #f59e0b' : '') + '">' + esc(String(s.colaborador_nombre || '').split(' ').slice(0, 2).join(' ')) + '</div>').join('') + '</div>';
   }).join('') + '</div>';
   const tarjetaPend = s => {
     const tr = (s.traslapes || []).filter(t => t.tipo !== 'anticipacion' || true);
     return '<div style="background:#fff;border:1.5px solid ' + (s.urgente ? '#fca5a5' : '#e2e8f0') + ';border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="tcPermisos._pVer(' + s.id + ')">' +
       '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:13.5px;font-weight:800;color:#1e293b">' + esc(s.colaborador_nombre) + ' ' + (s.urgente ? chip('URGENTE', '#b91c1c', '#fee2e2') : '') + '</div>' +
-      '<div style="font-size:12px;color:#475569">' + chipTipo(s.tipo) + ' ' + (s.goce ? esc(GOCE_TXT[s.goce] || '') + ' · ' : '') + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + esc(s.dias) + ' día(s)</div>' +
-      '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(s.motivo || '') + '</div>' +
+      '<div style="font-size:12px;color:#475569">' + chipTipo(s.tipo) + ' ' + (s.goce ? esc(GOCE_TXT[s.goce] || '') + ' · ' : '') + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + diasDe(s) + ' día(s)</div>' +
+      '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(s.motivo || '') + '</div>' + avisoNoCuentan(s.fecha_inicio, s.fecha_fin, true) +
       (tr.length ? '<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px">Se empalma: ' + esc(tr.map(t => t.tipo === 'guardia' ? 'guardia semana ' + t.semana : t.tipo === 'anticipacion' ? 'poca anticipación' : t.nombre).join(', ')) + '</div>' : '') +
       '</div><div style="text-align:right;font-size:10.5px;color:#94a3b8">' + esc(s.folio || '') + '<br>' + esc(s.departamento || '') + '<br>' + fHora(s.creado_en) + '</div></div>' +
       (pAccionesHTML(s) ? '<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">' + pAccionesHTML(s) + '</div>' : '') +
@@ -470,7 +513,7 @@ function pRender() {
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155"><thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase">' +
     '<th style="padding:9px 8px">Colaborador</th><th style="padding:9px 8px">Tipo</th><th style="padding:9px 8px">Fechas</th><th style="padding:9px 8px">Estatus</th><th style="padding:9px 8px">Resolvió</th></tr></thead><tbody>' +
     (hist.map(s => '<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="tcPermisos._pVer(' + s.id + ')"><td style="padding:9px 8px"><b>' + esc(s.colaborador_nombre) + '</b><div style="font-size:10.5px;color:#94a3b8">' + esc([s.folio, s.departamento, s.plaza].filter(Boolean).join(' · ')) + '</div></td>' +
-      '<td style="padding:9px 8px">' + chipTipo(s.tipo) + (s.urgente ? ' ' + chip('urgente', '#b91c1c', '#fee2e2') : '') + '</td><td style="padding:9px 8px;white-space:nowrap">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + '<div style="font-size:10.5px;color:#94a3b8">' + esc(s.dias) + ' día(s)</div></td>' +
+      '<td style="padding:9px 8px">' + chipTipo(s.tipo) + (s.urgente ? ' ' + chip('urgente', '#b91c1c', '#fee2e2') : '') + '</td><td style="padding:9px 8px;white-space:nowrap">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + '<div style="font-size:10.5px;color:#94a3b8">' + diasDe(s) + ' día(s)' + (diasNoCuentan(s.fecha_inicio, s.fecha_fin).length ? ' <span style="color:#6d28d9;font-weight:700" title="' + esc(diasNoCuentan(s.fecha_inicio, s.fecha_fin).map(x => x.motivo + ' ' + x.fecha).join(', ')) + '">· ' + diasNoCuentan(s.fecha_inicio, s.fecha_fin).length + ' no cuentan</span>' : '') + '</div></td>' +
       '<td style="padding:9px 8px">' + chipEst(s.estatus) + '</td><td style="padding:9px 8px;font-size:11.5px">' + esc(s.resuelto_nombre || '') + '<div style="font-size:10.5px;color:#94a3b8">' + fHora(s.resuelto_en) + '</div></td></tr>').join('') ||
       '<tr><td colspan="5" style="padding:22px;text-align:center;color:#94a3b8">Sin solicitudes.</td></tr>') + '</tbody></table></div>' +
     '<div id="tcp-modal"></div>';
@@ -488,7 +531,8 @@ async function pVer(id) {
     '<div style="font-size:12px;color:#64748b">' + esc([s.folio, s.puesto, s.departamento, s.plaza].filter(Boolean).join(' · ')) + '</div></div><div style="display:flex;gap:8px;align-items:center">' + chipEst(s.estatus) +
     '<button onclick="tcPermisos._pCerrarModal()" style="background:#f1f5f9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#475569;display:inline-flex;align-items:center;justify-content:center">' + ICO.cerrar + '</button></div></div>' +
     (s.urgente ? '<div style="background:#fef2f2;color:#b91c1c;border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:700;margin:12px 0 0">URGENTE: ' + esc(s.urgente_motivo || '') + '</div>' : '') +
-    '<div style="margin-top:12px">' + fila('Tipo', chipTipo(s.tipo) + (s.goce ? ' ' + esc(GOCE_TXT[s.goce] || s.goce) : '')) + fila('Fechas', fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + esc(s.dias) + ' día(s)' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '')) +
+    '<div style="margin-top:12px">' + fila('Tipo', chipTipo(s.tipo) + (s.goce ? ' ' + esc(GOCE_TXT[s.goce] || s.goce) : '')) + fila('Fechas', fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + diasDe(s) + ' día(s) hábiles' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '')) +
+    fila('No se cuentan', diasNoCuentan(s.fecha_inicio, s.fecha_fin).length ? '<span style="color:#6d28d9">' + textoNoCuentan(diasNoCuentan(s.fecha_inicio, s.fecha_fin)) + '</span>' : '') +
     fila('Motivo', esc(s.motivo || '')) + fila('Cómo lo repone', esc(s.como_repone || '')) + fila('Jefe inmediato', esc(s.jefe || '')) + fila('Solicitado', fHora(s.creado_en) + (s.origen === 'app' ? ' · desde la app' : ' · desde el portal')) + '</div>' +
     '<div id="tcp-rev-adm" style="margin-top:6px"><div style="font-size:12px;color:#64748b;margin-top:8px">Revisando empalmes al día de hoy…</div></div>' +
     (hist ? '<div style="font-size:12px;font-weight:700;color:#1D2E73;margin:14px 0 4px">Historial</div>' + hist : '') +
@@ -529,13 +573,20 @@ async function pNuevaPortal() {
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || t.puesto || '') + (t.correo ? '' : ' (sin correo)') + '</option>').join('') + '</select></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Tipo<select id="tcp-n-tipo" style="' + inp + '">' + Object.keys(TIPOS).map(k => '<option value="' + k + '">' + TIPOS[k].t + '</option>').join('') + '</select></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Modalidad<select id="tcp-n-goce" style="' + inp + '"><option value="">—</option>' + Object.keys(GOCE_TXT).map(k => '<option value="' + k + '">' + GOCE_TXT[k] + '</option>').join('') + '</select></label>' +
-    '<label style="font-size:11.5px;font-weight:600;color:#475569">Desde<input type="date" id="tcp-n-ini" value="' + hoy() + '" style="' + inp + '"></label><label style="font-size:11.5px;font-weight:600;color:#475569">Hasta<input type="date" id="tcp-n-fin" value="' + hoy() + '" style="' + inp + '"></label></div>' +
+    '<label style="font-size:11.5px;font-weight:600;color:#475569">Desde<input type="date" id="tcp-n-ini" value="' + hoy() + '" onchange="tcPermisos._pDiasNueva()" style="' + inp + '"></label><label style="font-size:11.5px;font-weight:600;color:#475569">Hasta<input type="date" id="tcp-n-fin" value="' + hoy() + '" onchange="tcPermisos._pDiasNueva()" style="' + inp + '"></label></div>' +
+    '<div id="tcp-n-dias" style="margin:-4px 0 10px"></div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Motivo<input id="tcp-n-mot" style="' + inp + '"></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Cómo lo repone (opcional)<input id="tcp-n-rep" style="' + inp + '"></label>' +
     '<label style="display:flex;gap:6px;align-items:center;font-size:12.5px;color:#334155;margin-bottom:6px"><input type="checkbox" id="tcp-n-urg"> Urgente</label><input id="tcp-n-urgm" placeholder="Motivo de la urgencia" style="' + inp + '">' +
     '<div id="tcp-n-err" style="font-size:12px;color:#b91c1c"></div>' +
     '<div style="display:flex;gap:8px;justify-content:flex-end"><button onclick="tcPermisos._pCerrarModal()" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Cancelar</button>' +
     '<button id="tcp-n-btn" onclick="tcPermisos._pGuardarNueva()" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700">Revisar y registrar</button></div>', 560);
+  pDiasNueva();
+}
+function pDiasNueva() {
+  const el = document.getElementById('tcp-n-dias'); if (!el) return;
+  const a = (document.getElementById('tcp-n-ini') || {}).value, b = (document.getElementById('tcp-n-fin') || {}).value;
+  el.innerHTML = a && b && b >= a ? '<div style="font-size:12px;color:#475569">' + diasHabiles(a, b) + ' día(s) hábiles (sin domingos ni festivos de ley)</div>' + avisoNoCuentan(a, b) : '';
 }
 async function pGuardarNueva() {
   const t = (window.__tcpTecs || [])[Number(document.getElementById('tcp-n-tec').value)];
@@ -565,13 +616,16 @@ function pConfig() {
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Pueden aprobar (además de los admins de Operaciones) (coma)<input id="tcp-c-apr" value="' + esc((cfg.aprobadores || []).join(', ')) + '" style="' + inp + '"></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Personas del mismo grupo fuera a la vez antes de bloquear<input type="number" min="1" id="tcp-c-max" value="' + esc(cfg.maxMismoGrupo || 1) + '" style="' + inp + '"></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Días mínimos de anticipación<input type="number" min="0" id="tcp-c-ant" value="' + esc(cfg.diasAnticipacion ?? 3) + '" style="' + inp + '"></label></div>' +
+    '<label style="font-size:11.5px;font-weight:600;color:#475569">Otros días de descanso obligatorio (uno por renglón: fecha y nombre; ej. 2027-06-06 Jornada electoral)<textarea id="tcp-c-fest" rows="3" style="' + inp + ';font-family:inherit">' + esc((cfg.festivosExtra || []).map(e => e.fecha + ' ' + (e.nombre || '')).join('\n')) + '</textarea></label>' +
+    '<div style="font-size:11.5px;color:#64748b;margin-bottom:10px">Los festivos de la Ley Federal del Trabajo (1 de enero, 1.er lunes de febrero, 3.er lunes de marzo, 1 de mayo, 16 de septiembre, 3.er lunes de noviembre, 25 de diciembre y 1 de octubre cada 6 años) ya se descuentan solos, igual que los domingos.</div>' +
     '<div style="font-size:11.5px;color:#64748b;margin-bottom:12px">Grupo = mismo departamento y misma plaza. Con 1, en cuanto alguien ya pidió esas fechas, la siguiente solicitud solo pasa como urgente.</div>' +
     '<div style="display:flex;gap:8px;justify-content:flex-end"><button onclick="tcPermisos._pCerrarModal()" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Cancelar</button>' +
     '<button onclick="tcPermisos._pGuardarConfig()" style="background:#1D2E73;border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700">Guardar</button></div>', 560);
 }
 async function pGuardarConfig() {
   const lista = id => document.getElementById(id).value.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-  const datos = Object.assign({}, cfg, { correosRH: lista('tcp-c-rh'), aprobadores: lista('tcp-c-apr'), maxMismoGrupo: Math.max(1, Number(document.getElementById('tcp-c-max').value) || 1), diasAnticipacion: Math.max(0, Number(document.getElementById('tcp-c-ant').value) || 0) });
+  const datos = Object.assign({}, cfg, { correosRH: lista('tcp-c-rh'), aprobadores: lista('tcp-c-apr'), maxMismoGrupo: Math.max(1, Number(document.getElementById('tcp-c-max').value) || 1), diasAnticipacion: Math.max(0, Number(document.getElementById('tcp-c-ant').value) || 0),
+    festivosExtra: document.getElementById('tcp-c-fest').value.split('\n').map(l => { const m = l.trim().match(/^(\d{4}-\d{2}-\d{2})\s*(.*)$/); return m ? { fecha: m[1], nombre: m[2].trim() } : null; }).filter(Boolean) });
   try { const c = await sb(); const r = await c.from('rh_config_permisos').upsert({ id: 'general', datos: datos, actualizado_en: new Date().toISOString(), actualizado_por: (P.opts.usuario || {}).correo || null }); if (r.error) throw r.error; cfg = datos; pModal(''); pRender(); }
   catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
 }
@@ -591,7 +645,7 @@ window.tcPermisos = {
   },
   _pVer: pVer, _pResolver: pResolver, _pCerrarModal: () => pModal(''), _pImprimir: id => { const s = P.lista.find(x => x.id === id); if (s) imprimir(s); },
   _pSet: (k, v) => { P[k] = v; pRender(); }, _pBuscar: v => { P.busca = v; clearTimeout(P.buscaT); P.buscaT = setTimeout(() => { pRender(); const i = document.getElementById('tcp-busca'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 300); },
-  _pNuevaPortal: pNuevaPortal, _pGuardarNueva: pGuardarNueva, _pConfig: pConfig, _pGuardarConfig: pGuardarConfig,
+  _pNuevaPortal: pNuevaPortal, _pDiasNueva: pDiasNueva, _pGuardarNueva: pGuardarNueva, _pConfig: pConfig, _pGuardarConfig: pGuardarConfig,
 };
 console.log('[permisos.js] listo');
 })();
