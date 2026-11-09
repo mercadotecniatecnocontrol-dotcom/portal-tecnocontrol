@@ -4342,8 +4342,14 @@ async function herrResolverIdInterno(email,nombreFallback){
   const correo=(email||'').toLowerCase().trim();
   if(correo){
     try{
-      const snap=await opsDb().collection(C.OPS_TEC).where('correo','==',correo).limit(1).get();
-      if(!snap.empty)return {id:snap.docs[0].id,...snap.docs[0].data()};
+      // Puede haber más de una ficha con el mismo correo (ej. una ficha demo
+      // "DEMO-TEC-…" de pruebas además de la real). Se prefiere la real.
+      const snap=await opsDb().collection(C.OPS_TEC).where('correo','==',correo).limit(10).get();
+      if(!snap.empty){
+        const fichas=snap.docs.map(d=>({id:d.id,...d.data()}));
+        const esDemo=t=>/^DEMO-/i.test(t.id)||/\(demo\)/i.test(t.nombre||'');
+        return fichas.find(t=>!esDemo(t))||fichas[0];
+      }
     }catch(e){console.warn('[HERR] no se pudo resolver idInterno por correo',correo,e);}
   }
   if(nombreFallback){
