@@ -35,8 +35,8 @@
   // Las firmas escaneadas que trae la plantilla solo sirven para estas personas.
   var FIRMANTES = {
     instructor: 'KENIA YADIRA GUZMAN NEAVE',
-    patron: 'CRISTINA JUDITH ACOSTA CONTRERAS',
-    rep: 'MARTIN ROBERTO DE LA O MAESE'
+    patron: 'MARTIN ROBERTO DE LA O MAESE',
+    rep: 'CRISTINA JUDITH ACOSTA CONTRERAS'
   };
 
   var OCUPACIONES = [
