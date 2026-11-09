@@ -57,6 +57,7 @@
         check:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
         alerta:     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>',
         papelera:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
+        dc3:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h5"/><path d="M13 2v5h5v3"/><path d="M8 11h5M8 15h3"/><circle cx="17" cy="16" r="3"/><path d="M15.5 18.6 15 23l2-1 2 1-.5-4.4"/></svg>',
         candado:    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
         carpeta:    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
         reloj:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
@@ -5317,6 +5318,10 @@
                 ${ICONO.calendario}
                 <span class="gs-rail-tooltip">Parrilla de documentos</span>
             </button>
+            <button class="gs-rail-btn" data-accion="dc3" aria-label="Constancias DC-3">
+                ${ICONO.dc3}
+                <span class="gs-rail-tooltip">Constancias DC-3</span>
+            </button>
         </div>`;
     }
 
@@ -5327,6 +5332,9 @@
         });
         const btnCal = cont.querySelector('[data-accion="calendario"]');
         if (btnCal) btnCal.addEventListener('click', abrirPanelParrilla);
+        // Constancias DC-3 (STPS): página propia, se abre en otra pestaña con la misma sesión.
+        const btnDc3 = cont.querySelector('[data-accion="dc3"]');
+        if (btnDc3) btnDc3.addEventListener('click', () => { window.open('dc3.html', '_blank', 'noopener'); });
     }
 
     // Panel flotante de la Parrilla de Documentos 
