@@ -8128,8 +8128,8 @@ window.fmOpsServTerminar=async function(id){
       '<input id="fm-term-os" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Código de la orden de servicio (letras, números y símbolos; ej. CHH-812/A)" style="'+FM_TERM_INP+'">'+
       ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
       (fmPideIdFolio(f)?'<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
-        '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO (el que se publicó en WhatsApp) *</div>'+
-        '<div style="font-size:11px;color:#92400E;margin-bottom:6px">Es el folio de ServiceNow o Fractal. Escríbelo aquí y también en la hoja de la orden de servicio.</div>'+
+        '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO DEL CLIENTE — no olvides llenarlo</div>'+
+        '<div style="font-size:11px;color:#92400E;margin-bottom:6px">Es el folio de ServiceNow, Fractal o el que te dio el cliente. Escríbelo aquí y también en la hoja de la orden de servicio. Si el servicio no tiene folio, déjalo vacío y explica por qué en la descripción.</div>'+
         '<input id="fm-term-idfolio" type="text" autocapitalize="characters" value="" placeholder="Ej. INC0012345" style="'+FM_TERM_INP+';margin-bottom:6px">'+
         '<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#92400E"><input type="checkbox" id="fm-term-idexc" style="margin-top:2px"> Operaciones me autorizó un ID distinto al programado (queda registrado)</label></div>':'')+
       ro('5','Estación de servicio',ni.titulo,'La ubicación GPS se toma sola cuando guardas, desde donde estás.')+
@@ -8208,7 +8208,7 @@ window.fmOpsServGuardarTermino=async function(id){
   if(res!=='no_realizado'&&res!=='avance_dia'&&fmPideIdFolio(f)){
     idFolio=(document.getElementById('fm-term-idfolio')?.value||'').trim().toUpperCase();
     idExc=!!document.getElementById('fm-term-idexc')?.checked;
-    if(!idFolio){blando('Falta el ID del folio (el de WhatsApp: ServiceNow / Fractal).');}
+    if(!idFolio){blando('Falta el ID del folio del cliente (ServiceNow / Fractal / cliente). Si no tiene folio, explícalo en la descripción.');}
     const norm=function(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');};
     if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){blando('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');}
   }
@@ -8369,10 +8369,8 @@ async function fmComisionesAlTerminar(id,f,quien){
 
 // ¿Este servicio es un folio de OXXO o Petro Seven? (mismas reglas que el portal)
 function fmPideIdFolio(f){
-  if(!f||f.tipoFolio==='inspeccion')return false;
-  const t=[f.clienteNombre,f.estacionRazonSocial,f.facturarA,f.estacion,f.estacionNombreComercial].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-  const grupo=/petro\s*(seven|siete|7)\b|petro\s*-?\s*max/.test(t)||/oxxo|servicios gasolineros de mexico/.test(t);
-  return grupo&&(fmEsFolioCliente(f)||f.origen==='programar_folio'||!!f.folioClienteId);
+  // 9-nov-2026: aviso SIEMPRE, en todos los servicios (programados y no programados). Solo avisa, no bloquea.
+  return !!f;
 }
 
 // Fotos/video que mandó Ventas con la petición de diagnóstico (22-oct-2026).
