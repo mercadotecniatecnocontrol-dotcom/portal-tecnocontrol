@@ -11117,7 +11117,14 @@
         const t = [f.categoriaServicio, f.tipoServicioDemo, f.conceptoGeneral, f.servicioNombre, r && r.nombre, (f.serviciosProgramados || []).map(x => x && x.nombre).join(" ")].filter(Boolean).join(" ");
         return /p[oó]liza/i.test(t) || !!f.polizaLlenadaEnApp;
     }
-    function opsRevCliente(f) { return String(f.clienteNombre || f.facturarA || f.estacionRazonSocial || "Sin cliente").trim(); }
+    // 10-nov-2026 (Glen): un solo nombre para Petro Seven. Salía como "Petro Siete", "Petro 7",
+    // "PETRO SEVEN" y con su razón social "PETRO MAX S.A. DE C.V." y el filtro los separaba.
+    function opsClienteCanon(n) {
+        const t = opsNormalizaTexto(n);
+        if (/\bPETRO ?(SEVEN|SIETE|7)\b|\bPETRO ?MAX\b/.test(t)) return "Petro Seven";
+        return String(n || "").trim();
+    }
+    function opsRevCliente(f) { return opsClienteCanon(f.clienteNombre || f.facturarA || f.estacionRazonSocial || "Sin cliente") || "Sin cliente"; }
     function opsRevOS(f) { return String(f.osTecnico || f.folioOS || "").trim(); }
     // Pólizas capturadas en la app de Pólizas (j2tecno-app, mismo Supabase): entran a la bandeja
     // cuando no están ligadas a un servicio de Operaciones. Su seguimiento va en ops_revision_polizas.
@@ -11155,7 +11162,7 @@
         const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
         const pols = opsRevPolizas.filter(p => !ligadas.has(p.id)).map(p => {
             const r = opsRevPolRev.get(p.id) || {};
-            return { k: "p", id: p.id, p, cierre: String(p.fecha || ""), os: p.folio || "", estacion: p.estacion_nombre || "", cliente: String(p.cliente_razon_social || "Sin cliente").trim(),
+            return { k: "p", id: p.id, p, cierre: String(p.fecha || ""), os: p.folio || "", estacion: p.estacion_nombre || "", cliente: opsClienteCanon(p.cliente_razon_social || "Sin cliente") || "Sin cliente",
                 poliza: true, estatus: r.estatus || "por_revisar", buscar: [p.folio, p.estacion_nombre, p.cliente_razon_social, p.tecnico_nombre, r.cotizacion, r.id_cliente].join(" ") };
         });
         return folios.concat(pols)
@@ -11170,7 +11177,7 @@
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         const s = opsRevEstado(), items = opsRevItems();
         opsRevCargarPolizas(false);
-        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente).concat(opsRevPolizas.map(p => String(p.cliente_razon_social || "Sin cliente").trim())))].sort((a, b) => a.localeCompare(b, "es"));
+        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente).concat(opsRevPolizas.map(p => opsClienteCanon(p.cliente_razon_social || "Sin cliente") || "Sin cliente")))].sort((a, b) => a.localeCompare(b, "es"));
         const sel = (k, ops) => `<select id="ops-rev-${k}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;">${ops.map(([v, t]) => `<option value="${opsEsc(v)}" ${s[k] === v ? "selected" : ""}>${opsEsc(t)}</option>`).join("")}</select>`;
         const fecha = k => `<input type="date" value="${s[k]}" onchange="opsRevSet('${k}',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font-size:12.5px;">`;
         const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
@@ -11181,7 +11188,10 @@
             <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
                 <div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Revisión de cierres</div>
                 <div style="font-size:11.5px;color:#64748b;max-width:640px;line-height:1.45;">Aquí llegan los servicios técnicos que se cerraron en la app de Flotilla y las pólizas de la app de Pólizas. Ábrelos para ver lo que se hizo, anotar si se cobró algo, el número de cotización y el ID del folio del cliente, y marcarlos como <b>Revisado</b> (lo que en Connecteam era "Done"). Hay <b>${porRevisar}</b> sin revisar.</div></div>
-                <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button onclick="opsRevExportarCompletados()" class="mkt-add-btn" style="background:#15803d;" title="Todos los servicios terminados con las fechas, cliente y tipo que tengas filtrados (sin importar si ya están revisados): PDF de cada uno con la liga del video, todas sus evidencias y un resumen en Excel">Exportar completados (con evidencias)</button>
+                    <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
+                </div>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
                 <input id="ops-rev-q" type="search" autocomplete="off" value="${opsEsc(s.q)}" placeholder="Buscar O.S., nombre de la estación, cliente, técnico, ID del folio…" oninput="opsRevBuscar(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:7px 11px;font-size:12.5px;min-width:320px;">
@@ -11599,6 +11609,154 @@
             const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Cierres_" + s.desde + "_al_" + s.hasta + (s.cliente !== "todos" ? "_" + s.cliente.replace(/[^A-Za-z0-9]+/g, "_") : "") + ".zip"; a.click();
             setTimeout(() => URL.revokeObjectURL(a.href), 60000);
         } catch (e) { alert("No se pudo armar el ZIP: " + (e.message || e)); }
+    };
+
+    // ── Exportar completados (10-nov-2026, Glen) ──
+    // Con los filtros de la pestaña (fechas, cliente y tipo; el estatus de revisión NO filtra) baja un
+    // ZIP con: Resumen.csv (abre en Excel) y, por cliente → Servicios técnicos / Pólizas → una carpeta
+    // por servicio con su PDF (trae la liga del video, válida 1 año), todas las evidencias (O.S., fotos,
+    // firma) y Videos.txt con las ligas. Si es póliza también van las evidencias de la app de Pólizas.
+    // Los videos van como liga (no como archivo) para que el ZIP no pese gigas.
+    function opsRevExpLimpio(t, max) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 _.-]+/g, "").replace(/\s+/g, " ").trim().slice(0, max || 80) || "sin_nombre"; }
+    function opsRevExpExt(e, blob) {
+        const m = String(e.ruta || e.storage_path || e.url || "").match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
+        if (m) return m[1].toLowerCase();
+        const t = (blob && blob.type) || ""; return /png/.test(t) ? "png" : /pdf/.test(t) ? "pdf" : /mp4|video/.test(t) ? "mp4" : "jpg";
+    }
+    function opsRevExpCompletado(f) {
+        const v = opsRevUltimaVisita(f);
+        if (v && (v.resultado === "no_finalizado" || v.resultado === "no_realizado")) return false;
+        return !!(f.fechaSolucion || (v && v.fin));
+    }
+    function opsRevExpAviso(txt) {
+        let el = document.getElementById("opsrev-exp-aviso");
+        if (!txt) { if (el) el.remove(); return; }
+        if (!el) { el = document.createElement("div"); el.id = "opsrev-exp-aviso"; el.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:100000;background:#1D2E73;color:#fff;border-radius:12px;padding:13px 16px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(15,23,42,.35);max-width:340px;line-height:1.45;"; document.body.appendChild(el); }
+        el.innerHTML = txt;
+    }
+    // Evidencias de la app de Pólizas (tabla evidencias, bucket evidencias). Ligas firmadas por 1 h.
+    async function opsRevEvidenciasPolizaApp(polizaId) {
+        if (!polizaId) return [];
+        try {
+            const sb = await opsSb();
+            const { data } = await sb.from("evidencias").select("*").eq("poliza_id", polizaId).order("tomada_en", { ascending: true });
+            const out = [];
+            for (const e of (data || [])) {
+                if (!e.storage_path) continue;
+                try { const r = await sb.storage.from("evidencias").createSignedUrl(e.storage_path, 3600); if (r.data && r.data.signedUrl) out.push(Object.assign({}, e, { url: r.data.signedUrl })); } catch (er) {}
+            }
+            return out;
+        } catch (e) { return []; }
+    }
+    function opsRevPolAppEtiqueta(e) { return [e.zona_nombre, e.elemento_nombre, e.dispensador_nombre, e.item_texto].filter(Boolean).join(" - ") || (e.tipo === "foto_pieza" ? "Pieza" : "General"); }
+    // PDF de una póliza capturada solo en la app de Pólizas (sin servicio en Operaciones).
+    async function opsRevArmarPdfPolizaApp(p, ev) {
+        if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("La librería de PDF no está cargada. Recarga la página.");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "letter" });
+        const W = 215.9, M = 14, AN = W - 2 * M, ALTO = 279.4, KMM = 0.352778;
+        const NAVY = [29, 46, 115], GRIS = [100, 116, 139], TINTA = [30, 41, 59];
+        const limpio = t => String(t ?? "").replace(/[^\x20-\x7E\u00A0-\u00FF\u2014\u2013\u2022\u00B7\n]/g, "");
+        const r = opsRevPolRev.get(p.id) || {};
+        let y = 0;
+        const encabezado = () => { y = opsPdfEncabezadoEmpresa(doc, opsEmpresaDoc("Tecnocontrol"), { W, M, k: KMM, tipo: "PÓLIZA DE MANTENIMIENTO", linea: "Folio " + (p.folio || "—") + "  ·  " + new Date().toLocaleDateString("es-MX") }) + 6; };
+        const salto = h => { if (y + h > ALTO - 14) { doc.addPage(); encabezado(); } };
+        encabezado();
+        doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(limpio(p.estacion_nombre || "Póliza"), M, y + 4); y += 12;
+        [["Cliente", opsClienteCanon(p.cliente_razon_social)], ["Razón social", p.cliente_razon_social], ["Folio de la póliza", p.folio], ["Técnico", p.tecnico_nombre],
+         ["Fecha", opsFmtFechaCorta(p.fecha)], ["Puntos revisados", p.total_puntos], ["Hallazgos", p.total_hallazgos], ["ID folio del cliente", r.id_cliente], ["No. de cotización", r.cotizacion]]
+            .filter(x => x[1] || x[1] === 0).forEach(([k, val]) => {
+                salto(6); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS); doc.text(limpio(k), M, y);
+                doc.setFont("helvetica", "bold"); doc.setTextColor(...TINTA); doc.text(limpio(String(val)), M + 52, y); y += 5.5;
+            });
+        const fotos = ev.filter(e => e.url);
+        if (fotos.length) {
+            salto(14); y += 3; doc.setTextColor(...NAVY); doc.setFont("helvetica", "bold"); doc.setFontSize(10.5); doc.text("EVIDENCIAS DE LA PÓLIZA", M, y); y += 2; doc.setDrawColor(...NAVY); doc.line(M, y, W - M, y); y += 5;
+            const w = (AN - 10) / 3; let col = 0, fila = 0;
+            for (const e of fotos) {
+                let im; try { im = await opsRevImagen(e.url); } catch (er) { continue; }
+                const h = Math.min(70, w * im.h / im.w);
+                if (col === 0) salto(h + 9);
+                const x = M + col * (w + 5);
+                try { doc.addImage(im.dataUrl, "JPEG", x, y, w, h); } catch (er) {}
+                doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...GRIS); doc.text(doc.splitTextToSize(limpio(opsRevPolAppEtiqueta(e)), w)[0] || "", x, y + h + 3);
+                fila = Math.max(fila, h + 6); col++;
+                if (col >= 3) { y += fila; col = 0; fila = 0; }
+            }
+            if (col) y += fila;
+        }
+        if (p.firma_base64) {
+            salto(32); y += 3; doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRIS); doc.text("FIRMA DE CONFORMIDAD", M, y); y += 2;
+            try { const src = String(p.firma_base64).startsWith("data:") ? p.firma_base64 : "data:image/png;base64," + p.firma_base64; doc.addImage(src, "PNG", M, y, 55, 22); y += 24; } catch (er) {}
+        }
+        return doc;
+    }
+    window.opsRevExportarCompletados = async function () {
+        const s = opsRevEstado();
+        await opsRevCargarPolizas(false);
+        // Sin el filtro de estatus ni la búsqueda: todos los terminados del rango, cliente y tipo elegidos.
+        const qAntes = s.q, estAntes = s.estatus; s.q = ""; s.estatus = "todos";
+        let lista; try { lista = opsRevItems().filter(x => x.k === "p" || opsRevExpCompletado(x.f)); } finally { s.q = qAntes; s.estatus = estAntes; }
+        if (!lista.length) { alert("No hay servicios completados del " + s.desde + " al " + s.hasta + (s.cliente !== "todos" ? " de " + s.cliente : "") + "."); return; }
+        const nPol = lista.filter(x => x.poliza).length;
+        if (!confirm("Se exportarán " + lista.length + " servicio(s) completado(s) del " + s.desde + " al " + s.hasta + (s.cliente !== "todos" ? " · " + s.cliente : " · todos los clientes") + "\n(" + (lista.length - nPol) + " servicios técnicos y " + nPol + " pólizas).\n\nCada uno lleva su PDF con la liga del video, todas sus evidencias y va en un resumen de Excel.\nPuede tardar varios minutos; no cierres la pestaña. ¿Continuar?")) return;
+        const csv = [["Fecha de cierre", "O.S. / folio", "ID folio del cliente", "Cliente", "Razón social", "Estación", "PL", "Técnico", "Tipo", "Estatus de revisión", "No. de cotización", "Evidencias", "Ligas de video (válidas 1 año)", "Liga del PDF para el cliente", "Carpeta"]];
+        const fallos = [];
+        try {
+            const JSZip = await opsRevCargarZip();
+            const zip = new JSZip(); let n = 0;
+            for (const x of lista) {
+                n++;
+                opsRevExpAviso("Exportando " + n + " de " + lista.length + "…<br><span style='font-weight:500;font-size:11.5px;opacity:.85;'>" + opsEsc(x.os || "") + " · " + opsEsc(x.estacion) + "</span>");
+                const carpetaTipo = x.poliza ? "Polizas" : "Servicios tecnicos";
+                const nombre = opsRevExpLimpio((x.os ? "OS-" + x.os + "_" : "") + (x.estacion || "estacion") + "_" + String(x.cierre).slice(0, 10), 90);
+                const ruta = opsRevExpLimpio(x.cliente, 50) + "/" + carpetaTipo + "/" + nombre;
+                const dir = zip.folder(ruta);
+                let vids = [], nEv = 0, polId = null;
+                try {
+                    if (x.k === "f") {
+                        const f = x.f;
+                        const { doc, ev } = await opsRevArmarPdf(f, 31536000);
+                        dir.file(nombre + ".pdf", doc.output("blob"));
+                        vids = ev.filter(e => e.tipo === "video" && e.url).map(e => e.url);
+                        const cuenta = {};
+                        for (const e of ev.filter(e => e.url && e.tipo !== "video")) {
+                            const et = { orden_servicio: "Orden de servicio", foto: "Foto", firma: "Firma", pausa: "Tiempo muerto" }[e.tipo] || "Evidencia";
+                            cuenta[et] = (cuenta[et] || 0) + 1;
+                            try { const b = await (await fetch(e.url)).blob(); dir.folder("Evidencias").file(et + "_" + cuenta[et] + "." + opsRevExpExt(e, b), b); nEv++; }
+                            catch (er) { vids.push(et + " " + cuenta[et] + " (no se pudo bajar, abre la liga): " + e.url); }
+                        }
+                        polId = f.polizaApp && f.polizaApp.id;
+                    } else {
+                        polId = x.p.id;
+                    }
+                    if (x.poliza && polId) {
+                        const evp = await opsRevEvidenciasPolizaApp(polId);
+                        if (x.k === "p") dir.file(nombre + ".pdf", (await opsRevArmarPdfPolizaApp(x.p, evp)).output("blob"));
+                        let k = 0;
+                        for (const e of evp) {
+                            k++;
+                            try { const b = await (await fetch(e.url)).blob(); dir.folder("Evidencias de la poliza").file(String(k).padStart(3, "0") + "_" + opsRevExpLimpio(opsRevPolAppEtiqueta(e), 60) + "." + opsRevExpExt(e, b), b); nEv++; } catch (er) {}
+                        }
+                    }
+                    if (vids.length) dir.file("Videos.txt", "Ligas de video del servicio (válidas por 1 año):\r\n\r\n" + vids.join("\r\n") + "\r\n");
+                } catch (er) { fallos.push((x.os || x.estacion) + ": " + (er.message || er)); }
+                const f = x.f || {}, r = x.k === "f" ? (f.revisionCierre || {}) : (opsRevPolRev.get(x.id) || {}), v = x.k === "f" ? (opsRevUltimaVisita(f) || {}) : {};
+                csv.push([opsFmtFechaCorta(x.cierre), x.os, x.k === "f" ? f.folioClienteId : r.id_cliente, x.cliente, x.k === "f" ? f.estacionRazonSocial : x.p.cliente_razon_social, x.estacion,
+                    x.k === "f" ? f.estacionPermiso : "", x.k === "f" ? (v.nombre || f.completadoPor || "") : x.p.tecnico_nombre, x.poliza ? (x.k === "p" ? "Póliza (app de Pólizas)" : "Póliza") : "Servicio técnico",
+                    (OPS_REV_ESTATUS[x.estatus] || OPS_REV_ESTATUS.por_revisar)[0], r.cotizacion, nEv, vids.filter(u => /^https?:/.test(u)).join(" | "), r.ligaCliente, ruta]);
+            }
+            const esc = val => { const t = String(val ?? ""); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+            zip.file("Resumen.csv", "\uFEFF" + csv.map(row => row.map(esc).join(",")).join("\r\n"));
+            if (fallos.length) zip.file("No se pudieron armar.txt", fallos.join("\r\n"));
+            opsRevExpAviso("Comprimiendo el ZIP…");
+            const blob = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = "Servicios_completados_" + s.desde + "_al_" + s.hasta + (s.cliente !== "todos" ? "_" + opsRevExpLimpio(s.cliente, 40).replace(/ /g, "_") : "") + ".zip"; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+            opsRevExpAviso("Listo: " + lista.length + " servicio(s) exportado(s)." + (fallos.length ? "<br>" + fallos.length + " con problema (ver «No se pudieron armar.txt» en el ZIP)." : ""));
+            setTimeout(() => opsRevExpAviso(""), 8000);
+        } catch (e) { opsRevExpAviso(""); alert("No se pudo armar la exportación: " + (e.message || e)); }
     };
 
     // ═══════════════════ EVIDENCIAS DEL SERVICIO (subidas desde la app) ═══════════════════
