@@ -23760,7 +23760,9 @@
         if (/anexo\s*21/i.test([norma, f.categoriaServicio, f.servicio].filter(Boolean).join(" "))) return R["Anexo 21 y 22"] || "VH Verificaciones";
         if (f.tipoFolio === "inspeccion" || f.tipoAlta === "inspeccion") return "JOMAR";
         if (f.pedidoVentasEmpresa) return opsEmpresaDoc(f.pedidoVentasEmpresa).corto;
-        try { if (opsEsFolioJomar(f)) return "JOMAR"; } catch (e) {}
+        // 10-nov-2026: los folios cargados de Excel/Connecteam (origen "connecteam") son servicios de
+        // Tecnocontrol (OXXO GAS, Petro Seven…); solo es JOMAR si se marcó así o el cliente es JOMAR.
+        if (f.esJomar === true || /jo\s?mar/i.test(f.clienteNombre || "")) return "JOMAR";
         return R["Servicio técnico / póliza / programación"] || "Tecnocontrol";
     }
     function opsEmpresaNombreFolio(f) { return (f && f.empresaServicioManual && f.empresaServicio) ? f.empresaServicio : opsEmpresaSugerida(f); }
