@@ -1,3 +1,11 @@
+// Coincidencia ESTRICTA cliente↔texto (antes: primeros 6 caracteres → falsos pendientes, ej. "EL MES"teño = "del MES")
+window._tcCoincideCliente = function(texto, nombre){
+    const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+    let base = (nombre||'').split(/\s+[—–-]\s+/)[0];
+    base = norm(base).replace(/\b(s a p i|s a b|s a|s de r l|s c|sa de cv)\b.*$/,'').replace(/\s+(de|del|y)$/,'').trim();
+    if(base.length < 8 || base.includes('tecnocontrol')) return false;
+    return (' '+norm(texto)+' ').includes(' '+base+' ');
+};
 // MÓDULO VENTAS — Mapa de clientes con Leaflet.js + Firestore
 // Colección Firestore: ventas_clientes
 let mapaLeaflet = null;
@@ -338,7 +346,7 @@ window.calcularAlertasClientes = async () => {
                 const r = d.data();
                 const txt = ((r.actividad||'')+(r.origen||'')+(r.descripcion||'')).toLowerCase();
                 (clientesDB||[]).forEach(cl => {
-                    if(cl.nombre && txt.includes(cl.nombre.toLowerCase().substring(0,6))){
+                    if(cl.nombre && window._tcCoincideCliente(txt, cl.nombre)){
                         if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
                         cache[cl.id].alerta=true;
                         cache[cl.id].razones.push('📋 Tarea: '+(r.actividad||'').substring(0,35));
@@ -363,7 +371,7 @@ window.calcularAlertasClientes = async () => {
                 } else {
                     const nomCot=(r.cliente||'').toLowerCase();
                     (clientesDB||[]).forEach(cl=>{
-                        if(cl.nombre && nomCot && nomCot.includes(cl.nombre.toLowerCase().substring(0,6))){
+                        if(cl.nombre && nomCot && window._tcCoincideCliente(nomCot, cl.nombre)){
                             if(!cache[cl.id]) cache[cl.id]={alerta:false,razones:[]};
                             cache[cl.id].alerta=true;
                             cache[cl.id].razones.push('💰 Cotización pendiente');
