@@ -34,9 +34,14 @@
   var MINUTOS_INACTIVO = 20;
   // Las firmas escaneadas que trae la plantilla solo sirven para estas personas.
   var FIRMANTES = {
-    instructor: 'KENIA YADIRA GUZMAN NEAVE',
     patron: 'MARTIN ROBERTO DE LA O MAESE',
     rep: 'CRISTINA JUDITH ACOSTA CONTRERAS'
+  };
+  // Instructores con firma escaneada dentro de la plantilla (nombre → etiqueta de la imagen).
+  // Para agregar otro instructor: se mete su firma en la plantilla con su propia etiqueta y se agrega aquí.
+  var INSTRUCTORES_FIRMA = {
+    'KENIA YADIRA GUZMAN NEAVE': 'FIRMA_INSTRUCTOR',
+    'ZAIRA SIBEL PARRA BLANCO': 'FIRMA_INSTRUCTOR_2'
   };
 
   var OCUPACIONES = [
@@ -166,6 +171,7 @@
   };
 
   // ── Texto seguro para XML (Word) ──
+  N.llaveInstructor = function (nombre) { return INSTRUCTORES_FIRMA[N.mayus(nombre)] || null; };
   N.xml = function (s) {
     return String(s == null ? '' : s)
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
@@ -223,10 +229,14 @@
       return Object.prototype.hasOwnProperty.call(m, k) ? N.xml(m[k]) : '';
     });
     var firmas = d.firmas || {};
-    var quitar = { FIRMA_INSTRUCTOR: !firmas.instructor, FIRMA_PATRON: !firmas.patron, FIRMA_REP: !firmas.rep };
+    var llaveInstr = firmas.instructor ? N.llaveInstructor(d.instructor) : null;
     xml = xml.replace(/<w:drawing>[\s\S]*?<\/w:drawing>/g, function (bloque) {
-      var k = (bloque.match(/descr="(FIRMA_[A-Z]+)"/) || [])[1];
-      return k && quitar[k] ? '' : bloque;
+      var k = (bloque.match(/descr="(FIRMA_[A-Z_0-9]+)"/) || [])[1];
+      if (!k) return bloque;
+      if (k.indexOf('FIRMA_INSTRUCTOR') === 0) return k === llaveInstr ? bloque : '';
+      if (k === 'FIRMA_PATRON') return firmas.patron ? bloque : '';
+      if (k === 'FIRMA_REP') return firmas.rep ? bloque : '';
+      return bloque;
     });
     zip.file('word/document.xml', xml);
     var core = zip.file('docProps/core.xml');
@@ -247,7 +257,7 @@
     var r = {};
     var blocks = doc.match(/<w:drawing>[\s\S]*?<\/w:drawing>/g) || [];
     for (var i = 0; i < blocks.length; i++) {
-      var k = (blocks[i].match(/descr="(FIRMA_[A-Z]+)"/) || [])[1];
+      var k = (blocks[i].match(/descr="(FIRMA_[A-Z_0-9]+)"/) || [])[1];
       var rid = (blocks[i].match(/r:embed="([^"]+)"/) || [])[1];
       if (!k || !rid) continue;
       var tgt = (rels.match(new RegExp('Id="' + rid + '"[^>]*Target="([^"]+)"')) || rels.match(new RegExp('Target="([^"]+)"[^>]*Id="' + rid + '"')) || [])[1];
@@ -342,7 +352,7 @@
     pdf.text('Los datos se asientan en esta constancia bajo protesta de decir verdad, apercibidos de la responsabilidad en que incurre todo', X + W / 2, y + 5, { align: 'center' });
     pdf.text('aquel que no se conduce con verdad.', X + W / 2, y + 9, { align: 'center' });
     var col = W / 3, titulos = ['Instructor o tutor', 'Patrón o representante legal 4/', 'Representante de los trabajadores 5/'];
-    var nombres = [m.INSTRUCTOR, m.PATRON, m.REP_TRAB], llaves = ['FIRMA_INSTRUCTOR', 'FIRMA_PATRON', 'FIRMA_REP'], usa = [(d.firmas || {}).instructor, (d.firmas || {}).patron, (d.firmas || {}).rep];
+    var nombres = [m.INSTRUCTOR, m.PATRON, m.REP_TRAB], llaves = [N.llaveInstructor(d.instructor), 'FIRMA_PATRON', 'FIRMA_REP'], usa = [(d.firmas || {}).instructor, (d.firmas || {}).patron, (d.firmas || {}).rep];
     for (var c = 0; c < 3; c++) {
       var cx = X + col * c + col / 2;
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.2);
@@ -777,7 +787,8 @@
   }
   function firmaDisponible(k) {
     var n = k === 'instructor' ? S.edCurso.instructor : k === 'patron' ? S.edEmp.patron : S.edEmp.rep_trab;
-    return N.mayus(n) === FIRMANTES[k] && !!(S.recursos && S.recursos[{ instructor: 'FIRMA_INSTRUCTOR', patron: 'FIRMA_PATRON', rep: 'FIRMA_REP' }[k]]);
+    var llave = k === 'instructor' ? N.llaveInstructor(n) : (N.mayus(n) === FIRMANTES[k] ? { patron: 'FIRMA_PATRON', rep: 'FIRMA_REP' }[k] : null);
+    return !!(llave && S.recursos && S.recursos[llave]);
   }
   function firmasActuales() {
     return { instructor: !!S.form.firmas.instructor && firmaDisponible('instructor'), patron: !!S.form.firmas.patron && firmaDisponible('patron'), rep: !!S.form.firmas.rep && firmaDisponible('rep') };
@@ -1009,7 +1020,7 @@
           h('div', { style: 'padding:3px 5px;font-size:9.5px' }, 'Periodo de ejecución:'), h('div', { class: 'fechas' }, fe)),
         celda('Área temática del curso ', m.AREA_TEMATICA, '2/'), celda('Nombre del agente capacitador o STPS ', m.AGENTE, '3/')),
       h('div', { class: 'firmas' }, h('div', { class: 'leyenda' }, 'Los datos se asientan en esta constancia bajo protesta de decir verdad, apercibidos de la responsabilidad en que incurre todo', h('br'), 'aquel que no se conduce con verdad.'),
-        h('div', { class: 'tres' }, firma('Instructor o tutor', '', m.INSTRUCTOR, 'FIRMA_INSTRUCTOR', d.firmas.instructor), firma('Patrón o representante legal ', '4/', m.PATRON, 'FIRMA_PATRON', d.firmas.patron), firma('Representante de los trabajadores ', '5/', m.REP_TRAB, 'FIRMA_REP', d.firmas.rep))),
+        h('div', { class: 'tres' }, firma('Instructor o tutor', '', m.INSTRUCTOR, N.llaveInstructor(d.instructor), d.firmas.instructor), firma('Patrón o representante legal ', '4/', m.PATRON, 'FIRMA_PATRON', d.firmas.patron), firma('Representante de los trabajadores ', '5/', m.REP_TRAB, 'FIRMA_REP', d.firmas.rep))),
       h('div', { class: 'instr' }, h('b', { text: 'INSTRUCCIONES' }), h('br'), '- Llenar a máquina o con letra de molde.', h('br'), '- Deberá entregarse al trabajador dentro de los veinte días hábiles siguientes al término del curso de capacitación aprobado.'),
       h('div', { class: 'pie', text: 'DC-3 ANVERSO' + (d.folio ? ' · FOLIO ' + d.folio : ' · el folio se asigna al emitir') }));
   }
