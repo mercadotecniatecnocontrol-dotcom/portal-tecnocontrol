@@ -2150,7 +2150,7 @@
     function opsNombreTecnico(idInterno) {
         if (!idInterno) return "Sin asignar";
         const t = cacheTec.find(x => x.id === idInterno);
-        return t ? `${t.nombre} (${t.numeroOperativo})` : "Técnico desconocido";
+        return t ? (t.nombre + (t.numeroOperativo && t.numeroOperativo !== "null" ? ` (${t.numeroOperativo})` : "")) : "Técnico desconocido";
     }
 
     // Traspaso técnico-a-técnico pendiente de aceptación para esta pieza, si hay uno.
@@ -6961,6 +6961,58 @@
     function opsGdPuedeAprobar() { return opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones"); }
     function opsGdPuedePagar() { return opsAccEsAdminPortal() || OPS_GD_PAGAN.includes(opsAccCorreo()); }
     function opsGdMonto() { return Number(opsGtelCfg.montoDia) || 0; }
+    // ── Pago de la guardia TÉCNICA (10-nov-2026, Glen) ──
+    // Sábado $300 + domingo $300 + $100 por cada folio atendido en la semana de guardia, SOLO si el folio
+    // es válido: está cerrado, tiene evidencias y lo atendió quien estaba de guardia ese día. Operaciones
+    // puede validarlo o quitarlo a mano (con motivo). La guardia administrativa sigue pagándose por día.
+    function opsGdTarifas() { return { sab: Number(opsGtelCfg.montoSabadoTec) || 300, dom: Number(opsGtelCfg.montoDomingoTec) || 300, folio: Number(opsGtelCfg.montoFolioTec) || 100 }; }
+    function opsGdFolioEvid(f) { return (Number(f.evidenciasFotos) || 0) + (Number(f.evidenciasDocumentos) || 0) + (Number(f.evidenciasVideos) || 0); }
+    function opsGdFolioAtendioTec(f, tec) {
+        if (!tec) return false;
+        if ((f.tecnicosAsignadosIds || []).includes(tec) || f.tecnicoResponsableId === tec) return true;
+        const nom = opsNormalizaTexto(String(opsNombreTecnico(tec)).replace(/\s*\(.*\)$/, ""));
+        const nombres = [f.tecnicoResponsableNombre, f.completadoPor, ...(f.tecnicosAsignadosNombres || []), ...(f.atenciones || []).map(a => a && a.nombre)].filter(Boolean).map(opsNormalizaTexto);
+        return !!nom && nombres.some(n => n === nom || n.includes(nom) || nom.includes(n));
+    }
+    // ¿Se paga este folio a quien estaba de guardia? { ok, motivo, manual }
+    function opsGdFolioPago(f, tec) {
+        if (f.guardiaPagoManual === true) return { ok: true, manual: true, motivo: "Validado por Operaciones" + (f.guardiaPagoPor ? " (" + f.guardiaPagoPor + ")" : "") };
+        if (f.guardiaPagoManual === false) return { ok: false, manual: true, motivo: "No se paga: " + (f.guardiaPagoMotivo || "lo quitó Operaciones") };
+        if (!f.fechaSolucion) return { ok: false, motivo: "Todavía no se cierra" };
+        if (!opsGdFolioEvid(f)) return { ok: false, motivo: "Sin evidencias" };
+        if (!opsGdFolioAtendioTec(f, tec)) return { ok: false, motivo: "Lo atendió otra persona" };
+        return { ok: true, motivo: "Cerrado, con evidencias y lo atendió la guardia" };
+    }
+    // Cálculo del pago de una semana. Regresa { dias:[{dia,tec,base,baseTxt,folios:[{f,ok,motivo}],monto}], total }.
+    function opsGdCalculo(sem, tipo) {
+        const info = opsGdDiasInfo(sem, tipo), T = opsGdTarifas(), out = [];
+        info.forEach(x => {
+            if (!x.tec || !x.pagar) return;
+            if (tipo !== "tecnica") { out.push({ dia: x.dia, tec: x.tec, base: opsGdMonto(), baseTxt: "Guardia administrativa", folios: [], monto: opsGdMonto() }); return; }
+            const w = new Date(x.dia + "T12:00:00").getDay();
+            const base = w === 6 ? T.sab : w === 0 ? T.dom : 0;
+            const fol = x.folios.map(f => ({ f, ...opsGdFolioPago(f, x.tec) }));
+            const monto = base + fol.filter(y => y.ok).length * T.folio;
+            out.push({ dia: x.dia, tec: x.tec, base, baseTxt: w === 6 ? "Guardia de sábado" : w === 0 ? "Guardia de domingo" : "", folios: fol, monto });
+        });
+        return { dias: out.filter(d => d.monto > 0 || d.folios.length), total: out.reduce((a, d) => a + d.monto, 0) };
+    }
+    function opsGdResumenTxt(sem, tipo) {
+        const c = opsGdCalculo(sem, tipo), T = opsGdTarifas();
+        if (tipo !== "tecnica") return `${c.dias.length} día(s) × ${opsViaDinero(opsGdMonto())} = <b>${opsViaDinero(c.total)}</b>`;
+        const fin = c.dias.filter(d => d.base).reduce((a, d) => a + d.base, 0), fv = c.dias.reduce((a, d) => a + d.folios.filter(y => y.ok).length, 0), fn = c.dias.reduce((a, d) => a + d.folios.filter(y => !y.ok).length, 0);
+        return `Fin de semana ${opsViaDinero(fin)} + ${fv} folio(s) × ${opsViaDinero(T.folio)}${fn ? ` <span style="color:#b91c1c;">(${fn} sin validar)</span>` : ""} = <b>${opsViaDinero(c.total)}</b>`;
+    }
+    window.opsGdFolioPagoSet = async function (id, valor) {
+        if (!opsGdPuedeAprobar()) { alert("Solo Operaciones puede validar folios de guardia."); return; }
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        let cambios;
+        if (valor === "auto") cambios = { guardiaPagoManual: null, guardiaPagoMotivo: null, guardiaPagoPor: opsNombreActual(), guardiaPagoEn: opsFechaHora() };
+        else if (valor) cambios = { guardiaPagoManual: true, guardiaPagoMotivo: null, guardiaPagoPor: opsNombreActual(), guardiaPagoEn: opsFechaHora() };
+        else { const m = prompt("¿Por qué NO se paga este folio de guardia? (se guarda en el folio)", f.guardiaPagoMotivo || ""); if (m === null) return; cambios = { guardiaPagoManual: false, guardiaPagoMotivo: m.trim() || "Sin motivo", guardiaPagoPor: opsNombreActual(), guardiaPagoEn: opsFechaHora() }; }
+        try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), cambios); Object.assign(f, cambios); opsRenderGuardias(); }
+        catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
     function opsGdEstadoPago(sem, tipo) {
         const g = opsGdProg(sem, tipo);
         if (!g) return { k: "sin", t: "Sin guardia", c: "#64748b", bg: "#f1f5f9" };
@@ -7050,14 +7102,14 @@
         };
         const tarjeta = (tipo) => {
             const T = OPS_GUARDIA_TIPOS[tipo], g = opsGdProg(sem, tipo), info = opsGdDiasInfo(sem, tipo), e = opsGdEstadoPago(sem, tipo);
-            const pagables = info.filter(x => x.pagar), total = pagables.length * opsGdMonto();
-            const personas = [...new Set(pagables.map(x => x.tec))];
+            const pagables = info.filter(x => x.pagar);
+            const personas = [...new Set(opsGdCalculo(sem, tipo).dias.filter(d => d.monto > 0).map(d => d.tec))];
             return `<div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;border-top:4px solid ${T.c};">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
                     <div><div style="font-size:11px;font-weight:800;color:${T.c};text-transform:uppercase;letter-spacing:.4px;">${T.n}</div>
                     <div style="font-size:19px;font-weight:900;color:#0f172a;">${opsEsc(g ? opsNombreTecnico(g.tecnicoId) : "Nadie asignado")}</div>
                     <div style="font-size:11.5px;color:#64748b;">${T.d}</div></div>
-                    <div style="text-align:right;">${opsGdChip(e)}<div style="font-size:12px;color:#334155;margin-top:6px;">${pagables.length} día(s) × ${opsViaDinero(opsGdMonto())} = <b>${opsViaDinero(total)}</b></div></div>
+                    <div style="text-align:right;">${opsGdChip(e)}<div style="font-size:12px;color:#334155;margin-top:6px;">${opsGdResumenTxt(sem, tipo)}</div></div>
                 </div>
                 ${g ? opsGdTira(sem, tipo) : `<div style="padding:14px;background:#f8fafc;border-radius:10px;font-size:12.5px;color:#64748b;">Esta semana no tiene a nadie de ${T.n.toLowerCase()}.${gestion ? " Usa \"+ Asignar guardia\"." : ""}</div>`}
                 ${g ? `<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">${pasos(tipo)}
@@ -7076,7 +7128,8 @@
                 <td style="padding:8px;"><b>${opsEsc(f.folioClienteId || f.folioOS || "S/F")}</b><div style="font-size:11px;color:#64748b;">${opsEsc(f.estacion || "")}</div></td>
                 <td style="padding:8px;">${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || "Sin técnico")}${otro ? `<div style="font-size:10.5px;color:#b45309;font-weight:700;">No era quien estaba de guardia</div>` : ""}</td>
                 <td style="padding:8px;max-width:320px;">${opsEsc(String(queHizo(f)).slice(0, 220)) || '<span style="color:#94a3b8;">Sin resumen todavía</span>'}</td>
-                <td style="padding:8px;white-space:nowrap;">${f.fechaSolucion ? '<span style="color:#15803d;font-weight:700;">Cerrado</span>' : '<span style="color:#b45309;font-weight:700;">Abierto</span>'}</td>
+                <td style="padding:8px;white-space:nowrap;">${f.fechaSolucion ? '<span style="color:#15803d;font-weight:700;">Cerrado</span>' : '<span style="color:#b45309;font-weight:700;">Abierto</span>'}<div style="font-size:10.5px;color:#64748b;">${opsGdFolioEvid(f)} evidencia(s)</div></td>
+                <td style="padding:8px;min-width:150px;">${(() => { const pg = opsGdFolioPago(f, deGuardia); const ap = opsGdPuedeAprobar(); return `<div style="font-weight:800;color:${pg.ok ? "#15803d" : "#b91c1c"};">${pg.ok ? "✓ " + opsViaDinero(opsGdTarifas().folio) : "✗ No se paga"}</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(pg.motivo)}</div>${ap ? `<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">${pg.ok ? `<button onclick="opsGdFolioPagoSet('${f.id}',false)" style="border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Quitar pago</button>` : `<button onclick="opsGdFolioPagoSet('${f.id}',true)" style="border:1px solid #bbf7d0;background:#fff;color:#15803d;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Validar pago</button>`}${pg.manual ? `<button onclick="opsGdFolioPagoSet('${f.id}','auto')" style="border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Automático</button>` : ""}</div>` : ""}`; })()}</td>
                 <td style="padding:8px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver</button></td></tr>`;
         };
         const turno = Math.round((new Date(actual + "T12:00:00") - new Date(sem + "T12:00:00")) / (7 * 86400000));
@@ -7098,8 +7151,8 @@
                 <div style="font-size:14px;font-weight:800;color:#1e293b;">Folios atendidos en guardia (${folios.length})</div>
                 <div style="display:flex;gap:6px;">${opsGdBtn(`opsGdCompartir(${turno},'wa')`, "WhatsApp", "#16a34a", "#fff")}${opsGdBtn(`opsGdCompartir(${turno},'img')`, "Imagen", "#1D2E73", "#fff")}</div>
             </div>
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Se juntan solos: folios que se <b>levantaron</b> antes de las 8 a. m., desde las 5 p. m. o en fin de semana. Un servicio programado que se sube tarde <b>no</b> cuenta. Si algo no cuadra, ábrelo y cambia "¿Cuenta como guardia?".</div>
-            ${folios.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="text-align:left;color:#64748b;font-size:11px;background:#f8fafc;"><th style="padding:8px;">Se levantó</th><th style="padding:8px;">Folio</th><th style="padding:8px;">Atendió</th><th style="padding:8px;">Qué se hizo</th><th style="padding:8px;">Estatus</th><th></th></tr></thead><tbody>${folios.map(filaF).join("")}</tbody></table></div>`
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;">Se juntan solos: folios que se <b>levantaron</b> antes de las 8 a. m., desde las 5 p. m. o en fin de semana. Un servicio programado que se sube tarde <b>no</b> cuenta. Si algo no cuadra, ábrelo y cambia "¿Cuenta como guardia?". <b>Pago de la guardia técnica:</b> sábado ${opsViaDinero(opsGdTarifas().sab)} + domingo ${opsViaDinero(opsGdTarifas().dom)} + ${opsViaDinero(opsGdTarifas().folio)} por folio, solo si el folio está cerrado, tiene evidencias y lo atendió quien estaba de guardia.</div>
+            ${folios.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="text-align:left;color:#64748b;font-size:11px;background:#f8fafc;"><th style="padding:8px;">Se levantó</th><th style="padding:8px;">Folio</th><th style="padding:8px;">Atendió</th><th style="padding:8px;">Qué se hizo</th><th style="padding:8px;">Estatus</th><th style="padding:8px;">Pago (${opsViaDinero(opsGdTarifas().folio)} c/u)</th><th></th></tr></thead><tbody>${folios.map(filaF).join("")}</tbody></table></div>`
             : `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px;">No hubo folios de guardia esta semana.</div>`}
         </div>`;
     }
@@ -7164,21 +7217,25 @@
     // ── Pago: Operaciones aprueba → se generan los vales por día → Administración (Cristina) paga ──
     window.opsGdAprobar = async function (sem, tipo) {
         const g = opsGdProg(sem, tipo); if (!g) return;
-        const info = opsGdDiasInfo(sem, tipo), pag = info.filter(x => x.pagar), monto = opsGdMonto();
-        if (!pag.length) { if (!confirm("Ningún día se paga en esta guardia. ¿Cerrarla como aprobada sin pago?")) return; }
-        else if (!confirm(`Aprobar pago de ${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()}:\n${pag.length} día(s) × ${opsViaDinero(monto)} = ${opsViaDinero(pag.length * monto)}\n\nNo se pagan: ${info.filter(x => x.tec && !x.pagar).map(x => opsFechaCorta(x.dia) + " (" + x.motivo + ")").join(", ") || "ninguno"}`)) return;
+        const info = opsGdDiasInfo(sem, tipo), calc = opsGdCalculo(sem, tipo), pag = calc.dias.filter(d => d.monto > 0);
+        const sinValidar = calc.dias.flatMap(d => d.folios.filter(y => !y.ok).map(y => (y.f.folioClienteId || y.f.folioOS || "S/F") + " (" + y.motivo + ")"));
+        if (!pag.length) { if (!confirm("No hay nada que pagar en esta guardia. ¿Cerrarla como aprobada sin pago?")) return; }
+        else if (!confirm(`Aprobar pago de ${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()}:\n${pag.map(d => opsFechaCorta(d.dia) + ": " + opsViaDinero(d.monto)).join("\n")}\nTotal: ${opsViaDinero(calc.total)}\n\nNo se pagan: ${info.filter(x => x.tec && !x.pagar).map(x => opsFechaCorta(x.dia) + " (" + x.motivo + ")").concat(sinValidar).join(", ") || "nada"}`)) return;
         try {
             const sb = await opsSb(), aut = tipo === "administrativa" ? (opsGtelCfg.autorizaAdm || "") : (opsGtelCfg.autoriza || "");
-            for (const x of pag) {
-                const [a, m, dd] = x.dia.split("-");
-                const r = await sb.from("ops_guardia_tel_vales").insert({ fecha_guardia: x.dia, tecnico_id: x.tec, tecnico_nombre: opsNombreTecnico(x.tec), monto, concepto: `${tipo === "administrativa" ? "GUARDIA ADMINISTRATIVA" : "GUARDIA TÉCNICA"} DEL ${dd}/${m}/${a}`, orden_servicio: x.folios.map(f => f.folioClienteId || f.folioOS).filter(Boolean).join(", ").slice(0, 200) || "NA", autoriza: aut, creado_por: opsUsuarioActual(), tipo_guardia: tipo }).select("id").single();
+            for (const d of pag) {
+                const [a, m, dd] = d.dia.split("-");
+                const ok = d.folios.filter(y => y.ok).map(y => y.f.folioClienteId || y.f.folioOS || "S/F");
+                const concepto = (tipo === "administrativa" ? "GUARDIA ADMINISTRATIVA" : "GUARDIA TÉCNICA") + ` DEL ${dd}/${m}/${a}` + (tipo === "tecnica" ? (d.base ? " · " + d.baseTxt.toUpperCase() : "") + (ok.length ? " · " + ok.length + " FOLIO(S)" : "") : "");
+                const r = await sb.from("ops_guardia_tel_vales").insert({ fecha_guardia: d.dia, tecnico_id: d.tec, tecnico_nombre: opsNombreTecnico(d.tec), monto: d.monto, concepto, orden_servicio: ok.join(", ").slice(0, 200) || "NA", autoriza: aut, creado_por: opsUsuarioActual(), tipo_guardia: tipo }).select("id").single();
                 if (r.error) { if (String(r.error.code) === "23505") continue; throw r.error; }
                 await sb.from("ops_guardia_tel_vales").update({ folio: "GT-" + String(r.data.id).padStart(5, "0") }).eq("id", r.data.id);
             }
-            const pago = { estado: "aprobado", aprobadoPor: opsNombreActual(), aprobadoEn: opsFechaHora(), monto, total: pag.length * monto, dias: pag.map(x => ({ dia: x.dia, tecnicoId: x.tec })) };
+            const pago = { estado: "aprobado", aprobadoPor: opsNombreActual(), aprobadoEn: opsFechaHora(), monto: tipo === "tecnica" ? null : opsGdMonto(), tarifas: tipo === "tecnica" ? opsGdTarifas() : null, total: calc.total,
+                dias: pag.map(d => ({ dia: d.dia, tecnicoId: d.tec, monto: d.monto, base: d.base, folios: d.folios.map(y => ({ id: y.f.id, folio: y.f.folioClienteId || y.f.folioOS || "S/F", estacion: y.f.estacion || "", ok: y.ok, motivo: y.motivo })) })) };
             await opsGdGuardarProg(g, { pago });
-            const quienes = [...new Set(pag.map(x => opsNombreTecnico(x.tec)))].join(", ");
-            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${pag.length} día(s) · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. Ya puedes pagarla en Operaciones → Guardias → Pago de guardias.`);
+            const quienes = [...new Set(pag.map(d => opsNombreTecnico(d.tec)))].join(", ");
+            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. Ya puedes pagarla en Operaciones → Guardias → Pago de guardias.`);
             await opsGtelCargar(); opsRenderGuardias();
         } catch (e) { alert("No se pudo aprobar: " + (e.message || e)); }
     };
@@ -7197,12 +7254,25 @@
     // Vale general: una hoja por persona con todos sus días de esa semana.
     window.opsGdVale = function (sem, tipo, tecId) {
         const g = opsGdProg(sem, tipo); if (!g) return;
-        const dias = opsGdDiasInfo(sem, tipo).filter(x => x.pagar && x.tec === tecId), monto = (g.pago && g.pago.monto) || opsGdMonto();
-        if (!dias.length) { alert("Esta persona no tiene días a pagar en esta guardia."); return; }
+        const p = g.pago || {}, T = p.tarifas || opsGdTarifas();
+        // Si ya se aprobó, el vale sale con lo aprobado; si no, con el cálculo de hoy.
+        const dias = (p.estado && Array.isArray(p.dias) && p.dias.some(d => d.monto != null)
+            ? p.dias.filter(d => d.tecnicoId === tecId).map(d => ({ dia: d.dia, tec: d.tecnicoId, monto: d.monto, base: d.base || 0, baseTxt: tipo === "tecnica" ? (new Date(d.dia + "T12:00:00").getDay() === 6 ? "Guardia de sábado" : new Date(d.dia + "T12:00:00").getDay() === 0 ? "Guardia de domingo" : "") : "Guardia administrativa", folios: (d.folios || []).map(y => ({ f: { folioClienteId: y.folio, estacion: y.estacion }, ok: y.ok, motivo: y.motivo })) }))
+            : opsGdCalculo(sem, tipo).dias.filter(d => d.tec === tecId));
+        if (!dias.some(d => d.monto > 0)) { alert("Esta persona no tiene nada a pagar en esta guardia."); return; }
         const w = window.open("", "_blank"); if (!w) { alert("Permite ventanas emergentes para imprimir."); return; }
-        const nombre = opsNombreTecnico(tecId), total = dias.length * monto, p = g.pago || {};
+        const nombre = opsNombreTecnico(tecId), total = dias.reduce((a, d) => a + (Number(d.monto) || 0), 0);
         const aut = p.aprobadoPor || (tipo === "administrativa" ? opsGtelCfg.autorizaAdm : opsGtelCfg.autoriza) || "";
-        const fila = x => { const d = new Date(x.dia + "T12:00:00"); return `<tr><td>${OPS_GD_DIAS_TXT[d.getDay()]} ${x.dia.split("-").reverse().join("/")}</td><td>${x.folios.length ? x.folios.map(f => opsEsc(f.folioClienteId || f.folioOS || "S/F") + " · " + opsEsc(f.estacion || "")).join("<br>") : (tipo === "tecnica" ? "Sin folios (guardia cubierta)" : "Guardia administrativa")}</td><td style="text-align:right">${opsViaDinero(monto)}</td></tr>`; };
+        const fila = x => {
+            const d = new Date(x.dia + "T12:00:00"), dTxt = `${OPS_GD_DIAS_TXT[d.getDay()]} ${x.dia.split("-").reverse().join("/")}`;
+            if (tipo !== "tecnica") return `<tr><td>${dTxt}</td><td>Guardia administrativa</td><td style="text-align:right">${opsViaDinero(x.monto)}</td></tr>`;
+            const lin = [];
+            if (x.base) lin.push(`<tr><td>${dTxt}</td><td>${opsEsc(x.baseTxt)}</td><td style="text-align:right">${opsViaDinero(x.base)}</td></tr>`);
+            x.folios.forEach(y => lin.push(`<tr${y.ok ? "" : ' style="color:#888"'}><td>${dTxt}</td><td>Folio ${opsEsc(y.f.folioClienteId || y.f.folioOS || "S/F")} · ${opsEsc(y.f.estacion || "")}${y.ok ? "" : ` <i>(no se paga: ${opsEsc(y.motivo)})</i>`}</td><td style="text-align:right">${y.ok ? opsViaDinero(T.folio) : "$0.00"}</td></tr>`));
+            return lin.join("");
+        };
+        const nFol = dias.reduce((a, d) => a + d.folios.filter(y => y.ok).length, 0), fin = dias.reduce((a, d) => a + (d.base || 0), 0);
+        const resumen = tipo === "tecnica" ? `Fin de semana ${opsViaDinero(fin)} + ${nFol} folio(s) × ${opsViaDinero(T.folio)} = ${opsViaDinero(total)}` : `${dias.length} día(s) × ${opsViaDinero(dias[0].monto)} = ${opsViaDinero(total)}`;
         w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Vale de guardia ${opsEsc(nombre)}</title><style>
             body{font-family:Arial,sans-serif;font-size:12.5px;color:#111;margin:28px}h1{font-size:18px;margin:0;color:#1D2E73}.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1D2E73;padding-bottom:8px;margin-bottom:14px}
             .k{color:#555;font-size:11px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:7px;vertical-align:top}th{background:#eef2ff;text-align:left}
@@ -7210,9 +7280,10 @@
             .nd{display:inline-block;border:1.5px solid #111;padding:3px 10px;font-weight:bold;letter-spacing:1px}@media print{button{display:none}}</style></head><body>
             <div class="top"><div><h1>HEDMA TECNOCONTROL · VALE GENERAL DE GUARDIA</h1><div class="k">${opsEsc(OPS_GUARDIA_TIPOS[tipo].n)} · ${opsEsc(opsGuardiaHorarioTxt(sem, true))}</div></div><span class="nd">NO DEDUCIBLE</span></div>
             <div><span class="k">Persona:</span> <b>${opsEsc(nombre)}</b> &nbsp; <span class="k">Fecha de emisión:</span> <b>${new Date().toLocaleDateString("es-MX")}</b> &nbsp; <span class="k">Estatus:</span> <b>${p.estado === "pagado" ? "PAGADO" : p.estado === "aprobado" ? "APROBADO" : "POR APROBAR"}</b></div>
-            <table><thead><tr><th style="width:130px">Día</th><th>Folios atendidos</th><th style="width:100px;text-align:right">Importe</th></tr></thead><tbody>${dias.map(fila).join("")}</tbody></table>
-            <div class="tot">${dias.length} día(s) × ${opsViaDinero(monto)} = ${opsViaDinero(total)}</div>
-            <p>Recibo la cantidad de <b>${opsViaDinero(total)}</b> por concepto de guardia (gasto no deducible) correspondiente a los días arriba descritos.</p>
+            ${tipo === "tecnica" ? `<div class="k" style="margin-top:6px;">Tarifa: sábado ${opsViaDinero(T.sab)} · domingo ${opsViaDinero(T.dom)} · ${opsViaDinero(T.folio)} por folio cerrado con evidencias y atendido por quien estaba de guardia.</div>` : ""}
+            <table><thead><tr><th style="width:130px">Día</th><th>Concepto</th><th style="width:100px;text-align:right">Importe</th></tr></thead><tbody>${dias.map(fila).join("")}</tbody></table>
+            <div class="tot">${resumen}</div>
+            <p>Recibo la cantidad de <b>${opsViaDinero(total)}</b> por concepto de guardia (gasto no deducible) correspondiente a lo arriba descrito.</p>
             <div class="f"><div><b>${opsEsc(nombre)}</b><br>Recibe</div><div><b>${opsEsc(aut)}</b><br>Autoriza (Operaciones)</div><div><b>${opsEsc(p.pagadoPor || "")}</b><br>Paga (Administración)</div></div>
             <button onclick="print()" style="margin-top:24px;padding:9px 16px;">Imprimir</button></body></html>`);
         w.document.close();
@@ -7258,7 +7329,7 @@
                     <td style="padding:8px;"><b>${opsEsc(opsNombreTecnico(r.g.tecnicoId))}</b>${info.some(x => x.cubre) ? `<div style="font-size:10.5px;color:#b45309;">+ ${opsEsc([...new Set(info.filter(x => x.cubre).map(x => opsNombreTecnico(x.tec)))].join(", "))}</div>` : ""}</td>
                     <td style="padding:8px;">${opsGdTira(r.sem, r.tipo, true)}</td>
                     <td style="padding:8px;text-align:center;">${info.reduce((a, x) => a + x.folios.length, 0)}</td>
-                    <td style="padding:8px;text-align:right;white-space:nowrap;">${pag} d · ${opsViaDinero(pag * ((r.g.pago || {}).monto || opsGdMonto()))}</td>
+                    <td style="padding:8px;text-align:right;white-space:nowrap;">${opsViaDinero((r.g.pago || {}).total != null ? r.g.pago.total : opsGdCalculo(r.sem, r.tipo).total)}</td>
                     <td style="padding:8px;">${opsGdChip(r.e)}</td>
                     <td style="padding:8px;"><button onclick="opsGdAbrirSemana('${r.sem}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Abrir</button></td></tr>`; }).join("")
                     || `<tr><td colspan="8" style="padding:18px;text-align:center;color:#94a3b8;">No hay guardias con este filtro.</td></tr>`}</tbody></table></div></div>`;
@@ -7270,7 +7341,7 @@
             return `<div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;border-left:5px solid ${color};">
                 <div style="font-size:14px;font-weight:800;color:#1e293b;">${tit} (${filas.filter(r => r.e.k === k).length})</div>
                 <div style="font-size:11.5px;color:#64748b;margin-bottom:8px;">${ayuda}</div>
-                ${l.length ? l.map(r => { const info = opsGdDiasInfo(r.sem, r.tipo), pag = info.filter(x => x.pagar), p = r.g.pago || {}, tot = p.total != null ? p.total : pag.length * opsGdMonto();
+                ${l.length ? l.map(r => { const info = opsGdDiasInfo(r.sem, r.tipo), pag = info.filter(x => x.pagar), p = r.g.pago || {}, tot = p.total != null ? p.total : opsGdCalculo(r.sem, r.tipo).total;
                     const ids = [...new Set((p.dias ? p.dias.map(x => x.tecnicoId) : pag.map(x => x.tec)))];
                     return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid #f1f5f9;">
                         <div style="flex:1;min-width:220px;"><b>${opsEsc(ids.map(opsNombreTecnico).join(", ") || opsNombreTecnico(r.g.tecnicoId))}</b> <span style="font-size:11px;color:${OPS_GUARDIA_TIPOS[r.tipo].c};font-weight:700;">${r.tipo === "administrativa" ? "Administrativa" : "Técnica"}</span>
@@ -7284,7 +7355,7 @@
             </div>`;
         };
         return `<div style="background:#eef2ff;border-radius:12px;padding:10px 14px;font-size:12.5px;color:#1D2E73;margin-bottom:12px;">
-                <b>Así se paga:</b> 1) termina la guardia el viernes 8:00 a. m. → 2) <b>Operaciones</b> revisa los días y la aprueba → 3) <b>Administración</b> (Cristina) la paga y la marca como pagada. A la persona le llega un aviso. Monto por día: <b>${opsViaDinero(opsGdMonto())}</b>.</div>
+                <b>Así se paga:</b> 1) termina la guardia el viernes 8:00 a. m. → 2) <b>Operaciones</b> revisa los días y la aprueba → 3) <b>Administración</b> (Cristina) la paga y la marca como pagada. A la persona le llega un aviso. Guardia técnica: sábado <b>${opsViaDinero(opsGdTarifas().sab)}</b> + domingo <b>${opsViaDinero(opsGdTarifas().dom)}</b> + <b>${opsViaDinero(opsGdTarifas().folio)}</b> por folio válido (cerrado, con evidencias y atendido por la guardia). Guardia administrativa: <b>${opsViaDinero(opsGdMonto())}</b> por día.</div>
             ${grupo("revisar", "1 · Falta aprobar (Operaciones)", "Guardias que ya terminaron. Revisa los días en rojo antes de aprobar.", "#b45309")}
             ${grupo("aprobado", "2 · Falta pagar (Administración)", "Ya aprobadas por Operaciones. Imprime el vale, paga y marca como pagada.", "#1d4ed8")}
             ${grupo("pagado", "3 · Pagadas", "Últimas guardias pagadas.", "#15803d")}`;
@@ -27903,7 +27974,7 @@
     const OPS_GTEL_ACC = { resuelto_telefono: "Se resolvió por teléfono", se_genero_folio: "Se generó folio", se_envio_tecnico: "Se envió técnico", pendiente: "Queda pendiente",
         plataforma: "Se atendió en plataforma (ServiceNow / Fractal)", publico_folio: "Se publicó / asignó el folio", gestion_admin: "Gestión administrativa" };
     const OPS_GTEL_EST = { Generado: ["#b45309", "#fef3c7"], Entregado: ["#1d4ed8", "#dbeafe"], Pagado: ["#15803d", "#dcfce7"], Cancelado: ["#64748b", "#f1f5f9"] };
-    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, autoriza: "PALOMA PINEDO", autorizaAdm: "PALOMA PINEDO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
+    let opsGtelBit = [], opsGtelVales = [], opsGtelCfg = { montoDia: 142.85, montoSabadoTec: 300, montoDomingoTec: 300, montoFolioTec: 100, autoriza: "PALOMA PINEDO", autorizaAdm: "PALOMA PINEDO", proyecto: "PUBLICACIÓN DE FOLIOS Y GUARDIA TÉCNICA" };
     let opsGtelSemana = null;
     async function opsGtelCargar() {
         const sb = await opsSb();
