@@ -18373,10 +18373,15 @@
         .opsas-tt{font-size:14px;font-weight:700;color:#1e293b}
         .opsas-hint{margin-left:auto;font-size:11px;color:#94a3b8}
         .opsas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
-        .opsas-type{border:1.5px solid #e2e8f0;border-radius:11px;padding:11px;cursor:pointer;background:#fff;text-align:left;font-family:inherit}
-        .opsas-type:hover{border-color:#cbd5e1}
-        .opsas-type b{display:flex;align-items:center;gap:7px;font-size:13px;color:#1e293b}
-        .opsas-type span{display:block;color:#94a3b8;font-size:11px;margin-top:3px;line-height:1.35}
+        .opsas-type{display:inline-flex;align-items:center;gap:6px;border:1.5px solid #e2e8f0;border-radius:999px;padding:6px 13px;cursor:pointer;background:#fff;font-family:inherit;font-size:12.5px;font-weight:700;color:#334155}
+        .opsas-type:hover{border-color:#94a3b8}
+        .opsas-type .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+        .opsas-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:10px}
+        .opsas-sel{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;background:#fff;color:#1e293b;font-family:inherit;box-sizing:border-box}
+        .opsas-mini{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:700;color:#1e293b;user-select:none}
+        .opsas-mini .opsas-tg{width:32px;height:18px}.opsas-mini .opsas-tg::after{width:12px;height:12px}
+        .opsas-mini.on .opsas-tg{background:#15803d}.opsas-mini.on .opsas-tg::after{left:17px}
+        .opsas-fold{display:flex;align-items:center;gap:6px;width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;color:#1D2E73;text-align:left}
         .opsas-drop{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #cbd5e1;border-radius:9px;box-shadow:0 10px 24px rgba(15,23,42,.16);max-height:260px;overflow-y:auto;z-index:10;display:none}
         .opsas-opt{padding:8px 11px;cursor:pointer;border-bottom:1px solid #eef2f7}
         .opsas-opt:hover{background:#f1f5f9}
@@ -18605,7 +18610,8 @@
         const paso1 = `
         <div class="opsas-sec">
             <div class="opsas-sh"><div class="opsas-num">${num()}</div><div class="opsas-tt">¿Qué vas a registrar?</div><div class="opsas-hint">Decide qué se pide después</div></div>
-            <div class="opsas-grid">${OPS_AS_TIPOS.map(t => `<button type="button" class="opsas-type" onclick="opsAsSet('tipo','${t.k}')" style="${s.tipo === t.k ? `border-color:${t.c};background:${t.c}0d;` : ""}"><b><span style="width:9px;height:9px;border-radius:50%;background:${t.c};"></span>${opsEsc(t.n)}</b><span>${opsEsc(t.d)}</span></button>`).join("")}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">${OPS_AS_TIPOS.map(t => `<button type="button" class="opsas-type" title="${opsEsc(t.d)}" onclick="opsAsSet('tipo','${t.k}')" style="${s.tipo === t.k ? `border-color:${t.c};background:${t.c};color:#fff;` : ""}"><span class="dot" style="background:${s.tipo === t.k ? "#fff" : t.c};"></span>${opsEsc(t.n)}</button>`).join("")}</div>
+            ${tipo ? `<div class="opsas-note" style="margin-top:6px;">${opsEsc(tipo.d)}</div>` : `<div class="opsas-note" style="margin-top:6px;">Pasa el mouse sobre cada opción para ver qué es.</div>`}
             ${s.tipo === "receta" ? `
             <div style="margin-top:12px;">
                 <label class="opsas-lb">Servicio del catálogo (${recetas.length})</label>
@@ -18637,17 +18643,12 @@
                 ${e.permiso ? "" : `<div class="opsas-note opsas-warn">Esta estación no tiene PL en el catálogo. Si lo capturas, se guarda en el folio y en el catálogo.</div>`}
                 ${hermanas.length ? `<div class="opsas-note">Esta razón social tiene ${hermanas.length + 1} estaciones: ${[e, ...hermanas].map(x => opsEsc(x.nombreComercial || x.razonSocial)).join(", ")}.</div>` : ""}
             </div>` : `<div class="opsas-note" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${s.conceptoGeneral ? (s.conceptoGeneral === "Atención a folios" || s.conceptoGeneral === "Guardia" ? "<b>Programación abierta:</b> no se liga a ninguna estación ni razón social. El técnico puede tener otros servicios esos días y atiende los folios que salgan según su prioridad; no cuenta como choque. Cada folio que atienda se le liga después." : "<b>Concepto general:</b> el técnico queda ocupado esos días sin una estación fija.") : s.estTexto.trim() ? "Se guardará como lugar escrito a mano (fuera del catálogo)." : "¿El cliente no está en el catálogo?"} ${s.conceptoGeneral ? "" : `<button type="button" class="opsas-ghost" style="padding:4px 10px;font-size:11.5px;border-color:#15803d;color:#15803d;" onclick="opsNeAbrir()">+ Dar de alta estación / cliente nuevo</button>`}</div>`}
-            ${e ? "" : `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;">
-                <span style="font-size:11.5px;color:#64748b;font-weight:700;">Sin estación fija:</span>
-                ${opsAsClientesAtencionHTML()}
-                ${OPS_CONCEPTOS_GENERALES.map(c => `<button type="button" onclick="opsAsConceptoGeneral('${c}')" style="border:1.5px solid ${s.conceptoGeneral === c ? "#1D2E73" : "#cbd5e1"};background:${s.conceptoGeneral === c ? "#1D2E73" : "#fff"};color:${s.conceptoGeneral === c ? "#fff" : "#334155"};border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer;">${c}</button>`).join("")}
-            </div>`}
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <span class="opsas-lb" style="margin:0;">Plaza</span>
-                ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
-                ${s.est && !s.plazaManual ? `<span style="font-size:10.5px;color:#94a3b8;">detectada por la estación</span>` : ""}
+            ${e ? "" : opsAsClientesAtencionHTML()}
+            <div class="opsas-row">
+                ${e ? "" : opsAsConceptoSelHTML()}
+                ${opsAsPlazaSelHTML(s.est && !s.plazaManual ? "detectada por la estación" : "")}
+                ${opsAsEmpresaHTML()}
             </div>
-            ${opsAsEmpresaHTML()}
         </div>`;
 
         if (multiEst) paso2 = opsAsPaso2MultiHTML(n, lock(listo1));
@@ -19025,7 +19026,7 @@
         return `<div class="opsas-note" style="margin-top:6px;">Ojo: <b>"Varias estaciones"</b> crea <b>un servicio por cada estación</b> y los reparte en días distintos. Si el técnico va a estar disponible para lo que salga (por ejemplo, <b>atención a folios</b>), usa mejor "Sin estación fija" con fecha de fin.</div>`;
     }
     function opsAsMultiSwitchHTML() {
-        return `<div class="opsas-sw" style="margin-bottom:10px;" onclick="opsAsSetMulti(true)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Elige varias estaciones (o todo un grupo / razón social) y un rango de fechas; el técnico las atiende en el orden que quiera</div></div></div>` + opsAsMultiSwitchHTML_aviso();
+        return `<div style="margin-bottom:8px;"><span class="opsas-mini" onclick="opsAsSetMulti(true)" title="Crea un servicio por cada estación y los reparte en días distintos. Si el técnico va a estar disponible para lo que salga (por ejemplo, atención a folios), usa mejor «Sin estación fija» con fecha de fin."><span class="opsas-tg"></span>Varias estaciones · varios días</span></div>`;
     }
     window.opsAsSetMulti = function (on) {
         const s = opsAS; if (!s) return;
@@ -19108,13 +19109,28 @@
         const normas = opsAsNormasVisita().filter(Boolean);
         const auto = normas.length > 1 ? normas.map(n => n + ": " + opsAsEmpresaSugeridaAlta(n)).join(" · ") : opsAsEmpresaSugeridaAlta();
         const autoUna = normas.length > 1 ? opsAsEmpresaSugeridaAlta(normas[0]) : opsAsEmpresaSugeridaAlta();
-        return `<div style="margin-top:12px;">
-            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:7px;">
-                <span class="opsas-lb" style="margin:0;">¿Qué empresa hace este servicio?</span>
-                <span style="font-size:11px;color:#64748b;">Su logotipo sale en el PDF del servicio y en los viáticos.${normas.length > 1 ? " Por regla: " + opsEsc(auto) + "." : ""}</span>
-            </div>
-            ${opsEmpresaBotonesHTML(s.empresaServicio || "", autoUna, "opsAS.empresaServicio=v;opsAsPintar()")}
-        </div>`;
+        const Eauto = opsEmpresaDoc(autoUna);
+        const elegida = s.empresaServicio && opsEmpresaDoc(s.empresaServicio) !== Eauto ? s.empresaServicio : "";
+        return `<div><label class="opsas-lb" title="Su logotipo sale en el PDF del servicio y en los viáticos.">Empresa que hace el servicio</label>
+            <select class="opsas-sel" onchange="opsAS.empresaServicio=this.value;opsAsPintar()">
+                <option value="" ${elegida ? "" : "selected"}>${opsEsc((Eauto && Eauto.corto) || autoUna || "Automática")} (automática)</option>
+                ${OPS_EMPRESAS_NOMBRES.filter(n => opsEmpresaDoc(n) !== Eauto).map(n => `<option value="${opsEsc(n)}" ${elegida === n ? "selected" : ""}>${opsEsc(opsEmpresaDoc(n).corto || n)}</option>`).join("")}
+            </select>
+            ${normas.length > 1 ? `<div class="opsas-note" style="margin-top:3px;">Por regla: ${opsEsc(auto)}.</div>` : ""}</div>`;
+    }
+    function opsAsPlazaSelHTML(nota) {
+        const s = opsAS; if (!s) return "";
+        return `<div><label class="opsas-lb">Plaza</label>
+            <select class="opsas-sel" onchange="opsAS.plazaManual=true;opsAsSet('plaza',this.value)">${OPS_PLAZAS.map(p => `<option ${s.plaza === p ? "selected" : ""}>${p}</option>`).join("")}</select>
+            ${nota ? `<div class="opsas-note" style="margin-top:3px;">${opsEsc(nota)}</div>` : ""}</div>`;
+    }
+    function opsAsConceptoSelHTML() {
+        const s = opsAS; if (!s) return "";
+        return `<div><label class="opsas-lb" title="Para programaciones sin una estación: traslado, atención a folios, guardia, capacitación o proyecto interno.">Sin estación fija</label>
+            <select class="opsas-sel" onchange="opsAsConceptoGeneral(this.value||opsAS.conceptoGeneral);this.value=(opsAS&&opsAS.conceptoGeneral)||''">
+                <option value="">— No aplica —</option>
+                ${OPS_CONCEPTOS_GENERALES.map(c => `<option ${s.conceptoGeneral === c ? "selected" : ""}>${c}</option>`).join("")}
+            </select></div>`;
     }
     window.opsAsNombrarEstacion = async function (id) {
         const cat = window.__opsAsEstCatalogo || [];
@@ -19138,7 +19154,7 @@
         return `
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Estaciones (${s.estaciones.length})</div><div class="opsas-hint">Busca y agrega todas, o "+ Agregar las N" de un grupo</div></div>
-            <div class="opsas-sw on" style="margin-bottom:10px;" onclick="opsAsSetMulti(false)"><div class="opsas-tg"></div><div><div style="font-size:13px;font-weight:700;color:#1e293b;">Varias estaciones · varios días</div><div style="font-size:11.5px;color:#94a3b8;">Toca para volver a una sola estación</div></div></div>
+            <div style="margin-bottom:10px;"><span class="opsas-mini on" onclick="opsAsSetMulti(false)"><span class="opsas-tg"></span>Varias estaciones · varios días <small style="font-weight:500;color:#94a3b8;">(toca para volver a una sola)</small></span></div>
             ${opsAsClientesChipsHTML()}
             <div style="position:relative;">
                 <input id="opsas-est" class="opsas-in" value="${opsEsc(s.estTexto)}" onfocus="if(opsAS&&opsAS.clienteFiltro)opsAsBuscarEstacion(this.value)" placeholder="Escribe para buscar y agregar otra estación…" autocomplete="off" oninput="opsAsBuscarEstacion(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsMultiTexto();}" onblur="setTimeout(()=>{const b=document.getElementById('opsas-est-drop');if(b)b.style.display='none';},180)">
@@ -19152,12 +19168,10 @@
                     <div style="font-size:10.5px;color:#64748b;">${x.est ? opsEsc([x.est.razonSocial, x.est.municipio].filter(Boolean).join(" · ")) : "Escrita a mano (fuera del catálogo)"}</div></div>
                     <button type="button" onclick="opsAsMultiQuitar(${i})" title="Quitar" style="background:#fef2f2;border:none;color:#E7402B;width:26px;height:26px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;">${OPS_SVG('<path d="M18 6 6 18M6 6l12 12"/>', 12)}</button>
                 </div>`).join("")}</div>` : `<div class="opsas-note opsas-warn">Agrega al menos una estación.</div>`}
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <span class="opsas-lb" style="margin:0;">Plaza</span>
-                ${OPS_PLAZAS.map(p => `<button type="button" onclick="opsAS.plazaManual=true;opsAsSet('plaza','${p}')" style="border:1.5px solid ${s.plaza === p ? "#1D2E73" : "#e2e8f0"};background:${s.plaza === p ? "#1D2E73" : "#fff"};color:${s.plaza === p ? "#fff" : "#334155"};border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;">${p}</button>`).join("")}
-                <span style="font-size:10.5px;color:#94a3b8;">${s.plazaManual ? "aplica a todas" : "cada estación toma la de su municipio"}</span>
+            <div class="opsas-row">
+                ${opsAsPlazaSelHTML(s.plazaManual ? "aplica a todas" : "cada estación toma la de su municipio")}
+                ${opsAsEmpresaHTML()}
             </div>
-            ${opsAsEmpresaHTML()}
         </div>`;
     }
     function opsAsPaso3MultiHTML(numero, cls) {
@@ -19239,7 +19253,13 @@
                 <div class="opsas-note">En Solo programación no se captura precio ni se le cobran materiales o gastos al cliente.</div>
             </div>`;
     }
-    window.opsAsProgChipsHTML = function () { return opsAS ? opsProgChipsHTML(opsAS.servicios, opsAS.servBusca, "opsAsProgToggle") + window.opsAsAvisoSondaHTML("prog") : ""; };
+    window.opsAsProgChipsHTML = function () {
+        if (!opsAS) return "";
+        if (!String(opsAS.servBusca || "").trim() && !opsAS.servVer)
+            return `<button type="button" class="opsas-fold" onclick="opsAS.servVer=true;opsAsPintarParcial('opsas-prog-chips',opsAsProgChipsHTML())">${OPS_SVG('<path d="m6 9 6 6 6-6"/>', 13)}Ver lista de servicios (${opsProgOpcionesServicio().length}) · o escribe arriba para buscar</button>` + window.opsAsAvisoSondaHTML("prog");
+        return (opsAS.servVer && !String(opsAS.servBusca || "").trim() ? `<button type="button" class="opsas-fold" style="margin-bottom:6px;" onclick="opsAS.servVer=false;opsAsPintarParcial('opsas-prog-chips',opsAsProgChipsHTML())">${OPS_SVG('<path d="m18 15-6-6-6 6"/>', 13)}Ocultar lista</button>` : "")
+            + opsProgChipsHTML(opsAS.servicios, opsAS.servBusca, "opsAsProgToggle") + window.opsAsAvisoSondaHTML("prog");
+    };
     function opsAsProgAutoDur() {
         const s = opsAS; if (!s || s.durManual) return;
         const h = opsProgHoras(s.servicios);
@@ -19876,11 +19896,12 @@
         const cantDe = n => { const r = deReceta.find(x => opsAsNorm(x.nombre) === opsAsNorm(n)); return r && r.cantidad ? " × " + r.cantidad : ""; };
         return `
         <div class="opsas-sec ${cls}">
-            <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Equipo de seguridad</div><div class="opsas-hint">${s.seguridad.length} marcado(s) · marca solo lo que aplica</div></div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
+            <div class="opsas-sh" style="cursor:pointer;${s.segAbierto ? "" : "margin-bottom:0;"}" onclick="opsAS.segAbierto=!opsAS.segAbierto;opsAsPintar()"><div class="opsas-num">${numero}</div><div class="opsas-tt">Equipo de seguridad</div><div class="opsas-hint" style="display:flex;align-items:center;gap:5px;">${s.seguridad.length} marcado(s) · ${s.segAbierto ? "ocultar" : "ver / marcar"} ${OPS_SVG(s.segAbierto ? '<path d="m18 15-6-6-6 6"/>' : '<path d="m6 9 6 6 6-6"/>', 13)}</div></div>
+            ${s.segAbierto ? "" : (s.seguridad.length ? `<div class="opsas-note" style="margin-top:8px;">${opsEsc(s.seguridad.slice().sort(opsAsAlfa).join(", "))}</div>` : "")}
+            <div style="display:${s.segAbierto ? "grid" : "none"};grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
                 ${base.map(b => `<label class="opsas-segchk"><input type="checkbox" ${s.seguridad.includes(b.n) ? "checked" : ""} data-n="${opsEsc(b.n)}" onchange="opsAsToggleSeg(this.dataset.n,this.checked)"><span>${opsEsc(b.n)}${cantDe(b.n)}${b.nom ? `<small>${opsEsc(b.nom)}</small>` : ""}</span></label>`).join("")}
             </div>
-            <div style="display:flex;gap:6px;margin-top:8px;max-width:420px;">
+            <div style="display:${s.segAbierto ? "flex" : "none"};gap:6px;margin-top:8px;max-width:420px;">
                 <input class="opsas-in" placeholder="Otro equipo que no está en la lista…" value="${opsEsc(s.segOtro)}" oninput="opsAS.segOtro=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsAgregarSeg();}">
                 <button type="button" class="opsas-ghost" style="white-space:nowrap;" onclick="opsAsAgregarSeg()">+ Agregar</button>
             </div>
@@ -20953,11 +20974,15 @@
         const top = opsCliLista.filter(c => c.activo !== false && (opsCliConteo[c.id] || 0) > 0).sort((a, b) => (opsCliConteo[b.id] || 0) - (opsCliConteo[a.id] || 0));
         if (!opsCliCargado) { opsCliCargar().then(() => { if (opsAS) opsAsPintar(); }).catch(() => {}); return ""; }
         const sel = s.clienteFiltro ? opsCliLista.find(c => c.id === s.clienteFiltro) : null;
-        return `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;">
-            <span style="font-size:11px;font-weight:800;color:#64748b;">Cliente:</span>
-            ${top.slice(0, 6).map(c => `<button type="button" onclick="opsAsElegirCliente('${c.id}')" style="border:1px solid ${s.clienteFiltro === c.id ? "#1D2E73" : "#cbd5e1"};background:${s.clienteFiltro === c.id ? "#1D2E73" : "#fff"};color:${s.clienteFiltro === c.id ? "#fff" : "#334155"};border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${opsEsc(opsCliNombre(c))} <span style="opacity:.7;">${opsCliConteo[c.id] || 0}</span></button>`).join("")}
-            <select onchange="opsAsElegirCliente(this.value)" style="border:1px solid #cbd5e1;border-radius:999px;padding:4px 8px;font-size:11.5px;max-width:220px;"><option value="">${sel && !top.slice(0, 6).includes(sel) ? opsEsc(opsCliNombre(sel)) : "Otro cliente…"}</option>${top.slice(6).concat(opsCliLista.filter(c => c.activo !== false && !(opsCliConteo[c.id] || 0))).map(c => `<option value="${c.id}">${opsEsc(opsCliNombre(c))} (${opsCliConteo[c.id] || 0})</option>`).join("")}</select>
-            ${s.clienteFiltro ? `<button type="button" onclick="opsAsElegirCliente('')" style="border:none;background:none;color:#E7402B;font-size:11.5px;font-weight:700;cursor:pointer;">Quitar filtro</button>` : ""}
+        const resto = opsCliLista.filter(c => c.activo !== false && !top.slice(0, 6).includes(c)).sort((a, b) => opsAsAlfa(opsCliNombre(a), opsCliNombre(b)));
+        const opt = c => `<option value="${c.id}" ${s.clienteFiltro === c.id ? "selected" : ""}>${opsEsc(opsCliNombre(c))} (${opsCliConteo[c.id] || 0})</option>`;
+        return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+            <select class="opsas-sel" style="flex:1;" onchange="opsAsElegirCliente(this.value)">
+                <option value="">Cliente: todos (o elige uno para ver sus estaciones)</option>
+                ${top.length ? `<optgroup label="Más usados">${top.slice(0, 6).map(opt).join("")}</optgroup>` : ""}
+                <optgroup label="Todos (A-Z)">${resto.map(opt).join("")}</optgroup>
+            </select>
+            ${sel ? `<button type="button" onclick="opsAsElegirCliente('')" style="border:none;background:none;color:#E7402B;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;">Quitar filtro</button>` : ""}
         </div>`;
     }
     window.opsAsElegirCliente = function (id) {
