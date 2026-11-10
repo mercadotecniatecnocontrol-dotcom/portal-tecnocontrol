@@ -1869,12 +1869,36 @@ window.fmUsarUnidad=async function(eco){
 };
 
 // MODAL CAMBIO DE VEHÍCULO (solo admins)
-window.adminCambiarVehiculo=function(){
+// Lista COMPLETA de vehículos desde la base (no del catálogo fijo CAT_FL, que
+// solo llega al ECO 96). Si el listener aún no trae datos, se consulta directo.
+async function _fmVehsCompletos(){
+  if(!window._fmAllVehs?.length){
+    try{
+      const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),12000));
+      const snap=await Promise.race([db.collection(C.VEHS).get(),timeout]);
+      if(!snap.empty)window._fmAllVehs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    }catch(e){console.warn('[MOVIL vehs completos]',e);}
+  }
+  const base=window._fmAllVehs?.length?window._fmAllVehs:(window.CAT_FL||[]);
+  // Quitar bajas y ECOs duplicados (se queda el primero activo)
+  const porEco=new Map();
+  base.forEach(v=>{
+    const eco=String(v?.eco||'').trim();
+    if(!eco||eco==='ninguno'||v.status==='baja')return;
+    if(!porEco.has(eco))porEco.set(eco,v);
+  });
+  return [...porEco.values()].sort((a,b)=>{
+    const na=parseFloat(a.eco),nb=parseFloat(b.eco);
+    if(isNaN(na)||isNaN(nb))return String(a.eco).localeCompare(String(b.eco),'es',{numeric:true});
+    return na-nb;
+  });
+}
+
+window.adminCambiarVehiculo=async function(){
   if(!esRolLibre())return;
-  const todos=(window._fmAllVehs?.length?window._fmAllVehs:window.CAT_FL)||[];
+  if(!window._fmAllVehs?.length)toast('Cargando vehículos…','info');
+  const todos=await _fmVehsCompletos();
   const opciones=todos
-    .filter(v=>v.status!=='baja')
-    .sort((a,b)=>Number(a.eco)-Number(b.eco))
     .map(v=>`<option value="${v.eco}" ${String(v.eco)===String(miVeh?.eco)?'selected':''}>${v.eco} · ${v.unidad} (${v.plaza})</option>`)
     .join('');
 
