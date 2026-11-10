@@ -19912,7 +19912,15 @@
         const tecIds = opsAsTecsElegidos();
         const tecs = tecIds.map(id => cacheTec.find(t => t.id === id)).filter(Boolean);
         const lider = (s.porRol.lider || []).map(id => cacheTec.find(t => t.id === id)).find(Boolean) || tecs[0] || null;
-        const cliente = s.clienteId ? cacheClientes.find(c => c.id === s.clienteId) : null;
+        let cliente = s.clienteId ? cacheClientes.find(c => c.id === s.clienteId) : null;
+        // 10-nov-2026: si no se eligió cliente, se toma el de la estación del catálogo (estaciones_servicio.cliente_id
+        // → clientes_catalogo.ops_cliente_id). Antes quedaba vacío y la app del técnico mostraba la razón social
+        // del permisionario como cliente (ej. Melchor Guaspe salió GUAMCO en vez de OXXO GAS).
+        if (!opsCliLigadosMapa) opsCargarCliLigados();
+        if (!cliente && e && e.clienteId && opsCliLigadosMapa && opsCliLigadosMapa[e.clienteId]) {
+            const lig = opsCliLigadosMapa[e.clienteId];
+            cliente = cacheClientes.find(c => c.id === lig.opsId) || { id: lig.opsId, nombre: lig.nombre };
+        }
         const vencimiento = s.tipo === "poliza" ? opsCalcularVencimientoAutomatico(s.fechaSolicitud, s.clienteId, s.prioridad) : null;
         const pl = (e?.permiso || s.plNuevo.trim() || null);
         const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
