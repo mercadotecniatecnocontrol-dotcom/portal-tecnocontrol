@@ -1305,6 +1305,25 @@
     function opsUsuarioActual() {
         return (window.auth && window.auth.currentUser && window.auth.currentUser.email) || "desconocido";
     }
+    // 10-nov-2026 (Glen): cuando un administrativo cierra un servicio desde el portal, el servicio queda
+    // a nombre del técnico asignado (no de quien lo cerró) y se guarda el historial de quién lo cerró.
+    function opsTecnicoDelFolio(f) {
+        const v = (f.atenciones || []).filter(a => a && a.nombre && a.resultado !== "avance_dia").pop();
+        return String(f.tecnicoResponsableNombre || (f.tecnicosAsignadosNombres || [])[0] || (v && v.nombre) || "").trim();
+    }
+    function opsCierrePortal(f, desde, tecnico) {
+        const yo = opsNombreActual(), en = opsFechaHora(), tec = String(tecnico || opsTecnicoDelFolio(f) || "").trim();
+        const h = { por: yo, porEmail: (typeof opsUsuarioActual === "function" ? opsUsuarioActual() : null) || null, en, desde, tecnico: tec || null };
+        return { completadoPor: tec || yo, cerradoDesdePortalPor: yo, cerradoDesdePortalEn: en, historialCierres: (Array.isArray(f.historialCierres) ? f.historialCierres : []).concat([h]) };
+    }
+    // Quién lo cerró desde el portal (también los que se corrigieron el 10-nov, guardados en completadoPorRegistro).
+    function opsCierreAdminTxt(f) {
+        const h = Array.isArray(f.historialCierres) ? f.historialCierres : [];
+        if (h.length) return h.map(x => (x.por || "—") + " · " + String(x.en || "").replace("T", " ").slice(0, 16) + (x.desde ? " · " + x.desde : "")).join("\n");
+        if (f.completadoPorRegistro) return String(f.completadoPorRegistro).replace(/\s*\(cierre masivo\)/i, "") + (f.finalizadoDesde ? " · " + f.finalizadoDesde : "") + " (registró / cerró desde el portal)";
+        if (f.cierreMasivo && f.cierreMasivo.por) return f.cierreMasivo.por + " · " + String(f.cierreMasivo.en || "").replace("T", " ").slice(0, 16) + " · cierre masivo";
+        return "";
+    }
     function opsNombreActual() {
         return opsNombreDeCorreo(opsUsuarioActual());
     }
@@ -11338,6 +11357,7 @@
                 ${fila("¿Se concluyó?", v.resultado === "finalizado" ? "Sí" : v.resultado === "no_finalizado" ? "No: " + (v.motivo || "") : v.resultado === "no_realizado" ? "No se realizó: " + (v.motivo || "") : (f.fechaSolucion ? "Sí" : ""))}
                 ${fila("Descripción", v.detalle)}${fila("Material de almacén", mat ? (mat.usado ? (mat.almacen || "Sí") + (mat.detalle ? " · " + mat.detalle : "") : "No") : "")}
                 ${fila("Firma de conformidad", (f.firmaConformidad || {}).nombre || v.firmante)}
+                ${opsCierreAdminTxt(f) ? `<div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #f1f5f9;font-size:12.3px;"><div style="width:150px;color:#64748b;flex-shrink:0;">Cerrado desde el portal por</div><div style="color:#0f172a;font-weight:600;white-space:pre-line;">${opsEsc(opsCierreAdminTxt(f))}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">Administrativo que lo marcó como terminado; el servicio cuenta para el técnico.</div></div></div>` : ""}
                 ${f.polizaLlenadaEnApp ? fila("Póliza", "Llenada en la app de Pólizas" + (f.polizaApp ? " · folio " + (f.polizaApp.folio || "") : "")) : ""}
                 <div id="ops-panel-evidencias" data-folio="${f.id}" style="margin-top:10px;"><div style="font-size:12px;color:#94a3b8;">Cargando evidencias…</div></div>
               </div>
@@ -11700,7 +11720,7 @@
         if (!lista.length) { alert("No hay servicios completados del " + s.desde + " al " + s.hasta + (s.cliente !== "todos" ? " de " + s.cliente : "") + "."); return; }
         const nPol = lista.filter(x => x.poliza).length;
         if (!confirm("Se exportarán " + lista.length + " servicio(s) completado(s) del " + s.desde + " al " + s.hasta + (s.cliente !== "todos" ? " · " + s.cliente : " · todos los clientes") + "\n(" + (lista.length - nPol) + " servicios técnicos y " + nPol + " pólizas).\n\nCada uno lleva su PDF con la liga del video, todas sus evidencias y va en un resumen de Excel.\nPuede tardar varios minutos; no cierres la pestaña. ¿Continuar?")) return;
-        const csv = [["Fecha de cierre", "O.S. / folio", "ID folio del cliente", "Cliente", "Razón social", "Estación", "PL", "Técnico", "Tipo", "Estatus de revisión", "No. de cotización", "Evidencias", "Ligas de video (válidas 1 año)", "Liga del PDF para el cliente", "Carpeta"]];
+        const csv = [["Fecha de cierre", "O.S. / folio", "ID folio del cliente", "Cliente", "Razón social", "Estación", "PL", "Técnico", "Tipo", "Estatus de revisión", "No. de cotización", "Evidencias", "Ligas de video (válidas 1 año)", "Liga del PDF para el cliente", "Cerrado desde el portal por", "Carpeta"]];
         const fallos = [];
         try {
             const JSZip = await opsRevCargarZip();
@@ -11744,7 +11764,7 @@
                 const f = x.f || {}, r = x.k === "f" ? (f.revisionCierre || {}) : (opsRevPolRev.get(x.id) || {}), v = x.k === "f" ? (opsRevUltimaVisita(f) || {}) : {};
                 csv.push([opsFmtFechaCorta(x.cierre), x.os, x.k === "f" ? f.folioClienteId : r.id_cliente, x.cliente, x.k === "f" ? f.estacionRazonSocial : x.p.cliente_razon_social, x.estacion,
                     x.k === "f" ? f.estacionPermiso : "", x.k === "f" ? (v.nombre || f.completadoPor || "") : x.p.tecnico_nombre, x.poliza ? (x.k === "p" ? "Póliza (app de Pólizas)" : "Póliza") : "Servicio técnico",
-                    (OPS_REV_ESTATUS[x.estatus] || OPS_REV_ESTATUS.por_revisar)[0], r.cotizacion, nEv, vids.filter(u => /^https?:/.test(u)).join(" | "), r.ligaCliente, ruta]);
+                    (OPS_REV_ESTATUS[x.estatus] || OPS_REV_ESTATUS.por_revisar)[0], r.cotizacion, nEv, vids.filter(u => /^https?:/.test(u)).join(" | "), r.ligaCliente, x.k === "f" ? opsCierreAdminTxt(f).replace(/\n/g, " | ") : "", ruta]);
             }
             const esc = val => { const t = String(val ?? ""); return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
             zip.file("Resumen.csv", "\uFEFF" + csv.map(row => row.map(esc).join(",")).join("\r\n"));
@@ -11834,7 +11854,7 @@
         else if (accion === "completar") {
             const fa = prompt("Servicio completado.\n\n¿A quién se le factura? (déjalo vacío si todavía no se sabe o no se factura)", f.facturarA || f.clienteNombre || "");
             if (fa === null) return;
-            cambios = { fechaSolucion: hoyLocal(), completadoEn: opsFechaHora(), completadoPor: quien, facturarA: fa.trim() || null };
+            cambios = { fechaSolucion: hoyLocal(), completadoEn: opsFechaHora(), ...opsCierrePortal(f, "completar_portal"), facturarA: fa.trim() || null };
             nota = "Servicio marcado como COMPLETADO" + (fa.trim() ? ` · se factura a ${fa.trim()} (queda listo para facturar).` : ".");
         }
         else if (accion === "porfacturar") {
@@ -12781,7 +12801,7 @@
         const { db, fs } = await opsGetFB();
         for (const r of filas) {
             const f = r.f;
-            const cambios = { fechaSolucion: cuando, completadoEn: ahora, completadoPor: yo, finalizadoDesde: "cierre_masivo",
+            const cambios = { fechaSolucion: cuando, completadoEn: ahora, ...opsCierrePortal(f, "cierre_masivo"), finalizadoDesde: "cierre_masivo",
                 cierreMasivo: { por: yo, porEmail: opsUsuarioActual(), en: ahora, motivo: r.motivo, sinEvidencia: true } };
             try {
                 await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
@@ -13108,7 +13128,7 @@
             ...opsCamposEquipo(f, ids, opc.modo === "realizado" ? "Registrado como ya realizado" : "Registrado como ya programado"),
             asignaciones: (f.asignaciones || []).concat(tecs.map(t => ({ dia: cuando.slice(0, 10), tecnicoId: t.id, nombre: t.nombre || "", turno: opc.modo === "realizado" ? "ya_realizado" : "ya_programado", por: yo, en: ahora }))),
             registradoComo: { modo: opc.modo, origen: x ? "connecteam" : "manual", por: yo, en: ahora } };
-        if (opc.modo === "realizado") Object.assign(cambios, { fechaAtencion: f.fechaAtencion || cuando, fechaSolucion: cuando, completadoEn: ahora, completadoPor: tecs[0].nombre || yo, finalizadoDesde: x ? "connecteam" : "registro_manual" });
+        if (opc.modo === "realizado") Object.assign(cambios, { fechaAtencion: f.fechaAtencion || cuando, fechaSolucion: cuando, completadoEn: ahora, ...opsCierrePortal(f, x ? "marcado_realizado_connecteam" : "marcado_realizado", tecs[0] && tecs[0].nombre), finalizadoDesde: x ? "connecteam" : "registro_manual" });
         if (x) { cambios.connecteam = opsCtsDatosFolio(x); if (!f.osTecnico && x.os) cambios.osTecnico = String(x.os).replace(/\D/g, "") || null; }
         const { db, fs } = await opsGetFB();
         await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
@@ -18162,7 +18182,7 @@
                 if (est === "entregado") nuevo.entregadoEn = opsHoy();
                 const partidas = (v.partidas || []).slice(); partidas[i] = nuevo;
                 await opsGestGuardarPartidas(v, partidas, "trámite actualizado", `${p.nombre}: ${OPS_GEST_EST[est][0]}${doc ? " · atrasa: " + doc : ""}`);
-                if (nuevo.folioId && est === "entregado") { try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, nuevo.folioId), { fechaSolucion: opsFechaHora(), completadoPor: opsNombreActual(), finalizadoDesde: "gestoria" }); } catch (e) {} }
+                if (nuevo.folioId && est === "entregado") { try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, nuevo.folioId), { fechaSolucion: opsFechaHora(), ...opsCierrePortal(cacheFolios.find(x => x.id === nuevo.folioId) || {}, "gestoria_entregado"), finalizadoDesde: "gestoria" }); } catch (e) {} }
             });
     };
     // Programar = apartar en el renglón "Gestoría" del calendario el periodo de trabajo del trámite.
