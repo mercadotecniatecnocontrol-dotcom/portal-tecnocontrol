@@ -15308,7 +15308,7 @@
             }
             if ((fx.herramientaChecklist || []).length) {
                 seccion("Herramienta");
-                fx.herramientaChecklist.slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion)).forEach(h => parrafo(`${h.confirmada ? "[X]" : "[  ]"}  ${h.descripcion}${h.cantidad > 1 ? " × " + h.cantidad : ""}`));
+                fx.herramientaChecklist.slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion)).forEach(h => parrafo(`${h.confirmada ? "•" : "• [Pedida a Almacén]"}  ${h.descripcion}${h.cantidad > 1 ? " × " + h.cantidad : ""}`));
                 y += 2;
             }
             if (receta && (receta.materiales || []).length) {
@@ -16808,9 +16808,15 @@
         return h <= 24 ? "urgente" : h <= 72 ? "alta" : "normal";
     }
     // Lista de la receta para el pedido: materiales × cantidad de unidades y herramienta que NO se confirmó.
-    function opsNecItemsReceta(receta, cantidad, herrLista) {
+    function opsNecItemsReceta(receta, cantidad, herrLista, matSel) {
         const cant = Math.max(1, Number(cantidad) || 1), items = [];
-        (receta && receta.materiales || []).forEach(m => {
+        // 10-nov-2026: desde el alta solo van los materiales marcados "Pedir" con su cantidad (matSel).
+        if (matSel) {
+            (receta && receta.materiales || []).forEach(m => {
+                const q = Number(matSel[m.nombre]); if (!(q > 0)) return;
+                items.push({ clave: m.clave || "", desc: m.nombre || m.descripcion || "Material", cant: q, unidad: m.unidad || "pza", tipo: "material" });
+            });
+        } else (receta && receta.materiales || []).forEach(m => {
             const q = (Number(m.cantidadBase) || 0) * cant; if (!(q > 0)) return;
             items.push({ clave: m.clave || "", desc: m.nombre || m.descripcion || "Material", cant: m.unidad === "pza" || m.unidad === "lata" ? Math.ceil(q) : Math.round(q * 100) / 100, unidad: m.unidad || "pza", tipo: "material" });
         });
@@ -16939,11 +16945,12 @@
         return avisados;
     }
     // Llamado al guardar un servicio del catálogo.
-    async function opsNecAlGuardarAlta(folio, receta, cantidad, herrLista, pedir) {
+    async function opsNecAlGuardarAlta(folio, receta, cantidad, herrLista, pedir, matSel, fechaReq) {
         if (!pedir || !receta) return null;
-        const items = opsNecItemsReceta(receta, cantidad, herrLista);
+        const items = opsNecItemsReceta(receta, cantidad, herrLista, matSel);
         if (!items.length) return null;
-        return opsNecCrearPedido(folio, items, { servicioNombre: receta.nombre });
+        const fr = fechaReq ? new Date(fechaReq) : null;
+        return opsNecCrearPedido(folio, items, { servicioNombre: receta.nombre, fechaRequerida: fr && !isNaN(fr) ? fr : null });
     }
     // Sección del panel del servicio.
     function opsPanelMaterialPintar(f) {
@@ -18719,7 +18726,7 @@
             fecha: (fechaISO || opsCalFechaISO(new Date())) + "T08:00",
             dur: "", durU: "h", tras: "", trasU: "h",
             porRol: {}, tecnicos: [], tecBusca: "",
-            vehiculo: "", herrOk: {},
+            vehiculo: "", herrOk: {}, herrPedir: {}, matSel: {}, fechaReqAlm: "",
             norma: OPS_NORMAS_INSPECCION[0], hologramas: "", precintos: "", distintivos: "", mangueras: "",
             clienteId: "", prioridad: "", fechaSolicitud: `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`,
             plaza: "Chihuahua", plazaManual: false, dispensarios: "", durManual: false, fechaFin: "", baseComisionManual: "",
@@ -18888,6 +18895,9 @@
         setTimeout(() => { try { opsAsCalcularTraslado(false); } catch (e) {} }, 0);
         const wrap = document.getElementById("ops-modal-wrap");
         const scroll = wrap.querySelector("[data-opsas-scroll]")?.scrollTop || 0;
+        // 10-nov-2026: también se conserva el scroll de cada lista interna (técnicos, herramienta, materiales);
+        // antes, al marcar una casilla, la lista regresaba hasta arriba.
+        const scrollListas = Array.from(wrap.querySelectorAll(".opsas-list")).map(el => el.scrollTop);
         const tipo = OPS_AS_TIPOS.find(t => t.k === s.tipo);
         const receta = opsAsReceta();
         const listo1 = !!s.tipo && (s.tipo !== "receta" || !!receta);
@@ -19092,6 +19102,7 @@
             </div>
         </div>`;
         const sc = wrap.querySelector("[data-opsas-scroll]"); if (sc) sc.scrollTop = scroll;
+        wrap.querySelectorAll(".opsas-list").forEach((el, i) => { if (scrollListas[i]) el.scrollTop = scrollListas[i]; });
     }
     function opsAsPintarParcial(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
     window.opsAsPintarParcial = opsAsPintarParcial;
@@ -19123,11 +19134,11 @@
         }
         s[campo] = valor;
         if (campo === "tipo") {
-            s.recetaId = null; s.porRol = {}; s.herrOk = {};
+            s.recetaId = null; s.porRol = {}; s.herrOk = {}; s.herrPedir = {}; s.matSel = {}; s.fechaReqAlm = "";
             // "Varias estaciones" aplica a cualquier tipo: se conserva la lista al cambiar de tipo.
         }
         if (campo === "recetaId") {
-            const r = opsAsReceta(); s.porRol = {}; s.herrOk = {};
+            const r = opsAsReceta(); s.porRol = {}; s.herrOk = {}; s.herrPedir = {}; s.matSel = {}; s.fechaReqAlm = "";
             if (r && r.horasEjecucion && !s.dur) { s.dur = String(r.horasEjecucion); s.durU = "h"; }
             const sug = r?.vehiculos?.sugerido?.nombre;
             if (sug && !s.vehiculo) s.vehiculo = sug;
@@ -20150,15 +20161,24 @@
             ${(() => { const vv = (opsViaFlota || []).find(v => s.vehiculo && s.vehiculo.indexOf("ECO " + v.Eco + " ") === 0); return vv && vv.EnTaller ? `<div class="opsas-note opsas-warn">Esa unidad está EN TALLER según Flotilla. Elige otra o confírmalo con Flotilla.</div>` : (vv && vv.QuienLaTrae ? `<div class="opsas-note">La trae hoy: <b>${opsEsc(vv.QuienLaTrae)}</b>.</div>` : ""); })()}
             ${(() => { const oc = opsAsVehiculoOcupado(s.vehiculo); return oc.length ? `<div class="opsas-note opsas-warn">Ese vehículo ya está planeado en: ${oc.map(f => opsEsc((f.estacion || "servicio") + " (" + opsFmtFechaCorta(f.fechaProgramada) + ")")).join(", ")}. Elige otro o confírmalo con Flotilla.</div>` : (s.vehiculo && /ECO/i.test(s.vehiculo) ? `<div class="opsas-note">Al guardar se le avisa a Flotilla que ese vehículo se necesita en esas fechas.</div>` : ""); })()}`;
 
+        // 10-nov-2026 (Glen): la herramienta ya NO es checklist. Se muestra lo que pide la receta y, por
+        // pieza, si ya la trae alguien del equipo elegido. Solo se pide a Almacén lo que se marque "Pedir".
         const herr = (r.herramientaRequerida || []).slice().sort((a, b) => opsAsAlfa(a.descripcion, b.descripcion));
-        const nOk = herr.filter((h, i) => s.herrOk[h.descripcion]).length;
-        const herrHTML = herr.length ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="opsas-pill">${nOk} de ${herr.length} confirmadas</span><button type="button" class="opsas-ghost" style="padding:3px 9px;font-size:11px;" onclick="opsAsTodaHerr(${nOk < herr.length})">${nOk < herr.length ? "Marcar todas" : "Quitar todas"}</button></div>
-            <div class="opsas-list">${herr.map(h => `<label class="opsas-chk"><input type="checkbox" ${s.herrOk[h.descripcion] ? "checked" : ""} onchange="opsAS.herrOk[this.dataset.k]=this.checked;opsAsPintar()" data-k="${opsEsc(h.descripcion)}"><span>${opsEsc(h.descripcion)}${h.cantidad > 1 ? " × " + h.cantidad : ""}${h.etapa ? ` <small style="color:#94a3b8;">· ${opsEsc((OPS_TIPO_TECNICO[h.etapa] || {}).nombre || h.etapa)}</small>` : ""}</span></label>`).join("")}</div>` : `<div class="opsas-note">La receta no tiene herramienta capturada.</div>`;
+        const hayEquipo = opsAsTecsElegidos().length > 0;
+        const herrEst = herr.map(h => ({ h, e: opsAsHerrEstado(h) }));
+        const nTrae = herrEst.filter(x => x.e.k === "tiene").length;
+        const nPedirH = herr.filter(h => s.herrPedir[h.descripcion]).length;
+        const herrHTML = herr.length ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">${hayEquipo ? `<span class="opsas-pill" style="background:#ecfdf3;color:#15803d;">El equipo trae ${nTrae} de ${herr.length}</span>` : `<span class="opsas-pill" style="background:#fff7ed;color:#b45309;">Elige al personal para ver qué ya traen</span>`}${nPedirH ? `<span class="opsas-pill" style="background:#eef2ff;color:#1D2E73;">${nPedirH} por pedir a Almacén</span>` : ""}</div>
+            <div class="opsas-list" style="padding:0;">${herrEst.map(({ h, e }) => { const ped = !!s.herrPedir[h.descripcion]; return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid #f1f5f9;${ped ? "background:#eef2ff;" : ""}"><div style="flex:1;min-width:0;font-size:12.5px;color:#1e293b;">${opsEsc(h.descripcion)}${h.cantidad > 1 ? " × " + h.cantidad : ""}${h.etapa ? ` <small style="color:#94a3b8;">· ${opsEsc((OPS_TIPO_TECNICO[h.etapa] || {}).nombre || h.etapa)}</small>` : ""}<br><small style="color:${e.c};font-weight:700;">${opsEsc(e.t)}</small></div>${e.k === "tiene" && !ped ? `<span style="font-size:11px;font-weight:800;color:#15803d;white-space:nowrap;">✓ La lleva</span>` : `<button type="button" data-k="${opsEsc(h.descripcion)}" onclick="opsAsTogglePedirHerr(this)" style="white-space:nowrap;border:1px solid #1D2E73;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;${ped ? "background:#1D2E73;color:#fff;" : "background:#fff;color:#1D2E73;"}">${ped ? "✓ Se pedirá" : "Pedir a Almacén"}</button>`}</div>`; }).join("")}</div>` : `<div class="opsas-note">La receta no tiene herramienta capturada.</div>`;
 
         const seg = (r.equipoSeguridad || []).slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
         const mat = (r.materiales || []).slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
         const fmtCant = (m) => { const q = (Number(m.cantidadBase) || 0) * cant; return m.unidad === "pza" || m.unidad === "lata" ? Math.ceil(q) : Math.round(q * 100) / 100; };
         const matTotal = mat.reduce((acc, m) => acc + fmtCant(m) * (Number(m.costoUnitario) || 0), 0);
+        const nPedirM = mat.filter(m => s.matSel[m.nombre] !== undefined).length;
+        const reqDef = opsNecFechaRequerida({ fechaProgramada: s.fecha });
+        const locR = d => d ? d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0") + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") : "";
+        const totalPedir = nPedirM + nPedirH;
 
         return `
         <div class="opsas-sec ${cls}">
@@ -20174,9 +20194,15 @@
             ${herrHTML}
             ${seg.length ? `<div class="opsas-note" style="margin-top:12px;">La receta pide ${seg.length} pieza(s) de equipo de seguridad: ya salen marcadas en la sección "Equipo de seguridad".</div>` : ""}
             ${mat.length ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Materiales para ${cant} ${cant === 1 ? "unidad" : "unidades"}</div>
-            <div class="opsas-list" style="padding:0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">${mat.map(m => `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 10px;color:#334155;">${opsEsc(m.nombre)}${m.nota ? ` <small style="color:#94a3b8;">· ${opsEsc(m.nota)}</small>` : ""}</td><td style="padding:6px 10px;text-align:right;white-space:nowrap;font-weight:700;">${fmtCant(m)} ${opsEsc(m.unidad || "")}</td></tr>`).join("")}</table></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="opsas-pill" style="background:#eef2ff;color:#1D2E73;">${nPedirM} de ${mat.length} por pedir</span><span class="opsas-note" style="margin:0;">Activa "Pedir" solo en lo que realmente se necesita de Almacén.</span></div>
+            <div class="opsas-list" style="padding:0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">${mat.map(m => { const on = s.matSel[m.nombre] !== undefined; return `<tr style="border-bottom:1px solid #f1f5f9;${on ? "background:#eef2ff;" : ""}"><td style="padding:6px 10px;color:#334155;">${opsEsc(m.nombre)}${m.nota ? ` <small style="color:#94a3b8;">· ${opsEsc(m.nota)}</small>` : ""}<br><small style="color:#94a3b8;">Receta: ${fmtCant(m)} ${opsEsc(m.unidad || "")}</small></td><td style="padding:6px 6px;text-align:right;white-space:nowrap;">${on ? `<input type="number" min="0" step="any" value="${opsEsc(s.matSel[m.nombre])}" data-k="${opsEsc(m.nombre)}" onchange="opsAsCantMat(this)" style="width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;text-align:right;"> <small>${opsEsc(m.unidad || "")}</small>` : ""}</td><td style="padding:6px 10px;text-align:right;width:1%;"><button type="button" data-k="${opsEsc(m.nombre)}" data-q="${fmtCant(m)}" onclick="opsAsTogglePedirMat(this)" style="white-space:nowrap;border:1px solid #1D2E73;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;${on ? "background:#1D2E73;color:#fff;" : "background:#fff;color:#1D2E73;"}">${on ? "✓ Pedir" : "Pedir"}</button></td></tr>`; }).join("")}</table></div>
             ${matTotal > 0 ? `<div class="opsas-note">Costo estimado de materiales: <strong>$${matTotal.toLocaleString("es-MX", { maximumFractionDigits: 0 })}</strong></div>` : ""}` : ""}
-            ${(mat.length || herr.length > nOk) ? `<label class="opsas-chk" style="margin-top:12px;background:#eef2ff;border-radius:10px;padding:10px 12px;align-items:flex-start;"><input type="checkbox" ${s.pedirAlmacen !== false ? "checked" : ""} onchange="opsAS.pedirAlmacen=this.checked"><span><b>Al guardar, pedir a Almacén</b> ${mat.length ? "los materiales" : ""}${mat.length && herr.length > nOk ? " y " : ""}${herr.length > nOk ? "la herramienta no confirmada" : ""}, listos ${OPS_NEC_HORAS_ANTES} h antes del servicio. Si Almacén no tiene, lo pasa a Compras y te avisa si no llega a tiempo.</span></label>` : ""}
+            ${(mat.length || herr.length) ? `<div style="margin-top:12px;border:1px solid ${totalPedir ? "#1D2E73" : "#e2e8f0"};background:${totalPedir ? "#eef2ff" : "#f8fafc"};border-radius:10px;padding:10px 12px;font-size:12.5px;color:#1e293b;">
+                ${totalPedir ? `<b>Pedido a Almacén al guardar:</b> ${nPedirM} material(es)${nPedirH ? " + " + nPedirH + " herramienta(s)" : ""}
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;"><span>Entregar antes de:</span><input type="datetime-local" class="opsas-in" style="width:auto;padding:5px 8px;" value="${opsEsc(s.fechaReqAlm || locR(reqDef))}" onchange="opsAS.fechaReqAlm=this.value"></div>
+                <div class="opsas-note" style="margin-top:6px;">Almacén recibe el pedido con esa fecha. Si no tiene, lo pasa a Compras y te avisa si no llega a tiempo. El estado del pedido (solicitado / surtido) se ve en el servicio → Material y herramienta.</div>`
+                : `<b>No se pedirá nada a Almacén.</b> <span style="color:#64748b;">Usa "Pedir" en las líneas que sí se necesiten. También puedes pedirlo después desde el servicio.</span>`}
+            </div>` : ""}
         </div>`;
     }
     function opsAsSeguridadHTML(receta, numero, cls) {
@@ -20218,6 +20244,32 @@
         if (!s.seguridad.includes(n)) s.seguridad.push(n);
         s.segOtro = ""; opsAsPintar();
     };
+    // 10-nov-2026: estado de cada herramienta de la receta frente al equipo elegido (sale de Herramientas).
+    function opsAsHerrEstado(h) {
+        const equipo = new Set(opsAsTecsElegidos());
+        const q = opsNormalizaTexto(h.descripcion || h.nombre || "");
+        const piezas = q.length < 4 ? [] : cacheHerr.filter(x => x.estado !== "baja" && opsNormalizaTexto(x.descripcion || "").includes(q));
+        const trae = piezas.find(x => x.tecnicoActualId && equipo.has(x.tecnicoActualId));
+        if (trae) return { k: "tiene", t: "La trae " + ((opsTecPorId(trae.tecnicoActualId) || {}).nombre || "alguien del equipo"), c: "#15803d" };
+        if (piezas.some(x => !x.tecnicoActualId)) return { k: "almacen", t: "Disponible en Almacén", c: "#1D2E73" };
+        if (piezas.length) return { k: "otro", t: "La trae " + ((opsTecPorId(piezas[0].tecnicoActualId) || {}).nombre || "otro técnico") + " (no va a este servicio)", c: "#b45309" };
+        return { k: "sin", t: "No está registrada en Herramientas", c: "#94a3b8" };
+    }
+    window.opsAsTogglePedirHerr = function (b) {
+        const s = opsAS; if (!s) return; const k = b.dataset.k;
+        if (s.herrPedir[k]) delete s.herrPedir[k]; else s.herrPedir[k] = true;
+        opsAsPintar();
+    };
+    window.opsAsTogglePedirMat = function (b) {
+        const s = opsAS; if (!s) return; const k = b.dataset.k;
+        if (s.matSel[k] !== undefined) delete s.matSel[k]; else s.matSel[k] = Number(b.dataset.q) || 1;
+        opsAsPintar();
+    };
+    window.opsAsCantMat = function (inp) {
+        const s = opsAS; if (!s) return; const v = Number(inp.value);
+        if (v > 0) s.matSel[inp.dataset.k] = v; else delete s.matSel[inp.dataset.k];
+        opsAsPintar();
+    };
     window.opsAsTodaHerr = function (on) {
         const r = opsAsReceta(); if (!r || !opsAS) return;
         (r.herramientaRequerida || []).forEach(h => { opsAS.herrOk[h.descripcion] = !!on; });
@@ -20246,7 +20298,7 @@
         const durH = opsAsHoras(s.dur, s.durU), trasH = opsAsHoras(s.tras, s.trasU);
         const conMat = s.tipo === "inspeccion" && OPS_AS_NORMA_MATERIAL.includes(s.norma);
         const num = v => (v === "" || v === null || v === undefined) ? null : Number(v);
-        const herrLista = receta ? (receta.herramientaRequerida || []).map(h => ({ descripcion: h.descripcion, cantidad: h.cantidad || 1, confirmada: !!s.herrOk[h.descripcion] })) : [];
+        const herrLista = receta ? (receta.herramientaRequerida || []).map(h => ({ descripcion: h.descripcion, cantidad: h.cantidad || 1, confirmada: !s.herrPedir[h.descripcion], pedirAlmacen: !!s.herrPedir[h.descripcion] })) : [];
         const datos = {
             folioOS: s.os.trim(),
             estacion: e ? (e.nombreComercial || e.razonSocial) : s.estTexto.trim(),
@@ -20380,8 +20432,8 @@
             try { opsCalidadProgramado({ id: nuevo.id, ...datos }); } catch (err) { console.warn("[Alta servicio] aviso a Calidad:", err); }
             try { opsAvisarHerramientaOcupada({ id: nuevo.id, ...datos }, herrLista, tecs); } catch (err) { console.warn("[Alta servicio] aviso de herramienta:", err); }
             // Material y herramienta de la receta → pedido a Almacén con la fecha en que se necesita (22-oct-2026)
-            if (s.tipo === "receta" && receta && s.pedirAlmacen !== false) {
-                try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
+            if (s.tipo === "receta" && receta) {
+                try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true, s.matSel || {}, s.fechaReqAlm); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
                 catch (err) { console.warn("[Alta servicio] pedido a Almacén:", err); alert("El servicio se guardó, pero no se pudo mandar el pedido de material a Almacén: " + (err.message || err) + "\nPídelo desde el servicio → Material y herramienta."); }
             }
             // Servicio programado en una plaza foránea: aviso a su responsable (Etapa plazas, oct-2026)
@@ -20583,6 +20635,12 @@
                         const hs = cacheHerr.filter(h => h.tecnicoActualId === t.id && h.estado !== "baja").map(h => h.descripcion || h.nombre || h.folio || "").filter(Boolean).sort(opsAsAlfa);
                         return `<div style="margin-bottom:6px;"><b>${opsEsc(t.nombre)}</b> <span style="color:#64748b;font-weight:600;">· ${hs.length} pieza(s)</span>${hs.length ? `<div style="font-weight:500;color:#475569;font-size:12px;line-height:1.45;">${opsEsc(hs.slice(0, 12).join(", "))}${hs.length > 12 ? ` <span style="color:#94a3b8;">y ${hs.length - 12} más</span>` : ""}</div>` : `<div style="font-weight:500;color:#b45309;font-size:12px;">No tiene herramienta asignada en el portal.</div>`}</div>`;
                     }).join("")) : ""}
+                    ${s.tipo === "receta" && receta ? fila("Pedido a Almacén", (() => {
+                        const ms = (receta.materiales || []).filter(m => Number((s.matSel || {})[m.nombre]) > 0).map(m => m.nombre + " × " + s.matSel[m.nombre] + " " + (m.unidad || ""));
+                        const hs = (receta.herramientaRequerida || []).filter(h => (s.herrPedir || {})[h.descripcion]).map(h => "Herramienta: " + h.descripcion);
+                        const all = ms.concat(hs);
+                        return all.length ? opsEsc(all.join(", ")) : `<span style="color:#94a3b8;">No se pide nada</span>`;
+                    })()) : ""}
                     ${fila("Vehículo", opsEsc(s.vehiculo || ""))}
                     ${s.remolque ? fila("Remolque", opsEsc(s.remolque) + " (sin gasolina)") : ""}
                     ${fila("Equipo de seguridad", opsEsc((s.seguridad || []).slice().sort(opsAsAlfa).join(", ")))}
