@@ -17208,7 +17208,7 @@
             return `<div style="border:1px solid #e2e8f0;border-left:5px solid ${cc ? "#c2410c" : s.tipo === "reemplazo" ? "#ea580c" : "#1D2E73"};border-radius:12px;padding:12px;">
               <div style="display:flex;justify-content:space-between;gap:8px;"><b style="font-size:13px;color:#1e293b;">${opsEsc(s.descripcion || "")}</b><span style="font-size:10.5px;font-weight:800;color:${e[1]};background:${e[2]};border-radius:6px;padding:2px 8px;white-space:nowrap;">${opsEsc(e[0])}</span></div>
               <div style="font-size:11px;color:#64748b;">${cc ? "COMPRA EN CAMPO · " + opsEsc(s.tecnicoNombre || "") + " · " + opsEsc(opsFmtFechaCorta(s.creadoEn)) : (s.tipo === "reemplazo" ? "REEMPLAZO" : "LE FALTA") + " · " + opsEsc(s.tecnicoNombre || "") + " · " + (s.cantidad || 1) + " pza · para " + opsEsc(s.fechaRequerida ? opsFmtFechaCorta(s.fechaRequerida) : "sin fecha")}</div>
-              ${cc ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;background:#fff7ed;border-radius:8px;padding:6px 8px;"><b>Costó:</b> $${Number(s.monto || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })} · <b>Tienda:</b> ${opsEsc(s.proveedor || "")} · <b>Pagó:</b> ${opsEsc(OPS_SH_PAGO[s.formaPago] || s.formaPago || "")}</div>` : ""}
+              ${cc ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;background:#fff7ed;border-radius:8px;padding:6px 8px;"><b>Costó:</b> $${Number(s.monto || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })} · <b>Tienda:</b> ${opsEsc(s.proveedor || "")} · <b>Pagó:</b> ${opsEsc(OPS_SH_PAGO[s.formaPago] || s.formaPago || "")}${valida ? ` <a href="#" onclick="event.preventDefault();opsSHEditarCompra('${s.id}')" style="color:#c2410c;font-weight:800;margin-left:4px;">Editar</a>` : ""}</div>` : ""}
               ${s.caracteristicas ? `<div style="font-size:11.5px;color:#334155;margin-top:4px;"><b>Características:</b> ${opsEsc(s.caracteristicas)}</div>` : ""}
               <div style="font-size:11.5px;color:#334155;margin-top:2px;"><b>Motivo:</b> ${opsEsc(s.motivo || "")}</div>
               ${f ? `<div style="font-size:11px;margin-top:3px;"><a href="#" onclick="event.preventDefault();opsAbrirPanelFolio('${f.id}')" style="color:#1D2E73;font-weight:700;">Para el servicio: ${opsEsc(f.estacion || "")} · ${opsEsc(opsFmtFechaCorta(f.fechaProgramada))}</a></div>` : `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${opsEsc(s.servicioTxt || "Para el almacén general / uso diario")}</div>`}
@@ -17322,6 +17322,36 @@
                 "convertida_compra_campo", `$${monto.toFixed(2)} en ${prov.trim()}`);
             opsRenderSolHerr();
             if (!fotosEt.some(x => x.etiqueta === "ticket")) alert("Quedó como compra en campo. Falta la foto del ticket: pídesela al técnico antes de validar.");
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    // Corregir costo / tienda / forma de pago de una compra en campo (11-nov-2026, Glen): el técnico
+    // a veces captura mal la tienda. Solo administradores / Gerencia de Operaciones. Queda en el historial.
+    window.opsSHEditarCompra = async function (id) {
+        const s = cacheSolHerr.find(x => x.id === id); if (!s) return;
+        if (!opsSHPuedeValidar()) { alert("Solo administradores o Gerencia de Operaciones pueden editar esto."); return; }
+        const m = prompt("¿Cuánto costó? ($)", s.monto || ""); if (m === null) return;
+        const monto = Number(String(m).replace(/[$,\s]/g, "")) || 0; if (monto <= 0) { alert("Escribe el monto."); return; }
+        const prov = prompt("¿Dónde la compró? (tienda)", s.proveedor || ""); if (prov === null) return;
+        const actual = { propio: "1", viaticos: "2", tarjeta_empresa: "3" }[s.formaPago] || "1";
+        const pg = prompt("¿Con qué la pagó? Escribe el número:\n1) Con su dinero (reembolso)\n2) Con sus viáticos\n3) Tarjeta de la empresa", actual); if (pg === null) return;
+        const formaPago = { "1": "propio", "2": "viaticos", "3": "tarjeta_empresa" }[String(pg).trim()] || s.formaPago || "propio";
+        const proveedor = prov.trim() || null;
+        const antes = `$${Number(s.monto || 0).toFixed(2)} · ${s.proveedor || "—"} · ${OPS_SH_PAGO[s.formaPago] || s.formaPago || "—"}`;
+        const despues = `$${monto.toFixed(2)} · ${proveedor || "—"} · ${OPS_SH_PAGO[formaPago]}`;
+        if (antes === despues) return;
+        const pagoAntes = s.formaPago;
+        try {
+            await opsTDActualizar(COL_SOL_HERR, id, { monto, proveedor, formaPago }, "editada_compra_campo", `Antes: ${antes} → Ahora: ${despues}`);
+            // Si ya estaba validada, se corrige también en la herramienta que entró al almacén.
+            if (s.herramientaNuevaFolio) {
+                const h = cacheHerr.find(x => x.id === s.herramientaNuevaFolio || x.folio === s.herramientaNuevaFolio);
+                try { await opsSbHerrActualizar(h ? h.id : s.herramientaNuevaFolio, { observaciones: `Compra en campo (${proveedor || ""}, $${monto.toFixed(2)}).`, compraCampo: { ...((h && h.compraCampo) || {}), monto, proveedor, formaPago } }); } catch (e) { console.warn("[compra campo] no se actualizó la herramienta:", e); }
+                if (window.tcNotificar && ["propio", "viaticos"].some(x => x === formaPago || x === pagoAntes)) {
+                    window.tcNotificar({ tipo: "ops_compra_campo", para: "contabilidad@tecnocontrol.com.mx", modulo: "Operaciones",
+                        mensaje: `Corrección de compra en campo de ${s.tecnicoNombre} (${s.descripcion}, folio ${s.herramientaNuevaFolio}). Antes: ${antes}. Ahora: ${despues}. Corrigió ${opsNombreActual()}.` }).catch(() => {});
+                }
+            }
+            opsRenderSolHerr();
         } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
     };
     window.opsSHValidarCompra = async function (id) {
