@@ -79,7 +79,7 @@
   var CLASIF = {
     productos:       { t:'Productos',            c:'#0e7490' },
     servicio:        { t:'Servicio',             c:'#7c3aed' },
-    servicio_piezas: { t:'Servicio con piezas',  c:'#7c3aed' },
+    servicio_piezas: { t:'\ud83d\udd27 Servicio con piezas',  c:'#7c3aed' },
     pro:             { t:'PRO \u00b7 sobre pedido', c:'#b45309' },
     pro_mixto:       { t:'PRO + productos',      c:'#b45309' },
     sobre_stock:     { t:'Sobre stock',          c:'#be185d' }
@@ -88,6 +88,8 @@
   function cuentaMetricas(p){ var c=clasif(p); return c!=='servicio' && c!=='servicio_piezas' && c!=='pro' && c!=='sobre_stock'; }
   function esServicio(p){ var c=clasif(p); return c==='servicio' || c==='servicio_piezas'; }
   function esPro(p){ var c=clasif(p); return c==='pro' || c==='pro_mixto'; }
+  // Servicio con piezas: mientras Almacén lo surte, también aparece en la pestaña Almacén (sin contar en métricas)
+  function vaEnAlmacen(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'||(c==='servicio_piezas' && ACTIVOS_ALM.indexOf(p.estado)!==-1); }
   function esStock(p){ return clasif(p)==='sobre_stock'; }
   var EMPRESA_CORTA = { TECNOCONTROL:'Tecnocontrol', JOMAR:'JOMAR', TECNOLAB:'TecnoLab', AKURIS:'Akuris', VH:'VH' };
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
@@ -286,7 +288,7 @@
   }
   function pasaFiltro(p){
     var c = clasif(p);
-    if (filtro.area==='almacen' && c!=='productos' && c!=='pro_mixto') return false;
+    if (filtro.area==='almacen' && !vaEnAlmacen(p)) return false;
     if (filtro.area==='pro' && !esPro(p)) return false;
     if (filtro.area==='stock' && !esStock(p)) return false;
     if (!filtro.area && c==='servicio' && !filtro.q) return false;   // servicio sin piezas: solo en Servicios (salvo al buscar)
@@ -1202,13 +1204,13 @@
     var visibles = todosActivos.filter(pasaFiltro);
     var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
     var nPro = todosActivos.filter(esPro).length;
-    var nAlm = todosActivos.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length;
+    var nAlm = todosActivos.filter(vaEnAlmacen).length;
     if (filtro.q){
       // Al buscar, cada pestaña muestra cuántos resultados tiene: así se ve en qué espacio quedó el pedido.
       var coincide = function(p){ return pasaBusqueda(p); };
       var activosQ = todosActivos.filter(coincide);
       pintarAreas({ '': activosQ.length,
-        almacen: activosQ.filter(function(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'; }).length,
+        almacen: activosQ.filter(vaEnAlmacen).length,
         servicios: colsServicios().reduce(function(a,c){ return a+c.lista.filter(coincide).length; },0),
         pro: activosQ.filter(esPro).length, stock: activosQ.filter(esStock).length }, true);
     } else {
@@ -1274,7 +1276,7 @@
   var AREAS = [
     { k:'',          t:'Tablero completo', d:'Todo lo que surte Almac\u00e9n', c:'#1D2E73',
       i:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
-    { k:'almacen',   t:'Almac\u00e9n',       d:'Solo productos \u00b7 cuenta en m\u00e9tricas', c:'#0e7490',
+    { k:'almacen',   t:'Almac\u00e9n',       d:'Productos + servicios con piezas', c:'#0e7490',
       i:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>' },
     { k:'servicios', t:'Servicios',        d:'Para Operaciones', c:'#7c3aed',
       i:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>' },
