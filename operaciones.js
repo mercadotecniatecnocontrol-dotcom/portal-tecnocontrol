@@ -26544,6 +26544,9 @@
                     ${inp("Mes en que se cobra al cliente", "poliza_mes", f.poliza_mes, "month")}
                 </div>
                 <div id="ext-f-calc" style="font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:8px 10px;margin:-2px 0 10px;"></div>
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Evidencias (fotos, videos o PDF)${s && (s.evidencias || []).length ? ` · ya tiene ${(s.evidencias || []).length}` : ""}
+                    <input type="file" id="ext-f-evid" multiple accept="${OPS_EXT_ACCEPT_EVID}" onchange="opsExtEvidTxt(this)" style="display:block;width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin:4px 0 4px;background:#f8fafc;">
+                    <span id="ext-f-evid-txt" style="display:block;font-size:11.5px;color:#64748b;margin-bottom:10px;">Puedes elegir varios archivos a la vez. Máximo ${OPS_EXT_MAX_MB} MB cada uno.</span></label>
                 <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Notas
                     <textarea id="ext-f-notas" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-family:inherit;">${opsEsc(f.notas || "")}</textarea></label>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -26589,6 +26592,9 @@
         };
         if (!provId) { alert("Elige el proveedor."); return; }
         if (!datos.cliente || !datos.estacion || !datos.concepto) { alert("Faltan cliente, estación o concepto."); return; }
+        const archivosEvid = Array.from((document.getElementById("ext-f-evid") || {}).files || []);
+        const grandes = opsExtArchivosGrandes(archivosEvid);
+        if (grandes.length) { alert("Estos archivos pesan más de " + OPS_EXT_MAX_MB + " MB y no se pueden subir:\n\n- " + grandes.join("\n- ") + "\n\nQuítalos o mándalos más ligeros (un video corto o en menor calidad)."); return; }
         const btn = document.getElementById("ext-f-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
         try {
             const sb = await opsSb();
@@ -26596,6 +26602,7 @@
             if (id) {
                 const { error } = await sb.from("ops_servicios_externos").update({ ...datos, historial: opsExtHist(opsExtForm, opsExtForm.estado, "Datos editados") }).eq("id", id);
                 if (error) throw error;
+                if (archivosEvid.length) await opsExtAgregarEvidencias(id, archivosEvid, btn);
                 await opsExtCargar(); opsExtVer(id);
             } else {
                 // Si ya trae fecha de ejecución, nace como Ejecutado; si ya trae autorización, como Autorizado.
@@ -26604,6 +26611,10 @@
                 if (error) throw error;
                 const folio = "EXT-" + String(data.id).padStart(5, "0");
                 await sb.from("ops_servicios_externos").update({ folio }).eq("id", data.id);
+                if (archivosEvid.length) {
+                    try { await opsExtAgregarEvidencias(data.id, archivosEvid, btn, { ...data, folio }); }
+                    catch (e) { alert("El servicio " + folio + " se guardó, pero no se pudieron subir las evidencias: " + (e.message || e) + "\nSúbelas desde el servicio con «+ Evidencia»."); }
+                }
                 await opsExtCargar(); opsExtVer(data.id);
                 opsViaToast("Servicio externo " + folio + " registrado.", "#15803d");
             }
@@ -26813,19 +26824,45 @@
             if (btn) { btn.disabled = false; btn.textContent = "Guardar"; }
         }
     };
+    // 11-nov-2026: evidencias de servicios externos — fotos, VIDEOS y PDF, también desde el alta.
+    // Antes el botón solo aceptaba fotos y PDF, y el alta no tenía dónde subir evidencias.
+    const OPS_EXT_ACCEPT_EVID = "image/*,video/*,application/pdf,.heic,.heif,.mov,.mp4";
+    const OPS_EXT_MAX_MB = 50;
+    function opsExtArchivosGrandes(files) { return files.filter(f => f.size > OPS_EXT_MAX_MB * 1024 * 1024).map(f => f.name + " (" + Math.round(f.size / 1048576) + " MB)"); }
+    window.opsExtEvidTxt = function (inp) {
+        const el = document.getElementById("ext-f-evid-txt"); if (!el) return;
+        const fs_ = Array.from(inp.files || []), grandes = opsExtArchivosGrandes(fs_);
+        el.innerHTML = !fs_.length ? "Puedes elegir varios archivos a la vez. Máximo " + OPS_EXT_MAX_MB + " MB cada uno."
+            : `${fs_.length} archivo(s) listo(s) para subir al guardar: ${opsEsc(fs_.map(f => f.name).join(", "))}` + (grandes.length ? `<br><b style="color:#b91c1c;">Pesan más de ${OPS_EXT_MAX_MB} MB y no se podrán subir: ${opsEsc(grandes.join(", "))}</b>` : "");
+    };
+    // Sube los archivos uno por uno (con avance en el botón) y los agrega a las evidencias del servicio.
+    async function opsExtAgregarEvidencias(id, files, btn, base) {
+        const s = base || opsExt.find(x => x.id === id) || { evidencias: [], historial: [] };
+        const sb = await opsSb(); const nuevas = [], fallas = [];
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            if (btn) btn.textContent = `Subiendo evidencia ${i + 1} de ${files.length}…`;
+            try { nuevas.push({ ruta: await opsExtSubir(sb, id, f, "evidencia"), nombre: f.name, tipo: f.type || null, en: new Date().toISOString() }); }
+            catch (e) { fallas.push(f.name + ": " + (e.message || e)); }
+        }
+        if (nuevas.length) {
+            const evidencias = (s.evidencias || []).concat(nuevas), historial = opsExtHist(s, s.estado, nuevas.length + " evidencia(s) agregada(s)");
+            const { error } = await sb.from("ops_servicios_externos").update({ evidencias, historial }).eq("id", id);
+            if (error) throw error;
+            const local = opsExt.find(x => x.id === id); if (local) { local.evidencias = evidencias; local.historial = historial; }
+        }
+        if (fallas.length) alert("No se pudieron subir:\n\n- " + fallas.join("\n- "));
+        return nuevas.length;
+    }
     window.opsExtSubirEvidencia = function (id) {
-        const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf"; inp.multiple = true;
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = OPS_EXT_ACCEPT_EVID; inp.multiple = true;
         inp.onchange = async () => {
-            const s = opsExt.find(x => x.id === id); if (!s || !inp.files.length) return;
-            try {
-                const sb = await opsSb(); const nuevas = [];
-                for (const f of inp.files) nuevas.push({ ruta: await opsExtSubir(sb, id, f, "evidencia"), nombre: f.name, en: new Date().toISOString() });
-                const evidencias = (s.evidencias || []).concat(nuevas);
-                const { error } = await sb.from("ops_servicios_externos").update({ evidencias, historial: opsExtHist(s, s.estado, nuevas.length + " evidencia(s) agregada(s)") }).eq("id", id);
-                if (error) throw error;
-                s.evidencias = evidencias; s.historial = opsExtHist(s, s.estado, nuevas.length + " evidencia(s) agregada(s)");
-                opsExtVer(id);
-            } catch (e) { alert("No se pudo subir: " + (e.message || e)); }
+            const s = opsExt.find(x => x.id === id); const files = Array.from(inp.files || []); if (!s || !files.length) return;
+            const grandes = opsExtArchivosGrandes(files);
+            if (grandes.length) { alert("Estos archivos pesan más de " + OPS_EXT_MAX_MB + " MB y no se pueden subir:\n\n- " + grandes.join("\n- ") + "\n\nMándalos más ligeros (un video corto o en menor calidad)."); return; }
+            opsViaToast("Subiendo " + files.length + " evidencia(s)… no cierres la ventana.", "#1D2E73");
+            try { const n = await opsExtAgregarEvidencias(id, files); if (n) opsViaToast(n + " evidencia(s) agregada(s).", "#15803d"); opsExtVer(id); }
+            catch (e) { alert("No se pudo subir: " + (e.message || e)); }
         };
         inp.click();
     };
