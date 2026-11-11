@@ -29,6 +29,8 @@
     <!-- Etapa 2a: el inicio de sesión es Supabase Auth con la misma forma que Firebase (window.tcAuth) -->
     <script src="auth-supabase.js?v=1"></script>
     <link rel="stylesheet" href="CSS/style.css">
+    <!-- Sistema de diseño común: pestañas, badges, tooltips, skeleton, estado vacío y paginación -->
+    <link rel="stylesheet" href="CSS/ui-kit.css?v=1">
 </head>
 <body>
 
@@ -6359,5 +6361,7 @@ window.irAlmacen = function(btn){
   location.replace('firmar.html?id='+encodeURIComponent(firmarId));
 })();
 </script>
+<!-- Sistema de diseño común (va al final para que aplique a todos los módulos) -->
+<script src="ui-kit.js?v=1"></script>
 </body>
 </html>
