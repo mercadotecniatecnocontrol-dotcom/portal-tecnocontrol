@@ -26241,6 +26241,7 @@
             alertas: ["Con alerta", s => !!opsExtAlerta(s)],
             ...Object.fromEntries(OPS_EXT_PASOS.map(p => [p, [p, s => s.estado === p]])),
             sinpagar: ["Sin pagar al proveedor", s => s.estado !== "Cancelado" && !s.pagado_proveedor_en && ["Factura recibida", "Entregada", "Facturada al cliente", "Cobrada"].includes(s.estado)],
+            enpago: ["Enviados a pago (esperando a Cristina)", opsExtEnPago],
             cancelados: ["Cancelados", s => s.estado === "Cancelado"],
             todos: ["Todos", () => true],
         };
@@ -26267,7 +26268,7 @@
                 <td style="padding:9px 8px;font-size:11.5px;max-width:260px;"><div style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${opsEsc(s.concepto || "")}</div></td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsExtFecha(s.fecha_ejecucion)}</td>
                 <td style="padding:9px 8px;text-align:right;white-space:nowrap;">${opsExtDin(s.total)}<div style="font-size:10.5px;color:#15803d;">${s.precio_cliente ? "cobrar " + opsExtDin(s.precio_cliente) : ""}</div></td>
-                <td style="padding:9px 8px;">${opsExtChip(s.estado)}${s.pagado_proveedor_en ? `<div style="font-size:10px;color:#15803d;margin-top:3px;font-weight:600;">Pagado al proveedor</div>` : ""}${al ? `<div style="font-size:10.5px;color:#b91c1c;margin-top:3px;font-weight:600;">${opsEsc(al)}</div>` : ""}</td>
+                <td style="padding:9px 8px;">${opsExtChip(s.estado)}${s.pagado_proveedor_en ? `<div style="font-size:10px;color:#15803d;margin-top:3px;font-weight:600;">Pagado al proveedor</div>` : opsExtEnPago(s) ? `<div style="font-size:10px;color:#7c3aed;margin-top:3px;font-weight:700;">Enviado a pago</div>` : ""}${al ? `<div style="font-size:10.5px;color:#b91c1c;margin-top:3px;font-weight:600;">${opsEsc(al)}</div>` : ""}</td>
             </tr>`;
         }).join("");
         return `
@@ -26277,7 +26278,8 @@
                 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Por pagar a proveedores</div><div style="font-size:20px;font-weight:800;color:#b45309;">${opsExtDin(porPagarProv)}</div><div style="font-size:11px;color:#94a3b8;">con factura recibida</div></div>
                 <button onclick="opsExtSetFiltro('alertas')" style="text-align:left;background:${alertas.length ? "#fef2f2" : "#fff"};border:1px solid ${alertas.length ? "#fecaca" : "#e2e8f0"};border-radius:12px;padding:12px 14px;cursor:pointer;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Atorados</div><div style="font-size:20px;font-weight:800;color:${alertas.length ? "#b91c1c" : "#1D2E73"};">${alertas.length}</div><div style="font-size:11px;color:#94a3b8;">más días de lo normal</div></button>
             </div>
-            <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;">${OPS_EXT_PASOS.map(p => contador(p, cuenta(p))).join("")}</div>
+            <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;">${OPS_EXT_PASOS.map(p => contador(p, cuenta(p))).join("")}
+                <button onclick="opsExtSetFiltro('enpago')" style="border:1px solid ${opsExtFiltro === "enpago" ? "#7c3aed" : "#e2e8f0"};background:${opsExtFiltro === "enpago" ? "#f5f3ff" : "#fff"};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:left;min-width:108px;"><div style="font-size:18px;font-weight:800;color:#7c3aed;">${opsExt.filter(opsExtEnPago).length}</div><div style="font-size:10.5px;color:#64748b;font-weight:600;">Enviados a pago</div></button></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
                 <select onchange="opsExtSetFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">${Object.keys(filtros).map(k => `<option value="${opsEsc(k)}" ${k === opsExtFiltro ? "selected" : ""}>${opsEsc(filtros[k][0])}</option>`).join("")}</select>
                 <select onchange="opsExtSetProvFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;max-width:240px;"><option value="">Todos los proveedores</option>${opsExtProv.map(p => `<option value="${p.id}" ${String(p.id) === String(opsExtProvFiltro) ? "selected" : ""}>${opsEsc(opsExtProvNombre(p))}</option>`).join("")}</select>
@@ -26570,6 +26572,15 @@
         const el = document.getElementById("ext-f-calc");
         if (el) el.innerHTML = t > 0 ? `Subtotal ${opsExtDin(t - opsExtNum(ivaEl && ivaEl.value))} · <b style="color:#15803d;">Se cobra al cliente ${opsExtDin(t * (1 + m / 100))}</b> · Ganancia ${opsExtDin(t * m / 100)}` : "Captura el total para calcular lo que se cobra al cliente.";
     };
+    // 11-nov-2026: SOPORTE PARA PAGO. Quien lleva el servicio sube el soporte (PDF u otro archivo que
+    // compruebe que el servicio se hizo bien) y lo manda a pago: le llega aviso a Cristina con todo
+    // (factura del proveedor, evidencias y soporte). Ya no se le pasa por fuera. Sin columnas nuevas:
+    // los soportes van en "evidencias" con clase "soporte_pago" y el envío queda en "historial".
+    const OPS_EXT_PAGO_CORREOS = ["c.acosta@tecnocontrol.com.mx"];
+    function opsExtSoportes(s) { return (s.evidencias || []).filter(e => e && e.clase === "soporte_pago"); }
+    function opsExtEnvioPago(s) { return (s.historial || []).slice().reverse().find(h => h && h.tipo === "envio_pago") || null; }
+    function opsExtEnPago(s) { return !!opsExtEnvioPago(s) && !s.pagado_proveedor_en && s.estado !== "Cancelado"; }
+    function opsExtTieneFactura(s) { return !!(s.factura_proveedor || s.factura_uuid || s.factura_xml_path || s.factura_pdf_path); }
     function opsExtHist(s, estado, nota) {
         return (s.historial || []).concat([{ estado, en: new Date().toISOString(), por: opsNombreActual() || opsUsuarioActual(), nota: nota || null }]);
     }
@@ -26640,7 +26651,22 @@
         }).join("");
         const fila = (k, v) => v ? `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12.5px;"><div style="width:170px;color:#64748b;flex-shrink:0;">${k}</div><div style="color:#1e293b;font-weight:600;">${v}</div></div>` : "";
         const bArch = (ruta, txt) => ruta ? `<button onclick="opsExtAbrirArchivo('${opsEsc(ruta)}')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:5px 9px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:600;">${txt}</button>` : "";
-        const evid = (s.evidencias || []).map((e, i) => bArch(e.ruta, "Evidencia " + (i + 1))).join(" ");
+        const evid = (s.evidencias || []).filter(e => e && e.clase !== "soporte_pago").map((e, i) => bArch(e.ruta, "Evidencia " + (i + 1))).join(" ");
+        const soportes = opsExtSoportes(s), envio = opsExtEnvioPago(s);
+        const faltaPago = [!opsExtTieneFactura(s) ? "registrar la factura del proveedor (paso «Factura recibida»)" : "", !soportes.length ? "subir el soporte" : ""].filter(Boolean);
+        const bloqueSoporte = s.estado === "Cancelado" ? "" : `<div style="border:1px solid ${s.pagado_proveedor_en ? "#bbf7d0" : envio ? "#ddd6fe" : "#e2e8f0"};background:${s.pagado_proveedor_en ? "#f0fdf4" : envio ? "#f5f3ff" : "#f8fafc"};border-radius:12px;padding:12px 14px;margin:12px 0;">
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
+                <div><div style="font-size:13px;font-weight:800;color:#1D2E73;">Soporte para pago</div>
+                <div style="font-size:11.5px;color:#64748b;max-width:460px;">PDF o archivo que compruebe que el servicio se hizo bien. Al mandarlo a pago le llega aviso a Cristina con la factura, las evidencias y el soporte.</div></div>
+                ${s.pagado_proveedor_en ? `<span style="font-size:11.5px;font-weight:800;color:#15803d;background:#dcfce7;border-radius:999px;padding:4px 10px;">Pagado al proveedor · ${opsExtFecha(s.pagado_proveedor_en)}</span>`
+                  : envio ? `<span style="font-size:11.5px;font-weight:800;color:#7c3aed;background:#ede9fe;border-radius:999px;padding:4px 10px;">Enviado a pago · ${opsEsc(new Date(envio.en).toLocaleDateString("es-MX", { day: "numeric", month: "short" }))} · ${opsEsc(envio.por || "")}</span>` : ""}
+            </div>
+            <div style="margin-top:8px;font-size:12px;">${soportes.length ? soportes.map((e, i) => bArch(e.ruta, "Soporte " + (i + 1) + (e.nombre ? " · " + e.nombre : ""))).join(" ") : `<span style="color:#94a3b8;">Sin soporte todavía.</span>`}</div>
+            ${edita && !s.pagado_proveedor_en ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+                <button onclick="opsExtSubirSoporte(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">+ Subir soporte</button>
+                <button onclick="opsExtMandarPago(${s.id})" ${faltaPago.length ? "disabled" : ""} style="background:${faltaPago.length ? "#cbd5e1" : "#7c3aed"};border:none;color:#fff;padding:8px 12px;border-radius:8px;cursor:${faltaPago.length ? "not-allowed" : "pointer"};font-size:12.5px;font-weight:800;">${envio ? "Volver a avisar a Cristina" : "Mandar a pago (avisar a Cristina)"}</button>
+                ${faltaPago.length ? `<span style="font-size:11.5px;color:#b45309;font-weight:600;">Falta: ${opsEsc(faltaPago.join(" y "))}.</span>` : ""}</div>` : ""}
+        </div>`;
         const folOps = s.folio_ops_id ? (cacheFolios || []).find(f => f.id === s.folio_ops_id) : null;
         const hist = (s.historial || []).slice().reverse().map(h => `<div style="font-size:11.5px;color:#475569;padding:4px 0;border-bottom:1px dashed #f1f5f9;"><b>${opsEsc(h.estado || "")}</b> · ${opsExtFecha(h.en)} · ${opsEsc(h.por || "")}${h.nota ? " — " + opsEsc(h.nota) : ""}</div>`).join("");
         const al = opsExtAlerta(s);
@@ -26669,6 +26695,7 @@
                 ${fila("Pagado al proveedor", s.pagado_proveedor_en ? opsExtFecha(s.pagado_proveedor_en) : "")}
                 ${fila("Evidencias", evid)}
                 ${fila("Notas", opsEsc(s.notas || ""))}
+                ${bloqueSoporte}
                 ${hist ? `<div style="font-size:12px;font-weight:700;color:#1D2E73;margin:14px 0 4px;">Historial</div>${hist}` : ""}
                 ${edita ? `<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;">
                     ${s.estado !== "Cancelado" && s.estado !== "Cobrada" ? `<button onclick="opsExtCancelar(${s.id})" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar servicio</button>` : ""}
@@ -26878,7 +26905,59 @@
     window.opsExtPagadoProveedor = async function (id) {
         const f = prompt("Fecha de pago al proveedor (AAAA-MM-DD):", opsExtHoy()); if (!f) return;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(f.trim())) { alert("Usa el formato AAAA-MM-DD."); return; }
-        try { await opsExtActualizarSimple(id, { pagado_proveedor_en: f.trim() }, "Pagado al proveedor"); } catch (e) { alert(e.message || e); }
+        const s = opsExt.find(x => x.id === id), envio = s && opsExtEnvioPago(s);
+        try {
+            await opsExtActualizarSimple(id, { pagado_proveedor_en: f.trim() }, "Pagado al proveedor");
+            // Aviso de regreso a quien lo mandó a pago.
+            if (envio && envio.correo && envio.correo !== String(opsUsuarioActual()).toLowerCase())
+                opsViaAvisoPortal(envio.correo, "ext_pagado", `Ya se pagó al proveedor ${s.proveedor_nombre || ""} el servicio externo ${s.folio || ""} (${s.estacion || ""}) · ${opsExtDin(s.total)}.`, { extId: id });
+        } catch (e) { alert(e.message || e); }
+    };
+    window.opsExtSubirSoporte = function (id) {
+        const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true;
+        inp.accept = "application/pdf,image/*,video/*,.doc,.docx,.xls,.xlsx,.zip,.heic,.heif";
+        inp.onchange = async () => {
+            const s = opsExt.find(x => x.id === id); const files = Array.from(inp.files || []); if (!s || !files.length) return;
+            const grandes = opsExtArchivosGrandes(files);
+            if (grandes.length) { alert("Estos archivos pesan más de " + OPS_EXT_MAX_MB + " MB y no se pueden subir:\n\n- " + grandes.join("\n- ")); return; }
+            opsViaToast("Subiendo soporte… no cierres la ventana.", "#1D2E73");
+            try {
+                const sb = await opsSb(); const nuevas = [], fallas = [];
+                for (const f of files) {
+                    try { nuevas.push({ ruta: await opsExtSubir(sb, id, f, "soporte"), nombre: f.name, tipo: f.type || null, clase: "soporte_pago", por: opsNombreActual() || opsUsuarioActual(), en: new Date().toISOString() }); }
+                    catch (e) { fallas.push(f.name + ": " + (e.message || e)); }
+                }
+                if (nuevas.length) {
+                    const evidencias = (s.evidencias || []).concat(nuevas), historial = opsExtHist(s, s.estado, nuevas.length + " soporte(s) para pago subido(s)");
+                    const { error } = await sb.from("ops_servicios_externos").update({ evidencias, historial }).eq("id", id);
+                    if (error) throw error;
+                    s.evidencias = evidencias; s.historial = historial;
+                    opsViaToast(nuevas.length + " soporte(s) subido(s). Ahora toca «Mandar a pago».", "#15803d");
+                }
+                if (fallas.length) alert("No se pudieron subir:\n\n- " + fallas.join("\n- "));
+                opsExtVer(id);
+            } catch (e) { alert("No se pudo subir el soporte: " + (e.message || e)); }
+        };
+        inp.click();
+    };
+    window.opsExtMandarPago = async function (id) {
+        const s = opsExt.find(x => x.id === id); if (!s) return;
+        if (!opsExtTieneFactura(s)) { alert("Primero registra la factura del proveedor (paso «Factura recibida»)."); return; }
+        const sop = opsExtSoportes(s); if (!sop.length) { alert("Primero sube el soporte."); return; }
+        const nota = prompt(`Mandar a pago ${s.folio || ""} · ${s.proveedor_nombre || ""} · ${opsExtDin(s.total)}\n\nLe llegará aviso a Cristina con la factura, ${((s.evidencias || []).length - sop.length)} evidencia(s) y ${sop.length} soporte(s).\n\nNota para Cristina (opcional):`, "");
+        if (nota === null) return;
+        const yo = String(opsUsuarioActual() || "").toLowerCase();
+        const entrada = { estado: s.estado, tipo: "envio_pago", en: new Date().toISOString(), por: opsNombreActual() || yo, correo: yo, nota: "Enviado a pago (Cristina)" + (nota.trim() ? ": " + nota.trim() : "") };
+        try {
+            const sb = await opsSb(); const historial = (s.historial || []).concat([entrada]);
+            const { error } = await sb.from("ops_servicios_externos").update({ historial, actualizado_en: entrada.en, actualizado_por: yo }).eq("id", id);
+            if (error) throw error;
+            s.historial = historial;
+            const msg = `Servicio externo listo para pago: ${s.folio || ""} · ${s.proveedor_nombre || ""} · ${s.estacion || ""} · ${opsExtDin(s.total)}${s.factura_proveedor ? " · factura " + s.factura_proveedor : ""}. Soporte subido por ${entrada.por}.${nota.trim() ? " Nota: " + nota.trim() : ""} Revísalo en Operaciones → Externos → Enviados a pago.`;
+            for (const c of OPS_EXT_PAGO_CORREOS) if (c !== yo) await opsViaAvisoPortal(c, "ext_pago", msg, { extId: id });
+            opsViaToast("Enviado a pago. Se avisó a Cristina.", "#15803d");
+            opsExtVer(id); if (tabActual === "externos") opsRenderExternos();
+        } catch (e) { alert("No se pudo mandar a pago: " + (e.message || e)); }
     };
     window.opsExtCancelar = async function (id) {
         const m = prompt("Motivo de la cancelación:", ""); if (m === null) return;
