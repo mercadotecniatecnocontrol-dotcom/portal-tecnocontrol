@@ -18,7 +18,8 @@
         { id: 'manuales', titulo: 'Manuales y Procedimientos', activa: true },
         { id: 'certificado', titulo: 'Certificado TECNOLAB', activa: true },
     ];
-    let _seccionActual = 'sasisopa';
+    // 11-nov-2026: Gestoría sale de Operaciones — la pantalla de entrada es su calendario (gestoria-agenda.js).
+    let _seccionActual = 'agenda';
 
     const SASISOPA_RUTA_MACHOTES = 'sasisopa-machotes/sasisopa-machotes/';
     const SASISOPA_COLECCION = 'sasisopa_clientes';
@@ -5308,6 +5309,11 @@
         return `
         <div class="gs-rail">
             <div class="gs-rail-logo">${ICONO.edificio}</div>
+            <button class="gs-rail-btn${_seccionActual === 'agenda' ? ' activo' : ''}" data-seccion="agenda" aria-label="Calendario de Gestoría">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 16 11 18 15 14"/></svg>
+                <span class="gs-rail-tooltip">Calendario de Gestoría</span>
+            </button>
+            <div class="gs-rail-divisor"></div>
             ${SECCIONES_GESTORIA.map(s => `
                 <button class="gs-rail-btn${_seccionActual === s.id ? ' activo' : ''}" data-seccion="${s.id}" ${s.activa ? '' : 'disabled'}>
                     ${s.id === 'sasisopa' ? ICONO.carpeta : s.id === 'sgm' ? ICONO.graduacion : s.id === 'bitacoras' ? ICONO.reloj : s.id === 'manuales' ? ICONO.libro : ICONO.certificado}
@@ -5400,6 +5406,13 @@
 
         if (_seccionActual === 'certificado') {
             renderCertificadoTecnolab(cont);
+            return;
+        }
+        if (_seccionActual === 'agenda') {
+            cont.innerHTML = `<div class="gs-shell">${renderRail()}<div class="gs-content" id="gs-agenda-mount"></div></div>`;
+            bindRail(cont);
+            if (typeof window.gestoriaAgendaMontar === 'function') window.gestoriaAgendaMontar(cont.querySelector('#gs-agenda-mount'));
+            else cont.querySelector('#gs-agenda-mount').innerHTML = '<div class="gs-empty" style="padding:40px;">No cargó el calendario de Gestoría (gestoria-agenda.js). Recarga el portal.</div>';
             return;
         }
 
