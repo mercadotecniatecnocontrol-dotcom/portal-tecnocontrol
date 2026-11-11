@@ -1147,6 +1147,7 @@ window.initFlotillaMovil=async function(){
   dbg('Online: '+navigator.onLine,'info');
   await Promise.all([cargarMiVeh(),cargarMisSols(),cargarMisTareas()]);
   fmOpsServCargar().catch(e=>console.warn('[OPS servicios] arranque',e));
+  fmRepObraCargar();
   fmViaArranque();
   dbg('Datos cargados. Vehículo: '+(miVeh?'ECO '+miVeh.eco:'ninguno'),'ok');
   if(miVeh)flReportarUbicacion(miVeh.eco);
@@ -3700,6 +3701,7 @@ function renderTareas(){
     fmMisFoliosHTML()+
     fmOpsNoProgBtnHTML()+
     fmOpsServHTML()+
+    fmRepObraHTML()+
     '<div class="fm-sec-hd"><div><div class="fm-sec-t">'+(misOpsServ.length?'Tareas de Flotilla':'Mis tareas')+'</div><div class="fm-sec-s">'+pend.length+' pendiente(s)'+(urg.length?' · '+urg.length+' urgente(s)':'')+'</div></div></div>'+
     (!pend.length?
       (misOpsServ.length?'<div style="font-size:12px;color:#94A3B8;padding:4px 2px 20px">Sin tareas de Flotilla pendientes.</div>':'<div class="fm-empty"><div class="fm-empty-ico" style="color:#15803D">'+IC.check+'</div><h3>Sin tareas pendientes</h3><p>No tienes tareas ni servicios asignados.</p></div>')
@@ -7970,6 +7972,81 @@ function fmAgendaPintar(){
   document.body.appendChild(ov);
 }
 
+// ══════════════════════════════════════════════════════════════
+// REPORTES DE OBRA (11-nov-2026)
+// Los reportes de la página "Reportes de servicio" (dailyreport) que tienen al técnico
+// asignado salen aquí con el botón "Subir evidencia de hoy", que abre esa página en modo
+// campo con su misma sesión. Si alguien sube evidencia desde la computadora, Supabase le
+// quita el reporte al técnico (trigger rs_desasignar_por_portal) y aquí desaparece solo.
+// Tampoco salen los reportes de servicios cancelados.
+// ══════════════════════════════════════════════════════════════
+const FM_RS_URL='https://dailyreport-liart.vercel.app/';
+let fmRepObra=[], fmRepObraHoy=new Set(), _fmRepObraCanal=null, _fmRepObraT=null, _fmRepTok=null, _fmRepTokInt=null;
+function fmRepTokVigente(){
+  if(!_fmRepTok)return null;
+  try{let p=_fmRepTok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');while(p.length%4)p+='=';const d=JSON.parse(atob(p));return d.exp*1000>Date.now()+5*60000?_fmRepTok:null;}catch(e){return null;}
+}
+async function fmRepTokRefrescar(){
+  try{const u=window.auth&&window.auth.currentUser;_fmRepTok=u?await u.getIdToken():null;}catch(e){}
+}
+function fmRepEsMio(r){
+  const correo=opsSvMiCorreo();
+  return (r.tecnicos||[]).some(function(t){return t&&((_opsServTecId&&t.id===_opsServTecId)||(correo&&String(t.correo||'').toLowerCase()===correo));});
+}
+async function fmRepObraCargar(){
+  if(!opsSvMiCorreo())return;
+  try{
+    await fmRepTokRefrescar();
+    if(!_fmRepTokInt)_fmRepTokInt=setInterval(fmRepTokRefrescar,15*60000);
+    const sb=await fmvSbSesion();
+    const r=await sb.from('reportes_servicio').select('id,folio,titulo,estado,avance,estacion,servicio_id,tecnicos').eq('estado','en_proceso');
+    if(r.error)throw r.error;
+    const lista=(r.data||[]).filter(function(x){
+      if(!fmRepEsMio(x))return false;
+      const f=x.servicio_id&&_opsFoliosMapa?_opsFoliosMapa.get(x.servicio_id):null;
+      return !(f&&f.cancelado===true);
+    });
+    fmRepObraHoy=new Set();
+    if(lista.length){
+      const a=await sb.from('reporte_actualizaciones').select('reporte_id').in('reporte_id',lista.map(function(x){return x.id;})).eq('fecha',fmvHoy());
+      (a.data||[]).forEach(function(x){fmRepObraHoy.add(x.reporte_id);});
+    }
+    fmRepObra=lista.sort(function(a,b){return String((a.estacion||{}).nombre||'').localeCompare(String((b.estacion||{}).nombre||''),'es');});
+    if(!_fmRepObraCanal){
+      const avisar=function(){clearTimeout(_fmRepObraT);_fmRepObraT=setTimeout(fmRepObraCargar,1200);};
+      _fmRepObraCanal=sb.channel('fm-reportes-obra')
+        .on('postgres_changes',{event:'*',schema:'public',table:'reportes_servicio'},avisar)
+        .on('postgres_changes',{event:'*',schema:'public',table:'reporte_actualizaciones'},avisar)
+        .subscribe();
+      document.addEventListener('visibilitychange',function(){if(!document.hidden)avisar();});
+    }
+  }catch(e){console.warn('[reportes de obra]',e);}
+  if(vistaAct==='tareas')renderTareas();
+}
+window.fmRepObraHTML=function(){
+  if(!fmRepObra.length)return '';
+  const pend=fmRepObra.filter(function(r){return !fmRepObraHoy.has(r.id);}).length;
+  return '<div class="fm-sec-hd"><div><div class="fm-sec-t">Reportes de obra</div><div class="fm-sec-s">'+(pend?pend+' sin evidencia de hoy':'Ya subiste la evidencia de hoy')+'</div></div></div>'+
+    fmRepObra.map(function(r){
+      const e=r.estacion||{}, ok=fmRepObraHoy.has(r.id), av=Math.max(0,Math.min(100,Number(r.avance)||0));
+      return '<div style="border:1.5px solid '+(ok?'#BBF7D0':'#FCA5A5')+';border-radius:12px;padding:12px 13px;margin-bottom:10px;background:'+(ok?'#F0FDF4':'#FFF7F7')+'">'+
+        '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:4px"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0A1628">'+opsSvEsc(e.nombre||'Estación')+'</div>'+
+        '<div style="font-size:12px;color:#475569">'+opsSvEsc([r.titulo,r.folio].filter(Boolean).join(' · '))+'</div></div>'+
+        '<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px;flex-shrink:0;color:'+(ok?'#15803D':'#B91C1C')+';background:'+(ok?'#DCFCE7':'#FEE2E2')+'">'+(ok?'Hoy listo':'Falta hoy')+'</span></div>'+
+        '<div style="height:6px;background:#E2E8F0;border-radius:6px;overflow:hidden;margin:8px 0 10px"><i style="display:block;height:100%;width:'+av+'%;background:#1D2E73"></i></div>'+
+        '<button onclick="fmRepObraAbrir(\''+r.id+'\')" style="width:100%;padding:10px;border:none;border-radius:10px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;color:#fff;background:'+(ok?'#1D2E73':'#E7402B')+'">'+(ok?'Agregar más evidencia':'Subir evidencia de hoy')+'</button>'+
+      '</div>';
+    }).join('')+'<div style="height:6px"></div>';
+};
+window.fmRepObraAbrir=function(id){
+  const t=fmRepTokVigente();
+  if(t){window.open(FM_RS_URL+'#campo-'+id+'&t='+t,'_blank');return;}
+  // Sin token fresco: se pide uno nuevo y se le pide al técnico tocar otra vez (los navegadores
+  // bloquean abrir ventanas después de esperar).
+  toast('Preparando tu acceso… toca el botón otra vez en un segundo.','info');
+  fmRepTokRefrescar();
+};
+
 // ══ Mis servicios cerrados (últimos 45 días) + estatus de revisión de Operaciones ══
 window.fmCerradosAbrir=async function(){
   document.getElementById('fm-cerrados')?.remove();
@@ -7988,7 +8065,7 @@ window.fmCerradosAbrir=async function(){
       const mias=(f.atenciones||[]).filter(function(v){return v&&(String(v.correo||'').toLowerCase()===correo||(_opsServTecId&&v.tecnicoId===_opsServTecId));});
       const v=mias[mias.length-1]; const cierre=f.fechaSolucion||(v&&v.fin)||'';
       return {f:f,v:v,cierre:cierre};
-    }).filter(function(x){return x.cierre&&x.cierre>=desde;}).sort(function(a,b){return String(b.cierre).localeCompare(String(a.cierre));});
+    }).filter(function(x){return x.f.cancelado!==true&&x.cierre&&x.cierre>=desde;}) // 11-nov-2026: los cancelados ya no salen en su historial.sort(function(a,b){return String(b.cierre).localeCompare(String(a.cierre));});
     const est={por_revisar:['Por revisar','#B45309','#FEF3C7'],en_revision:['En revisión','#1D4ED8','#DBEAFE'],revisado:['Revisado','#15803D','#DCFCE7']};
     const cola=_fmColaN?'<div style="background:#FFF7ED;border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:#9A3412"><b>'+_fmColaN+'</b> cierre(s) siguen guardados en tu teléfono esperando señal.</div>':'';
     ov.innerHTML=marco(cola+(lista.length?lista.map(function(x){
