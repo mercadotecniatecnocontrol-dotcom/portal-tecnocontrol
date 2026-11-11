@@ -20376,7 +20376,12 @@
         else if (!(s.est || s.estTexto.trim())) faltan.push("la estación");
         if (!s.fecha) faltan.push("la fecha");
         if (s.tipo === "poliza" && (!s.clienteId || !s.prioridad)) faltan.push("cliente y prioridad");
+        // 11-nov-2026: candado — no se guarda un servicio sin técnico (se guardó uno de sonda y termistor
+        // sin nadie y no le salió a ningún técnico). Solo el folio de póliza puede quedar sin técnico, con confirmación.
+        const sinTecnico = !opsAsTecsElegidos().some(id => cacheTec.some(t => t.id === id));
+        if (s.tipo && s.tipo !== "poliza" && sinTecnico) faltan.push("el técnico que lo va a realizar (elígelo en Personal / técnicos)");
         if (faltan.length) { opsAsMostrarError("Falta: " + faltan.join(", ") + "."); return; }
+        if (s.tipo === "poliza" && sinTecnico && confirmado === true && !confirm("Este folio no tiene técnico asignado y no le saldrá a nadie en la app.\n\n¿Guardarlo así de todos modos?")) return;
         if ((multiEst || opsAsNormasVisita().length > 1) && confirmado === true) { document.getElementById("opsas-revision")?.remove(); return opsAsGuardarGrupo(); }
         // Antes de guardar: resumen para que quien gestiona revise que todo esté correcto
         // (estación, plaza, técnico, fecha…). Los avisos (choques, falta de personal, plaza
