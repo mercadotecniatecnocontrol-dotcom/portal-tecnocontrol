@@ -339,6 +339,7 @@
         .gag-toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);background:${NAVY};color:#fff;font:700 13px 'DM Sans',sans-serif;padding:11px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:all .2s;z-index:200100;box-shadow:0 10px 30px rgba(15,23,42,.25);}
         .gag-toast.mostrar{opacity:1;transform:translate(-50%,0);}
         .gag-toast.err{background:${ROJO};}
+        .gag-compacto .gag-layout{grid-template-columns:1fr;}.gag-compacto .gag-main{order:-1;}.gag-compacto .gag-side{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}
         @media(max-width:1100px){.gag-layout{grid-template-columns:1fr;}.gag-main{order:-1;}.gag-side{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}}
         @media(max-width:700px){.gag{padding:12px;}.gag-kpis{grid-template-columns:1fr 1fr;}.gag-search{min-width:0;flex:1;}.gag-g2,.gag-g3{grid-template-columns:1fr;}.gag-h1{font-size:20px;}}
         `;
@@ -354,6 +355,8 @@
         }
         const scroll = el.querySelector('.gag-wk-grid'); const sTop = scroll ? scroll.scrollTop : null;
         el.innerHTML = `<div class="gag">${htmlTop()}${htmlKpis()}<div class="gag-layout">${htmlSide()}<div class="gag-main gag-card">${htmlBar()}${S.error ? `<div class="gag-vacio" style="color:${ROJO};">No se pudo leer la información: ${esc(S.error)}</div>` : S.cargando ? '<div class="gag-vacio">Cargando calendario…</div>' : htmlVista()}</div></div></div>`;
+        // Si el espacio es angosto (menú lateral del portal abierto), el calendario va arriba y el panel abajo.
+        if (el.firstElementChild) el.firstElementChild.classList.toggle('gag-compacto', el.clientWidth < 1180);
         const g = el.querySelector('.gag-wk-grid');
         if (g) g.scrollTop = sTop != null ? sTop : Math.max(0, (Math.min(Math.max(new Date().getHours(), H_INI), H_FIN) - H_INI - 1) * H_PX);
         const b = el.querySelector('#gag-q'); if (b && S._focoQ) { b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
@@ -817,6 +820,7 @@
         pintar();
         if (puedeVer()) suscribir();
     };
+    let _rz = null; window.addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(() => { if (S.el && document.body.contains(S.el) && !document.querySelector('.gag-md')) pintar(); }, 250); });
     // Para refrescar la línea de "ahora" cada minuto en la vista Semana.
     setInterval(() => { if (S.el && document.body.contains(S.el) && S.vista === 'semana' && !document.querySelector('.gag-md')) pintar(); }, 60000);
 })();
