@@ -46,7 +46,10 @@ const GOCE = {
 };
 const GOCE_TXT = { con_goce: 'Con goce', sin_goce: 'Sin goce', a_cuenta_vacaciones: 'A cuenta de vacaciones', pago_horas: 'Pago con horas' };
 const EST = { 'Pendiente': ['#b45309', '#fef3c7'], 'Preautorizada': ['#1d4ed8', '#dbeafe'], 'Aprobada': ['#15803d', '#dcfce7'], 'Rechazada': ['#b91c1c', '#fee2e2'], 'Cancelada': ['#64748b', '#f1f5f9'] };
-const CFG_DEF = { correosRH: ['rh@tecnocontrol.com.mx'], aprobadores: [], maxMismoGrupo: 1, diasAnticipacion: 3 };
+// 11-nov-2026: «jefesOperaciones» reciben el aviso de cada solicitud nueva de Operaciones (antes solo RH y
+// «Pueden aprobar», por eso a los jefes de Operaciones no les llegaba nada). Se edita en «Reglas y avisos».
+const CFG_DEF = { correosRH: ['rh@tecnocontrol.com.mx'], aprobadores: [], maxMismoGrupo: 1, diasAnticipacion: 3,
+  jefesOperaciones: ['clientes@tecnocontrol.com.mx', 'magali@tecnocontrol.com.mx', 'p.pinedo@tecnocontrol.com.mx', 'ricardo.t@tecnocontrol.com.mx'] };
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
@@ -101,6 +104,11 @@ function avisoNoCuentan(ini, fin, compacto) {
 }
 function chip(txt, c, bg) { return '<span style="display:inline-block;background:' + bg + ';color:' + c + ';font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap">' + esc(txt) + '</span>'; }
 function chipEst(e) { const m = EST[e] || ['#334155', '#f1f5f9']; return chip(e, m[0], m[1]); }
+function chipRH(s, largo) {
+  const r = revisionRH(s);
+  if (r) return chip('Revisado por RH', '#15803d', '#dcfce7') + (largo ? ' <span style="font-size:10.5px;color:#64748b">' + esc(r.porNombre || r.por || '') + ' · ' + fHora(r.en) + '</span>' : '');
+  return s.estatus === 'Cancelada' ? '' : chip('Sin revisar por RH', '#b45309', '#fef3c7');
+}
 function chipTipo(t) { const m = TIPOS[t] || { t: t, c: '#334155', bg: '#f1f5f9' }; return chip(m.t, m.c, m.bg); }
 const ICO = {
   alerta: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
@@ -196,16 +204,25 @@ function revisionHTML(r, compacto) {
 }
 
 function idNotif() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+// 11-nov-2026: el módulo va con su nombre real ('Recursos Humanos' u 'Operaciones'). Antes iba 'RH', que no
+// existe en el portal: el filtro de «Quién recibe qué» lo retenía y al dar clic no abría nada.
+// La solicitud viaja como «permisoId» (con «solicitudId» el portal creía que era de Flotilla).
+function esRHCorreo(x) { return (cfg.correosRH || []).map(y => String(y).toLowerCase().trim()).includes(String(x || '').toLowerCase().trim()); }
+function moduloPara(para, s) { return !esRHCorreo(para) && s && /OPERACION/.test(norm(s.departamento)) ? 'Operaciones' : 'Recursos Humanos'; }
 async function avisarPortal(para, tipo, mensaje, datos) {
   if (!esCorreo(para)) return;
-  try { const c = await sb(); await c.from('portal_notificaciones').insert({ tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, datos: Object.assign({ modulo: 'RH' }, datos || {}) }); } catch (e) { console.warn('[permisos] aviso portal', e); }
+  const d = Object.assign({}, datos || {});
+  if (d.solicitudId != null) { d.permisoId = d.solicitudId; delete d.solicitudId; }
+  if (!d.modulo) d.modulo = 'Recursos Humanos';
+  try { const c = await sb(); await c.from('portal_notificaciones').insert({ tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, datos: d }); } catch (e) { console.warn('[permisos] aviso portal', e); }
 }
 async function avisarApp(para, tipo, mensaje, s) {
   if (!esCorreo(para)) return;
   try { const c = await sb(); await c.from('ops_notificaciones').insert({ id: idNotif(), tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, folio: s.folio || null, solicitud_id: String(s.id), leida: false, fecha: new Date().toISOString() }); } catch (e) { console.warn('[permisos] aviso app', e); }
 }
-function correosAvisoNueva() {
-  return [...new Set([].concat(cfg.correosRH || [], cfg.aprobadores || []).map(x => String(x).toLowerCase().trim()).filter(Boolean))];
+function correosAvisoNueva(s) {
+  const ops = s && /OPERACION/.test(norm(s.departamento)) ? (cfg.jefesOperaciones || []) : [];
+  return [...new Set([].concat(cfg.correosRH || [], cfg.aprobadores || [], ops).map(x => String(x).toLowerCase().trim()).filter(Boolean))];
 }
 
 async function crearSolicitud(s, r, preaut) {
@@ -225,13 +242,13 @@ async function crearSolicitud(s, r, preaut) {
   ins.data.folio = folio;
   if (preaut) {
     const m = s.colaborador_nombre + ': ' + folio + ' (' + TIPOS[s.tipo].t.toLowerCase() + ', ' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ') registrada y preautorizada por ' + (preaut.nombre || preaut.correo) + '. Pendiente que RH la acepte.';
-    (cfg.correosRH || []).forEach(p => avisarPortal(p, 'permiso_por_aceptar', m, { solicitudId: ins.data.id }));
+    (cfg.correosRH || []).forEach(p => avisarPortal(p, 'permiso_por_aceptar', m, { solicitudId: ins.data.id, modulo: 'Recursos Humanos' }));
     await apartarCalendario(c, ins.data, preaut).catch(() => {});
     return ins.data;
   }
   const msg = (s.urgente ? 'URGENTE · ' : '') + s.colaborador_nombre + ' solicita ' + TIPOS[s.tipo].t.toLowerCase() + ' ' + folio + ': ' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + (fila.traslapes.length ? ' · se empalma con otra solicitud o ausencia' : '') + '.';
   // Primero se entera quien preautoriza (jefes); RH recibe copia para saber que viene.
-  correosAvisoNueva().forEach(p => avisarPortal(p, s.urgente ? 'permiso_urgente' : 'permiso_solicitud', msg + ' Falta que un jefe la preautorice.', { solicitudId: ins.data.id }));
+  correosAvisoNueva(s).forEach(p => avisarPortal(p, s.urgente ? 'permiso_urgente' : 'permiso_solicitud', msg + ' Falta que un jefe la preautorice.', { solicitudId: ins.data.id, modulo: moduloPara(p, s) }));
   return ins.data;
 }
 
@@ -251,7 +268,7 @@ async function resolver(s, estatus, usuario, comentario) {
   const ahora = new Date().toISOString();
   const cambios = {
     estatus: estatus, resuelto_por: usuario.correo, resuelto_nombre: usuario.nombre, resuelto_en: ahora, comentario_resolucion: comentario || null, actualizado_en: ahora,
-    historial: (s.historial || []).concat([{ accion: estatus, por: usuario.correo, porNombre: usuario.nombre, en: ahora, comentario: comentario || null }]),
+    historial: (s.historial || []).concat([Object.assign({ accion: estatus, por: usuario.correo, porNombre: usuario.nombre, en: ahora, comentario: comentario || null }, esRHCorreo(usuario.correo) && estatus !== 'Cancelada' ? { rh: true } : {})]),
   };
   // Al preautorizar o aprobar: se aparta en el calendario de Operaciones (así ya no le asignan trabajo).
   if ((estatus === 'Aprobada' || estatus === 'Preautorizada') && s.tecnico_id && !s.ausencia_ops_id) {
@@ -272,9 +289,24 @@ async function resolver(s, estatus, usuario, comentario) {
   if (estatus !== 'Cancelada' || usuario.correo !== s.colaborador_email) {
     const m = 'Tu solicitud ' + s.folio + ' (' + TIPOS[s.tipo].t.toLowerCase() + ', ' + rango + ') fue ' + estatus.toUpperCase() + ' por ' + (usuario.nombre || usuario.correo) + (comentario ? '. Comentario: ' + comentario : '') + (estatus === 'Preautorizada' ? '. Ya solo falta que RH la acepte.' : '') + '.';
     avisarApp(s.colaborador_email, estatus === 'Aprobada' ? 'perm_tec_aprobada' : estatus === 'Rechazada' ? 'perm_tec_rechazada' : 'perm_tec_cancelada', m, s);
-    avisarPortal(s.colaborador_email, 'permiso_' + estatus.toLowerCase(), m, { solicitudId: s.id });
+    avisarPortal(s.colaborador_email, 'permiso_' + estatus.toLowerCase(), m, { solicitudId: s.id, modulo: moduloPara(s.colaborador_email, s) });
   }
-  (cfg.correosRH || []).forEach(p => avisarPortal(p, estatus === 'Preautorizada' ? 'permiso_por_aceptar' : 'permiso_' + estatus.toLowerCase(), s.colaborador_nombre + ': ' + s.folio + ' ' + estatus.toLowerCase() + ' por ' + (usuario.nombre || usuario.correo) + ' (' + rango + ')' + (estatus === 'Preautorizada' ? '. Pendiente que RH la acepte.' : '.'), { solicitudId: s.id }));
+  (cfg.correosRH || []).forEach(p => avisarPortal(p, estatus === 'Preautorizada' ? 'permiso_por_aceptar' : 'permiso_' + estatus.toLowerCase(), s.colaborador_nombre + ': ' + s.folio + ' ' + estatus.toLowerCase() + ' por ' + (usuario.nombre || usuario.correo) + ' (' + rango + ')' + (estatus === 'Preautorizada' ? '. Pendiente que RH la acepte.' : '.'), { solicitudId: s.id, modulo: 'Recursos Humanos' }));
+}
+
+// ── Revisado por RH (11-nov-2026) ──
+// Queda en el historial: «Revisada por RH», o cualquier paso que haga una cuenta de RH (aceptar o rechazar).
+function revisionRH(s) {
+  const h = (s.historial || []).filter(x => x && (x.rh || /^Revisada por RH/.test(x.accion || '') || (esRHCorreo(x.por) && !/^Solicitada/.test(x.accion || ''))));
+  return h.length ? h[h.length - 1] : null;
+}
+async function marcarRevisadoRH(s, usuario) {
+  const c = await sb();
+  const ahora = new Date().toISOString();
+  const historial = (s.historial || []).concat([{ accion: 'Revisada por RH', por: usuario.correo, porNombre: usuario.nombre, en: ahora, comentario: null, rh: true }]);
+  const u = await c.from('rh_solicitudes_ausencia').update({ historial: historial, actualizado_en: ahora }).eq('id', s.id);
+  if (u.error) throw u.error;
+  s.historial = historial; s.actualizado_en = ahora;
 }
 
 // ── Formato HTC-FR-1201-13 (imprimible) ──
@@ -423,7 +455,7 @@ async function mEnviar() {
 }
 
 // ══════════════════════ PANEL (Operaciones / RH) ══════════════════════
-const P = { cont: null, opts: null, lista: [], filtroEst: '', filtroDepto: '', busca: '', orden: 'nombre', buscaT: null };
+const P = { cont: null, opts: null, lista: [], filtroEst: '', filtroDepto: '', filtroTipo: '', filtroPlaza: '', filtroRH: '', busca: '', orden: 'nombre', buscaT: null };
 async function panel(cont, opts) {
   P.cont = cont; P.opts = opts || {}; if (P.opts.filtroDepto != null && !P.filtroDepto) P.filtroDepto = P.opts.filtroDepto;
   cont.innerHTML = '<div style="padding:30px;color:#64748b;font-size:13px">Cargando solicitudes…</div>';
@@ -437,6 +469,11 @@ function pEsRH() { return (cfg.correosRH || []).map(x => String(x).toLowerCase()
 function pEsJefe() { return !pEsRH() && (!!P.opts.puedeAprobar || (cfg.aprobadores || []).map(x => String(x).toLowerCase()).includes(pYo())); }
 function pPuedeAprobar() { return pEsRH() || pEsJefe() || !!P.opts.puedeAprobar; }
 // Botones según el paso: Pendiente → el jefe preautoriza; Preautorizada → RH acepta.
+function pBtnRevisar(s, grande) {
+  if (!pEsRH() || revisionRH(s) || s.estatus === 'Cancelada') return '';
+  const st = grande ? 'padding:9px 14px;border-radius:8px;font-size:12.5px' : 'padding:6px 14px;border-radius:7px;font-size:12px';
+  return '<button onclick="tcPermisos._pRevisado(' + s.id + ')" style="background:#fff;border:1px solid #86efac;color:#15803d;' + st + ';cursor:pointer;font-weight:700">Marcar revisado por RH</button>';
+}
 function pAccionesHTML(s, grande) {
   const st = grande ? 'padding:9px 14px;border-radius:8px;font-size:12.5px' : 'padding:6px 14px;border-radius:7px;font-size:12px';
   const btn = (txt, est, c) => '<button onclick="tcPermisos._pResolver(' + s.id + ',\'' + est + '\'' + (grande ? ',true' : '') + ')" style="background:' + c + ';border:none;color:#fff;' + st + ';cursor:pointer;font-weight:700">' + txt + '</button>';
@@ -461,7 +498,10 @@ function pRender() {
   if (!P.cont) return;
   const H = hoy();
   const deptos = [...new Set(P.lista.map(s => s.departamento).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
-  const enDepto = s => !P.filtroDepto || norm(s.departamento) === norm(P.filtroDepto);
+  const plazas = [...new Set(P.lista.map(s => s.plaza).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const enDepto = s => (!P.filtroDepto || norm(s.departamento) === norm(P.filtroDepto)) && (!P.filtroPlaza || norm(s.plaza) === norm(P.filtroPlaza)) && (!P.filtroTipo || s.tipo === P.filtroTipo) &&
+    (!P.filtroRH || (P.filtroRH === 'si' ? !!revisionRH(s) : !revisionRH(s) && s.estatus !== 'Cancelada'));
+  const sinRevisar = P.lista.filter(s => enDepto(s) && !revisionRH(s) && s.estatus !== 'Cancelada' && s.estatus !== 'Rechazada');
   const pend = P.lista.filter(s => (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada') && enDepto(s)).sort((a, b) => (b.urgente - a.urgente) || (a.estatus === b.estatus ? 0 : a.estatus === 'Pendiente' ? -1 : 1) || String(a.fecha_inicio).localeCompare(String(b.fecha_inicio)));
   const ausentesHoy = P.lista.filter(s => s.estatus === 'Aprobada' && s.fecha_inicio <= H && s.fecha_fin >= H && enDepto(s));
   const prox30 = P.lista.filter(s => s.estatus === 'Aprobada' && s.fecha_inicio > H && s.fecha_inicio <= sumar(H, 30) && enDepto(s));
@@ -479,12 +519,12 @@ function pRender() {
   const tarjetaPend = s => {
     const tr = (s.traslapes || []).filter(t => t.tipo !== 'anticipacion' || true);
     return '<div style="background:#fff;border:1.5px solid ' + (s.urgente ? '#fca5a5' : '#e2e8f0') + ';border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="tcPermisos._pVer(' + s.id + ')">' +
-      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:13.5px;font-weight:800;color:#1e293b">' + esc(s.colaborador_nombre) + ' ' + (s.urgente ? chip('URGENTE', '#b91c1c', '#fee2e2') : '') + '</div>' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div style="font-size:13.5px;font-weight:800;color:#1e293b">' + esc(s.colaborador_nombre) + ' ' + (s.urgente ? chip('URGENTE', '#b91c1c', '#fee2e2') : '') + ' ' + chipRH(s) + '</div>' +
       '<div style="font-size:12px;color:#475569">' + chipTipo(s.tipo) + ' ' + (s.goce ? esc(GOCE_TXT[s.goce] || '') + ' · ' : '') + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + diasDe(s) + ' día(s)</div>' +
       '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(s.motivo || '') + '</div>' + avisoNoCuentan(s.fecha_inicio, s.fecha_fin, true) +
       (tr.length ? '<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px">Se empalma: ' + esc(tr.map(t => t.tipo === 'guardia' ? 'guardia semana ' + t.semana : t.tipo === 'anticipacion' ? 'poca anticipación' : t.nombre).join(', ')) + '</div>' : '') +
       '</div><div style="text-align:right;font-size:10.5px;color:#94a3b8">' + esc(s.folio || '') + '<br>' + esc(s.departamento || '') + '<br>' + fHora(s.creado_en) + '</div></div>' +
-      (pAccionesHTML(s) ? '<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">' + pAccionesHTML(s) + '</div>' : '') +
+      (pAccionesHTML(s) + pBtnRevisar(s) ? '<div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">' + pAccionesHTML(s) + pBtnRevisar(s) + '</div>' : '') +
       (s.estatus === 'Preautorizada' ? '<div style="font-size:11px;color:#1d4ed8;font-weight:700;margin-top:6px">Preautorizada por ' + esc(((s.historial || []).slice().reverse().find(h => /^Preautorizada/.test(h.accion)) || {}).porNombre || '') + ' · falta que RH la acepte</div>' : '') +
       '</div>';
   };
@@ -497,12 +537,16 @@ function pRender() {
     '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:19px;font-weight:700;color:#1D2E73">' + esc(P.opts.titulo || 'Permisos, vacaciones y ausencias') + '</div>' +
     '<div style="font-size:12px;color:#64748b">Los técnicos piden desde la app. <b>1)</b> Un jefe la preautoriza (se aparta en el calendario de Operaciones) · <b>2)</b> RH la acepta. Lo que registra un jefe por alguien ya nace preautorizado.</div></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap"><select onchange="tcPermisos._pSet(\'filtroDepto\',this.value)" style="' + sel + '"><option value="">Todos los departamentos</option>' + deptos.map(d => '<option ' + (norm(d) === norm(P.filtroDepto) ? 'selected' : '') + '>' + esc(d) + '</option>').join('') + '</select>' +
+    '<select onchange="tcPermisos._pSet(\'filtroPlaza\',this.value)" style="' + sel + '"><option value="">Todas las plazas</option>' + plazas.map(d => '<option ' + (norm(d) === norm(P.filtroPlaza) ? 'selected' : '') + '>' + esc(d) + '</option>').join('') + '</select>' +
+    '<select onchange="tcPermisos._pSet(\'filtroTipo\',this.value)" style="' + sel + '"><option value="">Todos los tipos</option>' + Object.keys(TIPOS).map(k => '<option value="' + k + '" ' + (P.filtroTipo === k ? 'selected' : '') + '>' + TIPOS[k].t + '</option>').join('') + '</select>' +
+    '<select onchange="tcPermisos._pSet(\'filtroRH\',this.value)" style="' + sel + '"><option value="">Revisión de RH: todas</option><option value="no" ' + (P.filtroRH === 'no' ? 'selected' : '') + '>Sin revisar por RH</option><option value="si" ' + (P.filtroRH === 'si' ? 'selected' : '') + '>Revisadas por RH</option></select>' +
     '<button onclick="tcPermisos._pNuevaPortal()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">+ Registrar por alguien</button>' +
     (pPuedeAprobar() ? '<button onclick="tcPermisos._pConfig()" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Reglas y avisos</button>' : '') + '</div></div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">' +
     kpi('Por aprobar', pend.length, pend.length ? '#b45309' : '#1D2E73', pend.filter(s => s.urgente).length + ' urgente(s)') +
     kpi('Fuera hoy', ausentesHoy.length, '#1D2E73', ausentesHoy.map(s => String(s.colaborador_nombre).split(' ')[0]).join(', ') || 'nadie') +
-    kpi('Aprobadas próx. 30 días', prox30.length, '#15803d', 'ya apartadas en el calendario') + '</div>' +
+    kpi('Aprobadas próx. 30 días', prox30.length, '#15803d', 'ya apartadas en el calendario') +
+    '<div onclick="tcPermisos._pSet(\'filtroRH\',\'no\')" style="cursor:pointer">' + kpi('Sin revisar por RH', sinRevisar.length, sinRevisar.length ? '#b45309' : '#15803d', 'clic para ver solo esas') + '</div></div>' +
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:14px"><div style="font-size:12.5px;font-weight:700;color:#1D2E73;margin-bottom:8px">Quién falta los próximos 14 días <span style="font-weight:500;color:#94a3b8;font-size:11px">(punteado = pendiente de aprobar)</span></div>' + franja + '</div>' +
     '<div style="font-size:13px;font-weight:800;color:#1D2E73;margin:4px 0 8px">Por aprobar (' + pend.length + ')</div>' +
     (pend.length ? pend.map(tarjetaPend).join('') : '<div style="color:#94a3b8;font-size:12.5px;padding:10px 0 14px">No hay solicitudes pendientes.</div>') +
@@ -511,11 +555,12 @@ function pRender() {
     '<select onchange="tcPermisos._pSet(\'orden\',this.value)" style="' + sel + '"><option value="nombre" ' + (P.orden === 'nombre' ? 'selected' : '') + '>Orden: nombre (A-Z)</option><option value="fecha" ' + (P.orden === 'fecha' ? 'selected' : '') + '>Orden: fecha</option></select>' +
     '<input id="tcp-busca" value="' + esc(P.busca) + '" oninput="tcPermisos._pBuscar(this.value)" placeholder="Buscar persona, folio, motivo…" style="' + sel + ';min-width:220px"></div>' +
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155"><thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase">' +
-    '<th style="padding:9px 8px">Colaborador</th><th style="padding:9px 8px">Tipo</th><th style="padding:9px 8px">Fechas</th><th style="padding:9px 8px">Estatus</th><th style="padding:9px 8px">Resolvió</th></tr></thead><tbody>' +
+    '<th style="padding:9px 8px">Colaborador</th><th style="padding:9px 8px">Tipo</th><th style="padding:9px 8px">Fechas</th><th style="padding:9px 8px">Solicitada</th><th style="padding:9px 8px">Estatus</th><th style="padding:9px 8px">Revisión RH</th><th style="padding:9px 8px">Resolvió</th></tr></thead><tbody>' +
     (hist.map(s => '<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer" onclick="tcPermisos._pVer(' + s.id + ')"><td style="padding:9px 8px"><b>' + esc(s.colaborador_nombre) + '</b><div style="font-size:10.5px;color:#94a3b8">' + esc([s.folio, s.departamento, s.plaza].filter(Boolean).join(' · ')) + '</div></td>' +
       '<td style="padding:9px 8px">' + chipTipo(s.tipo) + (s.urgente ? ' ' + chip('urgente', '#b91c1c', '#fee2e2') : '') + '</td><td style="padding:9px 8px;white-space:nowrap">' + fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + '<div style="font-size:10.5px;color:#94a3b8">' + diasDe(s) + ' día(s)' + (diasNoCuentan(s.fecha_inicio, s.fecha_fin).length ? ' <span style="color:#6d28d9;font-weight:700" title="' + esc(diasNoCuentan(s.fecha_inicio, s.fecha_fin).map(x => x.motivo + ' ' + x.fecha).join(', ')) + '">· ' + diasNoCuentan(s.fecha_inicio, s.fecha_fin).length + ' no cuentan</span>' : '') + '</div></td>' +
-      '<td style="padding:9px 8px">' + chipEst(s.estatus) + '</td><td style="padding:9px 8px;font-size:11.5px">' + esc(s.resuelto_nombre || '') + '<div style="font-size:10.5px;color:#94a3b8">' + fHora(s.resuelto_en) + '</div></td></tr>').join('') ||
-      '<tr><td colspan="5" style="padding:22px;text-align:center;color:#94a3b8">Sin solicitudes.</td></tr>') + '</tbody></table></div>' +
+      '<td style="padding:9px 8px;font-size:11.5px;white-space:nowrap">' + fHora(s.creado_en) + '<div style="font-size:10.5px;color:#94a3b8">' + (s.origen === 'app' ? 'desde la app' : 'desde el portal') + '</div></td>' +
+      '<td style="padding:9px 8px">' + chipEst(s.estatus) + '</td><td style="padding:9px 8px">' + (function () { const r = revisionRH(s); return chipRH(s) + (r ? '<div style="font-size:10.5px;color:#94a3b8">' + esc(r.porNombre || r.por || '') + ' · ' + fHora(r.en) + '</div>' : ''); })() + '</td><td style="padding:9px 8px;font-size:11.5px">' + esc(s.resuelto_nombre || '') + '<div style="font-size:10.5px;color:#94a3b8">' + fHora(s.resuelto_en) + '</div></td></tr>').join('') ||
+      '<tr><td colspan="7" style="padding:22px;text-align:center;color:#94a3b8">Sin solicitudes.</td></tr>') + '</tbody></table></div>' +
     '<div id="tcp-modal"></div>';
 }
 function pModal(html, ancho) {
@@ -533,18 +578,24 @@ async function pVer(id) {
     (s.urgente ? '<div style="background:#fef2f2;color:#b91c1c;border-radius:9px;padding:8px 11px;font-size:12.5px;font-weight:700;margin:12px 0 0">URGENTE: ' + esc(s.urgente_motivo || '') + '</div>' : '') +
     '<div style="margin-top:12px">' + fila('Tipo', chipTipo(s.tipo) + (s.goce ? ' ' + esc(GOCE_TXT[s.goce] || s.goce) : '')) + fila('Fechas', fCorta(s.fecha_inicio) + (s.fecha_fin !== s.fecha_inicio ? ' a ' + fCorta(s.fecha_fin) : '') + ' · ' + diasDe(s) + ' día(s) hábiles' + (s.horas ? ' · ' + esc(s.horas) + ' h' : '')) +
     fila('No se cuentan', diasNoCuentan(s.fecha_inicio, s.fecha_fin).length ? '<span style="color:#6d28d9">' + textoNoCuentan(diasNoCuentan(s.fecha_inicio, s.fecha_fin)) + '</span>' : '') +
-    fila('Motivo', esc(s.motivo || '')) + fila('Cómo lo repone', esc(s.como_repone || '')) + fila('Jefe inmediato', esc(s.jefe || '')) + fila('Solicitado', fHora(s.creado_en) + (s.origen === 'app' ? ' · desde la app' : ' · desde el portal')) + '</div>' +
+    fila('Motivo', esc(s.motivo || '')) + fila('Cómo lo repone', esc(s.como_repone || '')) + fila('Jefe inmediato', esc(s.jefe || '')) + fila('Solicitado', fHora(s.creado_en) + (s.origen === 'app' ? ' · desde la app' : ' · desde el portal')) + fila('Revisión de RH', chipRH(s, true)) + '</div>' +
     '<div id="tcp-rev-adm" style="margin-top:6px"><div style="font-size:12px;color:#64748b;margin-top:8px">Revisando empalmes al día de hoy…</div></div>' +
     (hist ? '<div style="font-size:12px;font-weight:700;color:#1D2E73;margin:14px 0 4px">Historial</div>' + hist : '') +
     (pAccionesHTML(s, true) ? '<label style="display:block;font-size:11.5px;font-weight:600;color:#475569;margin-top:14px">Comentario (obligatorio si rechazas)<textarea id="tcp-com" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin-top:4px;font-family:inherit"></textarea></label>' : '') +
     '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px">' +
     '<button onclick="tcPermisos._pImprimir(' + s.id + ')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;gap:6px;align-items:center">' + ICO.imprimir + 'Formato HTC-FR-1201-13</button>' +
     (puede && (s.estatus === 'Aprobada' || s.estatus === 'Pendiente' || s.estatus === 'Preautorizada') ? '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Cancelada\')" style="background:#fff;border:1px solid #cbd5e1;color:#64748b;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600">Cancelar</button>' : '') +
-    pAccionesHTML(s, true) +
+    pAccionesHTML(s, true) + pBtnRevisar(s, true) +
     '</div>', 680);
   if (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada' || s.estatus === 'Aprobada') {
     try { const r = await revisar(s); const el = document.getElementById('tcp-rev-adm'); if (el) el.innerHTML = revisionHTML({ propias: [], grupo: r.grupo, registradas: r.registradas, guardias: r.guardias, anticipacion: false }); } catch (e) {}
   } else { const el = document.getElementById('tcp-rev-adm'); if (el) el.innerHTML = ''; }
+}
+async function pRevisado(id) {
+  const s = P.lista.find(x => x.id === id); if (!s) return;
+  const abierto = !!document.getElementById('tcp-com') || !!document.getElementById('tcp-rev-adm');
+  try { await marcarRevisadoRH(s, P.opts.usuario || {}); pRender(); if (abierto) pVer(id); if (P.opts.onCambio) P.opts.onCambio(); }
+  catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
 }
 async function pResolver(id, estatus, desdeModal) {
   const s = P.lista.find(x => x.id === id); if (!s) return;
@@ -614,6 +665,7 @@ function pConfig() {
   pModal('<div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:12px">Reglas y avisos</div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Correos de RH que reciben todos los avisos (coma)<input id="tcp-c-rh" value="' + esc((cfg.correosRH || []).join(', ')) + '" style="' + inp + '"></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Pueden aprobar (además de los admins de Operaciones) (coma)<input id="tcp-c-apr" value="' + esc((cfg.aprobadores || []).join(', ')) + '" style="' + inp + '"></label>' +
+    '<label style="font-size:11.5px;font-weight:600;color:#475569">Jefes de Operaciones que reciben aviso de cada solicitud de su área (coma)<input id="tcp-c-jops" value="' + esc((cfg.jefesOperaciones || []).join(', ')) + '" style="' + inp + '"></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Personas del mismo grupo fuera a la vez antes de bloquear<input type="number" min="1" id="tcp-c-max" value="' + esc(cfg.maxMismoGrupo || 1) + '" style="' + inp + '"></label>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Días mínimos de anticipación<input type="number" min="0" id="tcp-c-ant" value="' + esc(cfg.diasAnticipacion ?? 3) + '" style="' + inp + '"></label></div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Otros días de descanso obligatorio (uno por renglón: fecha y nombre; ej. 2027-06-06 Jornada electoral)<textarea id="tcp-c-fest" rows="3" style="' + inp + ';font-family:inherit">' + esc((cfg.festivosExtra || []).map(e => e.fecha + ' ' + (e.nombre || '')).join('\n')) + '</textarea></label>' +
@@ -624,7 +676,7 @@ function pConfig() {
 }
 async function pGuardarConfig() {
   const lista = id => document.getElementById(id).value.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-  const datos = Object.assign({}, cfg, { correosRH: lista('tcp-c-rh'), aprobadores: lista('tcp-c-apr'), maxMismoGrupo: Math.max(1, Number(document.getElementById('tcp-c-max').value) || 1), diasAnticipacion: Math.max(0, Number(document.getElementById('tcp-c-ant').value) || 0),
+  const datos = Object.assign({}, cfg, { correosRH: lista('tcp-c-rh'), aprobadores: lista('tcp-c-apr'), jefesOperaciones: lista('tcp-c-jops'), maxMismoGrupo: Math.max(1, Number(document.getElementById('tcp-c-max').value) || 1), diasAnticipacion: Math.max(0, Number(document.getElementById('tcp-c-ant').value) || 0),
     festivosExtra: document.getElementById('tcp-c-fest').value.split('\n').map(l => { const m = l.trim().match(/^(\d{4}-\d{2}-\d{2})\s*(.*)$/); return m ? { fecha: m[1], nombre: m[2].trim() } : null; }).filter(Boolean) });
   try { const c = await sb(); const r = await c.from('rh_config_permisos').upsert({ id: 'general', datos: datos, actualizado_en: new Date().toISOString(), actualizado_por: (P.opts.usuario || {}).correo || null }); if (r.error) throw r.error; cfg = datos; pModal(''); pRender(); }
   catch (e) { alert('No se pudo guardar: ' + (e.message || e)); }
@@ -643,7 +695,7 @@ window.tcPermisos = {
     const s = M.lista.find(x => x.id === id); if (!s || !confirm('¿Cancelar tu solicitud ' + (s.folio || '') + '?')) return;
     try { await resolver(s, 'Cancelada', { correo: M.ctx.correo, nombre: (M.perfil && M.perfil.nombre) || M.ctx.nombre }, 'Cancelada por el colaborador'); await mCargar(); mRender(); } catch (e) { alert(e.message || e); }
   },
-  _pVer: pVer, _pResolver: pResolver, _pCerrarModal: () => pModal(''), _pImprimir: id => { const s = P.lista.find(x => x.id === id); if (s) imprimir(s); },
+  _pVer: pVer, _pResolver: pResolver, _pRevisado: pRevisado, _pCerrarModal: () => pModal(''), _pImprimir: id => { const s = P.lista.find(x => x.id === id); if (s) imprimir(s); },
   _pSet: (k, v) => { P[k] = v; pRender(); }, _pBuscar: v => { P.busca = v; clearTimeout(P.buscaT); P.buscaT = setTimeout(() => { pRender(); const i = document.getElementById('tcp-busca'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 300); },
   _pNuevaPortal: pNuevaPortal, _pDiasNueva: pDiasNueva, _pGuardarNueva: pGuardarNueva, _pConfig: pConfig, _pGuardarConfig: pGuardarConfig,
 };

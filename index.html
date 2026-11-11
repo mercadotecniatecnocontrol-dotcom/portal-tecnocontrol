@@ -2960,7 +2960,8 @@ function escucharFlotillaNotifs() {
                 mensajeCorto,
                 icono,
                 esMencion,
-                { area: 'Flotilla', esMencion, claseExtra }
+                // 11-nov-2026: los avisos de permisos/vacaciones abren su módulo (RH u Operaciones), no Flotilla.
+                { area: (/^permiso_/.test(tipo) && moduloNotif && moduloNotif !== 'Sin clasificar') ? moduloNotif : 'Flotilla', esMencion, claseExtra }
             );
     };
     window._tcProcesarNotif = procesarNotif;
