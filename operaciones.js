@@ -6921,7 +6921,13 @@
     function opsGdTerminada(sem) { return new Date() >= new Date(opsSumarDias(sem, 4) + "T08:00:00"); }
     function opsGdProg(sem, tipo) { return cacheGuardiasProgramadas.find(x => x.semanaInicio === sem && opsTipoGuardia(x) === tipo) || null; }
     function opsGdDeshora(d) { const w = d.getDay(); if (w === 0 || w === 6) return true; const h = d.getHours(); return h < OPS_TURNO_INI || h >= OPS_TURNO_FIN; }
-    function opsGdRefFolio(f) { const s = String(f.fechaSolicitud || ""); return s.length > 10 ? opsAFechaObj(s) : null; }
+    // 12-nov-2026: si Operaciones capturó la "Fecha real de ejecución", esa manda para saber en qué día
+    // de guardia cae el folio (p. ej. folios de guardia que el técnico subió a la app días después).
+    function opsGdRefFolio(f) {
+        const ej = f.fechaEjecucion && f.fechaEjecucion.por && f.fechaEjecucion.inicio;
+        if (ej) { const d = opsAFechaObj(String(ej)); if (d && !isNaN(d)) return d; }
+        const s = String(f.fechaSolicitud || ""); return s.length > 10 ? opsAFechaObj(s) : null;
+    }
     // ¿Este folio es de guardia? Regresa { si, motivo }.
     function opsGdFolioGuardia(f) {
         if (!f || f.cancelado) return { si: false, motivo: "Cancelado" };
