@@ -26215,7 +26215,12 @@
     };
     const OPS_EXT_CFG_DEF = { margenDefault: 40, margenPorCliente: { "PETRO SEVEN": 40 }, diasAlerta: { autorizacion: 3, facturaProveedor: 5, entrega: 3 }, vobo: {} };
     let opsExt = [], opsExtProv = [], opsExtCfg = { ...OPS_EXT_CFG_DEF };
-    let opsExtVista = "seguimiento", opsExtFiltro = "abiertos", opsExtBusca = "", opsExtOrden = "proveedor", opsExtProvFiltro = "", opsExtMes = "";
+    let opsExtVista = "seguimiento", opsExtFiltro = "abiertos", opsExtBusca = "", opsExtOrden = "fecha", opsExtProvFiltro = "", opsExtMes = "";
+    // 12-nov-2026 (Sandra): en Seguimiento los servicios se ven por mes, como las pestañas del Excel
+    // "BASE DE DATOS FACTURAS" (AGOSTO, SEPTIEMBRE…), ordenados por fecha con No. y Acumulado.
+    // Arranca en el mes actual; "Todos los meses" sigue disponible.
+    let opsExtMesSeg = null;
+    const opsExtMesDe = s => s.poliza_mes || String(s.fecha_ejecucion || s.creado_en || "").slice(0, 7) || "";
     let opsExtForm = null;
 
     const opsExtNum = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -26285,6 +26290,7 @@
     window.opsExtSetOrden = function (v) { opsExtOrden = v; opsRenderExternos(); };
     window.opsExtSetProvFiltro = function (v) { opsExtProvFiltro = v; opsRenderExternos(); };
     window.opsExtSetMes = function (v) { opsExtMes = v; opsRenderExternos(); };
+    window.opsExtSetMesSeg = function (v) { opsExtMesSeg = v || "todos"; opsRenderExternos(); };
     window.opsExtSetBusca = function (v) {
         opsExtBusca = v; clearTimeout(window.__opsExtBT);
         window.__opsExtBT = setTimeout(() => Promise.resolve(opsRenderExternos()).then(() => { const i = document.getElementById("ext-busca"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }), 300);
@@ -26307,27 +26313,42 @@
         };
         if (!filtros[opsExtFiltro]) opsExtFiltro = "abiertos";
         const q = opsExtBusca.toLowerCase().trim();
+        const mesesSeg = [...new Set(opsExt.map(opsExtMesDe).filter(Boolean))].sort();
+        if (opsExtMesSeg === null) opsExtMesSeg = opsExtHoy().slice(0, 7);
+        const mesSel = opsExtMesSeg;
+        const mesesChips = mesesSeg.includes(opsExtHoy().slice(0, 7)) ? mesesSeg : mesesSeg.concat([opsExtHoy().slice(0, 7)]);
+        const chipMes = (v, t, n) => `<button onclick="opsExtSetMesSeg('${v}')" style="border:1.5px solid ${mesSel === v ? "#1D2E73" : "#e2e8f0"};background:${mesSel === v ? "#1D2E73" : "#fff"};color:${mesSel === v ? "#fff" : "#334155"};border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">${opsEsc(t)} <span style="opacity:.7;font-weight:600;">${n}</span></button>`;
+        const barraMeses = `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;align-items:center;"><span style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;margin-right:2px;">Mes:</span>`
+            + mesesChips.map(m => chipMes(m, opsExtMesTxt(m), opsExt.filter(s => opsExtMesDe(s) === m && filtros[opsExtFiltro][1](s)).length)).join("")
+            + chipMes("todos", "Todos los meses", opsExt.filter(filtros[opsExtFiltro][1]).length) + `</div>`;
         let lista = opsExt.filter(filtros[opsExtFiltro][1])
+            .filter(s => mesSel === "todos" || opsExtMesDe(s) === mesSel)
             .filter(s => !opsExtProvFiltro || String(s.proveedor_id) === String(opsExtProvFiltro))
             .filter(s => !q || [s.folio, s.proveedor_nombre, s.cliente, s.estacion, s.concepto, s.folio_cliente, s.folio_aspel, s.factura_proveedor, s.factura_cliente].join(" ").toLowerCase().includes(q));
         const cmp = {
+            fecha: (a, b) => String(a.fecha_ejecucion || a.creado_en || "").localeCompare(String(b.fecha_ejecucion || b.creado_en || "")) || a.id - b.id,
             proveedor: (a, b) => String(a.proveedor_nombre || "").localeCompare(String(b.proveedor_nombre || ""), "es") || String(b.fecha_ejecucion || "").localeCompare(String(a.fecha_ejecucion || "")),
             estacion: (a, b) => String(a.estacion || "").localeCompare(String(b.estacion || ""), "es"),
             recientes: (a, b) => String(b.fecha_ejecucion || b.creado_en || "").localeCompare(String(a.fecha_ejecucion || a.creado_en || "")) || b.id - a.id,
         };
-        lista.sort(cmp[opsExtOrden] || cmp.proveedor);
+        lista.sort(cmp[opsExtOrden] || cmp.fecha);
+        const porFecha = (opsExtOrden || "fecha") === "fecha";
+        let acum = 0;
         const total = lista.reduce((a, s) => a + opsExtNum(s.total), 0), venta = lista.reduce((a, s) => a + opsExtNum(s.precio_cliente), 0);
         const contador = (e, t) => `<button onclick="opsExtSetFiltro('${e}')" style="border:1px solid ${opsExtFiltro === e ? "#1D2E73" : "#e2e8f0"};background:${opsExtFiltro === e ? "#E9ECF5" : "#fff"};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:left;min-width:108px;">
             <div style="font-size:18px;font-weight:800;color:${(OPS_EXT_COL[e] || {}).c || "#1D2E73"};">${t}</div><div style="font-size:10.5px;color:#64748b;font-weight:600;">${opsEsc(e)}</div></button>`;
-        const filas = lista.map(s => {
+        const filas = lista.map((s, i) => {
             const al = opsExtAlerta(s);
+            acum += opsExtNum(s.total);
             return `<tr style="border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="opsExtVer(${s.id})">
+                ${porFecha ? `<td style="padding:9px 8px;color:#94a3b8;font-weight:700;text-align:right;">${i + 1}</td>` : ""}
                 <td style="padding:9px 8px;font-weight:700;color:#1D2E73;white-space:nowrap;">${opsEsc(s.folio || s.id)}<div style="font-size:10.5px;color:#94a3b8;font-weight:500;">${opsEsc(s.folio_aspel || s.folio_cliente || "")}</div></td>
                 <td style="padding:9px 8px;">${opsEsc(s.proveedor_nombre || "—")}</td>
                 <td style="padding:9px 8px;">${opsEsc(s.estacion || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc(s.cliente || "")}</div></td>
                 <td style="padding:9px 8px;font-size:11.5px;max-width:260px;"><div style="overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${opsEsc(s.concepto || "")}</div></td>
                 <td style="padding:9px 8px;white-space:nowrap;font-size:11.5px;">${opsExtFecha(s.fecha_ejecucion)}</td>
                 <td style="padding:9px 8px;text-align:right;white-space:nowrap;">${opsExtDin(s.total)}<div style="font-size:10.5px;color:#15803d;">${s.precio_cliente ? "cobrar " + opsExtDin(s.precio_cliente) : ""}</div></td>
+                ${porFecha ? `<td style="padding:9px 8px;text-align:right;white-space:nowrap;color:#64748b;">${opsExtDin(acum)}</td>` : ""}
                 <td style="padding:9px 8px;">${opsExtChip(s.estado)}${s.pagado_proveedor_en ? `<div style="font-size:10px;color:#15803d;margin-top:3px;font-weight:600;">Pagado al proveedor</div>` : opsExtEnPago(s) ? `<div style="font-size:10px;color:#7c3aed;margin-top:3px;font-weight:700;">Enviado a pago</div>` : ""}${al ? `<div style="font-size:10.5px;color:#b91c1c;margin-top:3px;font-weight:600;">${opsEsc(al)}</div>` : ""}</td>
             </tr>`;
         }).join("");
@@ -26338,24 +26359,26 @@
                 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Por pagar a proveedores</div><div style="font-size:20px;font-weight:800;color:#b45309;">${opsExtDin(porPagarProv)}</div><div style="font-size:11px;color:#94a3b8;">con factura recibida</div></div>
                 <button onclick="opsExtSetFiltro('alertas')" style="text-align:left;background:${alertas.length ? "#fef2f2" : "#fff"};border:1px solid ${alertas.length ? "#fecaca" : "#e2e8f0"};border-radius:12px;padding:12px 14px;cursor:pointer;"><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;">Atorados</div><div style="font-size:20px;font-weight:800;color:${alertas.length ? "#b91c1c" : "#1D2E73"};">${alertas.length}</div><div style="font-size:11px;color:#94a3b8;">más días de lo normal</div></button>
             </div>
+            ${barraMeses}
             <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;">${OPS_EXT_PASOS.map(p => contador(p, cuenta(p))).join("")}
                 <button onclick="opsExtSetFiltro('enpago')" style="border:1px solid ${opsExtFiltro === "enpago" ? "#7c3aed" : "#e2e8f0"};background:${opsExtFiltro === "enpago" ? "#f5f3ff" : "#fff"};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:left;min-width:108px;"><div style="font-size:18px;font-weight:800;color:#7c3aed;">${opsExt.filter(opsExtEnPago).length}</div><div style="font-size:10.5px;color:#64748b;font-weight:600;">Enviados a pago</div></button></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
                 <select onchange="opsExtSetFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">${Object.keys(filtros).map(k => `<option value="${opsEsc(k)}" ${k === opsExtFiltro ? "selected" : ""}>${opsEsc(filtros[k][0])}</option>`).join("")}</select>
                 <select onchange="opsExtSetProvFiltro(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;max-width:240px;"><option value="">Todos los proveedores</option>${opsExtProv.map(p => `<option value="${p.id}" ${String(p.id) === String(opsExtProvFiltro) ? "selected" : ""}>${opsEsc(opsExtProvNombre(p))}</option>`).join("")}</select>
                 <select onchange="opsExtSetOrden(this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+                    <option value="fecha" ${opsExtOrden === "fecha" ? "selected" : ""}>Orden: por fecha (como el Excel)</option>
                     <option value="proveedor" ${opsExtOrden === "proveedor" ? "selected" : ""}>Orden: proveedor (A-Z)</option>
                     <option value="estacion" ${opsExtOrden === "estacion" ? "selected" : ""}>Orden: estación (A-Z)</option>
                     <option value="recientes" ${opsExtOrden === "recientes" ? "selected" : ""}>Orden: más recientes</option></select>
                 <input id="ext-busca" value="${opsEsc(opsExtBusca)}" oninput="opsExtSetBusca(this.value)" placeholder="Buscar folio, estación, concepto, factura, SER…" style="flex:1;min-width:220px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;">
             </div>
-            <div style="font-size:11.5px;color:#64748b;margin-bottom:6px;">${lista.length} servicio(s) · costo ${opsExtDin(total)} · a cobrar ${opsExtDin(venta)}</div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:6px;">${mesSel === "todos" ? "Todos los meses" : opsEsc(opsExtMesTxt(mesSel))} · ${lista.length} servicio(s) · costo ${opsExtDin(total)} · a cobrar ${opsExtDin(venta)} · ganancia ${opsExtDin(venta - total)}</div>
             <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#334155;">
                     <thead><tr style="background:#f8fafc;text-align:left;color:#64748b;font-size:11px;text-transform:uppercase;">
-                        <th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Proveedor</th><th style="padding:9px 8px;">Estación</th><th style="padding:9px 8px;">Concepto</th>
-                        <th style="padding:9px 8px;">Ejecución</th><th style="padding:9px 8px;text-align:right;">Monto</th><th style="padding:9px 8px;">Estado</th></tr></thead>
-                    <tbody>${filas || `<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">Nada en este filtro.</td></tr>`}</tbody>
+                        ${porFecha ? `<th style="padding:9px 8px;text-align:right;">No.</th>` : ""}<th style="padding:9px 8px;">Folio</th><th style="padding:9px 8px;">Proveedor</th><th style="padding:9px 8px;">Estación</th><th style="padding:9px 8px;">Concepto</th>
+                        <th style="padding:9px 8px;">Ejecución</th><th style="padding:9px 8px;text-align:right;">Monto</th>${porFecha ? `<th style="padding:9px 8px;text-align:right;">Acumulado</th>` : ""}<th style="padding:9px 8px;">Estado</th></tr></thead>
+                    <tbody>${filas || `<tr><td colspan="9" style="padding:24px;text-align:center;color:#94a3b8;">Nada en este filtro.</td></tr>`}</tbody>
                 </table>
             </div>`;
     }
