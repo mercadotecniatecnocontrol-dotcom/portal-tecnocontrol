@@ -71,7 +71,7 @@
   var contId    = 'vista-almacen';
   var pedidos   = [];
   var expandido = {};                 // {id:true}
-  var filtro    = { q:'', prio:'', tipo:'', area:'' };   // búsqueda, prioridad, tipo y área (''=Todo, almacen, servicios, pro)
+  var filtro    = { q:'', prio:'', tipo:'', area:'', kpi:'', canal:null };   // kpi = tarjeta de arriba elegida; canal = plaza / Tecnoalmacén que se está viendo   // búsqueda, prioridad, tipo y área (''=Todo, almacen, servicios, pro)
 
   // ── Clasificación del pedido (la pone almacen-pdf.js al subirlo, oct-2026) ──
   // Servicios → Operaciones; PRO (sobre pedido) → Compras. Solo los pedidos que
@@ -91,6 +91,105 @@
   // Servicio con piezas: mientras Almacén lo surte, también aparece en la pestaña Almacén (sin contar en métricas)
   function vaEnAlmacen(p){ var c=clasif(p); return c==='productos'||c==='pro_mixto'||(c==='servicio_piezas' && ACTIVOS_ALM.indexOf(p.estado)!==-1); }
   function esStock(p){ return clasif(p)==='sobre_stock'; }
+  // =====================================================================
+  //  PLAZAS Y TECNOALMACÉN (12-nov-2026)
+  //  · Tecnoalmacén (Omar Ricardo Gardea Girón): solo ve el material SIN
+  //    código en el sistema que pide Operaciones al programar un servicio del
+  //    catálogo (Retank, integridad mecánica, proyectos…).
+  //  · Plazas: cada encargada solo ve y atiende los pedidos de su plaza, igual
+  //    que lo hace el almacén de Chihuahua (Fuerza Aérea) con los suyos.
+  //  · Almacén Chihuahua ve lo de Chihuahua; los administradores ven todo.
+  //  Para agregar a alguien de plaza: su correo en minúsculas → su plaza.
+  // =====================================================================
+  var TECNOALMACEN_EMAIL = 'tecnoalmacen@tecnocontrol.com.mx';
+  var PLAZA_POR_EMAIL = {
+    'plazajrz@tecnocontrol.com.mx': 'Juárez'      // Rita
+    // 'CORREO_DE_FLOR':  'Parral',                     // Flor
+    // 'CORREO_DE_VERO':  'Monterrey'                   // Vero
+  };
+  var PLAZAS = ['Chihuahua','Juárez','Parral','Monterrey'];
+  var CANAL_INFO = {
+    todas:        { t:'Todas',          d:'Todos los almacenes', c:'#1D2E73' },
+    'Chihuahua':  { t:'Chihuahua',      d:'Almacén Fuerza Aérea', c:'#0e7490' },
+    'Juárez':{ t:'Juárez',    d:'Plaza Juárez', c:'#7c3aed' },
+    'Parral':     { t:'Parral',         d:'Plaza Parral', c:'#b45309' },
+    'Monterrey':  { t:'Monterrey',      d:'Plaza Monterrey', c:'#be185d' },
+    tecno:        { t:'Tecnoalmacén', d:'Material sin código de servicios', c:'#E7402B' }
+  };
+  function miCorreo(){ return String(yoEmail()||'').toLowerCase().trim(); }
+  function soyTecnoalmacen(){ return miCorreo()===TECNOALMACEN_EMAIL; }
+  function miPlazaFija(){ return PLAZA_POR_EMAIL[miCorreo()] || ''; }
+  function normTxt(t){ return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+  function plazaDeTexto(t){
+    var x=normTxt(t); if(!x) return '';
+    if (/monterrey|nuevo leon|apodaca|san nicolas de los garza|escobedo|santa catarina|san pedro garza|\bmty\b/.test(x)) return 'Monterrey';
+    if (/parral/.test(x)) return 'Parral';
+    if (/(cd|ciudad)\.? ?juarez|juarez,? chih|\bjrz\b|^juarez$|almacen juarez|plaza juarez/.test(x)) return 'Juárez';
+    return '';
+  }
+  function sinCodigo(it){ return !String((it&&it.clave)||'').trim(); }
+  // ¿A qué plaza pertenece el pedido? 1) la que se le puso a mano o al crearlo;
+  // 2) quién lo pidió (si es de una plaza); 3) almacén de salida / origen del traslado;
+  // 4) estación o dirección (no en paquetería: esa sale de Chihuahua). Si nada: Chihuahua.
+  function plazaDe(p){
+    if (p.plaza && PLAZAS.indexOf(p.plaza)!==-1) return p.plaza;
+    var e=String(p.solicitanteEmail||p.creadoPor||'').toLowerCase().trim();
+    if (PLAZA_POR_EMAIL[e]) return PLAZA_POR_EMAIL[e];
+    var t = plazaDeTexto(p.almacen) || (p.destinoTipo==='traslado_almacenes' ? plazaDeTexto(p.destinoAlmacenOrigen) : '');
+    if (t) return t;
+    if (p.destinoTipo!=='paqueteria' && p.destinoTipo!=='traslado_almacenes'){
+      t = plazaDeTexto([p.estacionNombre, p.direccion, p.destino].filter(Boolean).join(' '));
+      if (t) return t;
+    }
+    return 'Chihuahua';
+  }
+  // Canal = quién lo atiende: 'tecno' o el nombre de la plaza.
+  function canalDe(p){
+    if (p.almacenAsignado==='tecnoalmacen') return 'tecno';
+    if (p.almacenAsignado && PLAZAS.indexOf(p.almacenAsignado)!==-1) return p.almacenAsignado;
+    var prods=Array.isArray(p.productos)?p.productos:[];
+    // Pedidos viejos de servicios del catálogo (antes de separarlos) en los que todo es sin código
+    if (p.origen==='operaciones' && p.folioPrefijo==='OPERACIONES' && p.opsFolioId && prods.length && prods.every(sinCodigo)) return 'tecno';
+    return plazaDe(p);
+  }
+  function canalFijo(){ if (soyTecnoalmacen()) return 'tecno'; return miPlazaFija(); }
+  function canalesVisibles(){
+    var f=canalFijo(); if (f) return [f];
+    return ['todas'].concat(PLAZAS).concat(['tecno']);
+  }
+  function canalActual(){
+    var f=canalFijo(); if (f) return f;
+    if (!filtro.canal) filtro.canal = esAdminActual() ? 'todas' : 'Chihuahua';
+    return filtro.canal;
+  }
+  function pasaCanal(p){ var c=canalActual(); return c==='todas' || canalDe(p)===c; }
+  function vistaPedidos(){ return pedidos.filter(pasaCanal); }
+  // Avisos con sonido: a cada quien solo lo suyo (admins: todo; Almacén Chihuahua: lo de Chihuahua).
+  function meToca(p){
+    var f=canalFijo(); if (f) return canalDe(p)===f;
+    if (esAdminActual()) return true;
+    return canalDe(p)==='Chihuahua';
+  }
+  function tagCanal(p){
+    if (canalActual()!=='todas') return '';
+    var c=canalDe(p), inf=CANAL_INFO[c]||CANAL_INFO['Chihuahua'];
+    return '<span class="alm-tipo-tag" style="background:'+inf.c+'">'+esc(inf.t)+'</span>';
+  }
+  window.__almCanal = function(c){ if (canalFijo()) return; filtro.canal=c||'todas'; filtro.kpi=''; render(); };
+  function pintarCanales(cuentas){
+    var el=document.getElementById('alm-canales'); if(!el) return;
+    var lista=canalesVisibles();
+    if (lista.length===1){
+      var inf=CANAL_INFO[lista[0]]||{t:lista[0],d:'',c:'#1D2E73'};
+      el.innerHTML='<div class="alm-canal-fijo" style="--ac:'+inf.c+'"><b>'+esc(inf.t)+'</b> · '+esc(soyTecnoalmacen()?'Solo ves el material sin código de los servicios del catálogo de Operaciones':'Solo ves los pedidos de tu plaza')+'</div>';
+      return;
+    }
+    var act=canalActual();
+    el.innerHTML='<span class="alm-canal-lbl">Almacén:</span>'+lista.map(function(c){
+      var inf=CANAL_INFO[c], on=c===act;
+      return '<button type="button" class="alm-canal'+(on?' on':'')+'" style="--ac:'+inf.c+'" title="'+esc(inf.d)+'" onclick="window.__almCanal(\''+c+'\')">'+esc(inf.t)+'<span class="n">'+(cuentas[c]||0)+'</span></button>';
+    }).join('');
+  }
   var EMPRESA_CORTA = { TECNOCONTROL:'Tecnocontrol', JOMAR:'JOMAR', TECNOLAB:'TecnoLab', AKURIS:'Akuris', VH:'VH' };
   var _unsub  = null, _tick = null, _fs = null, _cssOk = false;
   var _conocidos = null;             // Set de ids ya vistos (null = aún no hubo primera carga)
@@ -197,7 +296,7 @@
   var _alertRetrasado = {};
   function revisarAlertasSLA(){
     pedidos.forEach(function(p){
-      if (!cuentaMetricas(p)) return;
+      if (!cuentaMetricas(p) || !meToca(p)) return;
       var st = estadoSLA(p);
       if (st==='porvencer'){
         if (_notifOn && !_alertPorVencer[p.id]){
@@ -222,6 +321,7 @@
 
   function notificarPedidoNuevo(p){
     if(!_notifOn) return;
+    if(!meToca(p)) return;
     reproducirBeep();
     try{
       if('Notification' in window && Notification.permission==='granted'){
@@ -286,8 +386,9 @@
         || (a.createdAt-b.createdAt);
     });
   }
-  function pasaFiltro(p){
+  function pasaFiltro(p, sinKpi){
     var c = clasif(p);
+    if (!sinKpi && filtro.kpi && !pasaKpi(p, filtro.kpi)) return false;
     if (filtro.area==='almacen' && !vaEnAlmacen(p)) return false;
     if (filtro.area==='pro' && !esPro(p)) return false;
     if (filtro.area==='stock' && !esStock(p)) return false;
@@ -697,6 +798,17 @@
     + '.alm-fchip{cursor:pointer;border:1px solid #e6ebf2;background:#fff;color:#475569;border-radius:99px;font-size:11.5px;font-weight:800;padding:6px 12px;}'
     + '.alm-fchip.on{background:#0f172a;color:#fff;border-color:#0f172a;}'
     + '.alm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:0 0 22px;}'
+    + 'button.alm-kpi{font-family:inherit;text-align:left;cursor:pointer;transition:box-shadow .15s,border-color .15s,transform .15s;}'
+    + 'button.alm-kpi:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(16,24,40,.08);}'
+    + 'button.alm-kpi.on{border-color:var(--kc);box-shadow:0 0 0 2px var(--kc) inset;}'
+    + '.alm-canales{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 14px;}'
+    + '.alm-canal-lbl{font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-right:2px;}'
+    + '.alm-canal{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1.5px solid #e2e8f0;color:#334155;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;}'
+    + '.alm-canal .n{background:#f1f5f9;color:#475569;border-radius:999px;padding:1px 7px;font-size:11px;}'
+    + '.alm-canal.on{background:var(--ac);border-color:var(--ac);color:#fff;}'
+    + '.alm-canal.on .n{background:rgba(255,255,255,.25);color:#fff;}'
+    + '.alm-canal-fijo{background:#fff;border:1px solid #e6ebf2;border-left:4px solid var(--ac);border-radius:12px;padding:9px 14px;font-size:12.5px;color:#334155;}'
+    + '.alm-canal-fijo b{color:var(--ac);}'
     + '.alm-kpi{background:#fff;border:1px solid #e6ebf2;border-radius:var(--r);padding:15px 17px;box-shadow:0 1px 3px rgba(16,24,40,.04);}'
     + '.alm-kpi .n{font-size:27px;font-weight:800;line-height:1;color:#0f172a;}'
     + '.alm-kpi .l{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748b;margin-top:8px;}'
@@ -1173,35 +1285,29 @@
       +   '<button class="alm-notif-btn" title="Catálogo de paqueterías" onclick="window.__almAbrirPaqueterias()">📦</button>'
       +   '<button class="alm-notif-btn" title="KPIs de tiempos de surtido" onclick="window.__almAbrirKPIs()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></button>'
       + '</div>'
+      + '<div class="alm-canales" id="alm-canales"></div>'
       + '<div class="alm-kpis" id="alm-kpis"></div>'
-      + '<div style="display:flex;gap:14px;align-items:flex-start;">'
-      +   '<div style="flex:1;min-width:0;"><div id="alm-areas" class="alm-areas"></div><div class="alm-board" id="alm-board"></div></div>'
-      +   '<div id="alm-mapa-rutas-panel" style="flex:0 0 32%;min-width:340px;background:#fff;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;box-shadow:0 1px 3px rgba(0,0,0,0.06);">'
-      +     '<div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">'
-      +       '<span style="font-weight:700;font-size:13px;color:#1e293b;">🗺️ Rutas pendientes</span>'
-      +       '<button onclick="window.__almRefrescarMapaEmbed()" title="Actualizar" style="background:#f1f5f9;border:none;color:#475569;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;">↻</button>'
-      +     '</div>'
-      +     '<div id="alm-mapa-rutas-embed" style="height:560px;position:relative;"></div>'
-      +     '<div id="alm-mapa-rutas-embed-leyenda" style="padding:8px 12px;font-size:10.5px;color:#334155;display:flex;flex-wrap:wrap;gap:6px 10px;border-top:1px solid #e2e8f0;"></div>'
-      +   '</div>'
-      + '</div>'
+      + '<div id="alm-areas" class="alm-areas"></div><div class="alm-board" id="alm-board"></div>'
       + '</div>';
   }
 
-  var _almMapaEmbedIniciado = false;
+  // 12-nov-2026: se quitó el mapa "Rutas pendientes" de la pantalla principal
+  // (sigue disponible en el botón del camión: Logística y Rutas).
   function render(){
     var cont=contenedor(); if(!cont) return;
     construirShell();
-    if(!_almMapaEmbedIniciado && cont.querySelector('#alm-mapa-rutas-embed')){
-      _almMapaEmbedIniciado = true;
-      window.__almRefrescarMapaEmbed();
-    }
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
 
-    var todosActivos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1; });
-    var activos = todosActivos.filter(cuentaMetricas);   // KPIs y SLA: solo lo que Almacén surte por su cuenta
-    var visibles = todosActivos.filter(pasaFiltro);
+    // Barra de almacenes (plazas / Tecnoalmacén) con cuántos pedidos activos tiene cada uno
+    var activosTodos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1 && !p.eliminada && clasif(p)!=='servicio'; });
+    var cuentasCanal = { todas: activosTodos.length };
+    activosTodos.forEach(function(p){ var c=canalDe(p); cuentasCanal[c]=(cuentasCanal[c]||0)+1; });
+    pintarCanales(cuentasCanal);
+    var base = vistaPedidos();
+    var todosActivos = base.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1; });
+    var visiblesSinKpi = todosActivos.filter(function(p){ return pasaFiltro(p, true); });
+    var visibles = todosActivos.filter(function(p){ return pasaFiltro(p, false); });
     var nServ = colsServicios().reduce(function(a,c){ return a+c.lista.length; },0);
     var nPro = todosActivos.filter(esPro).length;
     var nAlm = todosActivos.filter(vaEnAlmacen).length;
@@ -1217,34 +1323,36 @@
       pintarAreas({ '': todosActivos.filter(function(p){ return clasif(p)!=='servicio'; }).length, almacen: nAlm, servicios: nServ, pro: nPro, stock: todosActivos.filter(esStock).length });
     }
 
-    var kRecibidos = activos.filter(function(p){ return ['esperando_autorizacion','pendiente','en_preparacion'].indexOf(p.estado)!==-1; }).length;
-    var kParcial = activos.filter(function(p){ return p.estado==='parcial'; }).length;
-    var enTiempo=activos.filter(enSLA).length;
-    var retras=activos.length-enTiempo;
-    var kPzas=activos.reduce(function(a,p){return a+piezas(p);},0);
+    // 12-nov-2026: las tarjetas de arriba cuentan exactamente lo que se ve en el tablero
+    // (mismo almacén, pestaña y filtros) y al darles clic filtran el tablero.
     var h0=inicioDeHoy();
-    var kEntregadosHoy = pedidos.filter(function(p){ return p.estado==='entregado' && p.entregadoEn>=h0; }).length;
+    var kNuevos  = visiblesSinKpi.filter(function(p){ return pasaKpi(p,'nuevos'); }).length;
+    var kPrep    = visiblesSinKpi.filter(function(p){ return pasaKpi(p,'prep'); }).length;
+    var kParcial = visiblesSinKpi.filter(function(p){ return pasaKpi(p,'parcial'); }).length;
+    var kRetras  = visiblesSinKpi.filter(function(p){ return pasaKpi(p,'retrasados'); }).length;
+    var kUrg     = visiblesSinKpi.filter(function(p){ return pasaKpi(p,'urgentes'); }).length;
+    var kEntregadosHoy = base.filter(function(p){ return (p.estado==='entregado'||p.estado==='finalizado') && !!p.entregadoEn && toMs(p.entregadoEn)>=h0; }).length;
 
     kpisEl.innerHTML =
-        kpi(COLORS.azul,    kRecibidos, 'Solicitud recibida')
-      + kpi(COLORS.naranja, kParcial,   'Entrega parcial')
-      + kpi(COLORS.verde,   enTiempo,   'En SLA')
-      + kpi(COLORS.rojo,    retras,     'Retrasados')
-      + kpi('#0f172a',      kPzas,      'Piezas pendientes')
-      + kpi(COLORS.teal,    kEntregadosHoy, 'Entregados hoy');
+        kpi(COLORS.azul,    kNuevos,  'Nuevos', 'nuevos', 'Pedidos que acaban de llegar y nadie ha empezado')
+      + kpi('#1473E6',      kPrep,    'En preparación', 'prep', 'Ya se imprimieron y se están surtiendo')
+      + kpi(COLORS.naranja, kParcial, 'Entrega parcial', 'parcial', 'Se entregó una parte, falta completar')
+      + kpi(COLORS.rojo,    kRetras,  'Retrasados', 'retrasados', 'Ya pasó el tiempo límite según su prioridad')
+      + kpi('#9f1239',      kUrg,     'Urgentes', 'urgentes', 'Pedidos marcados como urgentes')
+      + kpi(COLORS.teal,    kEntregadosHoy, 'Entregados hoy', 'hoy', 'Abre el historial de entregas');
 
     var html='';
     if (filtro.area==='servicios' || filtro.area==='pro' || filtro.area==='stock'){
       var cols = filtro.area==='servicios' ? colsServicios() : (filtro.area==='stock' ? colsStock(visibles) : colsPro(visibles));
       cols.forEach(function(col){
-        var lista = ordenar(col.lista.filter(pasaBusqueda));
+        var lista = ordenar(col.lista.filter(function(p){ return pasaBusqueda(p) && pasaKpi(p, filtro.kpi); }));
         html += '<div class="alm-col"><div class="alm-col-h">'
           + '<span class="t"><span class="a"><span class="dot" style="background:'+col.color+'"></span>'+col.titulo+'</span><span class="b">'+col.sub+'</span></span>'
           + '<span class="c">'+lista.length+'</span></div>';
         html += lista.length ? lista.map(col.card).join('') : '<div class="alm-empty">Sin pedidos</div>';
         html += '</div>';
       });
-      boardEl.innerHTML=html;
+      boardEl.innerHTML=avisoKpi() + html;
       return;
     }
     COLUMNAS.forEach(function(col){
@@ -1255,12 +1363,12 @@
       html += lista.length ? lista.map(tarjeta).join('') : '<div class="alm-empty">Sin pedidos</div>';
       html += '</div>';
     });
-    boardEl.innerHTML=avisoBusqueda(visibles) + html;
+    boardEl.innerHTML=avisoKpi() + avisoBusqueda(visibles) + html;
   }
   // Si lo buscado no está activo en el tablero, dice dónde está (entregado, cancelado, en otra pestaña).
   function avisoBusqueda(visibles){
     if (!filtro.q || visibles.length) return '';
-    var fuera = pedidos.filter(function(p){ return pasaBusqueda(p) && !p.eliminada; }).slice(0, 3);
+    var fuera = vistaPedidos().filter(function(p){ return pasaBusqueda(p) && !p.eliminada; }).slice(0, 3);
     if (!fuera.length) return '<div class="alm-busq-aviso">No hay ning\u00fan pedido con \u201c'+esc(filtro.q)+'\u201d.</div>';
     return fuera.map(function(p){
       var donde;
@@ -1287,6 +1395,7 @@
   ];
   function pintarAreas(cuentas, buscando){
     var el=document.getElementById('alm-areas'); if(!el) return;
+    if (soyTecnoalmacen()){ el.innerHTML=''; el.style.display='none'; filtro.area=''; return; }
     el.innerHTML = AREAS.map(function(a){
       var on = filtro.area===a.k, n = cuentas[a.k]||0;
       return '<button type="button" class="alm-area'+(on?' on':'')+(buscando&&n&&!on?' hit':'')+'" style="--ac:'+a.c+'" onclick="window.__almArea(\''+a.k+'\')">'
@@ -1304,7 +1413,7 @@
   var ACTIVOS_ALM = ['esperando_autorizacion','pendiente','en_preparacion','parcial'];
   // Vista Servicios: lo que Operaciones debe programar / gestionar.
   function colsServicios(){
-    var vivos = pedidos.filter(function(p){ return esServicio(p) && p.estado!=='cancelado' && !p.eliminada && !p.opsGestionado; });
+    var vivos = vistaPedidos().filter(function(p){ return esServicio(p) && p.estado!=='cancelado' && !p.eliminada && !p.opsGestionado; });
     return [
       { titulo:'Por programar', sub:'Servicio sin piezas \u00b7 Operaciones', color:'#7c3aed',
         lista: vivos.filter(function(p){ return clasif(p)==='servicio'; }), card: function(p){ return tarjetaArea(p,'ops'); } },
@@ -1362,7 +1471,7 @@
       ? (clasif(p)==='servicio' ? 'Pendiente de programar' : 'Piezas entregadas'+(p.recibioNombre?(' a '+esc(p.recibioNombre)):''))
       : (modo==='stock' ? 'Sin existencia' : 'Pedido al proveedor');
     return '<div class="alm-card" data-id="'+p.id+'" style="border-left-color:'+CLASIF[clasif(p)].c+'">'
-      + '<div class="top"><span class="folio">'+esc(p.folio||'\u2014')+'</span>'+tagClasif(p)+tagEmpresa(p)+'</div>'
+      + '<div class="top"><span class="folio">'+esc(p.folio||'\u2014')+'</span>'+tagClasif(p)+tagEmpresa(p)+tagCanal(p)+'</div>'
       + '<div class="cli">'+esc(p.cliente||'Sin cliente')+'</div>'
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'\u2014')+' \u00b7 '+estadoTxt+'</div>'
       + lineasPartidas(p, esOps ? ['servicio','viaticos'] : (modo==='stock' ? ['producto','pro'] : ['pro']))
@@ -1380,9 +1489,30 @@
       + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg></button>';
   }
 
-  function kpi(color,n,label){
-    return '<div class="alm-kpi"><div class="bar" style="background:'+color+'"></div><div class="n">'+n+'</div><div class="l">'+label+'</div></div>';
+  function kpi(color,n,label,clave,ayuda){
+    var on = clave && filtro.kpi===clave;
+    return '<button type="button" class="alm-kpi'+(on?' on':'')+'" style="--kc:'+color+'" title="'+esc(ayuda||'')+(clave==='hoy'?'':' · clic para ver solo estos')+'" onclick="window.__almKpi(\''+clave+'\')"><div class="bar" style="background:'+color+'"></div><div class="n">'+n+'</div><div class="l">'+label+'</div></button>';
   }
+  function pasaKpi(p, k){
+    if (!k) return true;
+    if (k==='nuevos')     return p.estado==='esperando_autorizacion' || p.estado==='pendiente';
+    if (k==='prep')       return p.estado==='en_preparacion';
+    if (k==='parcial')    return p.estado==='parcial';
+    if (k==='retrasados') return estadoSLA(p)==='retrasado';
+    if (k==='urgentes')   return p.prioridad==='urgente';
+    return true;
+  }
+  var KPI_NOMBRE = { nuevos:'Nuevos', prep:'En preparación', parcial:'Entrega parcial', retrasados:'Retrasados', urgentes:'Urgentes' };
+  function avisoKpi(){
+    if (!filtro.kpi) return '';
+    return '<div class="alm-busq-aviso" style="display:flex;justify-content:space-between;align-items:center;gap:10px;"><span>Mostrando solo: <b>'+KPI_NOMBRE[filtro.kpi]+'</b></span>'
+      + '<button type="button" class="alm-btn alm-btn-ghost" onclick="window.__almKpi(\'\')">Ver todo</button></div>';
+  }
+  window.__almKpi = function(k){
+    if (k==='hoy'){ if (window.__almAbrirHistorialEntregas) window.__almAbrirHistorialEntregas(); return; }
+    filtro.kpi = (!k || filtro.kpi===k) ? '' : k;
+    render();
+  };
 
   function tarjeta(p){
     var ac=acento(p), pc=PRIO_COLOR[p.prioridad]||COLORS.azul;
@@ -1445,7 +1575,7 @@
     return '<div class="alm-card'+(urg?' urg':'')+slaCls+'" data-id="'+p.id+'" style="border-left-color:'+ac+'">'
       + '<div class="top"><span class="folio">'+esc(p.folio||'—')+'</span>'
       +   '<span class="alm-chip'+(urg?' urg':'')+'" style="background:'+pc+'">'+esc(PRIO_LABEL[p.prioridad]||p.prioridad||'Normal')+'</span></div>'
-      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+tagClasif(p)+tagEmpresa(p)+badgePrep+'</div>'
+      + '<div class="cli">'+esc(p.cliente||'Sin cliente')+' '+tipoTag+tagClasif(p)+tagEmpresa(p)+tagCanal(p)+badgePrep+'</div>'
       + (clasif(p)==='servicio_piezas' ? '<div class="vend" style="color:#7c3aed;font-weight:700;">Surtiendo material para Operaciones \u00b7 no cuenta en m\u00e9tricas</div>' : '')
       + (esStock(p) ? '<div class="vend" style="color:#be185d;font-weight:700;">'+(p.compraEstado==='recibido'?'Sobre stock \u00b7 ya lleg\u00f3 el material':'Sobre stock \u00b7 sin existencia, esperando reabasto')+'</div>' : '')
       + (esPro(p) ? '<div class="vend" style="color:#b45309;font-weight:700;">'+(p.compraEstado==='recibido'?'Material sobre pedido recibido':'Sobre pedido \u00b7 esperando material de Compras')+'</div>' : '')
@@ -1746,6 +1876,10 @@
           return '<label class="alm-mover-op'+(x.k===actual?' on':'')+'" style="--c:'+CLASIF[x.k].c+'"><input type="radio" name="alm-mover" value="'+x.k+'"'+(x.k===actual?' checked':'')+'>'
             + '<span><b>'+CLASIF[x.k].t+'</b><i>'+x.d+'</i></span></label>';
         }).join('')
+      + (canalFijo() ? '' : ('<label class="alm-mover-lb">¿Quién lo atiende?</label>'
+      +   '<select id="alm-mover-canal" style="width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;font-size:13px;font-family:inherit;margin-bottom:4px;">'
+      +   PLAZAS.concat(['tecno']).map(function(c){ return '<option value="'+c+'"'+(canalDe(p)===c?' selected':'')+'>'+esc(CANAL_INFO[c].t+' · '+CANAL_INFO[c].d)+'</option>'; }).join('')
+      +   '</select>'))
       + '<label class="alm-mover-lb">Motivo o nota (la ven todos los avisados)</label>'
       + '<textarea id="alm-mover-nota" rows="2" placeholder="Ej. No hay existencia, se pidi\u00f3 al proveedor; llega el martes"></textarea>'
       + '<div class="alm-mover-acc"><button class="alm-btn alm-btn-ghost" id="alm-mover-cancel">Cancelar</button><button class="alm-btn alm-btn-go" id="alm-mover-ok">Mover y avisar</button></div>'
@@ -1756,7 +1890,13 @@
     ov.querySelector('#alm-mover-ok').onclick=function(){
       var nuevo=(ov.querySelector('input[name="alm-mover"]:checked')||{}).value;
       var nota=ov.querySelector('#alm-mover-nota').value.trim();
+      var selCanal=ov.querySelector('#alm-mover-canal');
+      var canalAntes=canalDe(p), canalNuevo=selCanal?selCanal.value:canalAntes;
+      if(canalNuevo!==canalAntes && (!nuevo || nuevo===actual)){
+        moverCanal(p, canalAntes, canalNuevo, nota, ov); return;
+      }
       if(!nuevo || nuevo===actual){ ov.remove(); return; }
+      if(canalNuevo!==canalAntes) moverCanal(p, canalAntes, canalNuevo, nota, null);
       var btn=ov.querySelector('#alm-mover-ok'); btn.disabled=true; btn.textContent='Guardando\u2026';
       var cambios={ clasificacion:nuevo, clasificacionManual:true, clasificacionPor:yoNombre(), clasificacionEn:new Date().toISOString() };
       // Al entrar a Sobre stock / PRO empieza a esperar material; al salir de Operaciones se reabre.
@@ -1772,6 +1912,30 @@
       }).catch(function(err){ btn.disabled=false; btn.textContent='Mover y avisar'; alert('No se pudo mover: '+(err&&err.message||err)); });
     };
   };
+  // Pasar el pedido a otra plaza o a Tecnoalmacén (queda en el historial y le avisa a quien lo recibe)
+  function moverCanal(p, de, a, nota, ov){
+    var cambios = { almacenAsignado: a, plaza: (a==='tecno' ? (p.plaza||plazaDe(p)) : a), almacenAsignadoPor: yoNombre(), almacenAsignadoEn: new Date().toISOString() };
+    if (a==='tecno') cambios.almacenAsignado='tecnoalmacen';
+    var texto='Se pasó de '+CANAL_INFO[de].t+' a '+CANAL_INFO[a].t+(nota?(': '+nota):'');
+    return window.tcSbActualizarSurtido(p.id, cambios).then(function(){
+      Object.assign(p, cambios);
+      window.tcSbAgregarHistorial(p.id, { de:p.estado, a:p.estado, por:yoNombre(), nota:texto }).catch(function(){});
+      avisarCanal(p, a, 'Te pasaron el pedido '+(p.folio||'')+' ('+(p.cliente||'')+') para que lo atiendas'+(nota?(': '+nota):'')+'.');
+      if (ov){ ov.remove(); render(); if(window.mostrarPush) window.mostrarPush('Almacén', (p.folio||'')+' → '+CANAL_INFO[a].t, '✅'); }
+    }).catch(function(err){ alert('No se pudo cambiar de almacén: '+(err&&err.message||err)); });
+  }
+  // Aviso (campana del portal) a quien atiende ese almacén
+  function avisarCanal(p, canal, msg){
+    if (!window.tcNotificar) return;
+    var para = canal==='tecno' ? [TECNOALMACEN_EMAIL] : Object.keys(PLAZA_POR_EMAIL).filter(function(e){ return PLAZA_POR_EMAIL[e]===canal; });
+    var yo=miCorreo();
+    para.filter(function(e){ return e!==yo; }).forEach(function(e){
+      window.tcNotificar({ tipo:'pedido_almacen_plaza', para:e, mensaje:msg, modulo:'Almacén', surtidoId:p.id, folio:p.folio||'' }).catch(function(){});
+    });
+  }
+  window.tcAlmAvisarCanal = function(p, canal, msg){ avisarCanal(p, canal, msg); };
+  window.tcAlmPlazaPorEmail = function(){ return Object.assign({}, PLAZA_POR_EMAIL); };
+  window.TC_TECNOALMACEN_EMAIL = TECNOALMACEN_EMAIL;
   function avisarMovimiento(p, de, a, nota){
     if (!window.tcNotificar) return;
     var cargar = (window.tcClasifPedidos && window.tcClasifPedidos.cargar) ? window.tcClasifPedidos.cargar(true) : Promise.resolve({});

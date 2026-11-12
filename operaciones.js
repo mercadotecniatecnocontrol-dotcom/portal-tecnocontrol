@@ -16887,9 +16887,27 @@
         }));
         try { const lim = Date.now() - 30 * 86400000; Object.keys(vistos).forEach(k => { if (vistos[k] < lim) delete vistos[k]; }); localStorage.setItem("ops_nec_avisos", JSON.stringify(vistos)); } catch (e) {}
     }
+    // 12-nov-2026: en los servicios del CATÁLOGO, el material SIN código en el sistema (insumos que no
+    // están dados de alta en Aspel) se separa en otro pedido que solo ve y atiende Tecnoalmacén
+    // (tecnoalmacen@, Omar Ricardo Gardea Girón). Lo que sí tiene código (y la herramienta) sigue a
+    // Almacén normal, a la plaza del servicio (Chihuahua, Juárez, Parral o Monterrey).
     async function opsNecCrearPedido(f, items, op) {
         op = op || {};
         if (!items || !items.length) return null;
+        const esCatalogo = !!(op.catalogo || (f && f.servicioCatalogoId));
+        const tecno = esCatalogo ? items.filter(i => i.tipo !== "herramienta" && !String(i.clave || "").trim()) : [];
+        const normal = items.filter(i => !tecno.includes(i));
+        const rN = normal.length ? await opsNecCrearPedidoUno(f, normal, op) : null;
+        const rT = tecno.length ? await opsNecCrearPedidoUno(f, tecno, { ...op, canal: "tecno" }) : null;
+        const r = rN || rT;
+        if (r && rN && rT) r.folioTecno = rT.folio;
+        return r;
+    }
+    async function opsNecCrearPedidoUno(f, items, op) {
+        op = op || {};
+        if (!items || !items.length) return null;
+        const esTecno = op.canal === "tecno";
+        const plaza = (() => { try { return opsPlazaFolio(f); } catch (e) { return "Chihuahua"; } })();
         if (typeof window.tcSbCrearSurtido !== "function") throw new Error("El módulo de Almacén no está cargado en esta página");
         let folio, folioNum = null;
         try { const n = await window.tcSbSiguienteFolioMaterial("OPERACIONES"); folioNum = n; folio = "OPERACIONES " + String(n).padStart(4, "0"); }
@@ -16910,17 +16928,29 @@
             productos: items.map(i => ({ clave: i.clave || "", cant: Number(i.cant) || 1, unidad: i.unidad || "pza", desc: i.desc })),
             firma: "", origen: "operaciones", folioServicio: f.id, opsFolioId: f.id, opsGestionado: true, clasificacion: "servicio_piezas",
             fechaEntrega: req.toISOString(), fechaServicio: f.fechaProgramada || null, servicioNombre: servicio, createdAt: new Date().toISOString(),
+            plaza, almacenAsignado: esTecno ? "tecnoalmacen" : plaza,
         };
+        if (esTecno) datos.uso = "[Material sin código · Tecnoalmacén] " + datos.uso;
         const id = await window.tcSbCrearSurtido(datos);
         const lineas = items.map(i => "• " + i.desc + " × " + i.cant + " " + (i.unidad || "")).join("\n");
         try { if (window.tcSbAgregarHistorial) await window.tcSbAgregarHistorial(id, { de: null, a: "pendiente", por: opsNombreActual(), nota: "Pedido generado desde Operaciones para el servicio de " + (f.estacion || "") }); } catch (e) {}
-        if (window.tcNotificarEvento) {
+        const tecnoCorreo = window.TC_TECNOALMACEN_EMAIL || "tecnoalmacen@tecnocontrol.com.mx";
+        if (esTecno) {
+            // Solo a Tecnoalmacén (no a Almacén normal)
+            if (window.tcNotificar) window.tcNotificar({ tipo: "servicio_material_tecnoalmacen", para: tecnoCorreo, mensaje: `Operaciones pide material SIN código para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`, modulo: "Almacén", surtidoId: id, folio, folioId: f.id }).catch(() => {});
+            if (window.tcNotificarEvento) window.tcNotificarEvento("servicio_material_compras", { mensaje: `Para tu planeación: material sin código (Tecnoalmacén) para ${servicio} en ${f.estacion || ""} el ${opsFmtFechaCorta(f.fechaProgramada)} (${folio}). Se necesita antes de ${req.toLocaleString("es-MX")}.\n${lineas}`, modulo: "Compras", folioId: f.id }).catch(() => {});
+        } else if (plaza !== "Chihuahua") {
+            // Pedido de una plaza: le avisa a quien atiende esa plaza
+            if (window.tcAlmAvisarCanal) window.tcAlmAvisarCanal({ id, folio, cliente: datos.cliente }, plaza, `Operaciones pide material para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`);
+        } else if (window.tcNotificarEvento) {
             window.tcNotificarEvento("servicio_material_almacen", { voz: `Operaciones pide material para un servicio en ${f.estacion || "una estación"}.`, mensaje: `Operaciones pide material para ${servicio} en ${f.estacion || ""} (${opsFmtFechaCorta(f.fechaProgramada)}). Listo a más tardar ${req.toLocaleString("es-MX")}. Pedido ${folio}:\n${lineas}`, modulo: "Almacén", folioId: f.id }).catch(() => {});
             window.tcNotificarEvento("servicio_material_compras", { voz: `Aviso para Compras: material para el servicio de ${f.estacion || "una estación"}.`, mensaje: `Para tu planeación: el ${opsFmtFechaCorta(f.fechaProgramada)} hay ${servicio} en ${f.estacion || ""} y se pidió a Almacén (${folio}). Si Almacén lo pasa a Sobre stock, se necesita antes de ${req.toLocaleString("es-MX")}.\n${lineas}`, modulo: "Compras", folioId: f.id }).catch(() => {});
         }
         try {
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { pedidosMaterial: (f.pedidosMaterial || []).concat([{ surtidoId: id, folio, en: new Date().toISOString(), por: opsNombreActual(), fechaRequerida: req.toISOString(), items: items.length }]) });
+            const listaPM = (f.pedidosMaterial || []).concat([{ surtidoId: id, folio, en: new Date().toISOString(), por: opsNombreActual(), fechaRequerida: req.toISOString(), items: items.length, canal: esTecno ? "tecnoalmacen" : plaza }]);
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { pedidosMaterial: listaPM });
+            f.pedidosMaterial = listaPM;
             await fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[Material] Pedido ${folio} enviado a Almacén (${items.length} artículo(s)), listo para ${req.toLocaleString("es-MX")}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "material", createdAt: opsFechaHora() });
         } catch (e) { console.warn("[material] no se pudo anotar en el servicio:", e.message || e); }
         return { id, folio, req };
@@ -16950,7 +16980,7 @@
         const items = opsNecItemsReceta(receta, cantidad, herrLista, matSel);
         if (!items.length) return null;
         const fr = fechaReq ? new Date(fechaReq) : null;
-        return opsNecCrearPedido(folio, items, { servicioNombre: receta.nombre, fechaRequerida: fr && !isNaN(fr) ? fr : null });
+        return opsNecCrearPedido(folio, items, { servicioNombre: receta.nombre, fechaRequerida: fr && !isNaN(fr) ? fr : null, catalogo: true });
     }
     // Sección del panel del servicio.
     function opsPanelMaterialPintar(f) {
@@ -20468,7 +20498,7 @@
             try { opsAvisarHerramientaOcupada({ id: nuevo.id, ...datos }, herrLista, tecs); } catch (err) { console.warn("[Alta servicio] aviso de herramienta:", err); }
             // Material y herramienta de la receta → pedido a Almacén con la fecha en que se necesita (22-oct-2026)
             if (s.tipo === "receta" && receta) {
-                try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true, s.matSel || {}, s.fechaReqAlm); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
+                try { const pm = await opsNecAlGuardarAlta({ id: nuevo.id, ...datos }, receta, datos.cantidadUnidades, herrLista, true, s.matSel || {}, s.fechaReqAlm); if (pm && window.tcNotif) window.tcNotif.agregar({ titulo: "Material pedido a Almacén", texto: pm.folio + (pm.folioTecno ? " (Almacén) y " + pm.folioTecno + " (Tecnoalmacén, material sin código)" : "") + " · listo para " + pm.req.toLocaleString("es-MX"), nivel: "normal", modulo: "Operaciones" }); }
                 catch (err) { console.warn("[Alta servicio] pedido a Almacén:", err); alert("El servicio se guardó, pero no se pudo mandar el pedido de material a Almacén: " + (err.message || err) + "\nPídelo desde el servicio → Material y herramienta."); }
             }
             // Servicio programado en una plaza foránea: aviso a su responsable (Etapa plazas, oct-2026)

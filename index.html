@@ -2224,6 +2224,7 @@ const NOMBRE_MAP = {
     // ── Almacén (nombres provisionales — pendiente confirmar con Glen) ──
     'almacen@tecnocontrol.com.mx':         'Almacén 1',
     'almacen2@tecnocontrol.com.mx':        'Araceli Perez',
+    'tecnoalmacen@tecnocontrol.com.mx':    'Omar Ricardo Gardea Girón', // Tecnoalmacén (12-nov-2026)
     'ventas2@tecnocontrol.com.mx':         'Almacén 3',
 };
 function nombreUsuario(email){
@@ -3081,6 +3082,7 @@ const EMAIL_AREA_MAP = {
     'almacen@tecnocontrol.com.mx':          'Almacén',
     'almacen2@tecnocontrol.com.mx':         'Almacén',
     'ventas2@tecnocontrol.com.mx':          'Almacén',   // pese al nombre, es personal de Almacén
+    'tecnoalmacen@tecnocontrol.com.mx':     'Almacén',   // Omar Ricardo Gardea Girón — Tecnoalmacén: solo material sin código de servicios del catálogo (12-nov-2026)
     // ── Gestoría ──
     'gestoria@tecnocontrol.com.mx':         'Gestoría',
     'gestoria1@tecnocontrol.com.mx':        'Gestoría',
@@ -3101,6 +3103,7 @@ window.EMAIL_AREA_MAP_PORTAL = EMAIL_AREA_MAP; // para notif-matriz.js (Fase 1, 
 window.EMAIL_ACCESO_EXTRA = window.EMAIL_ACCESO_EXTRA || {};
 const EMAIL_ACCESO_EXTRA = {
     'i.ruiz@jomarverifica.com.mx': ['Operaciones', 'Flotilla'], // Norma Idaly Ruiz Olmedo (JOMAR): Operaciones + Flotilla en solo lectura (23-oct-2026)
+    'plazajrz@tecnocontrol.com.mx': ['Operaciones', 'Almacén'], // Rita, plaza Juárez: atiende los pedidos de Almacén de su plaza (12-nov-2026)
 };
 window.EMAIL_ACCESO_EXTRA = EMAIL_ACCESO_EXTRA;
 const EMAIL_ACCESO_EXTRA_FIJO = JSON.parse(JSON.stringify(EMAIL_ACCESO_EXTRA)); // lo que viene en el código
