@@ -2167,6 +2167,8 @@ function cerrarPush(el) {
 <!-- 3-nov-2026: centro de notificaciones del portal (tarjeta en la esquina + voz + clic que lleva a lo que avisa).
      Va DESPUÉS del script de arriba: reemplaza mostrarPush/mostrarToast y la ventana central vieja. -->
 <script src="notificaciones.js?v=4"></script>
+<!-- 13-nov-2026: aviso a Glen si la PC de Aspel deja de sincronizar (lee la tabla aspel_monitor). -->
+<script src="monitor-aspel.js?v=1"></script>
 
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
