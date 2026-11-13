@@ -18,6 +18,12 @@
  *  - Bitácora propia: guardian-aspel.log (misma carpeta).
  *
  * Usa el mismo aspel-sync.config.json. No escribe nada en Aspel.
+ *
+ * v2 (13-nov-2026): cada proceso arranca con las variables (set NOMBRE=valor) de su
+ *   .bat original (ej. ASPEL_SYSDBA_PASSWORD de arrancar-vigilante.bat), así que no
+ *   hay contraseñas en este archivo. Si un proceso se cierra al arrancar, guarda sus
+ *   últimas líneas en guardian-<id>.errores.log. Si este archivo se actualiza, el
+ *   guardián se reinicia solo (la tarea programada lo vuelve a lanzar en <= 5 min).
  */
 
 const fs = require('fs');
@@ -35,10 +41,10 @@ const CADA_MS = 60 * 1000;
 // prefijo = cómo empieza el nombre de la bitácora de cada script
 // limiteMin = minutos sin escribir en su bitácora para considerarlo "atorado"
 const SCRIPTS = [
-  { id: 'vigilante', archivo: 'vigilar-firebird.js', prefijo: 'vigilante-firebird', limiteMin: 5 },
-  { id: 'aspel', archivo: 'sincronizar-aspel.js', prefijo: 'aspel-sync', limiteMin: 15 },
-  { id: 'partidas', archivo: 'sincronizar-partidas-aspel.js', prefijo: 'partidas-aspel', limiteMin: 15 },
-  { id: 'productos', archivo: 'sincronizar-productos-aspel.js', prefijo: 'productos-aspel', limiteMin: 75 },
+  { id: 'vigilante', bat: 'arrancar-vigilante.bat', archivo: 'vigilar-firebird.js', prefijo: 'vigilante-firebird', limiteMin: 5 },
+  { id: 'aspel', bat: 'iniciar-sincronizador-aspel.bat', archivo: 'sincronizar-aspel.js', prefijo: 'aspel-sync', limiteMin: 15 },
+  { id: 'partidas', bat: 'iniciar-sincronizador-partidas.bat', archivo: 'sincronizar-partidas-aspel.js', prefijo: 'partidas-aspel', limiteMin: 15 },
+  { id: 'productos', bat: 'iniciar-sincronizador-productos.bat', archivo: 'sincronizar-productos-aspel.js', prefijo: 'productos-aspel', limiteMin: 75 },
 ];
 
 function log(msg) {
@@ -71,6 +77,19 @@ function procesosNode() {
   });
 }
 
+// Variables "set NOMBRE=valor" del .bat original de cada proceso (contraseñas, rutas, etc.)
+function variablesDelBat(nombreBat) {
+  const vars = {};
+  try {
+    const txt = fs.readFileSync(path.join(DIR, nombreBat), 'utf8');
+    txt.split(/\r?\n/).forEach((l) => {
+      const m = l.match(/^\s*set\s+"?([A-Za-z_][A-Za-z0-9_]*)=(.*?)"?\s*$/i);
+      if (m) vars[m[1]] = m[2].replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (x, n) => (vars[n] != null ? vars[n] : (process.env[n] || x)));
+    });
+  } catch (e) { /* sin .bat: sin variables extra */ }
+  return vars;
+}
+
 const estado = {};
 SCRIPTS.forEach((s) => { estado[s.id] = { hijo: null, pid: null, modo: 'detenido', reinicios: [], ultimoError: '', esperaHasta: 0, fallosSeguidos: 0 }; });
 
@@ -80,8 +99,11 @@ function arrancar(s) {
   let fdErr = 'ignore';
   try { fdErr = fs.openSync(archErr, 'a'); } catch (x) { /* sin archivo */ }
   let hijo;
+  const ultimas = [];
   try {
-    hijo = spawn(process.execPath, [path.join(DIR, s.archivo)], { cwd: DIR, windowsHide: true, stdio: ['ignore', 'ignore', fdErr] });
+    const env = Object.assign({}, process.env, variablesDelBat(s.bat));
+    hijo = spawn(process.execPath, [path.join(DIR, s.archivo)], { cwd: DIR, env, windowsHide: true, stdio: ['ignore', 'pipe', fdErr] });
+    hijo.stdout.on('data', (d) => { String(d).split(/\r?\n/).filter(Boolean).forEach((l) => { ultimas.push(l); if (ultimas.length > 20) ultimas.shift(); }); });
   } catch (x) {
     e.ultimoError = 'No arrancó: ' + x.message; log(s.archivo + ' — ' + e.ultimoError); return;
   }
@@ -93,6 +115,10 @@ function arrancar(s) {
     e.ultimoError = 'Se detuvo (código ' + codigo + ') después de ' + Math.round(vivio / 1000) + ' s';
     e.reinicios.push(Date.now());
     e.fallosSeguidos = vivio < 120000 ? e.fallosSeguidos + 1 : 0;
+    if (vivio < 120000 && ultimas.length) {
+      try { fs.appendFileSync(archErr, '[' + new Date().toLocaleString('es-MX') + '] Últimas líneas antes de cerrarse:\n' + ultimas.join('\n') + '\n\n', 'utf8'); } catch (x) { /* nada */ }
+      e.ultimoError += ' — ' + ultimas[ultimas.length - 1].slice(0, 150);
+    }
     const espera = Math.min(300000, 10000 * Math.pow(2, e.fallosSeguidos)); // 10 s, 20 s, 40 s… máx 5 min
     e.esperaHasta = Date.now() + espera;
     log(s.archivo + ' — ' + e.ultimoError + '. Lo vuelvo a arrancar en ' + Math.round(espera / 1000) + ' s. Detalle en ' + path.basename(archErr));
@@ -167,6 +193,11 @@ candado.listen(PUERTO_CANDADO, '127.0.0.1', () => {
   const ciclo = () => revisar(cfg).catch((e) => log('Error en revisión: ' + e.message));
   ciclo();
   setInterval(ciclo, CADA_MS);
+  // Si guardian-aspel.js se actualiza, me salgo; la tarea programada arranca la versión nueva.
+  let miVersion = 0; try { miVersion = fs.statSync(__filename).mtimeMs; } catch (e) { /* nada */ }
+  setInterval(() => {
+    try { if (fs.statSync(__filename).mtimeMs !== miVersion) { log('guardian-aspel.js cambió; me reinicio con la versión nueva.'); process.exit(0); } } catch (e) { /* nada */ }
+  }, 30000);
 });
 process.on('uncaughtException', (e) => log('Error inesperado: ' + (e && e.stack || e)));
 process.on('unhandledRejection', (e) => log('Error inesperado: ' + (e && e.stack || e)));
