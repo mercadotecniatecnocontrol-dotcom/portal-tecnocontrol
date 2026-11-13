@@ -6933,11 +6933,13 @@
         if (!f || f.cancelado) return { si: false, motivo: "Cancelado" };
         if (f.guardiaManual === true) return { si: true, motivo: "Operaciones lo marcó como guardia" };
         if (f.guardiaManual === false) return { si: false, motivo: "Operaciones lo quitó de guardia" };
-        const marcado = (f.turnoFolios && f.turnoFolios.tipo === "guardia") || (f.asignaciones || []).some(a => a.turno === "guardia");
+        // 13-nov-2026: también cuenta lo que el técnico registró en la app como "Servicio no programado (Guardia)".
+        const marcado = (f.turnoFolios && f.turnoFolios.tipo === "guardia") || (f.asignaciones || []).some(a => a.turno === "guardia")
+            || (f.noProgramado && /^guardia$/i.test(String(f.categoriaServicio || "").trim()));
         const d = opsGdRefFolio(f);
         if (marcado && d) return { si: true, motivo: "Se le cargó a la guardia" };
         if (f.tipoAlta === "programacion" || f.conceptoGeneral) return { si: false, motivo: "Servicio programado (no es guardia aunque se suba tarde)" };
-        if (!opsEsFolioCliente(f)) return { si: false, motivo: "No es un folio de cliente" };
+        if (!opsEsFolioCliente(f)) return { si: false, motivo: "No es un folio de cliente (si sí fue de guardia, márcalo con «Sí»)" };
         if (!d) return { si: false, motivo: "El folio no tiene hora en que se levantó" };
         return opsGdDeshora(d) ? { si: true, motivo: "Se levantó fuera de horario" } : { si: false, motivo: "Se levantó en horario de oficina" };
     }
