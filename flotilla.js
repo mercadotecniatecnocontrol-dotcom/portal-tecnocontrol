@@ -2240,6 +2240,7 @@ function rAdmTabUsuarios(){
       <span style="font-size:11.5px;font-weight:700;color:#374151">${usuarios.length} personas detectadas · ${conEmail.length} con correo</span>
       <div style="display:flex;gap:8px">
         <button class="fb gho sm" onclick="admRevisarSync()">${I.check} Revisar sincronización</button>
+        <button class="fb gho sm" onclick="admLimpiarEcosDuplicados()">Limpiar ECOs duplicados</button>
         <button class="fb gho sm" onclick="admCopiarCorreosFlotilla()">Copiar correos</button>
       </div>
     </div>
@@ -2558,6 +2559,10 @@ async function flQuitarEcosIvan(){
 }
 window.flQuitarEcosIvan=function(){localStorage.removeItem('fl_fix_ivan_23oct');return flQuitarEcosIvan();};
 async function flDesvincularEcoApp(eco,nuevoResponsable){
+  // nov-2026: el nuevo responsable conserva / recibe el ECO en su app (un ECO = una persona)
+  const nuevoNorm=String(nuevoResponsable||'').toLowerCase().trim();
+  const normNom=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+  const esNuevoResp=u=>!!nuevoNorm&&(String(u.email||'').toLowerCase().trim()===nuevoNorm||(!!u.nombre&&normNom(u.nombre)===normNom(nuevoResponsable)));
   if(!eco)return;
   try{
     if(!fs){fs=await flImportFs();}
@@ -2565,7 +2570,7 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
     const ahora=new Date().toISOString();
     const porEmail=window.auth?.currentUser?.email||'';
     // Cierra el registro de historial de uso (vinculación/desvinculación) abierto para este ECO
-    flCerrarUsoAbierto(ecoStr,'Reasignado a '+(nuevoResponsable||'otro responsable')+' desde administración de flotilla',porEmail);
+    await flCerrarUsoAbierto(ecoStr,'Reasignado a '+(nuevoResponsable||'otro responsable')+' desde administración de flotilla',porEmail);
     const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
     const ops=[];
     snapU.docs.forEach(d=>{
@@ -2573,6 +2578,17 @@ async function flDesvincularEcoApp(eco,nuevoResponsable){
       const ecosArr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
       const ligadoSimple=String(u.ecoVinculado||'')===ecoStr;
       const ligadoArr=ecosArr.includes(ecoStr);
+      if(esNuevoResp(u)){
+        if(!ligadoArr||!u.ecoVinculado){
+          ops.push(fs.updateDoc(d.ref,{
+            ecoVinculado:u.ecoVinculado||ecoStr,
+            ecosVinculados:ligadoArr?ecosArr:[...ecosArr,ecoStr],
+            vinculadoEn:ahora,
+          }));
+        }
+        ops.push(fs.addDoc(fs.collection(db,C.USOS),{eco:ecoStr,email:u.email||'',nombre:u.nombre||u.email||'',vinculadoEn:ahora,desvinculadoEn:null,activo:true,motivo:'Asignado desde administración de flotilla',asignadoPor:porEmail}));
+        return;
+      }
       if(!ligadoSimple&&!ligadoArr)return;
       ops.push(fs.updateDoc(d.ref,{
         ecoVinculado:ligadoSimple?null:(u.ecoVinculado||null),
@@ -10711,6 +10727,124 @@ window.flExcelVehiculos=function(){
   window.XLSX.utils.book_append_sheet(wb,window.XLSX.utils.json_to_sheet(filas),'Vehículos');
   window.XLSX.writeFile(wb,`Flotilla_vehiculos_${new Date().toISOString().slice(0,10)}.xlsx`);
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// LIMPIEZA "UN ECO = UNA PERSONA" (nov-2026)
+// Busca los ECOs que aparecen vinculados en la app a más de una persona,
+// sugiere quién lo trae (el movimiento más reciente) y, al aplicar, se lo
+// quita a los demás, cierra sus registros de uso y deja el responsable del
+// vehículo en esa persona. El admin puede cambiar la sugerencia antes.
+// ═══════════════════════════════════════════════════════════════════════
+window.admLimpiarEcosDuplicados=async function(){
+  if(typeof hAdm==='function'&&!hAdm()){flToast('Solo administradores de Flotilla','err');return;}
+  if(!fs){fs=await flImportFs();}
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fecha=iso=>{if(!iso)return 'sin fecha';const d=new Date(iso);return isNaN(d)?'sin fecha':d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-dup-ov';
+  ov.innerHTML='<div class="fl-modal" style="max-width:820px;width:96%"><div class="fl-mh"><h3>ECOs con más de una persona</h3><button class="fl-mx" onclick="document.getElementById(\'fl-dup-ov\').remove()">✕</button></div><div id="fl-dup-body" style="padding:16px;font-size:13px">Revisando vinculaciones…</div></div>';
+  document.body.appendChild(ov);
+  const body=ov.querySelector('#fl-dup-body');
+  let casos=[];
+  try{
+    const [snapU,snapV,snapUs]=await Promise.all([
+      fs.getDocs(fs.collection(db,'fl_usuarios')),
+      fs.getDocs(fs.collection(db,C.VEHS)),
+      fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('activo','==',true))),
+    ]);
+    const vehPorEco={};snapV.docs.forEach(d=>{const v=d.data()||{};if(v.eco!=null)vehPorEco[String(v.eco)]={id:d.id,...v};});
+    const usosAb=snapUs.docs.map(d=>({id:d.id,ref:d.ref,...d.data()}));
+    const porEco={};
+    snapU.docs.forEach(d=>{
+      const u=d.data()||{};
+      const ecos=new Set([...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u.ecoVinculado?[String(u.ecoVinculado)]:[])]);
+      const clave=String(u.email||'').toLowerCase().trim()||('doc:'+d.id);
+      ecos.forEach(e=>{
+        if(!e)return;
+        const p=(porEco[e]=porEco[e]||{});
+        if(!p[clave])p[clave]={clave,email:u.email||'',nombre:u.nombre||u.email||'(sin nombre)',docs:[]};
+        p[clave].docs.push({ref:d.ref,u});
+      });
+    });
+    Object.entries(porEco).forEach(([eco,mapa])=>{
+      const personas=Object.values(mapa);
+      if(personas.length<2)return;
+      const veh=vehPorEco[eco]||null;
+      const resp=String(veh&&veh.responsable||'').toLowerCase().trim();
+      personas.forEach(p=>{
+        const fechas=[];
+        usosAb.filter(x=>String(x.eco)===eco&&String(x.email||'').toLowerCase().trim()===p.clave).forEach(x=>fechas.push(x.vinculadoEn));
+        p.docs.forEach(({u})=>{if(String(u.ecoVinculado||'')===eco&&u.vinculadoEn)fechas.push(u.vinculadoEn);});
+        if(resp&&resp===p.clave&&veh&&veh.actualizadoEn)fechas.push(veh.actualizadoEn);
+        p.ultima=fechas.filter(Boolean).sort().pop()||'';
+        p.esResp=!!resp&&resp===p.clave;
+      });
+      personas.sort((a,b)=>(b.ultima||'').localeCompare(a.ultima||'')||(b.esResp-a.esResp));
+      casos.push({eco,veh,personas});
+    });
+    casos.sort((a,b)=>Number(a.eco)-Number(b.eco));
+  }catch(e){
+    console.error('[FL] limpiar duplicados',e);
+    body.innerHTML='<div style="color:#B91C1C">No se pudo revisar: '+esc(e.message||e)+'</div>';return;
+  }
+  if(!casos.length){body.innerHTML='<div style="padding:10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;color:#166534;font-weight:700">✓ Todo en orden: cada ECO está vinculado a una sola persona.</div>';return;}
+  body.innerHTML=
+    '<div style="margin-bottom:10px;color:#374151">Se encontraron <strong>'+casos.length+'</strong> ECO(s) vinculados a más de una persona. La sugerencia es quien tiene el <strong>movimiento más reciente</strong>; cámbiala si sabes que lo trae otra persona. Al aplicar, el ECO se le quita a los demás, se cierra su historial de uso y el responsable del vehículo queda en la persona elegida.</div>'+
+    '<div class="fl-tw" style="overflow:auto;max-height:55vh"><table class="fl-adm-table" style="width:100%"><thead><tr><th style="width:28px"></th><th>ECO</th><th>Lo tienen vinculado</th><th>¿Quién lo trae realmente?</th></tr></thead><tbody>'+
+    casos.map((c,i)=>'<tr>'+
+      '<td><input type="checkbox" class="fl-dup-chk" data-i="'+i+'" checked></td>'+
+      '<td style="font-weight:800">ECO '+esc(c.eco)+(c.veh&&c.veh.unidad?'<div style="font-size:11px;color:#64748B;font-weight:600">'+esc(c.veh.unidad)+'</div>':'')+'</td>'+
+      '<td style="font-size:12px">'+c.personas.map(p=>'<div>'+esc(p.nombre)+' <span style="color:#64748B">· '+esc(p.email||'sin correo')+' · '+fecha(p.ultima)+(p.esResp?' · responsable en portal':'')+'</span></div>').join('')+'</td>'+
+      '<td><select class="fl-dup-sel" data-i="'+i+'" style="width:100%;padding:6px;border:1px solid #CBD5E1;border-radius:6px">'+c.personas.map((p,k)=>'<option value="'+k+'"'+(k===0?' selected':'')+'>'+esc(p.nombre)+(p.email?' ('+esc(p.email)+')':'')+'</option>').join('')+'</select></td>'+
+    '</tr>').join('')+
+    '</tbody></table></div>'+
+    '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="fb gho sm" onclick="document.getElementById(\'fl-dup-ov\').remove()">Cancelar</button><button class="fb sm" id="fl-dup-apl">Aplicar a los seleccionados</button></div>';
+  body.querySelector('#fl-dup-apl').onclick=async function(){
+    const btn=this;
+    const sel=[...body.querySelectorAll('.fl-dup-chk')].filter(x=>x.checked).map(x=>Number(x.dataset.i));
+    if(!sel.length){flToast('No seleccionaste ningún ECO','err');return;}
+    if(!confirm('Se dejará cada ECO seleccionado con una sola persona ('+sel.length+' ECO). ¿Continuar?'))return;
+    btn.disabled=true;btn.textContent='Aplicando…';
+    const ahora=new Date().toISOString();
+    const porEmail=window.auth&&window.auth.currentUser&&window.auth.currentUser.email||'';
+    let okN=0,errN=0;
+    for(const i of sel){
+      const c=casos[i];
+      const k=Number(body.querySelector('.fl-dup-sel[data-i="'+i+'"]').value)||0;
+      const gana=c.personas[k];
+      const motivo='Limpieza de duplicados: ECO '+c.eco+' queda con '+(gana.nombre||gana.email);
+      const ops=[];
+      c.personas.forEach(p=>{
+        if(p===gana)return;
+        p.docs.forEach(({ref,u})=>{
+          const arr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
+          const nuevos=arr.filter(e=>e!==String(c.eco));
+          const simple=String(u.ecoVinculado||'')===String(c.eco);
+          ops.push(fs.updateDoc(ref,{ecoVinculado:simple?(nuevos[0]||null):(u.ecoVinculado||null),ecosVinculados:nuevos,desvinculadoEn:ahora,desvinculadoPor:porEmail,motivoDesvinculacion:motivo}));
+        });
+      });
+      try{
+        const q=await fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('eco','==',String(c.eco)),fs.where('activo','==',true)));
+        let ganaTieneUso=false;
+        q.docs.forEach(d=>{
+          const x=d.data()||{};
+          if(gana.email&&String(x.email||'').toLowerCase().trim()===gana.clave){ganaTieneUso=true;return;}
+          ops.push(fs.updateDoc(d.ref,{desvinculadoEn:ahora,activo:false,motivo:motivo,desvinculadoPor:porEmail}));
+        });
+        if(!ganaTieneUso&&gana.email)ops.push(fs.addDoc(fs.collection(db,C.USOS),{eco:String(c.eco),email:gana.email,nombre:gana.nombre||gana.email,vinculadoEn:ahora,desvinculadoEn:null,activo:true,motivo:'Confirmado en limpieza de duplicados',asignadoPor:porEmail}));
+      }catch(e){console.warn('[FL] limpiar duplicados: usos',e);}
+      if(c.veh&&c.veh.id&&!String(c.veh.id).startsWith('eco-')&&gana.email&&String(c.veh.responsable||'').toLowerCase().trim()!==gana.clave){
+        ops.push(fs.updateDoc(fs.doc(db,C.VEHS,c.veh.id),{responsable:gana.email,actualizadoEn:ahora,actualizadoPor:porEmail}));
+      }
+      const r=await Promise.allSettled(ops);
+      const fallas=r.filter(x=>x.status==='rejected');
+      if(fallas.length){errN++;console.warn('[FL] limpiar duplicados ECO '+c.eco,fallas);}else okN++;
+    }
+    try{if(typeof ldUsos==='function')await ldUsos();}catch(_){}
+    flToast(errN?('Listo con detalles: '+okN+' ECO corregidos, '+errN+' con error (ver consola)'):('✓ '+okN+' ECO quedaron con una sola persona'),errN?'err':'ok');
+    document.getElementById('fl-dup-ov')?.remove();
+  };
+};
+
 
 console.log('[FLOTILLA v16] Taller único + presupuesto mes + flReconciliarTaller · '+CAT.length+' unidades');
 })();
