@@ -8907,6 +8907,7 @@
                     ${gestion ? `
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${opsPuedeGestionar() ? `<button onclick="opsAbrirProgramarFolio('${filtroFolioGrupo}')" class="mkt-add-btn" style="background:#15803D;">${ICON.plus} Programar folio</button>` : ""}
+                        ${opsPuedeGestionar() ? `<button onclick="opsCtsLoteAbrir('abiertos')" class="mkt-add-btn" title="Folios abiertos o vencidos que ya se ejecutaron: los liga con el servicio cerrado en el portal o con el envío de Connecteam y les pone su fecha de atención y solución" style="background:#7c3aed;">🔗 Ligar con servicios ejecutados</button>` : ""}
                         ${opsPuedeCrear() ? `<button onclick="opsAbrirModalFolio()" class="mkt-add-btn" style="background:#1D2E73;">${ICON.plus} Nuevo folio (completo)</button>` : ""}
                         <button onclick="document.getElementById('ops-folios-import-input').click()" class="mkt-add-btn" style="background:#15803D;display:inline-flex;align-items:center;gap:6px;">${ICON.download} Importar Excel</button>
                         <input type="file" id="ops-folios-import-input" accept=".xlsx,.xls" style="display:none" onchange="opsImportarExcelFolios(this.files[0])">
@@ -13469,17 +13470,73 @@
     };
 
     // ── "Cruzar con Connecteam": todos los folios de la bandeja que ya tienen envío con su número ──
-    window.opsCtsLoteAbrir = async function () {
+    window.opsCtsLoteAbrir = async function (modo) {
         if (!opsPuedeGestionar()) return;
         opsFpCss();
-        opsCtsLote = { cargando: true, error: "", marcados: {}, guardando: false, hechos: 0 };
+        opsCtsLote = { modo: modo === "abiertos" ? "abiertos" : "bandeja", cargando: true, error: "", marcados: {}, guardando: false, hechos: 0 };
         opsCtsLotePintar();
         try { await opsCtsCargar(true); } catch (e) { opsCtsLote.error = /relation|does not exist|schema cache/i.test(e.message || "") ? "Falta crear la tabla connecteam_servicios en Supabase." : (e.message || String(e)); }
         if (!opsCtsLote) return;
         opsCtsLote.cargando = false;
         opsCtsLoteFilas().forEach(r => { opsCtsLote.marcados[r.f.id] = r.ok; });
+        opsLgDupFilas().forEach(r => { opsCtsLote.marcados["dup:" + r.f.id] = r.ok; });
         opsCtsLotePintar();
     };
+    // ── 13-nov-2026 (Glen): pestaña Folios · ligar folios abiertos/vencidos con lo que ya se ejecutó ──
+    // Un folio sale VENCIDO porque no tiene fecha de solución. Casi siempre es porque el servicio se cerró en OTRO
+    // registro (el técnico lo cerró en la app y el folio de la hoja de Magali quedó aparte) o porque el técnico lo
+    // mandó por Connecteam. Aquí se buscan las dos cosas:
+    //   1) Mismo ID de folio del cliente en un registro del portal que ya está cerrado → se copia su cierre (seguro).
+    //   2) Envío de Connecteam con el mismo número de folio (seguro) o propuesto por estación y fecha (revisar).
+    // No se borra ni se cancela nada: el folio abierto queda SOLUCIONADO con la liga al servicio y su historial.
+    function opsLgAbierto(f) { return !!f && !f.cancelado && !f.fechaSolucion && f.tipoFolio !== "inspeccion"; }
+    function opsLgLlave(v) {
+        const s = String(v || "").toUpperCase().replace(/\s+/g, "");
+        if (!s) return null;
+        const k = /^MC/.test(s) ? "MC" + s.replace(/\D/g, "").padStart(7, "0") : s.replace(/\D/g, "");
+        return k && k.replace(/\D/g, "").length >= 5 ? k : null;
+    }
+    function opsLgDupFilas() {
+        if (!opsCtsLote || opsCtsLote.modo !== "abiertos") return [];
+        const idx = new Map();
+        cacheFolios.forEach(d => {
+            if (!d.fechaSolucion || d.cancelado) return;
+            [...new Set([d.folioClienteId, d.folioClienteCapturado].map(opsLgLlave).filter(Boolean))].forEach(k => { if (!idx.has(k)) idx.set(k, []); idx.get(k).push(d); });
+        });
+        const filas = [];
+        cacheFolios.filter(opsLgAbierto).forEach(f => {
+            const ds = [];
+            [f.folioClienteId, f.folioClienteCapturado].map(opsLgLlave).filter(Boolean).forEach(k => (idx.get(k) || []).forEach(d => { if (d.id !== f.id && !ds.includes(d)) ds.push(d); }));
+            if (!ds.length) return;
+            const d = ds.slice().sort((a, b) => String(a.fechaSolucion).localeCompare(String(b.fechaSolucion)))[0];
+            const avisos = [];
+            if (ds.length > 1) avisos.push(ds.length + " registros cerrados con este folio; se toma el primero");
+            if (opsGrupoClienteFolio(d) !== opsGrupoClienteFolio(f)) avisos.push("El registro cerrado es de otro cliente");
+            const fSol = opsAFechaObj(f.fechaSolicitud), fCie = opsAFechaObj(d.fechaSolucion);
+            if (fSol && fCie && fCie < fSol) avisos.push("Se cerró antes de la solicitud del folio");
+            filas.push({ f, d, avisos, ok: !avisos.length });
+        });
+        return filas.sort((a, b) => (b.ok - a.ok) || opsFpOrden(a.f, b.f));
+    }
+    async function opsLgAplicarDup(f, d) {
+        const fSol = opsAFechaObj(f.fechaSolicitud);
+        let at = d.fechaAtencion || d.fechaSolucion;
+        if (fSol && opsAFechaObj(at) && opsAFechaObj(at) < fSol) at = d.fechaSolucion;
+        if (opsAFechaObj(at) > opsAFechaObj(d.fechaSolucion)) at = d.fechaSolucion;
+        const ahora = opsFechaHora(), yo = opsNombreActual();
+        const cambios = { fechaAtencion: at, fechaSolucion: d.fechaSolucion, completadoEn: d.completadoEn || ahora,
+            ligadoAServicio: { id: d.id, os: d.folioOS || d.osTecnico || null, por: yo, en: ahora },
+            ...opsCierrePortal(f, "ligado_a_servicio_cerrado", opsTecnicoDelFolio(d)), finalizadoDesde: "ligado_servicio_portal" };
+        if (!f.folioOS && d.folioOS) cambios.folioOS = d.folioOS;
+        if (!f.osTecnico && d.osTecnico) cambios.osTecnico = d.osTecnico;
+        if (!(f.tecnicosAsignadosIds || []).length && (d.tecnicosAsignadosIds || []).length) { cambios.tecnicosAsignadosIds = d.tecnicosAsignadosIds; cambios.tecnicosAsignadosNombres = d.tecnicosAsignadosNombres || []; }
+        if (!f.tecnicoResponsableId && d.tecnicoResponsableId) { cambios.tecnicoResponsableId = d.tecnicoResponsableId; cambios.tecnicoResponsableNombre = d.tecnicoResponsableNombre || null; }
+        const { db, fs } = await opsGetFB();
+        await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), cambios);
+        Object.assign(f, cambios);
+        const txt = `Ligado al servicio ya cerrado${cambios.ligadoAServicio.os ? " (O.S. " + cambios.ligadoAServicio.os + ")" : ""} con el mismo ID de folio. Se tomó su cierre del ${String(d.fechaSolucion).replace("T", " ")}${opsTecnicoDelFolio(d) ? " · técnico " + opsTecnicoDelFolio(d) : ""}. Lo ligó ${yo}.`;
+        fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: txt, autor: yo, autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: ahora }).catch(() => {});
+    }
     // 7-nov-2026: 7 de cada 10 envíos de Connecteam no traen número de folio. Si el folio no tiene envío con su
     // número, se PROPONE el primer envío de la misma estación hecho en los 15 días después de la solicitud que no
     // traiga número de otro folio ni esté ligado ya. Cada envío se propone a un solo folio (el más antiguo primero).
@@ -13502,7 +13559,10 @@
         return filas;
     }
     function opsCtsLoteFilas() {
-        return opsCtsCandidatos(opsCalFoliosFiltrados().filter(opsFpEsPorProgramar)).map(({ f, x, n, porEstacion }) => {
+        const abiertos = opsCtsLote && opsCtsLote.modo === "abiertos";
+        const yaDup = abiertos ? new Set(opsLgDupFilas().map(r => r.f.id)) : null;
+        const fuente = abiertos ? cacheFolios.filter(f => opsLgAbierto(f) && !yaDup.has(f.id)) : opsCalFoliosFiltrados().filter(opsFpEsPorProgramar);
+        return opsCtsCandidatos(fuente).map(({ f, x, n, porEstacion }) => {
             const l = { length: n };
             const tec = opsCtsTecnicos(x), fecha = opsCtsFechaLocal(x.fecha_servicio || x.enviado_en);
             const avisos = [];
@@ -13524,11 +13584,22 @@
         const scroll = ov ? (ov.querySelector("[data-cl-scroll]")?.scrollTop || 0) : 0;
         if (!ov) { ov = document.createElement("div"); ov.id = "opsct-lote"; ov.className = "opsfp-ov"; ov.onclick = e => { if (e.target === ov && !L.guardando) window.opsCtsLoteCerrar(); }; document.body.appendChild(ov); }
         const filas = L.cargando ? [] : opsCtsLoteFilas();
-        const n = filas.filter(r => L.marcados[r.f.id] && r.tec.ids.length).length;
+        const dups = L.cargando ? [] : opsLgDupFilas();
+        const n = filas.filter(r => L.marcados[r.f.id] && r.tec.ids.length).length + dups.filter(r => L.marcados["dup:" + r.f.id]).length;
+        const dupHtml = !dups.length ? "" : `<div style="font-size:11px;font-weight:800;color:#7c3aed;letter-spacing:.5px;text-transform:uppercase;margin:4px 0 8px;">Ya cerrados en otro registro del portal (mismo ID de folio) · ${dups.length}</div>`
+            + dups.map(r => `<div class="opsfp-opt${L.marcados["dup:" + r.f.id] ? " on" : ""}" style="align-items:flex-start;cursor:default;">
+                <input type="checkbox" ${L.marcados["dup:" + r.f.id] ? "checked" : ""} ${L.guardando ? "disabled" : ""} onchange="opsCtsLoteMarca('dup:${r.f.id}',this.checked)" style="margin-top:3px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${opsFpBadgePrio(r.f.prioridad)}<b style="font-size:12.5px;color:#0f172a;">${opsEsc(r.f.estacion || "")}</b><span style="font-size:11.5px;color:#64748b;">${opsEsc(opsFpCliTxt(r.f))} · ${opsEsc(opsFpFolioTxt(r.f))}</span></div>
+                    <div style="font-size:11.5px;color:#334155;margin-top:3px;">Cerrado el <b>${opsEsc(opsFmtFechaCorta(r.d.fechaSolucion))}</b>${opsTecnicoDelFolio(r.d) ? " por <b>" + opsEsc(opsTecnicoDelFolio(r.d)) + "</b>" : ""}${r.d.folioOS || r.d.osTecnico ? " · O.S. " + opsEsc(r.d.folioOS || r.d.osTecnico) : ""} · ${opsEsc(r.d.estacion || "")}</div>
+                    ${r.avisos.length ? `<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:3px;">${r.avisos.map(opsEsc).join(" · ")}</div>` : ""}
+                </div>
+            </div>`).join("")
+            + (filas.length ? `<div style="font-size:11px;font-weight:800;color:#15803d;letter-spacing:.5px;text-transform:uppercase;margin:14px 0 8px;">Con envío en Connecteam · ${filas.length}</div>` : "");
         const cuerpo = L.cargando ? `<div style="padding:30px;text-align:center;color:#94a3b8;">Leyendo Connecteam…</div>`
             : L.error ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:10px;padding:12px;font-size:12.5px;">${opsEsc(L.error)}</div>`
-            : !filas.length ? `<div style="padding:30px;text-align:center;color:#94a3b8;">Ningún folio de la bandeja tiene envío en Connecteam (ni por número ni por estación y fecha).</div>`
-            : filas.map(r => `<div class="opsfp-opt${L.marcados[r.f.id] ? " on" : ""}" style="align-items:flex-start;cursor:default;">
+            : !filas.length && !dups.length ? `<div style="padding:30px;text-align:center;color:#94a3b8;">${L.modo === "abiertos" ? "Ningún folio abierto tiene un servicio cerrado con su mismo ID ni envío en Connecteam (ni por número ni por estación y fecha). Esos se cierran a mano o se revisan con Operaciones." : "Ningún folio de la bandeja tiene envío en Connecteam (ni por número ni por estación y fecha)."}</div>`
+            : dupHtml + filas.map(r => `<div class="opsfp-opt${L.marcados[r.f.id] ? " on" : ""}" style="align-items:flex-start;cursor:default;">
                 <input type="checkbox" ${L.marcados[r.f.id] ? "checked" : ""} ${r.tec.ids.length && !L.guardando ? "" : "disabled"} onchange="opsCtsLoteMarca('${r.f.id}',this.checked)" style="margin-top:3px;">
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">${opsFpBadgePrio(r.f.prioridad)}<b style="font-size:12.5px;color:#0f172a;">${opsEsc(r.f.estacion || "")}</b><span style="font-size:11.5px;color:#64748b;">${opsEsc(opsFpCliTxt(r.f))} · ${opsEsc(opsFpFolioTxt(r.f))}</span>${r.porEstacion ? `<span class="opsfp-tag" style="background:#fef3c7;color:#92400e;">Por estación y fecha</span>` : `<span class="opsfp-tag" style="background:#dcfce7;color:#166534;">Mismo número</span>`}</div>
@@ -13541,8 +13612,8 @@
             </div>`).join("");
         ov.innerHTML = `<div class="opsfp-card" style="width:820px;">
             <div style="padding:18px 22px 12px;border-bottom:1px solid #eef1f6;display:flex;gap:12px;align-items:flex-start;">
-                <div style="flex:1;"><div style="font-size:17px;font-weight:800;color:#0f172a;">Folios que ya están en Connecteam</div>
-                <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.45;">Estos folios siguen en la bandeja, pero ya hay un servicio en Connecteam: arriba los que traen <b>el mismo número de folio</b> (ya palomeados) y abajo los <b>propuestos por estación y fecha</b> porque el técnico no puso el número (sin palomear: revísalos). Palomea los que quieres cerrar: quedan a nombre del técnico, en la fecha del servicio y con sus fotos. Los que tienen aviso en naranja revísalos uno por uno.</div></div>
+                <div style="flex:1;"><div style="font-size:17px;font-weight:800;color:#0f172a;">${L.modo === "abiertos" ? "Ligar folios abiertos con servicios ejecutados" : "Folios que ya están en Connecteam"}</div>${L.modo === "abiertos" ? `<div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.45;">Folios sin fecha de solución (por eso salen vencidos) que ya se atendieron: arriba los que ya se cerraron en <b>otro registro del portal con el mismo ID de folio</b> y abajo los que tienen <b>envío en Connecteam</b>. Ya van palomeados los seguros; los propuestos por estación y fecha revísalos antes.</div>` : ""}
+                ${L.modo === "abiertos" ? "" : `<div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.45;">Estos folios siguen en la bandeja, pero ya hay un servicio en Connecteam: arriba los que traen <b>el mismo número de folio</b> (ya palomeados) y abajo los <b>propuestos por estación y fecha</b> porque el técnico no puso el número (sin palomear: revísalos). Palomea los que quieres cerrar: quedan a nombre del técnico, en la fecha del servicio y con sus fotos. Los que tienen aviso en naranja revísalos uno por uno.</div>`}</div>
                 <button onclick="opsCtsLoteCerrar()" ${L.guardando ? "disabled" : ""} style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>
             </div>
             <div data-cl-scroll style="overflow-y:auto;padding:12px 22px;flex:1;">${cuerpo}</div>
@@ -13556,9 +13627,16 @@
     window.opsCtsLoteGuardar = async function () {
         const L = opsCtsLote; if (!L || L.guardando) return;
         const filas = opsCtsLoteFilas().filter(r => L.marcados[r.f.id] && r.tec.ids.length);
-        if (!filas.length || !confirm(`Se registrarán ${filas.length} folio(s) con los datos de Connecteam. ¿Continuar?`)) return;
+        const dups = opsLgDupFilas().filter(r => L.marcados["dup:" + r.f.id]);
+        const total = filas.length + dups.length;
+        if (!total || !confirm(`Se registrarán ${total} folio(s)${dups.length ? ` (${dups.length} ligados a un servicio ya cerrado en el portal${filas.length ? " y " + filas.length + " con Connecteam" : ""})` : " con los datos de Connecteam"}. ¿Continuar?`)) return;
         L.guardando = true; L.hechos = 0; opsCtsLotePintar();
         const fallas = [];
+        for (const r of dups) {
+            try { await opsLgAplicarDup(r.f, r.d); }
+            catch (e) { fallas.push((r.f.estacion || r.f.id) + ": " + (e.message || e)); }
+            L.hechos++; opsCtsLotePintar();
+        }
         for (const r of filas) {
             try { await opsCtsAplicar(r.f, r.x, { modo: r.x.concluyo === false ? "programado" : "realizado", tecs: r.tec.ids, fecha: r.fecha }); }
             catch (e) { fallas.push((r.f.estacion || r.f.id) + ": " + (e.message || e)); }
@@ -13566,8 +13644,9 @@
         }
         L.guardando = false; L.marcados = {};
         opsCtsLoteFilas().forEach(r => { L.marcados[r.f.id] = false; });
-        opsCtsLotePintar(); opsFpRepintarBandeja();
-        alert(`Listo: ${filas.length - fallas.length} folio(s) registrados.` + (fallas.length ? `\n\nNo se pudieron guardar:\n` + fallas.join("\n") : ""));
+        opsCtsLotePintar(); try { opsFpRepintarBandeja(); } catch (e) {}
+        if (tabActual === "folios") { try { opsRenderFolios(); } catch (e) {} }
+        alert(`Listo: ${total - fallas.length} folio(s) registrados.` + (fallas.length ? `\n\nNo se pudieron guardar:\n` + fallas.join("\n") : ""));
     };
     // Carga en segundo plano para mostrar el contador en la bandeja.
     function opsCtsPrecargar() { if (!opsCtsCargado && !opsCtsCargando) opsCtsCargar().then(() => { if (document.getElementById("opsfp-bandeja")) opsFpRepintarBandeja(); }).catch(() => {}); }
