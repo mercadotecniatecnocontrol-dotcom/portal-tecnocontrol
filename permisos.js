@@ -627,7 +627,7 @@ async function pNuevaPortal() {
   window.__tcpTecs = tecs;
   const inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px';
   pModal('<div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:4px">Registrar solicitud por alguien</div>' +
-    (pEsJefe() ? '<div style="font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:7px 10px;margin-bottom:8px">Como jefe, lo que registres aquí queda <b>preautorizado</b>; RH solo lo acepta. <b>Si es para ti</b>, queda Pendiente hasta que tu jefe lo preautorice.</div>' : '') +
+    '<div style="font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:7px 10px;margin-bottom:8px">Queda <b>Pendiente</b>: la preautoriza Paloma (o el Gerente de Operaciones si es técnico) y después RH la acepta.</div>' +
     '<div style="font-size:12px;color:#64748b;margin-bottom:12px">Pasa por las mismas reglas que la app. Aparecen todos los colaboradores activos; quien no tiene correo no recibe el aviso en su celular.</div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || t.puesto || '') + (t.correo ? '' : ' (sin correo)') + '</option>').join('') + '</select></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Tipo<select id="tcp-n-tipo" style="' + inp + '">' + Object.keys(TIPOS).map(k => '<option value="' + k + '">' + TIPOS[k].t + '</option>').join('') + '</select></label>' +
@@ -664,7 +664,9 @@ async function pGuardarNueva() {
     if (r.propias.length) throw new Error('Ya tiene una solicitud en esas fechas (' + r.propias.map(o => o.folio).join(', ') + ').');
     // 31-oct-2026: ya no obliga a marcar urgente; la disponibilidad se muestra en la solicitud.
     s.urgente = !!(s.urgente && s.urgente_motivo);
-    await crearSolicitud(s, r, pEsJefe() && !pEsPropia(s) ? (P.opts.usuario || {}) : null);
+    // 13-nov-2026: lo registrado desde el portal ya no se preautoriza solo (ni lo propio ni lo de otros);
+    // sigue el flujo normal: Pendiente → Paloma / Gerente de Operaciones preautoriza → RH acepta.
+    await crearSolicitud(s, r, null);
     pModal(''); await pCargar(); pRender();
   } catch (e) { err.textContent = e.message || String(e); btn.disabled = false; btn.textContent = 'Revisar y registrar'; }
 }
