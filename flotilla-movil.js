@@ -2078,8 +2078,57 @@ window.fmCargarVehs=async function(){
 
 // ── HISTORIAL DE USO: registra quién vinculó/desvinculó cada ECO y cuándo ──
 // (colección flotilla_usos — no confundir con ecoVinculado, que solo guarda el estado actual)
+// ── UN ECO = UNA PERSONA (nov-2026) ──
+// Cuando alguien se vincula un ECO (vínculo normal, primer ingreso o transferencia),
+// se le quita ese ECO a cualquier otro usuario de la app que todavía lo tuviera,
+// se cierran sus registros de uso abiertos de ese ECO y el responsable del
+// vehículo queda en el nuevo dueño. Así el portal y la app dicen lo mismo.
+async function flLiberarEcoDeOtros(eco,emailDueno,nombreDueno){
+  const ecoStr=String(eco||'').trim();
+  const dueno=String(emailDueno||'').toLowerCase().trim();
+  if(!ecoStr||!dueno)return;
+  const ahora=new Date().toISOString();
+  const motivo='Reasignado a '+(nombreDueno||emailDueno)+' (se vinculó el ECO '+ecoStr+')';
+  const ops=[];
+  try{
+    const snapU=await db.collection(C.USUARIOS).get();
+    snapU.forEach(d=>{
+      const u=d.data()||{};
+      if(String(u.email||'').toLowerCase().trim()===dueno)return;
+      const arr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
+      const simple=String(u.ecoVinculado||'')===ecoStr;
+      if(!simple&&!arr.includes(ecoStr))return;
+      const nuevos=arr.filter(e=>e!==ecoStr);
+      ops.push(d.ref.update({
+        ecoVinculado:simple?(nuevos[0]||null):(u.ecoVinculado||null),
+        ecosVinculados:nuevos,
+        desvinculadoEn:ahora,desvinculadoPor:dueno,motivoDesvinculacion:motivo,
+      }).catch(e=>console.warn('[FL] liberar ECO de otro usuario',e)));
+    });
+  }catch(e){console.warn('[FL] liberar ECO: leer usuarios',e);}
+  try{
+    const abiertas=await db.collection(C.USOS).where('eco','==',ecoStr).where('activo','==',true).get();
+    abiertas.forEach(d=>{
+      const x=d.data()||{};
+      if(String(x.email||'').toLowerCase().trim()===dueno)return;
+      ops.push(d.ref.update({desvinculadoEn:ahora,activo:false,motivo:motivo}).catch(()=>{}));
+    });
+  }catch(e){console.warn('[FL] liberar ECO: usos abiertos',e);}
+  try{
+    const sv=await db.collection(C.VEHS).where('eco','==',ecoStr).get();
+    sv.forEach(d=>{
+      const v=d.data()||{};
+      if(String(v.responsable||'').toLowerCase().trim()===dueno)return;
+      ops.push(d.ref.update({responsable:emailDueno,actualizadoEn:ahora,actualizadoPor:emailDueno}).catch(()=>{}));
+    });
+  }catch(e){console.warn('[FL] liberar ECO: vehículo',e);}
+  await Promise.all(ops);
+}
+
 async function flRegistrarVinculacion(eco,email,nombre){
   try{
+    // Primero se le quita este ECO a cualquier otra persona
+    await flLiberarEcoDeOtros(eco,email,nombre);
     // Por seguridad, cierra cualquier registro abierto previo de este mismo usuario
     const abiertas=await db.collection(C.USOS).where('email','==',email).where('activo','==',true).get();
     const ahora=new Date().toISOString();
