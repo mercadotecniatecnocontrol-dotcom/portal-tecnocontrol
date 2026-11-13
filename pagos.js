@@ -480,7 +480,7 @@ function _cxpRender(){
       <td style="padding:6px 8px;font-weight:700">${_cxpEsc(d.ocFolio||d.folio||'—')}</td>
       <td style="padding:6px 8px">${_cxpEsc(d.empresa||'—')}</td>
       <td style="padding:6px 8px">${_cxpEsc(d.proveedor||'—')}</td>
-      <td style="padding:6px 8px">${d.monto!=null?'$'+Number(d.monto).toLocaleString('es-MX'):'—'}</td>
+      <td style="padding:6px 8px"><input class="cxp-monto" type="number" step="0.01" min="0" title="Monto a pagar (puedes corregirlo)" value="${d.monto!=null?Number(d.monto):''}" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:6px;font-size:11.5px;width:100px"></td>
       <td style="padding:6px 8px"><select class="cxp-estatus" style="padding:4px 6px;border:1px solid #E2E8F0;border-radius:6px;font-size:11.5px">
         ${['pendiente','programado','pagado'].map(e=>`<option value="${e}" ${d.estatusPago===e?'selected':''}>${e}</option>`).join('')}
       </select></td>
@@ -498,12 +498,14 @@ window.__cxpGuardar = async function(id){
   const estatusPago = tr.querySelector('.cxp-estatus').value;
   const fechaPago = tr.querySelector('.cxp-fecha').value || null;
   const aspelFolio = tr.querySelector('.cxp-aspel').value.trim() || null;
+  const montoTxt = tr.querySelector('.cxp-monto').value.trim();
+  const monto = montoTxt==='' ? null : Number(montoTxt);
   const btn = tr.querySelector('button');
   const original = btn.textContent;
   btn.disabled = true; btn.textContent = 'Guardando…';
   try{
     const { db, fs } = await _cxpGetDB();
-    await fs.updateDoc(fs.doc(db,'pagos_cuentas_por_pagar',id), {estatusPago, fechaPago, aspelFolio, actualizadaEn:new Date().toISOString()});
+    await fs.updateDoc(fs.doc(db,'pagos_cuentas_por_pagar',id), {estatusPago, fechaPago, aspelFolio, monto, actualizadaEn:new Date().toISOString()});
     btn.textContent = '✓ Guardado'; btn.style.background = '#15803d';
     setTimeout(()=>{ btn.textContent = original; btn.style.background=''; btn.disabled=false; }, 1800);
   }catch(e){
@@ -825,6 +827,41 @@ window._pflRegistrarPago = function(solId){
 };
 
 // Preview del archivo seleccionado
+// Corregir un pago de Flotilla ya registrado (13-nov-2026): sin volver a avisar ni cerrar la solicitud.
+window._pflCorregirPago = function(solId){
+  const s = (window.__pflPagados||[]).find(x=>x.id===solId); if(!s) return;
+  const inp='width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-family:inherit;font-size:13px;box-sizing:border-box';
+  const lb=t=>'<label style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748B;display:block;margin-bottom:5px">'+t+'</label>';
+  const met=['Transferencia','Cheque','Efectivo','Tarjeta','SPEI'];
+  const ov=document.createElement('div'); ov.className='fl-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML='<div style="background:#fff;border-radius:16px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:12px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:16px;font-weight:900;color:#0A1628">Corregir pago</div><div style="font-size:11px;color:#64748B">ECO '+(s.vehiculoEco||'—')+' · '+(s.folio||'')+'</div></div><button title="Cerrar" onclick="this.closest(\'.fl-ov\').remove()" style="background:none;border:none;cursor:pointer;color:#94A3B8;font-size:18px">&times;</button></div>'+
+    '<div>'+lb('Monto pagado')+'<input id="pflc-monto" type="number" step="0.01" value="'+(s.montoPagado!=null?s.montoPagado:'')+'" style="'+inp+'"></div>'+
+    '<div>'+lb('Número de factura / referencia')+'<input id="pflc-factura" value="'+String(s.facturaNum||'').replace(/"/g,'&quot;')+'" style="'+inp+'"></div>'+
+    '<div>'+lb('Fecha de pago')+'<input id="pflc-fecha" type="date" value="'+String(s.fechaPagoReal||s.pagadoEn||'').slice(0,10)+'" style="'+inp+'"></div>'+
+    '<div>'+lb('Método de pago')+'<select id="pflc-metodo" style="'+inp+'">'+met.map(m=>'<option '+(s.metodoPago===m?'selected':'')+'>'+m+'</option>').join('')+'</select></div>'+
+    '<div>'+lb('Cambiar comprobante (opcional)')+'<input id="pflc-file" type="file" accept="image/*,.pdf" style="'+inp+'"></div>'+
+    '<div>'+lb('¿Por qué se corrige? *')+'<input id="pflc-motivo" placeholder="Ej. el monto real fue otro" style="'+inp+'"></div>'+
+    '<div style="display:flex;gap:8px"><button onclick="this.closest(\'.fl-ov\').remove()" style="flex:1;padding:11px;background:#F1F5F9;border:none;border-radius:10px;font-weight:700;cursor:pointer">Cancelar</button>'+
+    '<button id="pflc-btn" onclick="window._pflGuardarCorreccion(\''+solId+'\')" style="flex:2;padding:11px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer">Guardar corrección</button></div></div>';
+  document.body.appendChild(ov); ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+};
+window._pflGuardarCorreccion = async function(solId){
+  const s=(window.__pflPagados||[]).find(x=>x.id===solId); if(!s) return; const g=k=>document.getElementById('pflc-'+k);
+  const monto=parseFloat(g('monto').value), fecha=g('fecha').value, motivo=g('motivo').value.trim(), file=g('file').files[0], btn=g('btn');
+  if(!(monto>=0)||g('monto').value===''){ alert('Escribe el monto.'); return; } if(!fecha){ alert('Escribe la fecha de pago.'); return; } if(!motivo){ alert('Escribe por qué se corrige.'); return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ const { db, fs, auth } = await _getDB(); const yo=auth.currentUser?.email||''; const ahora=new Date().toISOString();
+    const cambios={ montoPagado:monto, fechaPago:fecha, fechaPagoReal:fecha, facturaNum:g('factura').value.trim(), metodoPago:g('metodo').value, actualizadoEn:ahora,
+      correccionPago:{ por:yo, en:ahora, motivo, antes:{ monto:s.montoPagado, fecha:s.fechaPagoReal, factura:s.facturaNum, metodo:s.metodoPago } } };
+    if(file){ cambios.comprobantePago=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+    await fs.updateDoc(fs.doc(db,'flotilla_solicitudes',solId),cambios);
+    Object.assign(s,{montoPagado:monto,fechaPagoReal:fecha,facturaNum:cambios.facturaNum,metodoPago:cambios.metodoPago});
+    btn.closest('.fl-ov').remove(); if(window.__vp2FlRefrescar) window.__vp2FlRefrescar(); if(window.mostrarToast) window.mostrarToast('Pagos','Pago de Flotilla corregido.','✅');
+  }catch(e){ alert('No se pudo guardar: '+(e.message||e)); btn.disabled=false; btn.textContent='Guardar corrección'; }
+};
+
 window._pflPreviewFile = function(input){
   const f = input.files[0];
   const lbl = document.getElementById('pfl-file-label');
@@ -1248,7 +1285,7 @@ window.__vp2Detalle=async function(id,desde){
       c.from('ops_viaticos_comprobantes').select('*').eq('viatico_id',id).order('creado_en',{ascending:true}),
       c.from('ops_viaticos_extra').select('*').eq('viatico_id',id).order('creado_en',{ascending:true}) ]);
     if(r.error) throw r.error; const s=r.data, t=s.tarifas||{}, comps=k.data||[], extras=x.data||[]; COMPS[id]=comps;
-    const ep=estPagos(s), ec=s.estatus==='Pagada'?estConta(s):null;
+    const ep=estPagos(s), ec=s.estatus==='Pagada'?estConta(s):null; const ED=desde==='pagos'&&await puedeEditarPagos();
     const f=(k2,v)=>v===''||v==null?'':'<div class="vp2-f"><div class="vp2-k">'+k2+'</div><div class="vp2-v">'+v+'</div></div>';
     const fila=(k2,cant,monto)=>Number(monto)?'<tr><td>'+k2+(cant?' <span style="color:#9ca3af">· '+cant+'</span>':'')+'</td><td>'+din(monto)+'</td></tr>':'';
     const noDep=Math.max(0,(Number(s.total)||0)-depositoDe(s));
@@ -1256,6 +1293,7 @@ window.__vp2Detalle=async function(id,desde){
     extras.forEach(e=>tl.push(['#ea580c','Pidió <b>'+din(e.monto)+'</b> más ('+esc(e.concepto||'')+'): '+esc(e.motivo||'')+' · '+fh(e.creado_en)+' — '+esc(e.estatus)+(e.autorizo?' por '+esc(e.autorizo):'')]));
     if(s.entregado_en) tl.push(['#16a34a','Pagado <b>'+din(s.monto_entregado)+'</b> por '+esc(s.pagado_por_nombre||s.entregado_por||'')+' ('+esc(FORMAS[s.forma_entrega]||s.forma_entrega||'')+(s.referencia_pago?', ref. '+esc(s.referencia_pago):'')+') · '+fh(s.entregado_en)]);
     comps.forEach(cp=>tl.push([cp.estatus==='Aceptado'?'#16a34a':cp.estatus==='Rechazado'?'#dc2626':'#2563eb','Comprobante <b>'+din(cp.total)+'</b> ('+esc(CATS[cp.categoria]||cp.categoria||'')+') subido por '+esc(cp.tecnico_nombre||'')+' · '+fh(cp.creado_en)+' — '+esc(cp.estatus)+(cp.revisado_por?' por '+esc(cp.revisado_por):'')]));
+    (t.correcciones||[]).forEach(z=>tl.push(['#7c3aed','Corregido por <b>'+esc(z.por||'')+'</b>: '+esc((z.cambios||[]).join('; '))+(z.motivo?' — Motivo: '+esc(z.motivo):'')+' · '+fh(z.en)]));
     if(s.cierre) tl.push(['#15803d','Cerrado · '+esc((s.cierre&&(s.cierre.por||s.cierre.cerradoPor))||'')+' '+fh(s.cierre&&(s.cierre.en||s.cierre.fecha))]);
     const bA=(ruta,txt)=>ruta?'<button class="vp2-btn" style="height:30px;font-size:11.5px" onclick="window.__vp2Archivo(\''+esc(ruta)+'\')">'+txt+'</button>':'';
     modal(
@@ -1303,6 +1341,7 @@ window.__vp2Detalle=async function(id,desde){
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">'+
         (desde==='conta'&&s.estatus==='Pagada'&&!s.cierre?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2ComprobarUrgente('+s.id+')">'+IC.doc+' Comprobar por el técnico (urgencia)</button>':'')+
         (desde==='conta'&&ec&&ec.falta>0.5&&s.responsable_email&&!s.cierre?'<button class="vp2-btn dark" onclick="window.__vp2Recordar('+s.id+')">Recordarle al técnico</button>':'')+
+        (ED?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2Editar('+s.id+')">'+IC.nota+' Editar / corregir</button>':'')+
         (s.estatus==='Pendiente'&&desde==='pagos'?'<button class="vp2-btn pri" onclick="window.__vp2Deposito('+s.id+')">'+IC.dinero+' Registrar depósito</button>':'')+
         '<button class="vp2-btn" onclick="window.__vp2Cerrar()">Cerrar</button></div>');
   }catch(e){ modal('<div style="padding:20px;color:#b91c1c">No se pudo cargar: '+esc(e.message||e)+'</div><div style="text-align:right"><button class="vp2-btn" onclick="window.__vp2Cerrar()">Cerrar</button></div>',true); }
@@ -1347,7 +1386,8 @@ async function cargarPagos(){ tecnicos(); const p=contPagos(); if(!p) return; p.
     const [a,b,x]=await Promise.all([ c.from('ops_solicitudes_viaticos').select(COLS).eq('estatus','Pendiente').order('fecha_salida',{ascending:true}).limit(400),
       c.from('ops_solicitudes_viaticos').select(COLS).eq('estatus','Pagada').gte('entregado_en',desde).order('entregado_en',{ascending:false}).limit(400),
       c.from('ops_viaticos_extra').select('*').order('creado_en',{ascending:false}).limit(200) ]);
-    if(a.error) throw a.error; P.pend=a.data||[]; P.pagados=b.data||[]; P.extra=x.data||[]; pintarPagos(); cargarFlotilla(); }
+    if(a.error) throw a.error; P.pend=a.data||[]; P.pagados=b.data||[]; P.extra=x.data||[]; pintarPagos(); cargarFlotilla();
+    puedeEditarPagos().then(v=>{ if(v!==P.ed){ P.ed=v; pintarPagos(); } }); }
   catch(e){ p.innerHTML='<div class="vp2"><div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div></div>'; } }
 // ── Flotilla: solicitudes de vehículos que esperan pago (mismos datos y botones que la bandeja anterior) ──
 async function cargarFlotilla(){ try{ if(typeof window.__pflCargarDatos!=='function') return; const l=await window.__pflCargarDatos(); P.fl=l; }catch(e){ P.fl=[]; P.flErr=e.message||String(e); } if(document.getElementById('vp-pagos')) pintarPagos(); }
@@ -1397,14 +1437,14 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
       return '<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 190px minmax(200px,1.5fr) 140px 150px" onclick="'+(x.viatico_id?'window.__vp2Detalle('+x.viatico_id+',\'pagos\')':'')+'"><div><div class="vp2-name">'+esc(x.tecnico_nombre||'')+'</div><div class="vp2-meta"><span>'+esc(x.viatico_folio||'')+'</span><span>'+fh(x.creado_en)+'</span></div></div>'+
         '<div>'+pill(e.t,e.c,e.bg)+'</div><div><div class="vp2-k">'+esc(x.concepto||'')+'</div><div class="vp2-v">'+esc(x.motivo||'')+'</div>'+(x.autorizo?'<div style="font-size:11px;color:#9ca3af">Autorizó '+esc(x.autorizo)+'</div>':'')+'</div>'+
         '<div><div class="vp2-k">Monto</div><div class="vp2-saldo" style="color:#c2410c">'+din(x.monto)+'</div></div>'+
-        '<div>'+(x.estatus==='Autorizada'?'<button class="vp2-btn pri" onclick="event.stopPropagation();window.__vp2ExtraPagar('+x.id+')">Ya se depositó</button>':x.referencia_pago?'<span style="font-size:11.5px;color:#6b7280">Ref. '+esc(x.referencia_pago)+'</span>':'')+'</div></div>'; }).join('')
+        '<div>'+(x.estatus==='Autorizada'?'<button class="vp2-btn pri" onclick="event.stopPropagation();window.__vp2ExtraPagar('+x.id+')">Ya se depositó</button>':x.referencia_pago?'<span style="font-size:11.5px;color:#6b7280">Ref. '+esc(x.referencia_pago)+'</span>':'')+(P.ed?'<button class="vp2-btn" title="Corregir monto, estado o referencia" style="height:30px;font-size:11.5px;margin-top:4px;border-color:#7c3aed;color:#7c3aed" onclick="event.stopPropagation();window.__vp2ExtraEditar('+x.id+')">Editar</button>':'')+'</div></div>'; }).join('')
       :'<div class="vp2-empty">No hay viático extra pendiente.</div>';
   } else if(P.tab==='flotilla'){
     const l=(P.fl||[]).filter(s=>!q||norm([s.vehiculoEco,s.tipo,s.vehiculo,flTaller(s),s.creadoPorNombre,s.facturaNum].join(' ')).includes(q));
     const pag=(window.__pflPagados||[]).filter(s=>!q||norm([s.vehiculoEco,s.tipo,s.folio,flTaller(s)].join(' ')).includes(q));
     const pagadosHTML=pag.length?'<div class="vp2-sec" style="margin-top:16px">Pagados en los últimos 45 días ('+pag.length+')</div>'+pag.map(s=>'<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 170px minmax(160px,1.1fr) minmax(150px,1fr) 140px 90px;opacity:.92"><div><div class="vp2-name">'+esc(s.tipo||'Servicio')+' · ECO '+esc(s.vehiculoEco||'—')+'</div><div class="vp2-meta"><span>'+esc(s.folio||'')+'</span><span>'+esc(s.estatus||'')+'</span></div></div>'+
       '<div>'+pill('Pagado '+fc(s.fechaPagoReal||s.pagadoEn),'#15803d','#dcfce7')+'</div><div><div class="vp2-k">Taller</div><div class="vp2-v">'+esc(flTaller(s))+'</div></div><div><div class="vp2-k">Factura</div><div class="vp2-v">'+esc(s.facturaNum||'—')+'</div></div>'+
-      '<div><div class="vp2-k">Pagado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.montoPagado||0)+'</div></div><div></div></div>').join(''):'';
+      '<div><div class="vp2-k">Pagado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.montoPagado||0)+'</div></div><div>'+(P.ed?'<button class="vp2-btn" title="Corregir monto, factura, fecha o comprobante" style="height:30px;font-size:11.5px;border-color:#7c3aed;color:#7c3aed" onclick="event.stopPropagation();window._pflCorregirPago(\''+s.id+'\')">Corregir</button>':'')+'</div></div>').join(''):'';
     cuerpo=P.fl===null?'<div class="vp2-empty">Cargando solicitudes de Flotilla…</div>':(l.length?l.map(s=>{ const e=flEstado(s);
       return '<div class="vp2-row" style="grid-template-columns:minmax(200px,1.4fr) 170px minmax(160px,1.1fr) minmax(150px,1fr) 140px 210px" onclick="window.__vp2FlDetalle(\''+s.id+'\')">'+
         '<div><div class="vp2-name">'+esc(s.tipo||'Servicio')+' · ECO '+esc(s.vehiculoEco||'—')+'</div><div class="vp2-meta"><span>'+esc(s.vehiculo||s.unidad||'')+'</span><span>'+IC.persona+esc(s.creadoPorNombre||s.creadoPor||'')+'</span></div></div>'+
@@ -1488,6 +1528,100 @@ window.__vp2ExtraPagar=async function(id){ const x=P.extra.find(v=>v.id===id); i
     if(r.error) throw r.error; if(!(r.data||[]).length) throw new Error('Ya no está autorizada (alguien lo cambió). Actualiza.');
     if(x.tecnico_correo) avisoApp(x.tecnico_correo,'viatico_extra_pagado','Ya te depositaron '+din(x.monto)+' de viático extra ('+x.concepto+'). Recuerda comprobarlo con fotos o PDF de la factura.',{id:x.viatico_id||id,folio:x.viatico_folio});
     x.estatus='Pagada'; x.referencia_pago=ref.trim()||null; pintarPagos(); toast('Viático extra marcado como depositado.'); }catch(e){ alert('No se pudo guardar: '+(e.message||e)); } };
+
+
+// ───────────── Editar / corregir (Pagos) · 13-nov-2026 ─────────────
+// Pagos y Cristy pueden corregir cualquier dato de un viático (pendiente o pagado) y del viático extra.
+// Cada corrección queda en el historial de la ficha (tarifas.correcciones) con quién, cuándo y por qué.
+const EDITORES_PAGOS=['pagos@tecnocontrol.com.mx','c.acosta@tecnocontrol.com.mx'];
+async function puedeEditarPagos(){ const e=yo().correo; if(EDITORES_PAGOS.includes(e)) return true;
+  try{ return !!(window.tcEsAdminModulo&&await window.tcEsAdminModulo('pagos')); }catch(_){ return false; } }
+const EMPRESAS_V=['JOMAR','Tecnocontrol','VH Verificaciones'];
+const DESGLOSE=[['alimentos','Alimentos'],['hospedaje','Hospedaje'],['gasolina','Gasolina'],['casetas','Casetas'],['otros','Otros']];
+let EDV=null;
+window.__vp2Editar=async function(id){ if(!(await puedeEditarPagos())){ alert('Solo Pagos y Administración pueden corregir viáticos.'); return; }
+  modal('<div style="padding:30px;text-align:center;color:#6b7280">Cargando…</div>',true);
+  try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select(COLS).eq('id',id).single(); if(r.error) throw r.error; const s=r.data; EDV=s; const tecs=await tecnicos();
+    const v=x=>x==null?'':esc(x), num=(k,lbl,extra)=>'<label class="vp2-lb">'+lbl+'<input id="vpe-'+k+'" type="number" min="0" step="0.01" class="vp2-fi" value="'+v(s[k])+'" '+(extra||'')+'></label>';
+    const emp=(k,lbl)=>{ const l=EMPRESAS_V.slice(); if(s[k]&&!l.includes(s[k])) l.push(s[k]); return '<label class="vp2-lb">'+lbl+'<select id="vpe-'+k+'" class="vp2-fi"><option value="">—</option>'+l.map(e=>'<option '+(s[k]===e?'selected':'')+'>'+esc(e)+'</option>').join('')+'</select></label>'; };
+    const g2='display:grid;grid-template-columns:1fr 1fr;gap:0 12px';
+    modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Editar / corregir viático</div><div style="font-size:12.5px;color:#6b7280">'+esc(s.folio)+' · '+esc(s.integrantes||s.responsable_nombre||'')+' · '+esc(s.destino||'')+'</div></div><button class="vp2-ib" title="Cerrar" onclick="window.__vp2Detalle('+s.id+',\'pagos\')">'+IC.cerrar+'</button></div>'+
+      '<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:9px 12px;margin:12px 0;font-size:12.5px;color:#5b21b6">Cambia solo lo que esté mal y escribe por qué. El cambio queda guardado en el historial del viático.</div>'+
+      '<div class="vp2-sec">Pago</div><div style="'+g2+'">'+
+        '<label class="vp2-lb">Estado<select id="vpe-estatus" class="vp2-fi">'+['Pendiente','Pagada','Cancelada'].map(e=>'<option value="'+e+'" '+(s.estatus===e?'selected':'')+'>'+(e==='Pendiente'?'Pendiente (por depositar)':e==='Pagada'?'Pagado':'Cancelado')+'</option>').join('')+'</select></label>'+
+        num('monto_entregado','Monto depositado')+
+        '<label class="vp2-lb">Fecha del depósito<input id="vpe-fdep" type="date" class="vp2-fi" value="'+(s.entregado_en?String(s.entregado_en).slice(0,10):'')+'"></label>'+
+        '<label class="vp2-lb">¿Cómo se entregó?<select id="vpe-forma_entrega" class="vp2-fi"><option value="">—</option>'+Object.keys(FORMAS).map(k=>'<option value="'+k+'" '+(s.forma_entrega===k?'selected':'')+'>'+FORMAS[k]+'</option>').join('')+'</select></label>'+
+        '<label class="vp2-lb">Referencia o número de operación<input id="vpe-referencia_pago" class="vp2-fi" value="'+v(s.referencia_pago)+'"></label>'+
+        '<label class="vp2-lb">¿Quién comprueba?<select id="vpe-resp" class="vp2-fi"><option value="">— Elige —</option>'+tecs.slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre))).map(t=>'<option value="'+esc(String(t.correo||'').toLowerCase())+'" data-n="'+esc(t.nombre)+'" '+((t.correo&&String(t.correo).toLowerCase()===String(s.responsable_email||'').toLowerCase())||(!s.responsable_email&&s.responsable_nombre===t.nombre)?'selected':'')+'>'+esc(t.nombre)+'</option>').join('')+'</select></label>'+
+        '<label class="vp2-lb">Fecha límite para comprobar<input id="vpe-fecha_limite_comprobacion" type="date" class="vp2-fi" value="'+v(s.fecha_limite_comprobacion?String(s.fecha_limite_comprobacion).slice(0,10):'')+'"></label>'+
+        '<label class="vp2-lb">Cambiar evidencia del depósito (opcional)<input id="vpe-comp" type="file" accept="image/*,application/pdf" class="vp2-fi" style="padding:7px"></label>'+
+      '</div>'+
+      '<div class="vp2-sec">Montos del viaje</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px">'+
+        DESGLOSE.map(d=>num(d[0],d[1],'oninput="window.__vpeSuma()"')).join('')+num('total','Costo total del viaje')+
+        num('deposito','A depositar al técnico')+num('cobro_cliente','Se cobra al cliente')+
+      '</div>'+
+      '<div class="vp2-sec">Datos del viaje</div><div style="'+g2+'">'+
+        '<label class="vp2-lb">Destino<input id="vpe-destino" class="vp2-fi" value="'+v(s.destino)+'"></label>'+
+        '<label class="vp2-lb">Cliente<input id="vpe-cliente" class="vp2-fi" value="'+v(s.cliente)+'"></label>'+
+        '<label class="vp2-lb">Sale<input id="vpe-fecha_salida" type="date" class="vp2-fi" value="'+v(s.fecha_salida)+'"></label>'+
+        '<label class="vp2-lb">Regresa<input id="vpe-fecha_regreso" type="date" class="vp2-fi" value="'+v(s.fecha_regreso)+'"></label>'+
+        emp('empresa_entrega','Empresa que entrega')+emp('empresa_cobra','Empresa a la que se cobra')+
+      '</div>'+
+      '<label class="vp2-lb">Comentario de Pagos<textarea id="vpe-comentario_pagos" class="vp2-fi" rows="2">'+v(s.comentario_pagos)+'</textarea></label>'+
+      '<label class="vp2-lb">¿Por qué se corrige? <span style="color:#dc2626">*</span><input id="vpe-motivo" class="vp2-fi" placeholder="Ej. se capturó $2,000 pero se depositaron $1,500"></label>'+
+      '<div id="vpe-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="vp2-btn" onclick="window.__vp2Detalle('+s.id+',\'pagos\')">Cancelar</button><button id="vpe-btn" class="vp2-btn pri" onclick="window.__vp2GuardarEdicion('+s.id+')">Guardar cambios</button></div>');
+  }catch(e){ modal('<div style="padding:20px;color:#b91c1c">No se pudo cargar: '+esc(e.message||e)+'</div><div style="text-align:right"><button class="vp2-btn" onclick="window.__vp2Cerrar()">Cerrar</button></div>',true); } };
+window.__vpeSuma=function(){ let t=0; DESGLOSE.forEach(d=>{ t+=Number((document.getElementById('vpe-'+d[0])||{}).value)||0; }); const el=document.getElementById('vpe-total'); if(el) el.value=Math.round(t*100)/100; };
+window.__vp2GuardarEdicion=async function(id){ const s=EDV; if(!s||s.id!==id) return; const err=document.getElementById('vpe-err'), btn=document.getElementById('vpe-btn');
+  const val=k=>{ const el=document.getElementById('vpe-'+k); return el?el.value.trim():''; };
+  const motivo=val('motivo'); if(!motivo){ err.textContent='Escribe por qué se corrige.'; return; }
+  const cambios={}, lista=[];
+  const NOM={estatus:'Estado',monto_entregado:'Monto depositado',forma_entrega:'Forma de entrega',referencia_pago:'Referencia',fecha_limite_comprobacion:'Fecha límite',total:'Costo total',deposito:'A depositar',cobro_cliente:'Cobro al cliente',destino:'Destino',cliente:'Cliente',fecha_salida:'Sale',fecha_regreso:'Regresa',empresa_entrega:'Empresa que entrega',empresa_cobra:'Empresa a la que se cobra',comentario_pagos:'Comentario',alimentos:'Alimentos',hospedaje:'Hospedaje',gasolina:'Gasolina',casetas:'Casetas',otros:'Otros'};
+  const esNum=k=>['monto_entregado','total','deposito','cobro_cliente','alimentos','hospedaje','gasolina','casetas','otros'].includes(k);
+  Object.keys(NOM).forEach(k=>{ let nv=val(k); nv=nv===''?null:(esNum(k)?Number(nv):nv); let ov=s[k]; if(k==='fecha_limite_comprobacion'&&ov) ov=String(ov).slice(0,10);
+    const igual=esNum(k)?(ov==null&&nv==null)||(ov!=null&&nv!=null&&Math.abs(Number(ov)-nv)<0.005):String(ov==null?'':ov)===String(nv==null?'':nv);
+    if(!igual){ cambios[k]=nv; lista.push(NOM[k]+': '+(esNum(k)?(ov==null?'—':din(ov)):(ov||'—'))+' → '+(esNum(k)?(nv==null?'—':din(nv)):(nv||'—'))); } });
+  const sel=document.getElementById('vpe-resp'), rEmail=sel.value||null, rNom=sel.selectedOptions[0]&&sel.value?sel.selectedOptions[0].getAttribute('data-n'):null;
+  if(rNom&&(rEmail!==(s.responsable_email||null)||rNom!==s.responsable_nombre)){ cambios.responsable_email=rEmail; cambios.responsable_nombre=rNom; lista.push('Quién comprueba: '+(s.responsable_nombre||'—')+' → '+rNom); }
+  const fdep=val('fdep'), fdepOld=s.entregado_en?String(s.entregado_en).slice(0,10):'';
+  if(fdep!==fdepOld){ cambios.entregado_en=fdep?fdep+'T12:00:00-06:00':null; lista.push('Fecha del depósito: '+(fdepOld||'—')+' → '+(fdep||'—')); }
+  const f=document.getElementById('vpe-comp').files[0];
+  if(f&&f.size>6*1024*1024){ err.textContent='La evidencia pesa más de 6 MB; sube una foto o PDF más ligero.'; return; }
+  if(f) lista.push('Evidencia del depósito reemplazada');
+  const est=cambios.estatus||s.estatus;
+  if(est==='Pagada'&&s.estatus!=='Pagada'){ const m=cambios.monto_entregado!=null?cambios.monto_entregado:s.monto_entregado; if(!(Number(m)>0)){ err.textContent='Para marcarlo como pagado escribe el monto depositado.'; return; } if(!cambios.entregado_en&&!s.entregado_en) cambios.entregado_en=new Date().toISOString(); if(!s.entregado_por) cambios.entregado_por=yo().correo; if(!s.pagado_por_nombre) cambios.pagado_por_nombre=yo().nombre; }
+  if(est==='Pendiente'&&s.estatus==='Pagada'){ if(!confirm('Vas a regresar este viático a "Por depositar". Se borra el registro del depósito (monto, fecha y evidencia) y sale de Contabilidad. ¿Continuar?')) return;
+    Object.assign(cambios,{monto_entregado:null,entregado_en:null,entregado_por:null,pagado_por_nombre:null,referencia_pago:null,comprobante_pago:null,comprobante_pago_nombre:null}); }
+  if(!lista.length){ err.textContent='No cambiaste nada.'; return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ if(f){ cambios.comprobante_pago=await new Promise((ok,mal)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=()=>mal(new Error('No se pudo leer el archivo')); r.readAsDataURL(f); }); cambios.comprobante_pago_nombre=f.name; }
+    const u=yo(), ahora=new Date().toISOString(); const tar=Object.assign({},s.tarifas||{}); tar.correcciones=(tar.correcciones||[]).concat([{en:ahora,por:u.nombre||u.correo,correo:u.correo,motivo,cambios:lista}]);
+    Object.assign(cambios,{tarifas:tar,actualizado_en:ahora,actualizado_por:u.correo});
+    const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').update(cambios).eq('id',id).select('id'); if(r.error) throw r.error; if(!(r.data||[]).length) throw new Error('No se guardó (sin permiso en la base de datos o el viático ya no existe).');
+    const resumen='Viático '+s.folio+' corregido por '+(u.nombre||u.correo)+': '+lista.join('; ')+'. Motivo: '+motivo;
+    if(est==='Pagada'||s.estatus==='Pagada') (await destinatarios('viaticos_pagados',['contabilidad@tecnocontrol.com.mx'])).forEach(p=>avisoPortal(p,'viaticos_corregido',resumen,{viaticoId:s.id,modulo:'Contabilidad'}));
+    const tec=cambios.responsable_email||s.responsable_email; if(tec&&('monto_entregado' in cambios)&&cambios.monto_entregado!=null){ const m='Se corrigió tu viático '+s.folio+': el depósito queda en '+din(cambios.monto_entregado)+'. Comprueba con ese monto.'; avisoApp(tec,'viat_tec_corregido',m,s); avisoPortal(tec,'viaticos_corregido',m,{viaticoId:s.id}); }
+    toast('Cambios guardados.'); await cargarPagos(); window.__vp2Detalle(id,'pagos');
+  }catch(e){ err.textContent='No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar cambios'; } };
+window.__vp2ExtraEditar=function(id){ const x=P.extra.find(v=>v.id===id); if(!x) return; const v=t=>t==null?'':esc(t);
+  modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Editar viático extra</div><div style="font-size:12.5px;color:#6b7280">'+esc(x.viatico_folio||'')+' · '+esc(x.tecnico_nombre||'')+'</div></div><button class="vp2-ib" title="Cerrar" onclick="window.__vp2Cerrar()">'+IC.cerrar+'</button></div>'+
+    '<div style="height:12px"></div>'+
+    '<label class="vp2-lb">Estado<select id="vpx-estatus" class="vp2-fi">'+['Pendiente','Autorizada','Pagada','Rechazada'].map(e=>'<option '+(x.estatus===e?'selected':'')+'>'+e+'</option>').join('')+(['Pendiente','Autorizada','Pagada','Rechazada'].includes(x.estatus)?'':'<option selected>'+esc(x.estatus)+'</option>')+'</select></label>'+
+    '<label class="vp2-lb">Monto<input id="vpx-monto" type="number" min="0" step="0.01" class="vp2-fi" value="'+v(x.monto)+'"></label>'+
+    '<label class="vp2-lb">Concepto<input id="vpx-concepto" class="vp2-fi" value="'+v(x.concepto)+'"></label>'+
+    '<label class="vp2-lb">Motivo<input id="vpx-motivo" class="vp2-fi" value="'+v(x.motivo)+'"></label>'+
+    '<label class="vp2-lb">Referencia del depósito<input id="vpx-ref" class="vp2-fi" value="'+v(x.referencia_pago)+'"></label>'+
+    '<div id="vpx-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="vp2-btn" onclick="window.__vp2Cerrar()">Cancelar</button><button id="vpx-btn" class="vp2-btn pri" onclick="window.__vp2ExtraGuardar('+x.id+')">Guardar cambios</button></div>',true); };
+window.__vp2ExtraGuardar=async function(id){ const x=P.extra.find(v=>v.id===id); if(!x) return; const err=document.getElementById('vpx-err'), btn=document.getElementById('vpx-btn'); const g=k=>document.getElementById('vpx-'+k).value.trim();
+  const monto=Number(g('monto')); if(!(monto>0)){ err.textContent='Escribe el monto.'; return; }
+  const cambios={estatus:g('estatus'),monto,concepto:g('concepto')||null,motivo:g('motivo')||null,referencia_pago:g('ref')||null}; const u=yo();
+  if(cambios.estatus==='Pagada'&&x.estatus!=='Pagada'){ cambios.pagado_por=u.nombre; cambios.pagado_en=new Date().toISOString(); }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ const c=await sb(); const r=await c.from('ops_viaticos_extra').update(cambios).eq('id',id).select('id'); if(r.error) throw r.error; if(!(r.data||[]).length) throw new Error('No se guardó (sin permiso en la base de datos).');
+    Object.assign(x,cambios); modal(''); pintarPagos(); toast('Viático extra corregido.'); }catch(e){ err.textContent='No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar cambios'; } };
 
 // ═════════════ CONTABILIDAD ═════════════
 const C={ secc:'inicio', concil:null, cuentas:null, banco:null, urg:null, lista:[], filtro:'pend', q:'', tab:'lista', mes:hoy().slice(0,7), dia:hoy(), vista:'mes', ocultos:{} };
