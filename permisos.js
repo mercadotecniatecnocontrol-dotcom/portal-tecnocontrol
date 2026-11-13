@@ -221,7 +221,9 @@ async function avisarApp(para, tipo, mensaje, s) {
   try { const c = await sb(); await c.from('ops_notificaciones').insert({ id: idNotif(), tipo: tipo, para: String(para).toLowerCase(), mensaje: mensaje, folio: s.folio || null, solicitud_id: String(s.id), leida: false, fecha: new Date().toISOString() }); } catch (e) { console.warn('[permisos] aviso app', e); }
 }
 function correosAvisoNueva(s) {
-  const ops = s && /OPERACION/.test(norm(s.departamento)) ? (cfg.jefesOperaciones || []) : [];
+  // 13-nov-2026: si la solicitud llega sin departamento (p. ej. desde la app de técnicos) también avisa a
+  // los jefes de Operaciones; antes solo les llegaba si decía «Operaciones» y esas se quedaban sin aviso.
+  const ops = s && (!norm(s.departamento) || /OPERACION/.test(norm(s.departamento))) ? (cfg.jefesOperaciones || []) : [];
   return [...new Set([].concat(cfg.correosRH || [], cfg.aprobadores || [], ops).map(x => String(x).toLowerCase().trim()).filter(Boolean))];
 }
 
@@ -468,6 +470,9 @@ function pEsRH() { return (cfg.correosRH || []).map(x => String(x).toLowerCase()
 // Jefe = quien preautoriza: admins del módulo que lo abre + "Pueden aprobar" de Reglas y avisos (sin contar a RH).
 function pEsJefe() { return !pEsRH() && (!!P.opts.puedeAprobar || (cfg.aprobadores || []).map(x => String(x).toLowerCase()).includes(pYo())); }
 function pPuedeAprobar() { return pEsRH() || pEsJefe() || !!P.opts.puedeAprobar; }
+// 13-nov-2026: nadie autoriza su propio permiso (antes un admin que registraba el suyo lo dejaba preautorizado).
+// Lo propio sigue el flujo normal: Pendiente → jefe (Paloma / Gerencia de Operaciones) preautoriza → RH acepta.
+function pEsPropia(s) { const y = pYo(); return !!y && String((s && s.colaborador_email) || '').toLowerCase().trim() === y; }
 // Botones según el paso: Pendiente → el jefe preautoriza; Preautorizada → RH acepta.
 function pBtnRevisar(s, grande) {
   if (!pEsRH() || revisionRH(s) || s.estatus === 'Cancelada') return '';
@@ -479,6 +484,7 @@ function pAccionesHTML(s, grande) {
   const btn = (txt, est, c) => '<button onclick="tcPermisos._pResolver(' + s.id + ',\'' + est + '\'' + (grande ? ',true' : '') + ')" style="background:' + c + ';border:none;color:#fff;' + st + ';cursor:pointer;font-weight:700">' + txt + '</button>';
   const rech = '<button onclick="tcPermisos._pResolver(' + s.id + ',\'Rechazada\'' + (grande ? ',true' : '') + ')" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;' + st + ';cursor:pointer;font-weight:700">Rechazar</button>';
   const nota = t => '<span style="font-size:11.5px;color:#64748b;align-self:center">' + t + '</span>';
+  if (pEsPropia(s) && (s.estatus === 'Pendiente' || s.estatus === 'Preautorizada')) return nota('Es tu solicitud: la autoriza tu jefe y luego RH');
   if (s.estatus === 'Pendiente') {
     if (pEsJefe()) return btn('Preautorizar', 'Preautorizada', '#1d4ed8') + rech;
     if (pEsRH()) return nota('Esperando que un jefe la preautorice') + btn('Aceptar de todos modos', 'Aprobada', '#64748b') + rech;
@@ -600,6 +606,7 @@ async function pRevisado(id) {
 }
 async function pResolver(id, estatus, desdeModal) {
   const s = P.lista.find(x => x.id === id); if (!s) return;
+  if (pEsPropia(s) && estatus !== 'Cancelada') { alert('No puedes autorizar ni rechazar tu propia solicitud. La revisa tu jefe y después RH.'); return; }
   let com = '';
   const el = document.getElementById('tcp-com');
   if (desdeModal && el) com = el.value.trim();
@@ -620,7 +627,7 @@ async function pNuevaPortal() {
   window.__tcpTecs = tecs;
   const inp = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px';
   pModal('<div style="font-family:\'Space Grotesk\',sans-serif;font-weight:700;font-size:16px;color:#1D2E73;margin-bottom:4px">Registrar solicitud por alguien</div>' +
-    (pEsJefe() ? '<div style="font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:7px 10px;margin-bottom:8px">Como jefe, lo que registres aquí queda <b>preautorizado</b>; RH solo lo acepta.</div>' : '') +
+    (pEsJefe() ? '<div style="font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:8px;padding:7px 10px;margin-bottom:8px">Como jefe, lo que registres aquí queda <b>preautorizado</b>; RH solo lo acepta. <b>Si es para ti</b>, queda Pendiente hasta que tu jefe lo preautorice.</div>' : '') +
     '<div style="font-size:12px;color:#64748b;margin-bottom:12px">Pasa por las mismas reglas que la app. Aparecen todos los colaboradores activos; quien no tiene correo no recibe el aviso en su celular.</div>' +
     '<label style="font-size:11.5px;font-weight:600;color:#475569">Colaborador<select id="tcp-n-tec" style="' + inp + '">' + tecs.map((t, i) => '<option value="' + i + '">' + esc(t.nombre) + ' · ' + esc(t.departamento || t.puesto || '') + (t.correo ? '' : ' (sin correo)') + '</option>').join('') + '</select></label>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px"><label style="font-size:11.5px;font-weight:600;color:#475569">Tipo<select id="tcp-n-tipo" style="' + inp + '">' + Object.keys(TIPOS).map(k => '<option value="' + k + '">' + TIPOS[k].t + '</option>').join('') + '</select></label>' +
@@ -657,7 +664,7 @@ async function pGuardarNueva() {
     if (r.propias.length) throw new Error('Ya tiene una solicitud en esas fechas (' + r.propias.map(o => o.folio).join(', ') + ').');
     // 31-oct-2026: ya no obliga a marcar urgente; la disponibilidad se muestra en la solicitud.
     s.urgente = !!(s.urgente && s.urgente_motivo);
-    await crearSolicitud(s, r, pEsJefe() ? (P.opts.usuario || {}) : null);
+    await crearSolicitud(s, r, pEsJefe() && !pEsPropia(s) ? (P.opts.usuario || {}) : null);
     pModal(''); await pCargar(); pRender();
   } catch (e) { err.textContent = e.message || String(e); btn.disabled = false; btn.textContent = 'Revisar y registrar'; }
 }

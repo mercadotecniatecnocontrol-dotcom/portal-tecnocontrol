@@ -318,6 +318,49 @@
     };
     if ('speechSynthesis' in window) { try { window.speechSynthesis.getVoices(); } catch (e) {} }
   })();
+  // ── Alerta de permisos (13-nov-2026): ventana roja y voz a quien debe autorizar ──
+  function alertaPermiso(o) {
+    var yo = String((window.auth && window.auth.currentUser && window.auth.currentUser.email) || '').toLowerCase();
+    if (!yo || String(o.para || '').toLowerCase() !== yo) return;
+    var urg = o.tipo === 'permiso_urgente', rh = o.tipo === 'permiso_por_aceptar';
+    var titulo = urg ? 'PERMISO URGENTE POR AUTORIZAR' : rh ? 'Permiso por aceptar (RH)' : 'Nueva solicitud de permiso por autorizar';
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var cont = document.getElementById('tc-alerta-permisos');
+    if (!cont) {
+      cont = document.createElement('div'); cont.id = 'tc-alerta-permisos';
+      cont.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(127,29,29,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+      cont.innerHTML = '<div style="background:#fff;border:3px solid #dc2626;border-radius:16px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;font-family:inherit">' +
+        '<div style="background:#dc2626;color:#fff;padding:14px 18px;font-weight:800;font-size:16px" id="tc-ap-tit"></div>' +
+        '<div id="tc-ap-lista" style="padding:14px 18px;max-height:50vh;overflow:auto;font-size:14px;color:#1e293b"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;padding:0 18px 16px">' +
+        '<button id="tc-ap-cerrar" style="background:#f1f5f9;border:none;color:#475569;padding:10px 16px;border-radius:9px;font-weight:700;cursor:pointer">Entendido</button>' +
+        '<button id="tc-ap-ver" style="background:#dc2626;border:none;color:#fff;padding:10px 16px;border-radius:9px;font-weight:700;cursor:pointer">Ver solicitudes</button></div></div>';
+      document.body.appendChild(cont);
+      document.getElementById('tc-ap-cerrar').onclick = function () { cont.remove(); };
+      document.getElementById('tc-ap-ver').onclick = function () {
+        var m = cont.getAttribute('data-modulo') || 'Operaciones'; cont.remove();
+        if (typeof window.verArea === 'function') { try { window.verArea(m); } catch (e) {} }
+      };
+    }
+    cont.setAttribute('data-modulo', o.modulo || 'Operaciones');
+    document.getElementById('tc-ap-tit').textContent = titulo;
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:9px 0;border-bottom:1px solid #fee2e2';
+    item.innerHTML = esc(o.mensaje || 'Hay una solicitud de permiso pendiente.');
+    document.getElementById('tc-ap-lista').prepend(item);
+    try {
+      if (!('speechSynthesis' in window)) return;
+      var voces = window.speechSynthesis.getVoices().filter(function (v) { return /^es([-_]|$)/i.test(v.lang); });
+      var pts = function (v) { return (/natural|neural|online/i.test(v.name) ? 100 : 0) + (/google/i.test(v.name) ? 40 : 0) + (/es[-_]mx/i.test(v.lang) ? 10 : 0); };
+      var v = voces.sort(function (a, b) { return pts(b) - pts(a); })[0];
+      var nombre = String(o.mensaje || '').split(/[:·]/)[0].replace(/^URGENTE\s*/i, '').trim();
+      var u = new SpeechSynthesisUtterance((urg ? 'Atención. Permiso urgente por autorizar' : rh ? 'Hay un permiso por aceptar' : 'Nueva solicitud de permiso por autorizar') + (nombre ? ', de ' + nombre : '') + '.');
+      if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'es-MX';
+      u.rate = 1; u.volume = 1;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  window.tcAlertaPermiso = alertaPermiso;
   window.tcSbNotifSuscribir = function (cb) {
     var vistos = {};
     return sb().then(function (c) {
@@ -332,6 +375,8 @@
             var yo = String((window.auth && window.auth.currentUser && window.auth.currentUser.email) || '').toLowerCase();
             if (o.voz && yo && String(o.para || '').toLowerCase() === yo && window.tcHablar) window.tcHablar(typeof o.voz === 'string' ? o.voz : o.mensaje);
           } catch (e) {}
+          // 13-nov-2026: permiso nuevo por autorizar → ventana roja + voz (aunque la voz general siga apagada).
+          try { if (/^permiso_(solicitud|urgente|por_aceptar)$/.test(o.tipo || '')) alertaPermiso(o); } catch (e) {}
         })
         .subscribe();
     });
