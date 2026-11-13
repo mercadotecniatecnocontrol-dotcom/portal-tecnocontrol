@@ -7318,12 +7318,12 @@
             if (tipo !== "tecnica") return `<tr><td>${dTxt}</td><td>Guardia administrativa</td><td style="text-align:right">${opsViaDinero(x.monto)}</td></tr>`;
             const lin = [];
             if (x.base) {
-                const inc = x.folios.filter(y => y.incluido), otros = x.folios.filter(y => !y.incluido);
+                // 13-nov-2026: en el vale solo van los folios que sí le corresponden a la guardia.
+                const inc = x.folios.filter(y => y.incluido);
                 lin.push(`<tr><td>${dTxt}</td><td><b>${opsEsc(x.baseTxt)}</b> (día completo)${inc.length ? "<br>" + inc.map(y => "Folio " + opsEsc(y.f.folioClienteId || y.f.folioOS || "S/F") + " · " + opsEsc(y.f.estacion || "")).join("<br>") : ""}</td><td style="text-align:right">${opsViaDinero(x.base)}</td></tr>`);
-                otros.forEach(y => lin.push(`<tr style="color:#888"><td>${dTxt}</td><td>Folio ${opsEsc(y.f.folioClienteId || y.f.folioOS || "S/F")} · ${opsEsc(y.f.estacion || "")} <i>(${opsEsc(y.motivo)})</i></td><td style="text-align:right">$0.00</td></tr>`));
                 return lin.join("");
             }
-            x.folios.forEach(y => lin.push(`<tr${y.ok ? "" : ' style="color:#888"'}><td>${dTxt}</td><td>Folio ${opsEsc(y.f.folioClienteId || y.f.folioOS || "S/F")} · ${opsEsc(y.f.estacion || "")}${y.ok ? "" : ` <i>(no se paga: ${opsEsc(y.motivo)})</i>`}</td><td style="text-align:right">${y.ok ? opsViaDinero(T.folio) : "$0.00"}</td></tr>`));
+            x.folios.filter(y => y.ok).forEach(y => lin.push(`<tr${y.ok ? "" : ' style="color:#888"'}><td>${dTxt}</td><td>Folio ${opsEsc(y.f.folioClienteId || y.f.folioOS || "S/F")} · ${opsEsc(y.f.estacion || "")}${y.ok ? "" : ` <i>(no se paga: ${opsEsc(y.motivo)})</i>`}</td><td style="text-align:right">${y.ok ? opsViaDinero(T.folio) : "$0.00"}</td></tr>`));
             return lin.join("");
         };
         const nFol = dias.reduce((a, d) => a + d.folios.filter(y => y.ok).length, 0), fin = dias.reduce((a, d) => a + (d.base || 0), 0);
