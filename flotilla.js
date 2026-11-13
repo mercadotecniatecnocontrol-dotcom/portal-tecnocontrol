@@ -928,6 +928,12 @@ function buildHTML(){
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17h7M17 14v7"/></svg>
       </button>
     </div>
+    <div style="position:relative;display:none" id="fl-tb-dups-wrap">
+      <button class="fl-tab-btn" id="fl-tb-dups" onclick="admLimpiarEcosDuplicados()" title="Un vehículo = una persona (limpiar ECOs duplicados)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      </button>
+      <span id="fl-tb-dups-badge" style="display:none;position:absolute;top:2px;right:6px;background:#DC2626;color:#fff;border-radius:10px;font-size:9px;font-weight:800;padding:1px 5px;pointer-events:none"></span>
+    </div>
     <div style="position:relative">
       <button class="fl-tab-btn" id="fl-tb-kmanalisis" onclick="flAbrirAnalisisKm()" title="Análisis de kilometraje">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>
@@ -10729,66 +10735,114 @@ window.flExcelVehiculos=function(){
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// LIMPIEZA "UN ECO = UNA PERSONA" (nov-2026)
-// Busca los ECOs que aparecen vinculados en la app a más de una persona,
-// sugiere quién lo trae (el movimiento más reciente) y, al aplicar, se lo
-// quita a los demás, cierra sus registros de uso y deja el responsable del
-// vehículo en esa persona. El admin puede cambiar la sugerencia antes.
+// UN ECO = UNA PERSONA (nov-2026)
+// 1) flDetectarEcosDuplicados(): lista los ECOs vinculados en la app a más
+//    de una persona y ordena a los candidatos por movimiento más reciente.
+// 2) flAplicarEcoUnico(): deja el ECO con UNA persona. Relee la base en cada
+//    ECO (así no se pisan cambios cuando una persona tiene varios ECOs).
+// 3) Guardián automático: cuando un admin de Flotilla tiene el portal abierto,
+//    revisa al entrar y cada 3 min; si encuentra duplicados los corrige solo
+//    (gana el movimiento más reciente) y avisa.
+// 4) Botón visible en la barra de íconos de Flotilla (escudo) con contador.
 // ═══════════════════════════════════════════════════════════════════════
+function flClaveUsuario(u,id){return String(u&&u.email||'').toLowerCase().trim()||('doc:'+id);}
+function flEcosDeUsuario(u){return new Set([...(Array.isArray(u&&u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u&&u.ecoVinculado?[String(u.ecoVinculado)]:[])].filter(Boolean));}
+
+async function flDetectarEcosDuplicados(){
+  if(!fs){fs=await flImportFs();}
+  const [snapU,snapV,snapUs]=await Promise.all([
+    fs.getDocs(fs.collection(db,'fl_usuarios')),
+    fs.getDocs(fs.collection(db,C.VEHS)),
+    fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('activo','==',true))),
+  ]);
+  const vehPorEco={};snapV.docs.forEach(d=>{const v=d.data()||{};if(v.eco!=null)vehPorEco[String(v.eco)]={id:d.id,...v};});
+  const usosAb=snapUs.docs.map(d=>d.data()||{});
+  const porEco={};
+  snapU.docs.forEach(d=>{
+    const u=d.data()||{};const clave=flClaveUsuario(u,d.id);
+    flEcosDeUsuario(u).forEach(e=>{
+      const p=(porEco[e]=porEco[e]||{});
+      if(!p[clave])p[clave]={clave,email:u.email||'',nombre:u.nombre||u.email||'(sin nombre)',docs:[]};
+      p[clave].docs.push(u);
+    });
+  });
+  const casos=[];
+  Object.entries(porEco).forEach(([eco,mapa])=>{
+    const personas=Object.values(mapa);
+    if(personas.length<2)return;
+    const veh=vehPorEco[eco]||null;
+    const resp=String(veh&&veh.responsable||'').toLowerCase().trim();
+    personas.forEach(p=>{
+      const f=[];
+      usosAb.filter(x=>String(x.eco)===eco&&String(x.email||'').toLowerCase().trim()===p.clave).forEach(x=>f.push(x.vinculadoEn));
+      p.docs.forEach(u=>{if(String(u.ecoVinculado||'')===eco&&u.vinculadoEn)f.push(u.vinculadoEn);});
+      if(resp&&resp===p.clave&&veh&&veh.actualizadoEn)f.push(veh.actualizadoEn);
+      p.ultima=f.filter(Boolean).sort().pop()||'';
+      p.esResp=!!resp&&resp===p.clave;
+      p.tieneCorreo=!!p.email;
+    });
+    personas.sort((a,b)=>(b.ultima||'').localeCompare(a.ultima||'')||(b.esResp-a.esResp)||(b.tieneCorreo-a.tieneCorreo));
+    casos.push({eco,veh,personas});
+  });
+  casos.sort((a,b)=>Number(a.eco)-Number(b.eco));
+  return casos;
+}
+
+async function flAplicarEcoUnico(eco,ganaClave,motivo){
+  if(!fs){fs=await flImportFs();}
+  const ecoStr=String(eco);
+  const ahora=new Date().toISOString();
+  const porEmail=window.auth&&window.auth.currentUser&&window.auth.currentUser.email||'';
+  const ops=[];let gana=null;
+  // Lectura FRESCA de usuarios en cada ECO
+  const snapU=await fs.getDocs(fs.collection(db,'fl_usuarios'));
+  snapU.docs.forEach(d=>{
+    const u=d.data()||{};
+    const arr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
+    const simple=String(u.ecoVinculado||'')===ecoStr;
+    if(!simple&&!arr.includes(ecoStr))return;
+    if(flClaveUsuario(u,d.id)===ganaClave){if(!gana)gana={email:u.email||'',nombre:u.nombre||u.email||''};return;}
+    const nuevos=arr.filter(e=>e!==ecoStr);
+    ops.push(fs.updateDoc(d.ref,{ecoVinculado:simple?(nuevos[0]||null):(u.ecoVinculado||null),ecosVinculados:nuevos,desvinculadoEn:ahora,desvinculadoPor:porEmail,motivoDesvinculacion:motivo}));
+  });
+  const ganaEmail=gana&&gana.email?String(gana.email).toLowerCase().trim():'';
+  try{
+    const q=await fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('eco','==',ecoStr),fs.where('activo','==',true)));
+    let ganaTieneUso=false;
+    q.docs.forEach(d=>{
+      const x=d.data()||{};
+      if(ganaEmail&&String(x.email||'').toLowerCase().trim()===ganaEmail){ganaTieneUso=true;return;}
+      ops.push(fs.updateDoc(d.ref,{desvinculadoEn:ahora,activo:false,motivo:motivo,desvinculadoPor:porEmail}));
+    });
+    if(!ganaTieneUso&&ganaEmail)ops.push(fs.addDoc(fs.collection(db,C.USOS),{eco:ecoStr,email:gana.email,nombre:gana.nombre||gana.email,vinculadoEn:ahora,desvinculadoEn:null,activo:true,motivo:'Confirmado: ECO con una sola persona',asignadoPor:porEmail}));
+  }catch(e){console.warn('[FL] ECO único: usos',e);}
+  if(ganaEmail){
+    try{
+      const sv=await fs.getDocs(fs.query(fs.collection(db,C.VEHS),fs.where('eco','==',ecoStr)));
+      sv.docs.forEach(d=>{const v=d.data()||{};if(String(v.responsable||'').toLowerCase().trim()!==ganaEmail)ops.push(fs.updateDoc(d.ref,{responsable:gana.email,actualizadoEn:ahora,actualizadoPor:porEmail}));});
+    }catch(e){console.warn('[FL] ECO único: vehículo',e);}
+  }
+  const r=await Promise.allSettled(ops);
+  const fallas=r.filter(x=>x.status==='rejected');
+  if(fallas.length)console.warn('[FL] ECO único '+ecoStr+': '+fallas.length+' fallas',fallas);
+  return fallas.length;
+}
+
 window.admLimpiarEcosDuplicados=async function(){
   if(typeof hAdm==='function'&&!hAdm()){flToast('Solo administradores de Flotilla','err');return;}
-  if(!fs){fs=await flImportFs();}
   const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fecha=iso=>{if(!iso)return 'sin fecha';const d=new Date(iso);return isNaN(d)?'sin fecha':d.toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  document.getElementById('fl-dup-ov')?.remove();
   const ov=document.createElement('div');ov.className='fl-ov';ov.id='fl-dup-ov';
-  ov.innerHTML='<div class="fl-modal" style="max-width:820px;width:96%"><div class="fl-mh"><h3>ECOs con más de una persona</h3><button class="fl-mx" onclick="document.getElementById(\'fl-dup-ov\').remove()">✕</button></div><div id="fl-dup-body" style="padding:16px;font-size:13px">Revisando vinculaciones…</div></div>';
+  ov.innerHTML='<div class="fl-modal" style="max-width:820px;width:96%"><div class="fl-mh"><h3>Un vehículo = una persona</h3><button class="fl-mx" onclick="document.getElementById(\'fl-dup-ov\').remove()">✕</button></div><div id="fl-dup-body" style="padding:16px;font-size:13px">Revisando vinculaciones…</div></div>';
   document.body.appendChild(ov);
   const body=ov.querySelector('#fl-dup-body');
   let casos=[];
-  try{
-    const [snapU,snapV,snapUs]=await Promise.all([
-      fs.getDocs(fs.collection(db,'fl_usuarios')),
-      fs.getDocs(fs.collection(db,C.VEHS)),
-      fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('activo','==',true))),
-    ]);
-    const vehPorEco={};snapV.docs.forEach(d=>{const v=d.data()||{};if(v.eco!=null)vehPorEco[String(v.eco)]={id:d.id,...v};});
-    const usosAb=snapUs.docs.map(d=>({id:d.id,ref:d.ref,...d.data()}));
-    const porEco={};
-    snapU.docs.forEach(d=>{
-      const u=d.data()||{};
-      const ecos=new Set([...(Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[]),...(u.ecoVinculado?[String(u.ecoVinculado)]:[])]);
-      const clave=String(u.email||'').toLowerCase().trim()||('doc:'+d.id);
-      ecos.forEach(e=>{
-        if(!e)return;
-        const p=(porEco[e]=porEco[e]||{});
-        if(!p[clave])p[clave]={clave,email:u.email||'',nombre:u.nombre||u.email||'(sin nombre)',docs:[]};
-        p[clave].docs.push({ref:d.ref,u});
-      });
-    });
-    Object.entries(porEco).forEach(([eco,mapa])=>{
-      const personas=Object.values(mapa);
-      if(personas.length<2)return;
-      const veh=vehPorEco[eco]||null;
-      const resp=String(veh&&veh.responsable||'').toLowerCase().trim();
-      personas.forEach(p=>{
-        const fechas=[];
-        usosAb.filter(x=>String(x.eco)===eco&&String(x.email||'').toLowerCase().trim()===p.clave).forEach(x=>fechas.push(x.vinculadoEn));
-        p.docs.forEach(({u})=>{if(String(u.ecoVinculado||'')===eco&&u.vinculadoEn)fechas.push(u.vinculadoEn);});
-        if(resp&&resp===p.clave&&veh&&veh.actualizadoEn)fechas.push(veh.actualizadoEn);
-        p.ultima=fechas.filter(Boolean).sort().pop()||'';
-        p.esResp=!!resp&&resp===p.clave;
-      });
-      personas.sort((a,b)=>(b.ultima||'').localeCompare(a.ultima||'')||(b.esResp-a.esResp));
-      casos.push({eco,veh,personas});
-    });
-    casos.sort((a,b)=>Number(a.eco)-Number(b.eco));
-  }catch(e){
-    console.error('[FL] limpiar duplicados',e);
-    body.innerHTML='<div style="color:#B91C1C">No se pudo revisar: '+esc(e.message||e)+'</div>';return;
-  }
-  if(!casos.length){body.innerHTML='<div style="padding:10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;color:#166534;font-weight:700">✓ Todo en orden: cada ECO está vinculado a una sola persona.</div>';return;}
+  try{casos=await flDetectarEcosDuplicados();}
+  catch(e){console.error('[FL] limpiar duplicados',e);body.innerHTML='<div style="color:#B91C1C">No se pudo revisar: '+esc(e.message||e)+'</div>';return;}
+  if(!casos.length){body.innerHTML='<div style="padding:10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;color:#166534;font-weight:700">✓ Todo en orden: cada ECO está vinculado a una sola persona.</div><div style="margin-top:10px;font-size:12px;color:#64748B">El guardián automático revisa esto cada 3 minutos mientras un administrador de Flotilla tenga el portal abierto.</div>';flActualizarBotonDups();return;}
   body.innerHTML=
-    '<div style="margin-bottom:10px;color:#374151">Se encontraron <strong>'+casos.length+'</strong> ECO(s) vinculados a más de una persona. La sugerencia es quien tiene el <strong>movimiento más reciente</strong>; cámbiala si sabes que lo trae otra persona. Al aplicar, el ECO se le quita a los demás, se cierra su historial de uso y el responsable del vehículo queda en la persona elegida.</div>'+
+    '<div style="margin-bottom:10px;color:#374151">Se encontraron <strong>'+casos.length+'</strong> ECO(s) vinculados a más de una persona. La sugerencia es quien tiene el <strong>movimiento más reciente</strong>; cámbiala si sabes que lo trae otra persona.</div>'+
     '<div class="fl-tw" style="overflow:auto;max-height:55vh"><table class="fl-adm-table" style="width:100%"><thead><tr><th style="width:28px"></th><th>ECO</th><th>Lo tienen vinculado</th><th>¿Quién lo trae realmente?</th></tr></thead><tbody>'+
     casos.map((c,i)=>'<tr>'+
       '<td><input type="checkbox" class="fl-dup-chk" data-i="'+i+'" checked></td>'+
@@ -10803,48 +10857,66 @@ window.admLimpiarEcosDuplicados=async function(){
     const sel=[...body.querySelectorAll('.fl-dup-chk')].filter(x=>x.checked).map(x=>Number(x.dataset.i));
     if(!sel.length){flToast('No seleccionaste ningún ECO','err');return;}
     if(!confirm('Se dejará cada ECO seleccionado con una sola persona ('+sel.length+' ECO). ¿Continuar?'))return;
-    btn.disabled=true;btn.textContent='Aplicando…';
-    const ahora=new Date().toISOString();
-    const porEmail=window.auth&&window.auth.currentUser&&window.auth.currentUser.email||'';
+    btn.disabled=true;
     let okN=0,errN=0;
-    for(const i of sel){
+    for(const i of sel){ // uno por uno, con lectura fresca
       const c=casos[i];
       const k=Number(body.querySelector('.fl-dup-sel[data-i="'+i+'"]').value)||0;
       const gana=c.personas[k];
-      const motivo='Limpieza de duplicados: ECO '+c.eco+' queda con '+(gana.nombre||gana.email);
-      const ops=[];
-      c.personas.forEach(p=>{
-        if(p===gana)return;
-        p.docs.forEach(({ref,u})=>{
-          const arr=Array.isArray(u.ecosVinculados)?u.ecosVinculados.map(String):[];
-          const nuevos=arr.filter(e=>e!==String(c.eco));
-          const simple=String(u.ecoVinculado||'')===String(c.eco);
-          ops.push(fs.updateDoc(ref,{ecoVinculado:simple?(nuevos[0]||null):(u.ecoVinculado||null),ecosVinculados:nuevos,desvinculadoEn:ahora,desvinculadoPor:porEmail,motivoDesvinculacion:motivo}));
-        });
-      });
-      try{
-        const q=await fs.getDocs(fs.query(fs.collection(db,C.USOS),fs.where('eco','==',String(c.eco)),fs.where('activo','==',true)));
-        let ganaTieneUso=false;
-        q.docs.forEach(d=>{
-          const x=d.data()||{};
-          if(gana.email&&String(x.email||'').toLowerCase().trim()===gana.clave){ganaTieneUso=true;return;}
-          ops.push(fs.updateDoc(d.ref,{desvinculadoEn:ahora,activo:false,motivo:motivo,desvinculadoPor:porEmail}));
-        });
-        if(!ganaTieneUso&&gana.email)ops.push(fs.addDoc(fs.collection(db,C.USOS),{eco:String(c.eco),email:gana.email,nombre:gana.nombre||gana.email,vinculadoEn:ahora,desvinculadoEn:null,activo:true,motivo:'Confirmado en limpieza de duplicados',asignadoPor:porEmail}));
-      }catch(e){console.warn('[FL] limpiar duplicados: usos',e);}
-      if(c.veh&&c.veh.id&&!String(c.veh.id).startsWith('eco-')&&gana.email&&String(c.veh.responsable||'').toLowerCase().trim()!==gana.clave){
-        ops.push(fs.updateDoc(fs.doc(db,C.VEHS,c.veh.id),{responsable:gana.email,actualizadoEn:ahora,actualizadoPor:porEmail}));
-      }
-      const r=await Promise.allSettled(ops);
-      const fallas=r.filter(x=>x.status==='rejected');
-      if(fallas.length){errN++;console.warn('[FL] limpiar duplicados ECO '+c.eco,fallas);}else okN++;
+      btn.textContent='Aplicando ECO '+c.eco+'…';
+      const f=await flAplicarEcoUnico(c.eco,gana.clave,'Limpieza de duplicados: ECO '+c.eco+' queda con '+(gana.nombre||gana.email));
+      if(f)errN++;else okN++;
     }
     try{if(typeof ldUsos==='function')await ldUsos();}catch(_){}
-    flToast(errN?('Listo con detalles: '+okN+' ECO corregidos, '+errN+' con error (ver consola)'):('✓ '+okN+' ECO quedaron con una sola persona'),errN?'err':'ok');
+    let quedan=[];try{quedan=await flDetectarEcosDuplicados();}catch(_){}
+    flToast(quedan.length?('Quedan '+quedan.length+' ECO duplicados, vuelve a abrir el escudo'):('✓ '+okN+' ECO quedaron con una sola persona'+(errN?' ('+errN+' con avisos en consola)':'')),quedan.length?'err':'ok');
     document.getElementById('fl-dup-ov')?.remove();
+    flActualizarBotonDups();
   };
 };
 
+// ── Botón visible (escudo) en la barra de íconos: solo admins, con contador ──
+function flContarDupsLocal(){
+  let lista=[];try{lista=(typeof flFlUsuarios!=='undefined'&&Array.isArray(flFlUsuarios))?flFlUsuarios:[];}catch(_){}
+  const porEco={};
+  lista.forEach((u,i)=>{const k=flClaveUsuario(u,u.id||i);flEcosDeUsuario(u).forEach(e=>{(porEco[e]=porEco[e]||new Set()).add(k);});});
+  return Object.values(porEco).filter(s=>s.size>1).length;
+}
+function flActualizarBotonDups(){
+  const w=document.getElementById('fl-tb-dups-wrap');if(!w)return;
+  const esAdm=typeof hAdm==='function'&&hAdm();
+  w.style.display=esAdm?'':'none';
+  const b=document.getElementById('fl-tb-dups-badge');if(!b)return;
+  const n=esAdm?flContarDupsLocal():0;
+  b.textContent=n;b.style.display=n?'':'none';
+}
+window.flActualizarBotonDups=flActualizarBotonDups;
+
+// ── Guardián automático ──
+let _flGuardCorriendo=false;
+async function flGuardianEcoUnico(){
+  if(_flGuardCorriendo)return;
+  if(typeof hAdm!=='function'||!hAdm())return;
+  _flGuardCorriendo=true;
+  try{
+    const casos=await flDetectarEcosDuplicados();
+    for(const c of casos){
+      const g=c.personas[0];
+      await flAplicarEcoUnico(c.eco,g.clave,'Corrección automática: ECO '+c.eco+' queda con '+(g.nombre||g.email)+' (movimiento más reciente)');
+      console.info('[FL guardián] ECO '+c.eco+' → '+(g.email||g.nombre));
+    }
+    if(casos.length){
+      flToast('Guardián de Flotilla: se corrigieron '+casos.length+' ECO que tenían más de una persona (ECO '+casos.map(c=>c.eco).join(', ')+')','ok');
+      try{if(typeof ldUsos==='function')await ldUsos();}catch(_){}
+    }
+  }catch(e){console.warn('[FL guardián]',e);}
+  finally{_flGuardCorriendo=false;flActualizarBotonDups();}
+}
+window.flGuardianEcoUnico=flGuardianEcoUnico;
+setTimeout(flGuardianEcoUnico,8000);
+setInterval(flGuardianEcoUnico,3*60*1000);
+setInterval(flActualizarBotonDups,15000);
+setTimeout(flActualizarBotonDups,3000);
 
 console.log('[FLOTILLA v16] Taller único + presupuesto mes + flReconciliarTaller · '+CAT.length+' unidades');
 })();
