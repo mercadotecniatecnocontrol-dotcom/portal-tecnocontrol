@@ -3762,6 +3762,7 @@
                         <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="opsSubirFotoHerramienta('${id}', this)">
                     </label>
                     <span id="ops-ficha-foto-estado" style="font-size:10.5px;color:#94a3b8;display:block;text-align:center;margin-top:3px;"></span>` : ""}
+                    <div id="ops-ficha-galeria" style="margin-top:8px;">${opsGaleriaHTML(h, gestion || opsEsCustodioDe(h.almacenId), null)}</div>
                 </div>
 
                 <span style="background:${e.bg};color:${e.fg};font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;">${e.label}</span>
@@ -3808,6 +3809,61 @@
                 </div>
             </div>
         </div>`;
+        setTimeout(() => opsGaleriaPintar(id), 0);
+    };
+
+    // ═══ Varias fotos por pieza (14-nov-2026, a petición de Zaira) ═══
+    // La foto principal sigue siendo fotoBase64 (la de las tarjetas). Las demás se guardan en Supabase Storage
+    // (bucket ops-evidencias, carpeta herramientas/<id>/fotos) y la lista va en la pieza como fotosExtra[].
+    const opsGaleriaUrls = {};
+    function opsGaleriaHTML(h, puede, urls) {
+        const l = h.fotosExtra || [];
+        return `${l.length ? `<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:5px;">Más fotos (${l.length})</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${l.map((f, i) => { const u = urls && urls[f.ruta];
+                return `<div style="position:relative;width:64px;height:64px;border-radius:8px;border:1px solid #e2e8f0;background:#f1f5f9;overflow:hidden;">
+                    ${u ? `<img src="${u}" onclick="window.open('${u}','_blank')" title="Ver en grande" style="width:100%;height:100%;object-fit:cover;cursor:pointer;">` : ""}
+                    ${puede ? `<button onclick="opsGaleriaQuitar('${h.id}',${i})" title="Quitar esta foto" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(15,23,42,.7);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer;">×</button>` : ""}
+                </div>`; }).join("")}</div>` : ""}
+            ${puede ? `<label style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;font-size:11.5px;font-weight:600;color:#0369a1;background:#e0f2fe;padding:7px 10px;border-radius:8px;cursor:pointer;" title="Puedes elegir varias a la vez">
+                ${ICON.camera} Agregar más fotos
+                <input type="file" accept="image/*" multiple style="display:none;" onchange="opsGaleriaSubir('${h.id}', this)"></label>
+                <span id="ops-galeria-estado" style="font-size:10.5px;color:#94a3b8;display:block;text-align:center;margin-top:3px;"></span>` : ""}`;
+    }
+    async function opsGaleriaPintar(id) {
+        const el = document.getElementById("ops-ficha-galeria"); const h = cacheHerr.find(x => x.id === id); if (!el || !h) return;
+        const puede = opsPuedeGestionar() || opsEsCustodioDe(h.almacenId);
+        for (const f of (h.fotosExtra || [])) { if (!opsGaleriaUrls[f.ruta]) { try { opsGaleriaUrls[f.ruta] = await opsUrlFirmada(f.bucket || "ops-evidencias", f.ruta); } catch (e) {} } }
+        if (document.getElementById("ops-ficha-galeria") === el) el.innerHTML = opsGaleriaHTML(h, puede, opsGaleriaUrls);
+    }
+    async function opsSubirFotosExtra(id, files, avance) {
+        const nuevas = [];
+        for (let i = 0; i < files.length; i++) {
+            if (avance) avance(`Subiendo ${i + 1} de ${files.length}…`);
+            const dataUrl = await opsComprimirImagenBase64(files[i], 1400, 0.75);
+            const blob = await (await fetch(dataUrl)).blob();
+            const r = await opsSubirArchivo("herramientas/" + id + "/fotos", new File([blob], "foto_" + (i + 1) + ".jpg", { type: "image/jpeg" }));
+            nuevas.push({ ...r, por: opsNombreActual(), en: new Date().toISOString() });
+        }
+        const h = cacheHerr.find(x => x.id === id) || {};
+        const lista = (h.fotosExtra || []).concat(nuevas).slice(-40);
+        await opsSbHerrActualizar(id, { fotosExtra: lista });
+        return nuevas.length;
+    }
+    window.opsGaleriaSubir = async function (id, input) {
+        const files = [...(input.files || [])].filter(f => /^image\//.test(f.type || "image/"));
+        if (!files.length) return;
+        const est = document.getElementById("ops-galeria-estado");
+        try { const n = await opsSubirFotosExtra(id, files, t => { if (est) est.textContent = t; }); if (est) est.textContent = n + " foto(s) guardada(s)"; opsGaleriaPintar(id); }
+        catch (e) { if (est) est.textContent = ""; alert("No se pudieron subir las fotos: " + (e.message || e)); }
+    };
+    window.opsGaleriaQuitar = async function (id, i) {
+        const h = cacheHerr.find(x => x.id === id); if (!h || !(h.fotosExtra || [])[i]) return;
+        if (!confirm("¿Quitar esta foto de la pieza?")) return;
+        const f = h.fotosExtra[i];
+        try { await opsSbHerrActualizar(id, { fotosExtra: h.fotosExtra.filter((x, k) => k !== i) });
+            try { const sb = await opsSb(); await sb.storage.from(f.bucket || "ops-evidencias").remove([f.ruta]); } catch (e) {}
+            opsGaleriaPintar(id); }
+        catch (e) { alert("No se pudo quitar: " + (e.message || e)); }
     };
 
     window.opsSubirFotoHerramienta = async function (id, inputEl) {
@@ -3882,6 +3938,7 @@
         const h = id ? cacheHerr.find(x => x.id === id) : null;
         opsRequisicionSeleccionada = null;
         window.__opsFotoPiezaTmp = null; // se resetea cada vez que se abre el modal — no arrastra foto de una apertura anterior
+        window.__opsFotosExtraTmp = [];
         const tecnicosActivos = opsPersonalHerramienta();
         const wrap = document.getElementById("ops-modal-wrap");
         wrap.innerHTML = `
@@ -3893,7 +3950,8 @@
                 <div style="display:flex;align-items:center;gap:10px;margin:4px 0 12px;">
                     <img id="ops-in-foto-preview" src="${h?.fotoBase64 || ""}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;${h?.fotoBase64 ? "" : "display:none;"}">
                     <div style="flex:1;">
-                        <input type="file" accept="image/*" capture="environment" id="ops-in-foto" onchange="opsPreviewFotoPieza(this)" style="font-size:11.5px;">
+                        <input type="file" accept="image/*" multiple id="ops-in-foto" onchange="opsPreviewFotoPieza(this)" style="font-size:11.5px;">
+                        <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Puedes elegir varias: la primera queda como foto principal${h ? " (reemplaza la actual)" : ""} y las demás en «Más fotos».</div>
                         <div id="ops-in-foto-estado" style="font-size:10.5px;color:#94a3b8;margin-top:2px;"></div>
                     </div>
                 </div>
@@ -4041,6 +4099,7 @@
     window.opsPreviewFotoPieza = async function (inputEl) {
         const file = inputEl.files && inputEl.files[0];
         if (!file) return;
+        window.__opsFotosExtraTmp = [...inputEl.files].slice(1);
         const estadoEl = document.getElementById("ops-in-foto-estado");
         if (estadoEl) estadoEl.textContent = "Procesando...";
         try {
@@ -4048,7 +4107,7 @@
             window.__opsFotoPiezaTmp = dataUrl;
             const img = document.getElementById("ops-in-foto-preview");
             if (img) { img.src = dataUrl; img.style.display = ""; }
-            if (estadoEl) estadoEl.textContent = "Lista — se guarda junto con el resto del formulario.";
+            if (estadoEl) estadoEl.textContent = "Lista" + (window.__opsFotosExtraTmp.length ? " + " + window.__opsFotosExtraTmp.length + " foto(s) más" : "") + " — se guarda junto con el resto del formulario.";
         } catch (err) {
             console.error("[opsPreviewFotoPieza]", err);
             if (estadoEl) estadoEl.textContent = "Error al procesar la foto (revisa que no sea muy pesada).";
@@ -4118,6 +4177,7 @@
                 await opsSbHerrActualizar(id, datos);
                 if (cambioCodigo) { try { await opsRegistrarMovimiento({ herramientaId: id, tipo: "cambio_codigo", tecnicoAnteriorId: hPrev.tecnicoActualId || null, tecnicoNuevoId: hPrev.tecnicoActualId || null, ubicacionAnterior: hPrev.ubicacionActual || null, ubicacionNueva: hPrev.ubicacionActual || null, observaciones: `Cambio de código: ${codAntes} → ${datos.folio}` }); } catch (e) {} }
                 try { await subirDocsPieza(id, cacheHerr.find(x => x.id === id)); } catch (e) { alert("Los datos se guardaron, pero no se pudo subir el manual: " + (e.message || e)); }
+                if ((window.__opsFotosExtraTmp || []).length) { try { await opsSubirFotosExtra(id, window.__opsFotosExtraTmp); } catch (e) { alert("Los datos se guardaron, pero no se pudieron subir las fotos extra: " + (e.message || e)); } }
                 const idx = cacheHerr.findIndex(x => x.id === id);
                 if (idx >= 0) cacheHerr[idx] = { ...cacheHerr[idx], ...datos };
                 document.getElementById("ops-modal-wrap").innerHTML = "";
@@ -4156,6 +4216,7 @@
             try {
                 const folio = await opsCrearPiezaNueva(pieza);
                 try { await subirDocsPieza(folio, null); } catch (e) { alert("La pieza " + folio + " se guardó, pero no se pudieron subir sus documentos: " + (e.message || e) + ". Súbelos desde su ficha."); }
+                if ((window.__opsFotosExtraTmp || []).length) { try { await opsSubirFotosExtra(folio, window.__opsFotosExtraTmp); } catch (e) { alert("La pieza " + folio + " se guardó, pero no se pudieron subir las fotos extra: " + (e.message || e) + ". Súbelas desde su ficha."); } }
                 if (tecnicoDestinoId) {
                     const tdn2 = cacheTec.find(t => t.id === tecnicoDestinoId);
                     alert(`Pieza ${folio} guardada. Queda pendiente de que ${tdn2 ? tdn2.nombre : "el técnico"} la acepte y firme en Flotilla; después descarga la responsiva desde su ficha.`);
