@@ -286,7 +286,16 @@ function esRolLibre(){
 // no hardcodeada aquí, a petición de Glen (sep-2026). esRolLibre() se mantiene
 // como respaldo (administradores de Flotilla también pueden, por si acaso).
 let revisoresPermitidos=null; // null = todavía no se cargó
-async function revCargarPermisoRevision(){
+// 14-nov-2026 (Glen / Ricardo Torres): los ADMINISTRATIVOS DE OPERACIONES (rol Administrador o Coordinador
+// en la matriz de permisos de Operaciones, sin solo lectura) también pueden revisar y TRASPASAR herramienta
+// de cualquier almacén o técnico desde la app. Se lee de la misma matriz del portal (ops_config_permisos),
+// así que dar o quitar a alguien se hace allá, sin tocar código.
+let opsAdminsApp=null, _revProm=null;
+function revCargarPermisoRevision(){
+  if(!_revProm)_revProm=_revCargar().finally(()=>{_revProm=null;});
+  return _revProm;
+}
+async function _revCargar(){
   try{
     const snap=await opsDb().collection('ops_config_revision').doc('general').get();
     revisoresPermitidos=snap.exists?(snap.data().revisores||[]):[];
@@ -294,12 +303,24 @@ async function revCargarPermisoRevision(){
     console.warn('[REV] no se pudo cargar la config de revisión',e);
     revisoresPermitidos=[];
   }
-  if(vistaAct==='util')renderUtil();
+  try{
+    const s2=await opsDb().collection('ops_config_permisos').doc('general').get();
+    const d=s2.exists?(s2.data()||{}):{}, us=d.usuarios||{}, roles=d.roles||{};
+    opsAdminsApp=Object.keys(us).filter(c=>{const u=us[c]||{};return (u.rol==='administrador'||u.rol==='coordinador')&&!u.soloLectura&&!(roles[u.rol]||{}).soloLectura;}).map(c=>c.toLowerCase().trim());
+  }catch(e){
+    console.warn('[REV] no se pudo cargar la matriz de Operaciones',e);
+    opsAdminsApp=[];
+  }
+  if(vistaAct==='util'&&!herrState.activo)renderUtil();
+}
+function herrEsAdminOps(){
+  const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase().trim();
+  return !!email&&(opsAdminsApp||[]).includes(email);
 }
 function revPuedeRevisar(){
   if(revisoresPermitidos===null){ revCargarPermisoRevision(); return esRolLibre(); }
   const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
-  return esRolLibre()||revisoresPermitidos.some(r=>(r.email||'').toLowerCase()===email);
+  return esRolLibre()||herrEsAdminOps()||revisoresPermitidos.some(r=>(r.email||'').toLowerCase()===email);
 }
 
 // ── ECOS VINCULADOS (1 o varios vehículos/maquinaria por usuario) ──
@@ -4459,10 +4480,13 @@ function herrObtenerUbicacion(){
 window.herrAbrirTraspaso=async function(){
   herrState={activo:true,paso:1,miIdInterno:null,misPiezas:[],piezaSel:null,receptorNombre:'',receptorEmail:''};
   renderUtil();
+  if(revisoresPermitidos===null||opsAdminsApp===null){ try{ await revCargarPermisoRevision(); }catch(e){} }
   const email=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
   const nombreSesion=window.auth?.currentUser?.displayName||miPerfil?.nombre||'';
   const tec=await herrResolverIdInterno(email,nombreSesion);
   if(!tec){
+    // Un administrativo de Operaciones puede no tener ficha de técnico: entra directo a "De otro almacén".
+    if(revPuedeRevisar()){ herrState.origenModo='otro'; renderUtil(); herrCargarOrigenes(); return; }
     herrState.error='No encontramos tu ficha de técnico en Operaciones (correo no vinculado). Pide a Almacén que capture tu correo en tu ficha de Operaciones > Técnicos.';
     renderUtil();
     return;
@@ -4600,13 +4624,97 @@ window.revAbrirMiRevision=function(){
   renderUtil();
 };
 
+// 14-nov-2026: ADMINISTRATIVOS DE OPERACIONES — traspasar desde cualquier almacén o técnico.
+// Lista de orígenes = mismos almacenes que "Revisar herramienta" (generales, ubicaciones y técnicos).
+async function herrCargarOrigenes(){
+  if(herrState.origenes&&herrState.origenes.length){ renderUtil(); return; }
+  let lista=[];
+  try{
+    const snap=await opsDb().collection(C.OPS_ALMACENES).get();
+    lista=snap.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.activo!==false);
+  }catch(e){console.warn('[HERR] almacenes origen',e);}
+  if(!lista.some(a=>a.id==='general'))lista.push({id:'general',nombre:'Almacén General',tipo:'general'});
+  lista.sort((a,b)=>(a.tipo==='tecnico'?1:0)-(b.tipo==='tecnico'?1:0)||String(a.nombre||'').localeCompare(String(b.nombre||''),'es'));
+  herrState.origenes=lista;
+  if(herrState.paso===1)renderUtil();
+}
+window.herrOrigenModo=function(m){
+  herrState.origenModo=m; herrState.origenSel=null; herrState.piezasOrigen=[]; herrState.origenBusq='';
+  renderUtil();
+  if(m==='otro')herrCargarOrigenes();
+};
+window.herrOrigenBuscar=function(v){
+  herrState.origenBusq=v||'';
+  const t=(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+  document.querySelectorAll('#herr-origen-list [data-n]').forEach(el=>{ el.style.display=!t||el.getAttribute('data-n').includes(t)?'':'none'; });
+};
+window.herrElegirOrigen=async function(id){
+  const a=(herrState.origenes||[]).find(x=>x.id===id); if(!a)return;
+  herrState.origenSel={id:a.id,nombre:a.nombre||a.id,tipo:a.tipo||'',tecnicoId:a.tipo==='tecnico'?(a.tecnicoId||a.id):null};
+  herrState.piezasOrigen=null; renderUtil();
+  let piezas=[];
+  try{
+    let q;
+    if(a.tipo==='tecnico') q=opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',a.tecnicoId||a.id);
+    else q=opsDb().collection(C.OPS_HERR).where('tecnicoActualId','==',null);
+    const snap=await q.get();
+    piezas=snap.docs.map(d=>({id:d.id,...d.data()})).filter(h=>h.estado!=='baja'&&h.estado!=='prestamo'&&
+      (a.tipo==='tecnico'||(a.id==='general'||a.tipo==='general'?!h.almacenId||h.almacenId===a.id:h.almacenId===a.id)));
+  }catch(e){console.error('[HERR] piezas del origen',e);toast('No se pudieron cargar las piezas de ese almacén.','err');}
+  piezas.sort((x,y)=>String(x.descripcion||'').localeCompare(String(y.descripcion||''),'es'));
+  herrState.piezasOrigen=piezas;
+  renderUtil();
+};
+function herrDeOtro(){ return herrState.origenModo==='otro'&&!!herrState.origenSel; }
+function herrPiezasActuales(){ return herrDeOtro()?(herrState.piezasOrigen||[]):herrState.misPiezas; }
+
 // PASO 1 — elegir cuál de mis piezas traspaso
 function herrRenderPaso1(){
+  const esAdm=revPuedeRevisar();
+  const seg=(k,t)=>`<button onclick="herrOrigenModo('${k}')" style="flex:1;padding:10px;border:none;border-radius:9px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;${(herrState.origenModo||'mia')===k?'background:#fff;color:#1D2E73;box-shadow:0 1px 3px rgba(0,0,0,.12)':'background:transparent;color:#64748B'}">${t}</button>`;
+  const selector=esAdm?`<div style="display:flex;gap:4px;background:#F1F5F9;border-radius:11px;padding:3px;margin-bottom:10px">${seg('mia','Mi herramienta')}${seg('otro','De otro almacén o técnico')}</div>`:'';
+  if(esAdm&&herrState.origenModo==='otro'){
+    const tarjeta=h=>`
+      <div onclick="herrElegirPieza('${h.id}')" class="fm-card" style="cursor:pointer;margin-bottom:8px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:13px;font-weight:800;color:#0A0F1E">${h.folio||'—'}</div>
+        <div style="font-size:11.5px;color:#64748B;margin-top:1px">${h.descripcion||'—'}${h.marca?' · '+h.marca:''}</div></div>
+        <span style="color:#94A3B8">${IC.check}</span>
+      </div>`;
+    let cuerpo;
+    if(!herrState.origenSel){
+      const l=herrState.origenes||[];
+      cuerpo=`<div style="font-size:11.5px;color:#64748B;margin-bottom:8px">¿De dónde sale la herramienta? Elige el almacén o el técnico que la tiene.</div>
+        <input placeholder="Buscar almacén o técnico…" oninput="herrOrigenBuscar(this.value)" value="${herrState.origenBusq||''}" style="width:100%;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:11px;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:10px;color:#0A0F1E">
+        <div id="herr-origen-list">${!l.length?`<div class="fm-card" style="padding:22px;text-align:center;color:#94A3B8;font-size:12.5px">Cargando almacenes…</div>`:l.map(a=>`
+          <div data-n="${String(a.nombre||a.id).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/"/g,'')}" onclick="herrElegirOrigen('${a.id}')" class="fm-card" style="cursor:pointer;margin-bottom:8px;padding:12px 15px;display:flex;justify-content:space-between;align-items:center">
+            <div><div style="font-size:13px;font-weight:800;color:#0A0F1E">${a.nombre||a.id}</div>
+            <div style="font-size:10.5px;color:#64748B;font-weight:700">${a.tipo==='tecnico'?'Técnico':'Almacén'}</div></div>
+            <span style="color:#94A3B8">${IC.check}</span>
+          </div>`).join('')}</div>`;
+    }else{
+      const p=herrState.piezasOrigen;
+      cuerpo=`<div class="fm-card" style="padding:11px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-size:10.5px;color:#64748B;font-weight:700">Sale de</div><div style="font-size:13px;font-weight:800;color:#0A0F1E">${herrState.origenSel.nombre}</div></div>
+          <button onclick="herrOrigenModo('otro')" style="background:none;border:1.5px solid #CBD5E1;border-radius:9px;padding:6px 10px;font-family:inherit;font-size:11.5px;font-weight:800;color:#1D2E73;cursor:pointer">Cambiar</button>
+        </div>
+        ${p===null?`<div class="fm-card" style="padding:22px;text-align:center;color:#94A3B8;font-size:12.5px">Cargando piezas…</div>`:
+          !p.length?`<div class="fm-empty" style="padding:24px"><p style="font-size:12.5px;color:#94A3B8">Este almacén no tiene herramienta disponible para traspasar (las prestadas no se pueden mover hasta que regresen).</p></div>`:p.map(tarjeta).join('')}`;
+    }
+    setContent(`
+      <div class="fm-sec-hd"><div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">Administrativos de Operaciones</div></div></div>
+      ${selector}${cuerpo}
+      <div style="margin-top:6px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cancelar</button></div>`);
+    return;
+  }
   setContent(`
     <div class="fm-sec-hd">
       <div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">Elige la pieza que vas a entregar</div></div>
     </div>
-    ${!herrState.misPiezas.length?`
+    ${selector}
+    ${!herrState.miIdInterno&&esAdm?`
+      <div class="fm-empty" style="padding:24px">
+        <p style="font-size:12.5px;color:#94A3B8">No tienes ficha de técnico en Operaciones. Usa «De otro almacén o técnico».</p>
+      </div>`:!herrState.misPiezas.length?`
       <div class="fm-empty" style="padding:24px">
         <p style="font-size:12.5px;color:#94A3B8">No tienes herramienta asignada en Operaciones.</p>
       </div>`:herrState.misPiezas.map(h=>`
@@ -4622,10 +4730,12 @@ function herrRenderPaso1(){
 }
 
 window.herrElegirPieza=function(id){
-  herrState.piezaSel=herrState.misPiezas.find(h=>h.id===id)||null;
+  herrState.piezaSel=herrPiezasActuales().find(h=>h.id===id)||null;
   if(!herrState.piezaSel)return;
   herrState.paso=2;
   if(!herrState.destTipo)herrState.destTipo='persona';
+  // Si sale de un almacén (no de un técnico), solo se puede entregar a una persona.
+  if(herrDeOtro()&&herrState.origenSel.tipo!=='tecnico')herrState.destTipo='persona';
   renderUtil();
   if(herrState.destTipo==='almacen'){ herrCargarAlmacenesDestino(); return; }
   setTimeout(()=>{ cargarPersonalEnSelect().then(()=>herrFiltrarReceptor('')); },50);
@@ -4667,7 +4777,7 @@ function herrRenderPaso2(){
     <div class="fm-sec-hd">
       <div><div class="fm-sec-t">Traspasar herramienta</div><div class="fm-sec-s">${h?.folio||''} — ${h?.descripcion||''}</div></div>
     </div>
-    <div style="display:flex;gap:4px;background:#F1F5F9;border-radius:11px;padding:3px;margin-bottom:10px">${seg('persona','A una persona')}${seg('almacen','A un almacén')}</div>`;
+    <div style="display:flex;gap:4px;background:#F1F5F9;border-radius:11px;padding:3px;margin-bottom:10px">${seg('persona','A una persona')}${(herrDeOtro()&&herrState.origenSel.tipo!=='tecnico')?'':seg('almacen','A un almacén')}</div>${herrDeOtro()?`<div style="font-size:11.5px;color:#64748B;margin:-4px 0 10px">Sale de: <b>${herrState.origenSel.nombre}</b></div>`:''}`;
   if(esAlm){
     const l=herrState.almacenesDest||[];
     setContent(cab+`
@@ -4754,15 +4864,17 @@ function herrRenderPaso3(){
     <div class="fm-card" style="padding:18px">
       <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">Vas a entregar</div>
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${h?.folio||''} — ${h?.descripcion||''}</div>
+      ${herrDeOtro()?`<div style="font-size:12px;color:#94A3B8;margin-bottom:2px">Sale de</div>
+      <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.origenSel.nombre}</div>`:''}
       <div style="font-size:12px;color:#94A3B8;margin-bottom:2px">A</div>
       ${herrState.destTipo==='almacen'?`
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.almacenDestNombre}</div>
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
-        Entrega la pieza físicamente en el almacén. Sigue apareciendo como tuya hasta que Almacén la reciba en el portal.
+        Entrega la pieza físicamente en el almacén. Sigue apareciendo ${herrDeOtro()?'a nombre de '+herrState.origenSel.nombre:'como tuya'} hasta que Almacén la reciba en el portal.
       </div>`:`
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.receptorNombre} (${herrState.receptorEmail})</div>
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
-        ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo como tuya.
+        ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo ${herrDeOtro()?'en '+herrState.origenSel.nombre:'como tuya'}.
       </div>
       <div style="font-size:12px;font-weight:800;color:#334155;margin:14px 0 4px">Tu firma de entrega *</div>
       <div style="border:1.5px solid #CBD5E1;border-radius:10px;background:#fff"><canvas id="herr-ent-firma" width="320" height="140" style="display:block;width:100%;height:140px;touch-action:none;border-radius:10px"></canvas></div>
@@ -4804,19 +4916,24 @@ window.herrEnviarTraspaso=async function(){
     const venceEn=new Date(now.getTime()+24*60*60*1000);
     const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const ubicacion=await herrObtenerUbicacion();
+    // Origen: mi herramienta, o (administrativo de Operaciones) el almacén/técnico elegido.
+    const deOtro=herrDeOtro(), oS=herrState.origenSel||{};
+    const oTec=deOtro?(oS.tipo==='tecnico'?oS.tecnicoId:null):herrState.miIdInterno;
+    const oAlm=deOtro?(oS.tipo==='tecnico'?oS.tecnicoId:(oS.id||'general')):(herrState.miIdInterno||'general');
+    const porAdmin=deOtro?{email:userEmail,nombre:userName,origenNombre:oS.nombre||''}:null;
     if(herrState.destTipo==='almacen'){
       const docAlm={
         herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
-        entregaTecnicoId:herrState.miIdInterno, entregaEmail:userEmail, entregaNombre:userName,
+        entregaTecnicoId:oTec, entregaEmail:userEmail, entregaNombre:userName, iniciadoPorAdmin:porAdmin,
         receptorTecnicoId:null, receptorEmail:null, receptorNombre:herrState.almacenDestNombre,
-        destinoTipo:'almacen', almacenOrigenId:herrState.miIdInterno||'general',
+        destinoTipo:'almacen', almacenOrigenId:oAlm,
         almacenDestinoId:herrState.almacenDestId||'general', almacenDestinoNombre:herrState.almacenDestNombre,
         estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:null,
         lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
         origen:'flotilla_movil_devolucion',
       };
       await opsDb().collection(C.OPS_TRASP).add(docAlm);
-      try{ await opsSvAvisarAdmins('herramienta_devolucion_almacen',`${userName} regresa ${h.folio||''} (${h.descripcion||''}) a ${herrState.almacenDestNombre}. Recíbela en Herramientas → Pendientes.`,null); }catch(e){}
+      try{ await opsSvAvisarAdmins('herramienta_devolucion_almacen',`${userName}${deOtro?' (de '+(oS.nombre||'')+')':''} regresa ${h.folio||''} (${h.descripcion||''}) a ${herrState.almacenDestNombre}. Recíbela en Herramientas → Pendientes.`,null); }catch(e){}
       herrState.paso=4; renderUtil();
       toast('Devolución enviada — Almacén debe recibirla','ok');
       return;
@@ -4828,14 +4945,19 @@ window.herrEnviarTraspaso=async function(){
       return;
     }
 
+    if(oTec&&receptorTec.id===oTec){
+      toast('Esa persona ya trae esta herramienta.','err');
+      if(btn){btn.disabled=false;btn.textContent='Enviar traspaso';}
+      return;
+    }
     const docObj={
       herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
-      entregaTecnicoId:herrState.miIdInterno, entregaEmail:userEmail, entregaNombre:userName,
+      entregaTecnicoId:oTec, entregaEmail:userEmail, entregaNombre:userName, iniciadoPorAdmin:porAdmin,
       receptorTecnicoId:receptorTec?receptorTec.id:null,
       receptorEmail:herrState.receptorEmail, receptorNombre:herrState.receptorNombre,
       // Mismo dato en vocabulario "almacén" (el almacén de un técnico usa su propio
       // id de ops_tecnicos; null = Almacén General) — para el puente con Aspel.
-      almacenOrigenId:herrState.miIdInterno||'general',
+      almacenOrigenId:oAlm,
       almacenDestinoId:(receptorTec?receptorTec.id:null)||'general',
       estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
@@ -4853,6 +4975,18 @@ window.herrEnviarTraspaso=async function(){
       ...(receptorTec?[]:[]), // sin acción extra — el modal invasivo llega por el listener, no por esta notificación
     ]);
 
+    // Aviso al técnico al que se le saca la herramienta (mejor esfuerzo).
+    if(deOtro&&oTec){
+      try{
+        const ot=await opsDb().collection(C.OPS_TEC).doc(oTec).get();
+        const correoO=ot.exists?String(ot.data().correo||'').toLowerCase().trim():'';
+        if(correoO&&correoO!==userEmail) db.collection('flotilla_notificaciones').add({
+          tipo:'herramienta_traspaso_admin', traspasoId:ref.id, para:correoO,
+          mensaje:`${userName} (Operaciones) traspasó tu herramienta ${h.folio||''} (${h.descripcion||''}) a ${herrState.receptorNombre}. Al aceptarla deja de estar a tu nombre.`,
+          leido:false, creadaEn:now.toISOString(),
+        }).catch(()=>{});
+      }catch(e){}
+    }
     herrState.paso=4;
     renderUtil();
     toast('Traspaso enviado — el receptor debe aceptarlo','ok');
@@ -4868,7 +5002,7 @@ function herrRenderPaso4(){
     <div class="fm-card" style="text-align:center;padding:28px">
       <div style="width:52px;height:52px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#166534">${IC.check}</div>
       <div style="font-size:15px;font-weight:800;color:#0A0F1E;margin-bottom:6px">${herrState.destTipo==='almacen'?'Devolución enviada':'Traspaso enviado'}</div>
-      <p style="font-size:12.5px;color:#64748B;line-height:1.5;margin-bottom:18px">${herrState.destTipo==='almacen'?`Entrega la pieza en ${herrState.almacenDestNombre}. En cuanto Almacén la reciba en el portal, deja de estar a tu nombre.`:`${herrState.receptorNombre} recibió la notificación. En cuanto acepte, la herramienta pasa a su nombre y queda registrado en el historial.`}</p>
+      <p style="font-size:12.5px;color:#64748B;line-height:1.5;margin-bottom:18px">${herrState.destTipo==='almacen'?`Entrega la pieza en ${herrState.almacenDestNombre}. En cuanto Almacén la reciba en el portal, deja de estar ${herrDeOtro()?'a nombre de '+herrState.origenSel.nombre:'a tu nombre'}.`:`${herrState.receptorNombre} recibió la notificación. En cuanto acepte, la herramienta pasa a su nombre y queda registrado en el historial.`}</p>
       <button class="fm-btn primary" onclick="herrCerrarTraspaso()">Listo</button>
     </div>`);
 }
@@ -4975,6 +5109,7 @@ window.herrAceptarTraspasoConfirmar=async function(){
       firmaRecepcion:RDf.firma?{ img:RDf.firma, nombre:userName, en:now, traspasoId:traspasoId, condicion:RDf.condTxt||null }:null });
     const partesObs=[];
     partesObs.push(t.origen==='operaciones'?'Traspaso iniciado desde Operaciones (Almacén)':'Traspaso desde Flotilla móvil');
+    if(t.iniciadoPorAdmin)partesObs.push('Lo hizo '+(t.iniciadoPorAdmin.nombre||t.iniciadoPorAdmin.email||'')+' (administrativo de Operaciones) desde '+(t.iniciadoPorAdmin.origenNombre||'otro almacén'));
     if(t.comentario)partesObs.push(`Comentario: "${t.comentario}"`);
     if(t.evidenciaBase64)partesObs.push('Con foto de evidencia (ver en Operaciones)');
     const RD=window.__herrRecDatos||{};
@@ -4983,7 +5118,7 @@ window.herrAceptarTraspasoConfirmar=async function(){
     await opsDb().collection(C.OPS_MOV).add({
       herramientaId:t.herramientaId, tipo:'transferencia',
       tecnicoAnteriorId:t.entregaTecnicoId||null, tecnicoNuevoId:receptorId,
-      almacenOrigenId:(t.entregaTecnicoId||null)||'general',
+      almacenOrigenId:t.almacenOrigenId||(t.entregaTecnicoId||null)||'general',
       almacenDestinoId:receptorId||'general',
       ubicacionAnterior:ubicacionActual, ubicacionNueva:ubicacionActual,
       motivo:null,
