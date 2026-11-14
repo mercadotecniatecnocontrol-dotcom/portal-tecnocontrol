@@ -74,9 +74,8 @@
     const COL_SERVICIOS_CATALOGO = "ops_servicios_catalogo";
     const COL_TARIFAS_PERSONAL = "ops_tarifas_personal"; // doc por rol (lider/tecnico/obra_civil) — nunca por nombre de empleado
     const COL_AUSENCIAS = "ops_tecnico_ausencias"; // calendario propio de vacaciones/incapacidad/permiso por técnico (sep-2026, a petición de Glen)
-    // Dueño del seguimiento interno (fecha de atención / compromiso). Era Miguel Montellano; dejó la
-    // empresa el 23-oct-2026 y lo toma Magali. El nombre de la constante se conserva por compatibilidad.
-    const MIGUEL_EMAIL = "magali@tecnocontrol.com.mx";
+    // Dueño del seguimiento interno (fecha de atención / compromiso del gerente de Operaciones). Lo lleva Magali.
+    const GERENTE_OPS_SEGUIMIENTO_EMAIL = "magali@tecnocontrol.com.mx";
 
     // ════════════ FASE 5 (sep-2026): Gestión de servicios — calendario, ════════════
     // habilidades de personal, sugerencia de técnico, y campos comerciales/contables
@@ -343,7 +342,7 @@
     // si nunca se ha marcado, se decide por el puesto. Los de baja nunca aparecen.
     const OPS_RE_PUESTO_ADMIN = /gerente|subgerente|coordinador|auxiliar|consulta|administra|director|contab|compras|gestor|recursos humanos|ingresos|egresos|pagos|ventas|marketing|almac|flotilla|contralor/i;
     // Nombres que Paloma pidió ocultar — solo se usan para PRESELECCIONAR en la revisión; nada se oculta sin confirmar.
-    const OPS_NOMBRES_ADMIN_SUGERIDOS = ["glen", "idaly", "kenia", "jaqueline", "paloma", "cristina acosta", "paola", "denisse", "martin", "ana", "ruth", "sandra", "magali", "miguel"];
+    const OPS_NOMBRES_ADMIN_SUGERIDOS = ["glen", "idaly", "kenia", "jaqueline", "paloma", "cristina acosta", "paola", "denisse", "martin", "ana", "ruth", "sandra", "magali", "ricardo"];
     function opsEsAdministrativo(t) {
         if (OPS_FORZAR_TECNICO[opsCorreoDe(t)]) return false;
         if (t.ocultarEnListas === true) return true;
@@ -411,7 +410,6 @@
     // (subir/editar/cambiar todo). No son esAdminTotal, así que NO obtienen acceso a otros
     // departamentos del portal — el alcance queda limitado a operaciones.js.
     const OPS_ADMINS = [
-        // miguel@ dejó la empresa (23-oct-2026)
         "clientes@tecnocontrol.com.mx",
         "magali@tecnocontrol.com.mx",
     ];
@@ -1803,7 +1801,8 @@
     }
     // Alias de compatibilidad con el código ya escrito en este archivo.
     function opsPuedeGestionar() {
-        return opsPuedeHacer("gestionar_herramientas");
+        // Responsables exclusivos de un almacén (ej. Zaira en TecnoLab) gestionan en Herramientas aunque su rol sea de consulta.
+        return opsPuedeHacer("gestionar_herramientas") || (tabActual === "dashboard" && opsEsCustodioAlguno());
     }
     // Botones de ALTA (Nuevo servicio, Nuevo folio, Nuevo cliente…): casilla "Crear" de la sección.
     function opsPuedeCrear(seccion) {
@@ -2182,6 +2181,48 @@
         const correo = opsUsuarioActual();
         return (window.esAdminTotal && window.esAdminTotal(correo)) || cacheAutorizadoresCalibracion.some(a => (a.email || "").toLowerCase() === correo);
     }
+
+    // 14-nov-2026 (Glen): RESPONSABLES EXCLUSIVOS por almacén (campo «custodios» del almacén, ej. TecnoLab →
+    // Zaira, Seguridad e Higiene). Si un almacén tiene responsables, SOLO ellos (y los Admin Total del portal)
+    // pueden prestar, asignar, traspasar, recibir o meter piezas de ese almacén. Los demás almacenes siguen igual.
+    function opsCustodiosDe(almId) {
+        const a = almId ? (cacheAlmacenes || []).find(x => x.id === almId) : null;
+        return a && Array.isArray(a.custodios) ? a.custodios.filter(c => c && c.email) : [];
+    }
+    function opsEsCustodioDe(almId) {
+        const c = String(opsUsuarioActual() || "").toLowerCase().trim();
+        if (window.esAdminTotal && window.esAdminTotal(c)) return true;
+        return opsCustodiosDe(almId).some(x => String(x.email).toLowerCase().trim() === c);
+    }
+    function opsCustodioBloquea(almId) { return opsCustodiosDe(almId).length > 0 && !opsEsCustodioDe(almId); }
+    function opsNombresCustodios(almId) { return opsCustodiosDe(almId).map(x => x.nombre || x.email).join(", "); }
+    function opsEsCustodioAlguno() {
+        const c = String(opsUsuarioActual() || "").toLowerCase().trim();
+        return (cacheAlmacenes || []).some(a => Array.isArray(a.custodios) && a.custodios.some(x => String(x.email || "").toLowerCase().trim() === c));
+    }
+    // ¿Puede la persona meter piezas en este almacén? Con responsables: solo ellos. Sin responsables: regla anterior.
+    function opsPuedeMeterEn(alm) {
+        if (!alm) return true;
+        if (opsCustodiosDe(alm.id).length) return opsEsCustodioDe(alm.id);
+        return !alm.requiereAutorizacion || opsEsAutorizadorCalibracion();
+    }
+    // Quien solo es responsable de un almacén (sin permiso general de Herramientas) únicamente maneja ese almacén.
+    function opsSoloCustodio() { return !opsPuedeHacer("gestionar_herramientas") && opsEsCustodioAlguno(); }
+    window.opsEditarCustodios = async function (almId) {
+        const a = (cacheAlmacenes || []).find(x => x.id === almId); if (!a) return;
+        if (!(window.esAdminTotal && window.esAdminTotal(String(opsUsuarioActual()).toLowerCase()))) { alert("Solo un Administrador del portal puede cambiar los responsables."); return; }
+        const actual = opsCustodiosDe(almId).map(x => x.email).join(", ");
+        const v = prompt(`Responsables exclusivos de ${a.nombre}.\nEscribe sus correos separados por coma (vacío = sin responsables, cualquiera con permiso de Herramientas lo maneja):`, actual);
+        if (v === null) return;
+        const correos = v.split(/[,\s;]+/).map(x => x.toLowerCase().trim()).filter(x => /@/.test(x));
+        const custodios = correos.map(e => { const t = (cacheTec || []).find(z => String(z.correo || "").toLowerCase() === e); const prev = opsCustodiosDe(almId).find(z => z.email === e); return { email: e, nombre: (prev && prev.nombre) || (t && t.nombre) || e }; });
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.setDoc(fs.doc(db, COL_ALMACENES, almId), { custodios }, { merge: true });
+            a.custodios = custodios;
+            alert(custodios.length ? `Listo. Solo ${custodios.map(x => x.nombre).join(", ")} maneja ${a.nombre}.` : `Listo. ${a.nombre} ya no tiene responsables exclusivos.`);
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
 
     window.opsAbrirConfigCalibracion = function () {
         const wrap = document.getElementById("ops-modal-wrap");
@@ -3148,7 +3189,9 @@
                     const n = cuenta(h => h.almacenId === a.id && !h.tecnicoActualId && h.estado !== "baja", a.nombre);
                     return `<div onclick="opsAbrirAlmacenPiezas('${a.id}')" style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;border-left:4px solid #E7402B;padding:15px 16px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1D2E73'" onmouseout="this.style.borderColor='#e2e8f0'">
                         <div style="font-size:13.5px;font-weight:700;color:#1e293b;">${opsEsc(a.nombre)}</div>
-                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 10px;">Ubicación física${a.requiereAutorizacion ? " · requiere autorización" : ""}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin:2px 0 ${opsCustodiosDe(a.id).length ? "2px" : "10px"};">Ubicación física${a.requiereAutorizacion ? " · requiere autorización" : ""}</div>
+                        ${opsCustodiosDe(a.id).length ? `<div style="font-size:11px;color:#b45309;font-weight:700;margin:0 0 8px;">Solo lo maneja: ${opsEsc(opsNombresCustodios(a.id))}</div>` : ""}
+                        ${window.esAdminTotal && window.esAdminTotal(String(opsUsuarioActual()).toLowerCase()) ? `<button title="Quién maneja este almacén en exclusiva" onclick="event.stopPropagation();opsEditarCustodios('${a.id}')" style="background:none;border:1px solid #e2e8f0;border-radius:7px;padding:3px 8px;font-size:10.5px;font-weight:700;color:#1D2E73;cursor:pointer;margin-bottom:8px;">Responsables</button>` : ""}
                         <div style="display:flex;align-items:baseline;gap:5px;">
                             <span style="font-size:22px;font-weight:800;color:#1e293b;">${n}</span>
                             <span style="font-size:11px;color:#64748b;">pieza(s)</span>
@@ -3246,6 +3289,8 @@
         const almId = t.almacenDestinoId && t.almacenDestinoId !== ALMACEN_GENERAL_ID ? t.almacenDestinoId : null;
         const almObj = almId ? cacheAlmacenes.find(a => a.id === almId) : null;
         const destNombre = almObj ? almObj.nombre : (t.almacenDestinoNombre || "Almacén General");
+        if (almId && opsCustodioBloquea(almId)) { alert(`Solo ${opsNombresCustodios(almId)} puede recibir piezas en ${destNombre}.`); return; }
+        if (opsSoloCustodio() && !(almId && opsEsCustodioDe(almId))) { alert("Solo puedes recibir piezas en el almacén que tienes a tu cargo."); return; }
         const accion = prompt(`${t.entregaNombre || "El técnico"} regresa ${t.folio || ""} (${t.descripcion || ""}) a ${destNombre}.\n\nEscribe RECIBIR si ya llegó, o RECHAZAR si no llegó. Puedes agregar un comentario después de la palabra.`, "RECIBIR");
         if (accion === null) return;
         const m = accion.trim().match(/^(recibir|rechazar)\b\s*(.*)$/i);
@@ -3351,14 +3396,15 @@
         const almId = dest.startsWith("alm:") ? (dest.slice(4) || null) : undefined;
         const almObj = almId ? cacheAlmacenes.find(a => a.id === almId) : null;
         const receptor = aTec ? cacheTec.find(t => t.id === aTec) : null;
-        if (almObj && almObj.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(almObj.nombre + " requiere autorización: solo los autorizadores pueden pasar piezas ahí."); return; }
+        if (almObj && !opsPuedeMeterEn(almObj)) { alert(almObj.nombre + (opsCustodiosDe(almObj.id).length ? ": solo " + opsNombresCustodios(almObj.id) + " puede pasar piezas ahí." : " requiere autorización: solo los autorizadores pueden pasar piezas ahí.")); return; }
         const destNombre = receptor ? receptor.nombre : (almObj ? almObj.nombre : "Almacén General");
         const piezas = ids.map(id => cacheHerr.find(x => x.id === id)).filter(Boolean);
         const saltadas = [], ok = [], pendientes = [];
         const movibles = piezas.filter(h => {
             const motivo = h.estado === "prestamo" ? "prestada" : h.estado === "reparacion" ? "en reparación" : (h.estado === "extraviada" || h.estado === "baja") ? h.estado : opsTraspasoPendientePara(h.id) ? "ya tiene traspaso pendiente" : (aTec && h.tecnicoActualId === aTec) ? "ya la tiene esa persona" : null;
-            if (motivo) saltadas.push(`${h.folio} (${motivo})`);
-            return !motivo;
+            const motivo2 = motivo || (opsCustodioBloquea(h.almacenId) ? "solo la maneja " + opsNombresCustodios(h.almacenId) : (opsSoloCustodio() && !opsEsCustodioDe(h.almacenId) ? "no es de tu almacén" : ""));
+            if (motivo2) saltadas.push(`${h.folio} (${motivo2})`);
+            return !motivo2;
         });
         if (!movibles.length) { alert("Ninguna pieza se puede mover:\n" + saltadas.join("\n")); return; }
         const conTec = movibles.filter(h => h.tecnicoActualId);
@@ -4053,7 +4099,7 @@
             let almacenAltaId = ((document.getElementById("ops-in-almacen-alta") || {}).value || "") || null;
             if (almacenAltaId && almacenAltaId.startsWith("tec:")) almacenAltaId = null; // almacén de una persona: serie HT y se le asigna
             const almAltaObj = almacenAltaId ? cacheAlmacenes.find(a => a.id === almacenAltaId) : null;
-            if (almAltaObj && almAltaObj.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(almAltaObj.nombre + " requiere autorización: solo los autorizadores pueden dar de alta piezas ahí."); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Generar folio y guardar"; } return; }
+            if (almAltaObj && !opsPuedeMeterEn(almAltaObj)) { alert(almAltaObj.nombre + " requiere autorización: solo los autorizadores pueden dar de alta piezas ahí."); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Generar folio y guardar"; } return; }
             const pieza = {
                 almacenId: almacenAltaId,
                 descripcion, marca, modelo, categoria, numeroSerie,
@@ -4363,11 +4409,14 @@
         if (pend) { return opsAbrirModalTraspasoPendiente(herramientaId, pend); }
         // Prestada (29-oct-2026): bloqueada a nombre de quien la pidió hasta que la devuelva.
         if (h.estado === "prestamo") { return opsAbrirModalPrestamo(herramientaId); }
+        // Almacén con responsables exclusivos (ej. TecnoLab → Zaira): nadie más presta, asigna ni traspasa.
+        if (opsCustodioBloquea(h.almacenId)) { alert(`${h.folio || ""} es de ${(cacheAlmacenes.find(a => a.id === h.almacenId) || {}).nombre || "un almacén con responsable"}: solo ${opsNombresCustodios(h.almacenId)} puede prestarla, asignarla, traspasarla o recibirla.`); return; }
+        if (opsSoloCustodio() && !opsEsCustodioDe(h.almacenId)) { alert("Solo puedes mover piezas del almacén que tienes a tu cargo."); return; }
 
         // Equipo que requiere autorización previa (ej. calibración TecnoLab):
         // si quien intenta moverlo no está en la lista, no ve el formulario —
         // solo puede pedir autorización a quien sí puede.
-        if (h.requiereAutorizacion && !opsEsAutorizadorCalibracion()) {
+        if (h.requiereAutorizacion && !opsEsAutorizadorCalibracion() && !(opsCustodiosDe(h.almacenId).length && opsEsCustodioDe(h.almacenId))) {
             const wrap = document.getElementById("ops-modal-wrap");
             wrap.innerHTML = `
             <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
@@ -5107,6 +5156,7 @@
     }
     window.opsPrestamoCambiarFecha = async function (herramientaId) {
         const h = cacheHerr.find(x => x.id === herramientaId); if (!h || !h.prestamo) return;
+        if (opsCustodioBloquea(h.almacenId)) { alert(`Solo ${opsNombresCustodios(h.almacenId)} puede cambiar este préstamo.`); return; }
         const v = prompt("Nueva fecha de regreso (AAAA-MM-DD):", h.prestamo.hasta || opsHoy());
         if (v === null) return;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) { alert("Escribe la fecha como AAAA-MM-DD, por ejemplo 2026-11-05."); return; }
@@ -5120,6 +5170,7 @@
     };
     window.opsPrestamoDevolver = async function (herramientaId) {
         const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
+        if (opsCustodioBloquea(h.almacenId)) { alert(`Solo ${opsNombresCustodios(h.almacenId)} puede recibir esta pieza de regreso.`); return; }
         const p = h.prestamo || {};
         const obs = ((document.getElementById("ops-in-prestamo-obs") || {}).value || "").trim();
         const btn = document.getElementById("ops-prestamo-dev-btn"); if (btn) { btn.disabled = true; btn.textContent = "Guardando..."; }
@@ -5283,7 +5334,7 @@
                 const sel = document.getElementById("ops-in-almacen");
                 const destId = sel ? sel.value : "";
                 const dest = destId ? cacheAlmacenes.find(a => a.id === destId) : null;
-                if (dest && dest.requiereAutorizacion && !opsEsAutorizadorCalibracion()) { alert(`${dest.nombre} requiere autorización: solo ${cacheAutorizadoresCalibracion.map(a => a.nombre || a.email).join(", ") || "un Administrador"} puede meter piezas ahí.`); if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
+                if (dest && !opsPuedeMeterEn(dest)) { alert(`${dest.nombre} requiere autorización: solo ${cacheAutorizadoresCalibracion.map(a => a.nombre || a.email).join(", ") || "un Administrador"} puede meter piezas ahí.`); if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
                 if (tipo === "traspaso_almacen" && (destId || null) === (h.almacenId || null)) { alert("La pieza ya está en ese almacén."); if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; } return; }
                 update.almacenId = destId || null;
                 update.ubicacionActual = dest ? dest.nombre : "Almacén central";
@@ -8125,7 +8176,7 @@
     // Escritura exacta al esquema ya usado por Flotilla: {tipo, para, mensaje, codigo, creadaEn}.
     // OJO: el campo de fecha se llama "creadaEn" (no "creadoEn") — la app móvil filtra por ese nombre exacto.
     async function opsNotificarFlotillaFolio(f, info) {
-        const paraEmail = info.enAtencion ? MIGUEL_EMAIL : (f.tecnicoResponsableCorreo || null);
+        const paraEmail = info.enAtencion ? GERENTE_OPS_SEGUIMIENTO_EMAIL : (f.tecnicoResponsableCorreo || null);
         if (!paraEmail) return; // sin correo confiable no se inventa destinatario
         try {
             const { db, fs } = await opsGetFB();
@@ -8223,7 +8274,7 @@
             texto: `${n} servicio(s) abiertos llevan ${OPS_DIAS_ALERTA_EVIDENCIA} días o más sin evidencia. Revísalos en el calendario.` });
     }
 
-    // ═══════════════════ MESA DE FOLIOS (17-oct-2026, junta con Sandra/Paloma/Miguel) ═══════════════════
+    // ═══════════════════ MESA DE FOLIOS (17-oct-2026, junta con Sandra/Paloma/Operaciones) ═══════════════════
     // · Turno de día (8:00–17:00): técnico(s) programados con "Atención a folios" ese día (por cliente).
     //   Turno de guardia (17:00–8:00, y días sin turno de día): la Guardia programada ese día o, si no hay,
     //   la rotación semanal de Guardias.
@@ -19447,7 +19498,7 @@
     // "Atención a folios" (los folios de Petro 7 salen durante el día y no se sabe dónde). El técnico
     // queda ocupado en el calendario esos días; los folios que atienda se le ligan después.
     const OPS_CONCEPTOS_GENERALES = ["Traslado", "Atención a folios", "Guardia", "Capacitación", "Proyecto interno"];
-    // Atención a folios (16-oct-2026, Miguel): se programa por CLIENTE (ej. Servicios Gasolineros / OXXO GAS
+    // Atención a folios (16-oct-2026, Operaciones): se programa por CLIENTE (ej. Servicios Gasolineros / OXXO GAS
     // y Petromax / Petro 7), sin estaciones: todavía no se sabe qué folios ni dónde. Los folios del día se ligan después.
     window.opsAsClienteAtencion = function (nombre) {
         const s = opsAS; if (!s) return;
@@ -19515,7 +19566,7 @@
         const t = (document.getElementById("opsas-est")?.value || "").trim(); if (!t) return;
         s.estaciones.push({ est: null, texto: t }); s.estTexto = ""; opsAsPintar();
     };
-    // Nombre comercial / coloquial (16-oct-2026, Miguel): con muchas estaciones de una misma razón social
+    // Nombre comercial / coloquial (16-oct-2026, Operaciones): con muchas estaciones de una misma razón social
     // (ej. Petromax) solo con el PL no se sabe cuál es Cumbres, Sima o Prieto Luján. Se muestra
     // "Nombre · PL" y, si la estación no tiene nombre, se le pone ahí mismo (queda en el catálogo para todos).
     function opsEstSinNombre(e) { return !e || !String(e.nombreComercial || "").trim() || opsAsRsClave(e.nombreComercial) === opsAsRsClave(e.razonSocial); }
@@ -20953,7 +21004,7 @@
                     <div><strong>Cliente:</strong> ${opsEsc(f.clienteNombre || "—")} ${f.prioridad ? `(${opsEsc(f.prioridad)})` : ""}</div>
                     <div><strong>Fecha de solicitud:</strong> ${opsFmtFechaCorta(f.fechaSolicitud)}</div>
                     <div><strong>Vencimiento (SLA cliente):</strong> ${opsFmtFechaCorta(f.vencimiento)}</div>
-                    <div><strong>Fecha de atención (compromiso Miguel):</strong> ${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</div>
+                    <div><strong>Fecha de atención (compromiso gerente de Operaciones):</strong> ${f.fechaAtencion ? opsFmtFechaCorta(f.fechaAtencion) : "—"}</div>
                     <div><strong>Fecha de solución:</strong> ${f.fechaSolucion ? opsFmtFechaCorta(f.fechaSolucion) : "— (sigue abierto: " + opsEsc(info.diasTexto) + ")"}</div>
                     <div><strong>Responsable:</strong> ${opsEsc(opsResponsableFolio(f))}</div>
                 </div>
@@ -28519,7 +28570,7 @@
             </div>
         </div>`;
     };
-    // Vales: la guardia técnica la autoriza Miguel y la administrativa Paloma (22-oct-2026, Glen).
+    // Vales: la guardia técnica la autoriza el gerente de Operaciones y la administrativa Paloma (22-oct-2026, Glen).
     Object.defineProperty(window, "__opsGtelAut", { get() { return opsGtelCfg.autoriza || ""; }, configurable: true });
     Object.defineProperty(window, "__opsGtelAutAdm", { get() { return opsGtelCfg.autorizaAdm || "PALOMA PINEDO"; }, configurable: true });
     window.opsGtelGuardarVales = async function () {
