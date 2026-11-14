@@ -103,9 +103,9 @@
   // =====================================================================
   var TECNOALMACEN_EMAIL = 'tecnoalmacen@tecnocontrol.com.mx';
   var PLAZA_POR_EMAIL = {
-    'plazajrz@tecnocontrol.com.mx': 'Juárez'      // Rita
-    // 'CORREO_DE_FLOR':  'Parral',                     // Flor
-    // 'CORREO_DE_VERO':  'Monterrey'                   // Vero
+    'plazajrz@tecnocontrol.com.mx': 'Juárez',     // Rita
+    'flor@tecnocontrol.com.mx':     'Parral',     // Flor
+    'v.garcia@tecnocontrol.com.mx': 'Monterrey'   // Vero
   };
   var PLAZAS = ['Chihuahua','Juárez','Parral','Monterrey'];
   var CANAL_INFO = {
