@@ -4587,12 +4587,72 @@ function herrRenderVer(){
             ${reciente?`<span style="background:#7C3AED;color:#fff;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:4px"><span style="width:11px;height:11px;display:inline-block">${IC.swap}</span> TE LA TRASPASARON</span>`:''}
           </div>
           ${reciente?`<div style="font-size:10.5px;color:#7C3AED;margin-top:6px;font-weight:700">No era tuya originalmente — la recibiste el ${fecha}</div>`:''}
+          ${herrEsLab(h)?herrTLBoton(h):''}
         </div>`;
       }).join('')}
     ${herrPrestamosHTML()}
     <div style="margin-top:10px"><button class="fm-btn ghost" onclick="herrCerrarTraspaso()">Cerrar</button></div>
   `);
 }
+// ═══ TecnoLab (14-nov-2026): comentarios y reportes de falla del equipo de laboratorio, con archivos de cualquier tipo.
+// Se guardan en Supabase (tecnolab_comentarios) y le llegan a la responsable del cuarto de control (Herramientas → TecnoLab).
+function herrEsLab(h){return !!h&&(h.requiereAutorizacion||h.almacenId==='tecnolab-cuarto-control'||/tecnolab/i.test(String(h.categoria||'')));}
+function herrTLEsc(t){return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function herrTLBoton(h){return `<button class="fm-btn ghost" style="margin-top:8px;width:100%;font-size:12px" onclick="herrTLComentar('${herrTLEsc(h.id)}')">Comentar o reportar falla (TecnoLab)</button>`;}
+function herrTLPieza(id){return [].concat(herrState.misPiezas||[],herrState.meLasPrestaron||[],herrState.prestadas||[]).find(x=>x.id===id)||{id};}
+window.herrTLComentar=async function(id){
+  const h=herrTLPieza(id);
+  let ov=document.getElementById('tl-ov'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='tl-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`<div style="background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:18px 16px">
+    <div style="font-size:15px;font-weight:800;color:#1D2E73">Comentar o reportar falla</div>
+    <div style="font-size:11.5px;color:#64748B;margin-bottom:10px">${herrTLEsc(h.folio||'')} · ${herrTLEsc(h.descripcion||'')}</div>
+    <div id="tl-hist" style="font-size:11.5px;color:#94A3B8;margin-bottom:10px">Cargando comentarios…</div>
+    <label style="font-size:11.5px;font-weight:700;color:#475569">¿Qué es?</label>
+    <select id="tl-tipo" style="width:100%;border:1px solid #CBD5E1;border-radius:10px;padding:10px;font-size:14px;margin:4px 0 10px">
+      <option value="falla">Falla del equipo</option><option value="problema">Problema</option><option value="comentario">Comentario</option><option value="otro">Otro</option></select>
+    <textarea id="tl-txt" rows="4" placeholder="Escribe qué pasó…" style="width:100%;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:10px;padding:10px;font-size:14px;margin-bottom:10px"></textarea>
+    <label style="font-size:11.5px;font-weight:700;color:#475569">Fotos, videos o archivos (opcional)</label>
+    <input id="tl-arch" type="file" multiple style="width:100%;margin:6px 0 14px;font-size:13px">
+    <div style="display:flex;gap:8px"><button class="fm-btn ghost" style="flex:1" onclick="document.getElementById('tl-ov').remove()">Cancelar</button>
+    <button id="tl-btn" class="fm-btn primary" style="flex:1" onclick="herrTLEnviar('${herrTLEsc(id)}')">Enviar</button></div></div>`;
+  document.body.appendChild(ov);
+  try{
+    const sb=await fmvSb(); const r=await sb.from('tecnolab_comentarios').select('*').eq('herramienta_id',id).order('creado_en',{ascending:false}).limit(5);
+    const el=document.getElementById('tl-hist'); if(!el) return;
+    const l=r.data||[];
+    el.innerHTML=l.length?'<div style="font-weight:800;color:#475569;margin-bottom:4px">Últimos comentarios</div>'+l.map(c=>`<div style="background:#F8FAFC;border-radius:8px;padding:6px 8px;margin-bottom:4px;color:#334155"><b>${herrTLEsc(c.autor_nombre||'')}</b> · ${herrTLEsc(new Date(c.creado_en).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))}<br>${herrTLEsc(c.texto||'')}${(c.archivos||[]).length?' · '+c.archivos.length+' archivo(s)':''}</div>`).join(''):'Aún no hay comentarios de este equipo.';
+  }catch(e){const el=document.getElementById('tl-hist'); if(el) el.textContent='';}
+};
+window.herrTLEnviar=async function(id){
+  const txt=((document.getElementById('tl-txt')||{}).value||'').trim(), tipo=(document.getElementById('tl-tipo')||{}).value||'comentario';
+  const files=[...((document.getElementById('tl-arch')||{}).files||[])];
+  if(!txt&&!files.length){toast('Escribe algo o adjunta un archivo','err');return;}
+  if(files.some(f=>f.size>50*1024*1024)){toast('Algún archivo pesa más de 50 MB','err');return;}
+  const btn=document.getElementById('tl-btn'); if(btn){btn.disabled=true;btn.textContent='Enviando…';}
+  const h=herrTLPieza(id);
+  try{
+    const sb=await fmvSb(), archivos=[];
+    for(let i=0;i<files.length;i++){const f=files[i], ext=(String(f.name||'').split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,6)||'bin';
+      const ruta='tecnolab/'+id+'/'+Date.now()+'_'+(i+1)+'.'+ext;
+      const up=await sb.storage.from('viaticos-comprobantes').upload(ruta,f,{contentType:f.type||'application/octet-stream',upsert:false}); if(up.error) throw up.error;
+      archivos.push({ruta,nombre:f.name||('archivo.'+ext),tipo:f.type||null,tam:f.size});}
+    const yo=opsSvMiCorreo(), nombre=miPerfil?.nombre||window.auth?.currentUser?.displayName||yo;
+    const r=await sb.from('tecnolab_comentarios').insert({herramienta_id:id,herramienta_folio:h.folio||null,tipo,texto:txt||null,archivos,autor_nombre:nombre,autor_correo:yo,origen:'app'});
+    if(r.error) throw r.error;
+    // Aviso a la(s) responsable(s) del cuarto de control (custodios del almacén TecnoLab).
+    try{
+      const snap=await opsDb().collection(C.OPS_ALMACENES).get();
+      const alm=snap.docs.map(d=>({id:d.id,...d.data()})).find(a=>a.id==='tecnolab-cuarto-control')||{};
+      const cust=(Array.isArray(alm.custodios)?alm.custodios:[]).map(c=>String(c.email||'').toLowerCase().trim()).filter(c=>c&&c!==yo);
+      const etiqueta={falla:'Falla',problema:'Problema',comentario:'Comentario',otro:'Comentario'}[tipo]||'Comentario';
+      if(cust.length) await sb.from('portal_notificaciones').insert(cust.map(para=>({tipo:'tecnolab',para,mensaje:`TecnoLab · ${etiqueta} en ${h.folio||''} ${h.descripcion||''} (${nombre}, desde la app): ${txt.slice(0,160)}${files.length?' · '+files.length+' archivo(s)':''}`,leido:false,creada_en:new Date().toISOString(),datos:{modulo:'Operaciones',herramientaId:id}})));
+    }catch(e){console.warn('[TecnoLab] aviso',e);}
+    const ov=document.getElementById('tl-ov'); if(ov) ov.remove();
+    toast('Enviado a la responsable de TecnoLab','ok');
+  }catch(e){toast('No se pudo enviar: '+(e.message||e),'err'); if(btn){btn.disabled=false;btn.textContent='Enviar';}}
+};
 function herrPrestamosHTML(){
   const hoy=new Date(); const hoyISO=hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0')+'-'+String(hoy.getDate()).padStart(2,'0');
   const fecha=iso=>iso?new Date(iso+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'}):'—';
@@ -4608,6 +4668,7 @@ function herrPrestamosHTML(){
         ${p.folioEstacion?'<br>Para el servicio en '+p.folioEstacion+(p.folioFecha?' ('+fecha(String(p.folioFecha).slice(0,10))+')':''):''}
       </div>
       ${yoLaPedi?'':'<div style="font-size:10.5px;color:#64748B;margin-top:4px">Sigue a tu nombre (tu responsiva). No se puede traspasar hasta que regrese.</div>'}
+      ${herrEsLab(h)?herrTLBoton(h):''}
     </div>`;};
   const a=herrState.meLasPrestaron||[], b=herrState.prestadas||[];
   return (a.length?`<div style="font-size:12px;font-weight:800;color:#4F46E5;margin:14px 0 6px">ME LA PRESTARON (${a.length})</div>`+a.map(h=>tarjeta(h,true)).join(''):'')

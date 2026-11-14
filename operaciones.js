@@ -3020,6 +3020,7 @@
 
         const gestion = opsPuedeGestionar();
         if (opsHerrComprasTec === null) opsHerrCargarComprasTec();
+        if (tlSol === null) tlCargarSol(); tlRevisarAvisosCal();
         let lista = cacheHerr.slice();
         const opsNorm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
         const b = opsNorm(filtroCat.busca.trim());
@@ -3039,6 +3040,7 @@
                     </div>`).join("")}
             </div>
             <div id="ops-herr-pend">${opsHerrPendientesHTML(gestion)}</div>
+            <div id="ops-tl-banner">${tlBannerHTML()}</div>
             <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
                 <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 13px;flex:1;min-width:240px;max-width:420px;">
                     <span style="color:#94a3b8;">${ICON.search}</span>
@@ -3793,6 +3795,12 @@
                     <button onclick="opsAbrirModalBaja('${id}')" class="mkt-add-btn" style="background:#E7402B;">${ICON.trash} Dar de baja</button>
                 </div>` : ""}
 
+                ${opsEsLab(h) && h.estado !== "baja" ? `<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:9px 11px;">
+                    <span style="font-size:12px;font-weight:800;color:#0369a1;">TecnoLab</span>${tlCalChip(h)}
+                    <button onclick="opsTLComentarios('${id}')" class="mkt-add-btn" style="background:#1D2E73;" title="Comentarios y reportes de falla, con archivos">Comentarios y fallas</button>
+                    <button onclick="opsTLNuevaSolicitud(null,'${id}')" class="mkt-add-btn" style="background:#334155;" title="Pedir este equipo para un servicio">Pedir este equipo</button>
+                    ${tlEsResp() ? `<button onclick="opsTLCalConfig('${id}')" class="mkt-add-btn" style="background:#0369a1;" title="Cada cuánto se calibra">Calendario de calibración</button>` : ""}
+                </div>` : ""}
                 ${opsHerrFichaExtraHTML(h, gestion)}
                 <div style="margin-top:22px;font-size:12.5px;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:6px;">${ICON.clock} Historial de movimientos</div>
                 <div style="margin-top:10px;border-left:2px solid #e2e8f0;padding-left:14px;">
@@ -5056,6 +5064,8 @@
             const m = { id: "mt" + Date.now().toString(36), tipo: g("ops-mt-tipo"), fecha: g("ops-mt-fecha") || opsHoy(), proveedor: g("ops-mt-prov") || null, costo: Number(g("ops-mt-costo")) || null, requisicion: g("ops-mt-req") || null,
                 proximo: g("ops-mt-prox") || null, descripcion: desc, evidencias: evid, abierto: fuera, estadoPrevio: fuera ? h.estado : null, por: opsNombreActual(), en: opsFechaHora() };
             const cambios = { mantenimientos: (h.mantenimientos || []).concat([m]).slice(-60), ...(m.proximo ? { proximoMantenimiento: m.proximo } : {}), ...(fuera && h.estado !== "reparacion" ? { estado: "reparacion" } : {}) };
+            // TecnoLab: una calibración registrada actualiza la «última calibración» y recalcula la próxima.
+            if (m.tipo === "calibracion") { cambios.calibracion = { ...(h.calibracion || {}), ultima: m.fecha }; if (!m.proximo) { const p = tlProxCal({ ...h, calibracion: cambios.calibracion }); if (p) cambios.proximoMantenimiento = p; } }
             await opsSbHerrActualizar(id, cambios);
             await opsRegistrarMovimiento({ herramientaId: id, tipo: fuera ? "reparacion" : "seguimiento", tecnicoAnteriorId: h.tecnicoActualId, tecnicoNuevoId: null, ubicacionAnterior: h.ubicacionActual, ubicacionNueva: h.ubicacionActual,
                 observaciones: (OPS_MTTO_TIPOS[m.tipo] || m.tipo) + ": " + desc + (m.requisicion ? " · requisición " + m.requisicion : "") + (m.proximo ? " · próximo " + m.proximo : "") + (evid.length ? " · " + evid.length + " evidencia(s)" : "") });
@@ -5075,6 +5085,485 @@
         } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
     };
     function opsEsLab(h) { return !!h && (h.requiereAutorizacion || h.almacenId === "tecnolab-cuarto-control" || /tecnolab/i.test(String(h.categoria || ""))); }
+
+    // ═══ TECNOLAB — Cuarto de Control de Equipos (14-nov-2026, Glen / Zaira) ═══
+    // 1) Solicitudes de equipo desde la programación (Calendario): quién lo usa, en qué servicio, razón social
+    //    y de cuándo a cuándo (fecha y hora). Las autoriza la responsable del almacén; al entregar se registra
+    //    como préstamo normal y al regresar la solicitud queda «Devuelta».
+    // 2) Comentarios y reportes de falla por equipo (técnicos y responsable) con archivos de cualquier tipo.
+    // 3) Calendario de calibración por equipo: cada cuántos meses y mes fijo (laboratorio: abril), con avisos
+    //    a 60, 30 y 7 días, el día y vencida.
+    // Tablas Supabase: tecnolab_solicitudes y tecnolab_comentarios (tecnolab.sql). Archivos: bucket viaticos-comprobantes/tecnolab/.
+    const TL_ALM = "tecnolab-cuarto-control";
+    const TL_MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+    const TL_EST = { Pendiente: ["#b45309", "#fef3c7"], Aprobada: ["#1d4ed8", "#dbeafe"], Entregada: ["#4338ca", "#e0e7ff"], Devuelta: ["#15803d", "#dcfce7"], Rechazada: ["#b91c1c", "#fee2e2"], Cancelada: ["#475569", "#f1f5f9"] };
+    const TL_TIPOS_COM = { comentario: "Comentario", falla: "Falla del equipo", problema: "Problema", calibracion: "Calibración", otro: "Otro" };
+    let tlSol = null, tlSolErr = null, tlAvisosHechos = false, tlVista = { tab: "solicitudes", anio: new Date().getFullYear(), q: "" };
+    const tlChip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:2px 8px;white-space:nowrap;">${t}</span>`;
+    const tlBadge = e => { const c = TL_EST[e] || TL_EST.Cancelada; return tlChip(opsEsc(e), c[0], c[1]); };
+    const tlCerrar = () => { const w = document.getElementById("ops-modal-wrap"); if (w) w.innerHTML = ""; };
+    const tlInp = "width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;";
+    const tlLbl = "font-size:11.5px;color:#64748b;font-weight:600;";
+    function tlEquipos() { return cacheHerr.filter(h => opsEsLab(h) && h.estado !== "baja").sort((a, b) => String(a.descripcion || "").localeCompare(String(b.descripcion || ""), "es")); }
+    function tlEsResp() { return opsEsCustodioDe(TL_ALM) || (!opsCustodiosDe(TL_ALM).length && opsEsAutorizadorCalibracion()); }
+    function tlCorreosResp() { return opsCustodiosDe(TL_ALM).map(c => String(c.email).toLowerCase().trim()); }
+    function tlNombreResp() { return opsNombresCustodios(TL_ALM) || "la responsable de TecnoLab"; }
+    function tlFmtDT(iso) { if (!iso) return "—"; const d = new Date(iso); return isNaN(d) ? String(iso) : d.toLocaleString("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
+    function tlLocal(d) { const p = n => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); }
+    function tlDuracion(a, b) { const h = (new Date(b) - new Date(a)) / 36e5; if (!(h > 0)) return "—"; return h < 24 ? Math.round(h) + " h" : Math.floor(h / 24) + " día(s)" + (Math.round(h % 24) ? " " + Math.round(h % 24) + " h" : ""); }
+    async function tlAvisar(correos, mensaje, extra) {
+        const yo = String(opsUsuarioActual() || "").toLowerCase().trim();
+        for (const para of [...new Set((correos || []).filter(Boolean).map(c => String(c).toLowerCase().trim()))]) {
+            if (para === yo) continue;
+            try { await window.tcNotificar({ tipo: "tecnolab", para, modulo: "Operaciones", mensaje, ...(extra || {}) }); } catch (e) {}
+        }
+    }
+
+    // ── Calibración ──
+    function tlUltimaCal(h) { return (h.mantenimientos || []).filter(m => m.tipo === "calibracion").map(m => m.terminado || m.fecha).filter(Boolean).sort().pop() || null; }
+    function tlCalCfg(h) {
+        const c = h.calibracion || {};
+        return { cadaMeses: Number(c.cadaMeses) || 12, mesFijo: c.mesFijo === 0 || c.mesFijo === "0" ? 0 : (Number(c.mesFijo) || (opsEsLab(h) ? 4 : 0)),
+            ultima: c.ultima || tlUltimaCal(h), proveedor: c.proveedor || "", sinCal: !!c.sinCalibracion, avisos: c.avisos || {} };
+    }
+    function tlProxCal(h) {
+        const c = tlCalCfg(h); if (c.sinCal) return null;
+        const p2 = n => String(n).padStart(2, "0");
+        if (c.mesFijo) {
+            let y;
+            if (c.ultima) y = Number(c.ultima.slice(0, 4)) + Math.max(1, Math.round(c.cadaMeses / 12));
+            else { const hoy = opsHoy(); y = Number(hoy.slice(0, 4)); if (Number(hoy.slice(5, 7)) > c.mesFijo) y++; }
+            return y + "-" + p2(c.mesFijo) + "-01";
+        }
+        if (!c.ultima) return h.proximoMantenimiento || null;
+        const d = new Date(c.ultima + "T12:00:00"); d.setMonth(d.getMonth() + c.cadaMeses); return d.toISOString().slice(0, 10);
+    }
+    function tlDiasA(iso) { return Math.round((new Date(iso + "T12:00:00") - new Date(opsHoy() + "T12:00:00")) / 864e5); }
+    function tlCalChip(h) {
+        const p = tlProxCal(h); if (!p) return tlChip("Sin calibración", "#475569", "#f1f5f9");
+        const d = tlDiasA(p), mesTxt = TL_MESES[Number(p.slice(5, 7))] + " " + p.slice(0, 4);
+        if (d < 0) return tlChip("Vencida · " + mesTxt, "#b91c1c", "#fee2e2");
+        if (d <= 30) return tlChip("Toca " + mesTxt, "#c2410c", "#ffedd5");
+        return tlChip(mesTxt, "#0369a1", "#e0f2fe");
+    }
+    // Avisos automáticos: los manda la sesión de la responsable (o un admin). Cada etapa se avisa una sola vez por fecha.
+    async function tlRevisarAvisosCal() {
+        if (tlAvisosHechos || !cacheHerr.length || !(cacheAlmacenes || []).length) return;
+        tlAvisosHechos = true;
+        if (!tlEsResp()) return;
+        const proximas = [];
+        for (const h of tlEquipos()) {
+            const prox = tlProxCal(h); if (!prox) continue;
+            const d = tlDiasA(prox);
+            const etapa = d < 0 ? "vencida" : d === 0 ? "hoy" : d <= 7 ? "7" : d <= 30 ? "30" : d <= 60 ? "60" : null;
+            if (!etapa) continue;
+            proximas.push({ h, d });
+            const c = h.calibracion || {}, av = (c.avisos || {})[prox] || [];
+            if (av.includes(etapa)) continue;
+            const cuando = TL_MESES[Number(prox.slice(5, 7))] + " de " + prox.slice(0, 4);
+            const msg = `TecnoLab: ${h.folio || ""} ${h.descripcion || ""} ` + (d < 0 ? `tiene la calibración VENCIDA (tocaba en ${cuando}).` : `se calibra en ${cuando} (faltan ${d} día(s)). Agenda la calibración y, si se va fuera, pídela en Compras.`);
+            await tlAvisar(tlCorreosResp().length ? tlCorreosResp() : [opsUsuarioActual()], msg, { herramientaId: h.id });
+            try { await opsSbHerrActualizar(h.id, { calibracion: { ...c, avisos: { ...(c.avisos || {}), [prox]: av.concat([etapa]) } }, proximoMantenimiento: prox }); } catch (e) {}
+        }
+        let ya = ""; try { ya = localStorage.getItem("tl-aviso-cal") || ""; } catch (e) {}
+        if (proximas.length && ya !== opsHoy()) {
+            try { localStorage.setItem("tl-aviso-cal", opsHoy()); } catch (e) {}
+            const venc = proximas.filter(x => x.d < 0).length;
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "TecnoLab: calibraciones", texto: `${proximas.length} equipo(s) con calibración próxima${venc ? ", " + venc + " vencida(s)" : ""}. Ábrelo en Herramientas → TecnoLab.`, nivel: venc ? "urgente" : "normal", modulo: "Operaciones" });
+        }
+    }
+
+    // ── Solicitudes ──
+    async function tlCargarSol(forzar) {
+        if (tlSol && !forzar) return tlSol;
+        try { const sb = await opsSb(); const r = await sb.from("tecnolab_solicitudes").select("*").order("creado_en", { ascending: false }).limit(600); if (r.error) throw r.error; tlSol = r.data || []; tlSolErr = null; }
+        catch (e) { tlSol = []; tlSolErr = e.message || String(e); console.warn("[TecnoLab] solicitudes:", e); }
+        tlPintarBanner();
+        const el = document.getElementById("ops-panel-material"); if (el && el.dataset.folio) { const f = cacheFolios.find(x => x.id === el.dataset.folio); if (f) try { opsPanelMaterialPintar(f); } catch (e) {} }
+        return tlSol;
+    }
+    const tlActiva = s => ["Pendiente", "Aprobada", "Entregada"].includes(s.estatus);
+    function tlConflictos(herrId, desde, hasta, ignorarId) {
+        const h = cacheHerr.find(x => x.id === herrId); const out = []; if (!h) return out;
+        const a = new Date(desde), b = new Date(hasta);
+        (tlSol || []).filter(s => s.herramienta_id === herrId && s.id !== ignorarId && tlActiva(s) && new Date(s.desde) < b && new Date(s.hasta) > a)
+            .forEach(s => out.push(`Ya está ${s.estatus === "Pendiente" ? "pedida" : "apartada"} para ${s.tecnico_nombre || "otra persona"} (${tlFmtDT(s.desde)} → ${tlFmtDT(s.hasta)}).`));
+        if (h.estado === "prestamo" && h.prestamo && (!h.prestamo.hasta || h.prestamo.hasta >= String(desde).slice(0, 10))) out.push(`Hoy la tiene prestada ${h.prestamo.aNombre || "alguien"} hasta el ${h.prestamo.hasta || "—"}.`);
+        if (h.estado === "reparacion" || (h.mantenimientos || []).some(m => m.abierto)) out.push("Está en mantenimiento o reparación.");
+        if (h.tecnicoActualId) out.push(`Está asignada a ${opsNombreTecnico(h.tecnicoActualId)} (no está en el cuarto de control).`);
+        const p = tlProxCal(h); if (p && p <= String(hasta).slice(0, 10)) out.push(p < opsHoy() ? "Tiene la calibración vencida." : `Le toca calibración el ${TL_MESES[Number(p.slice(5, 7))]} ${p.slice(0, 4)}, dentro o antes de estas fechas.`);
+        return out;
+    }
+    function tlSolHTML(s, compacto) {
+        const resp = tlEsResp(), mio = String(s.solicito_correo || "").toLowerCase() === String(opsUsuarioActual() || "").toLowerCase();
+        const b = (txt, fn, bg, col, brd) => `<button onclick="${fn}" style="background:${bg};border:${brd || "none"};color:${col};padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11.5px;font-weight:700;">${txt}</button>`;
+        const acc = [];
+        if (resp && s.estatus === "Pendiente") { acc.push(b("Autorizar", `opsTLDecidir(${s.id},true)`, "#15803d", "#fff")); acc.push(b("Rechazar", `opsTLDecidir(${s.id},false)`, "#fff", "#b91c1c", "1px solid #fecaca")); }
+        if (resp && s.estatus === "Aprobada") acc.push(b("Entregar ahora", `opsTLEntregar(${s.id})`, "#1D2E73", "#fff"));
+        if ((mio || resp) && (s.estatus === "Pendiente" || s.estatus === "Aprobada")) acc.push(b("Cancelar", `opsTLCancelar(${s.id})`, "#f1f5f9", "#475569"));
+        acc.push(b("Comentarios", `opsTLComentarios('${opsEsc(s.herramienta_id)}')`, "#fff", "#1D2E73", "1px solid #c7d2fe"));
+        return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:9px 11px;margin-bottom:7px;background:#fff;">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;"><div style="font-size:12.5px;color:#1e293b;"><b>${opsEsc(s.herramienta_folio || "")}</b> · ${opsEsc(s.herramienta_desc || "")}</div>${tlBadge(s.estatus)}</div>
+            <div style="font-size:11.5px;color:#334155;line-height:1.6;margin-top:3px;">
+                <div><b>Lo usa:</b> ${opsEsc(s.tecnico_nombre || "—")} · <b>Tiempo:</b> ${tlFmtDT(s.desde)} → ${tlFmtDT(s.hasta)} (${tlDuracion(s.desde, s.hasta)})</div>
+                ${compacto ? "" : `<div><b>Servicio:</b> ${opsEsc(s.servicio_txt || "Sin servicio ligado")}${s.folio_id ? ` <a href="#" onclick="event.preventDefault();opsTLCerrarYVerFolio('${opsEsc(s.folio_id)}')" style="color:#1D2E73;font-weight:700;">ver</a>` : ""}</div>`}
+                <div><b>Razón social:</b> ${opsEsc(s.razon_social || "—")}</div>
+                ${s.notas ? `<div><b>Notas:</b> ${opsEsc(s.notas)}</div>` : ""}
+                <div style="color:#64748b;">Pidió ${opsEsc(s.solicito_nombre || "")} · ${tlFmtDT(s.creado_en)}${s.respondio ? " · respondió " + opsEsc(s.respondio) : ""}${s.respuesta ? ": " + opsEsc(s.respuesta) : ""}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px;">${acc.join("")}</div>
+        </div>`;
+    }
+    function tlBannerHTML() {
+        const eq = tlEquipos(); if (!eq.length) return "";
+        const pend = (tlSol || []).filter(s => s.estatus === "Pendiente").length, apr = (tlSol || []).filter(s => s.estatus === "Aprobada").length;
+        const en30 = opsDiaISOmas(opsHoy(), 30), cal = eq.filter(h => { const p = tlProxCal(h); return p && p <= en30; }).length;
+        return `<div style="background:#fff;border:1px solid #c7d2fe;border-left:4px solid #1D2E73;border-radius:14px;padding:11px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <div style="min-width:0;"><div style="font-size:14px;font-weight:800;color:#1D2E73;">TecnoLab — Cuarto de Control de Equipos</div>
+            <div style="font-size:11.5px;color:#64748b;">${eq.length} equipo(s) · responsable: ${opsEsc(tlNombreResp())}. Aquí se piden los equipos, se reportan fallas y se ve cuándo toca calibrar.</div></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center;">
+                ${pend ? tlChip(pend + " por autorizar", "#fff", "#b45309") : ""}${apr ? tlChip(apr + " por entregar", "#1d4ed8", "#dbeafe") : ""}${cal ? tlChip(cal + " calibración(es) próxima(s)", "#c2410c", "#ffedd5") : ""}
+                <button onclick="opsTLAbrir('solicitudes')" title="Solicitudes, calendario de calibración y comentarios" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;">Abrir TecnoLab</button>
+            </div></div>`;
+    }
+    function tlPintarBanner() { const el = document.getElementById("ops-tl-banner"); if (el) el.innerHTML = tlBannerHTML(); }
+    window.opsTLCerrarYVerFolio = function (id) { tlCerrar(); if (typeof window.opsAbrirPanelFolio === "function") window.opsAbrirPanelFolio(id); };
+
+    // ── Pantalla principal (pestañas: Solicitudes · Calendario de calibración · Equipos) ──
+    window.opsTLAbrir = async function (tab) {
+        if (tab) tlVista.tab = tab;
+        const wrap = document.getElementById("ops-modal-wrap"); if (!wrap) return;
+        const shell = cuerpo => `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#f8fafc;border-radius:14px;width:980px;max-width:97vw;max-height:93vh;overflow-y:auto;padding:20px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:12px;">
+                    <div><div style="font-size:17px;font-weight:800;color:#1D2E73;">TecnoLab — Cuarto de Control de Equipos</div>
+                    <div style="font-size:12px;color:#64748b;">Responsable: ${opsEsc(tlNombreResp())}. Solo ella autoriza, entrega y recibe estos equipos.</div></div>
+                    <button onclick="opsTLCerrar()" title="Cerrar" style="background:#e2e8f0;border:none;width:32px;height:32px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+                ${cuerpo}</div></div>`;
+        if (tlSol === null) {
+            wrap.innerHTML = shell(`<div style="display:grid;gap:8px;">${[1, 2, 3].map(() => `<div style="height:64px;border-radius:10px;background:linear-gradient(90deg,#e2e8f0,#f1f5f9,#e2e8f0);"></div>`).join("")}</div>`);
+            await tlCargarSol(true);
+        }
+        const eq = tlEquipos(), sol = tlSol || [];
+        const nPend = sol.filter(s => s.estatus === "Pendiente").length, nAct = sol.filter(tlActiva).length;
+        const en30 = opsDiaISOmas(opsHoy(), 30), nCal = eq.filter(h => { const p = tlProxCal(h); return p && p <= en30; }).length;
+        const tabBtn = (k, t, n) => `<button onclick="opsTLAbrir('${k}')" style="border:none;border-bottom:3px solid ${tlVista.tab === k ? "#E7402B" : "transparent"};background:none;padding:8px 12px;font-size:13px;font-weight:800;color:${tlVista.tab === k ? "#1D2E73" : "#64748b"};cursor:pointer;">${t}${n ? ` <span style="background:#E7402B;color:#fff;border-radius:99px;padding:1px 7px;font-size:10.5px;">${n}</span>` : ""}</button>`;
+        let cuerpo = "";
+        if (tlVista.tab === "solicitudes") {
+            const grupos = ["Pendiente", "Aprobada", "Entregada"].map(e => [e, sol.filter(s => s.estatus === e).sort((a, b) => String(a.desde).localeCompare(String(b.desde)))]);
+            const hist = sol.filter(s => !tlActiva(s)).slice(0, 40);
+            cuerpo = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                    <div style="font-size:12px;color:#475569;max-width:640px;">Cuando se programa un servicio que necesita un equipo de TecnoLab, se pide desde el servicio en el Calendario (sección <b>Material y herramienta</b>) o aquí. ${opsEsc(tlNombreResp())} la autoriza y la entrega; al regresar se marca sola como devuelta.</div>
+                    <button onclick="opsTLNuevaSolicitud()" style="background:#1D2E73;color:#fff;border:none;border-radius:8px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">+ Pedir equipo</button></div>
+                ${tlSolErr ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:12px;margin-bottom:10px;">No se pudieron leer las solicitudes: ${opsEsc(tlSolErr)}. Si dice que la tabla no existe, falta correr <b>tecnolab.sql</b> en Supabase.</div>` : ""}
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;">
+                ${grupos.map(([e, l]) => `<div><div style="font-size:12.5px;font-weight:800;color:${TL_EST[e][0]};margin-bottom:6px;">${e === "Pendiente" ? "Por autorizar" : e === "Aprobada" ? "Autorizadas, por entregar" : "Entregadas (fuera del cuarto)"} (${l.length})</div>
+                    ${l.length ? l.map(s => tlSolHTML(s)).join("") : `<div style="font-size:11.5px;color:#94a3b8;background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:14px;text-align:center;">Nada aquí.</div>`}</div>`).join("")}
+                </div>
+                ${hist.length ? `<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#475569;">Historial (${hist.length})</summary><div style="margin-top:8px;">${hist.map(s => tlSolHTML(s)).join("")}</div></details>` : ""}`;
+        } else if (tlVista.tab === "calendario") {
+            const y = tlVista.anio, porMes = {};
+            eq.forEach(h => { const p = tlProxCal(h); if (p && Number(p.slice(0, 4)) === y) (porMes[Number(p.slice(5, 7))] = porMes[Number(p.slice(5, 7))] || []).push(h); });
+            const venc = eq.filter(h => { const p = tlProxCal(h); return p && p < opsHoy(); });
+            const sinFecha = eq.filter(h => !tlProxCal(h) && !tlCalCfg(h).sinCal);
+            const mesAct = new Date().getFullYear() === y ? new Date().getMonth() + 1 : 0;
+            cuerpo = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                    <div style="display:flex;gap:6px;align-items:center;"><button onclick="tlVista.anio--;opsTLAbrir()" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;" title="Año anterior">‹</button>
+                    <b style="font-size:15px;color:#1D2E73;">${y}</b><button onclick="tlVista.anio++;opsTLAbrir()" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer;" title="Año siguiente">›</button></div>
+                    <div style="font-size:11.5px;color:#64748b;max-width:560px;">Cada equipo sale en el mes que le toca calibración. Los de laboratorio se calibran <b>siempre en abril</b> (se puede cambiar por equipo). Clic en un equipo para cambiar cada cuánto se calibra.</div>
+                    ${tlEsResp() ? `<button onclick="opsTLCalTodosAbril()" title="Pone a todos los equipos: cada 12 meses, en abril" style="background:#fff;border:1px solid #1D2E73;color:#1D2E73;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Todos: cada año en abril</button>` : ""}</div>
+                ${venc.length ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin-bottom:10px;"><div style="font-size:12.5px;font-weight:800;color:#b91c1c;margin-bottom:5px;">Calibración vencida (${venc.length})</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">${venc.map(h => `<button onclick="opsTLCalConfig('${h.id}')" style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:5px 9px;font-size:11.5px;cursor:pointer;color:#991b1b;"><b>${opsEsc(h.folio || "")}</b> ${opsEsc(h.descripcion || "")}</button>`).join("")}</div></div>` : ""}
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+                ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => { const l = porMes[m] || []; return `<div style="background:#fff;border:${m === mesAct ? "2px solid #E7402B" : "1px solid #e2e8f0"};border-radius:12px;padding:10px 12px;min-height:90px;">
+                    <div style="display:flex;justify-content:space-between;"><b style="font-size:12.5px;color:#1e293b;text-transform:capitalize;">${TL_MESES[m]}</b>${l.length ? tlChip(l.length + " equipo(s)", "#0369a1", "#e0f2fe") : ""}</div>
+                    ${l.length ? l.map(h => `<div onclick="opsTLCalConfig('${h.id}')" title="Configurar calibración" style="font-size:11.5px;color:#334155;padding:4px 6px;border-radius:6px;background:#f8fafc;margin-top:4px;cursor:pointer;"><b>${opsEsc(h.folio || "")}</b> · ${opsEsc(h.descripcion || "")}</div>`).join("") : `<div style="font-size:11px;color:#cbd5e1;margin-top:8px;">Sin calibraciones</div>`}</div>`; }).join("")}
+                </div>
+                ${sinFecha.length ? `<div style="font-size:11.5px;color:#64748b;margin-top:10px;">Sin fecha calculada (${sinFecha.length}): ${sinFecha.map(h => opsEsc(h.folio || h.descripcion)).join(", ")} — ponles su última calibración.</div>` : ""}`;
+        } else {
+            const q = opsAsNorm(tlVista.q || "");
+            const lista = eq.filter(h => !q || opsAsNorm([h.folio, h.descripcion, h.marca, h.modelo, h.numeroSerie].join(" ")).includes(q));
+            const estTxt = h => h.estado === "prestamo" ? tlChip("Prestado · " + opsEsc((h.prestamo || {}).aNombre || ""), "#4338ca", "#e0e7ff") : h.estado === "reparacion" ? tlChip("En mantenimiento", "#c2410c", "#ffedd5") : h.tecnicoActualId ? tlChip("Asignado", "#0891b2", "#cffafe") : tlChip("En el cuarto", "#15803d", "#dcfce7");
+            cuerpo = `<div style="display:flex;gap:8px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:7px 12px;margin-bottom:10px;max-width:420px;">${ICON.search || ""}<input value="${opsEsc(tlVista.q || "")}" oninput="tlVista.q=this.value;clearTimeout(window._tlQ);window._tlQ=setTimeout(()=>{opsTLAbrir();const i=document.getElementById('tl-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" id="tl-q" placeholder="Buscar equipo, folio, marca o serie..." style="border:none;outline:none;font-size:12.5px;flex:1;"></div>
+                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#f1f5f9;text-align:left;color:#475569;"><th style="padding:8px 10px;">Equipo</th><th style="padding:8px 10px;">Estado</th><th style="padding:8px 10px;">Última calibración</th><th style="padding:8px 10px;">Cada</th><th style="padding:8px 10px;">Próxima</th><th></th></tr></thead>
+                <tbody>${lista.length ? lista.map(h => { const c = tlCalCfg(h); return `<tr style="border-top:1px solid #f1f5f9;">
+                    <td style="padding:8px 10px;"><b>${opsEsc(h.folio || "")}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:10.5px;color:#94a3b8;">${opsEsc([h.marca, h.modelo, h.numeroSerie ? "serie " + h.numeroSerie : ""].filter(Boolean).join(" · "))}</div></td>
+                    <td style="padding:8px 10px;">${estTxt(h)}</td><td style="padding:8px 10px;">${opsEsc(c.ultima || "—")}</td>
+                    <td style="padding:8px 10px;">${c.sinCal ? "No aplica" : c.cadaMeses + " meses" + (c.mesFijo ? " · " + TL_MESES[c.mesFijo] : "")}</td><td style="padding:8px 10px;">${tlCalChip(h)}</td>
+                    <td style="padding:8px 10px;white-space:nowrap;text-align:right;">
+                        <button onclick="opsTLComentarios('${h.id}')" title="Comentarios y fallas" style="background:#fff;border:1px solid #c7d2fe;color:#1D2E73;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Comentarios</button>
+                        <button onclick="opsTLNuevaSolicitud(null,'${h.id}')" title="Pedir este equipo" style="background:#fff;border:1px solid #cbd5e1;color:#334155;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Pedir</button>
+                        ${tlEsResp() ? `<button onclick="opsTLCalConfig('${h.id}')" title="Cada cuánto se calibra" style="background:#0369a1;border:none;color:#fff;border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:700;cursor:pointer;">Calibración</button>` : ""}
+                    </td></tr>`; }).join("") : `<tr><td colspan="6" style="padding:22px;text-align:center;color:#94a3b8;">No hay equipos que coincidan.</td></tr>`}</tbody></table></div>`;
+        }
+        wrap.innerHTML = shell(`<div style="display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:12px;flex-wrap:wrap;">
+            ${tabBtn("solicitudes", "Solicitudes", nPend)}${tabBtn("calendario", "Calendario de calibración", nCal)}${tabBtn("equipos", "Equipos", 0)}
+            <span style="margin-left:auto;align-self:center;font-size:11px;color:#94a3b8;">${nAct} solicitud(es) activa(s)</span></div>${cuerpo}`);
+    };
+    window.opsTLCerrar = function () { tlCerrar(); tlPintarBanner(); };
+    if (!Object.getOwnPropertyDescriptor(window, "tlVista")) Object.defineProperty(window, "tlVista", { get() { return tlVista; }, configurable: true });
+
+    // ── Nueva solicitud (desde el servicio del Calendario o desde TecnoLab) ──
+    window.opsTLNuevaSolicitud = async function (folioId, herrId) {
+        if (tlSol === null) await tlCargarSol(true);
+        const f = folioId ? cacheFolios.find(x => x.id === folioId) : null;
+        const eq = tlEquipos();
+        if (!eq.length) { alert("No hay equipos dados de alta en TecnoLab."); return; }
+        const ini = f && f.fechaProgramada ? new Date(f.fechaProgramada) : new Date(Date.now() + 3600000);
+        if (f && !/T\d/.test(String(f.fechaProgramada))) ini.setHours(8, 0, 0, 0);
+        const finDia = f ? String(opsFolioFechaFin(f) || "").slice(0, 10) : "";
+        const fin = finDia ? new Date(finDia + "T18:00:00") : new Date(ini.getTime() + 9 * 3600000);
+        const tecsF = f ? (f.tecnicosAsignadosIds || []) : [];
+        const pers = opsPersonalHerramienta();
+        const desde = opsDiaISOmas(opsHoy(), -1);
+        const folios = cacheFolios.filter(x => !x.cancelado && !x.fechaSolucion && x.fechaProgramada && String(opsFolioFechaFin(x) || x.fechaProgramada).slice(0, 10) >= desde)
+            .sort((a, b) => String(a.fechaProgramada).localeCompare(String(b.fechaProgramada))).slice(0, 150);
+        if (f && !folios.includes(f)) folios.unshift(f);
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:560px;max-width:96vw;max-height:93vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Pedir equipo de TecnoLab</div>
+                <div style="font-size:12px;color:#64748b;">Le llega a ${opsEsc(tlNombreResp())} para que lo autorice.</div></div>
+                <button onclick="opsTLCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>
+                <div style="margin-top:12px;">
+                <label style="${tlLbl}">1. ¿Qué equipo? (puedes marcar varios)</label>
+                <input placeholder="Buscar equipo..." oninput="opsTLFiltrarEq(this.value)" style="${tlInp}margin-bottom:4px;">
+                <div id="tl-eq-lista" style="border:1px solid #e2e8f0;border-radius:8px;max-height:170px;overflow-y:auto;padding:4px 8px;margin-bottom:10px;">
+                    ${eq.map(h => `<label data-q="${opsEsc(opsAsNorm([h.folio, h.descripcion, h.marca, h.modelo].join(" ")))}" style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:#334155;padding:4px 0;"><input type="checkbox" class="tl-eq" value="${opsEsc(h.id)}" ${h.id === herrId ? "checked" : ""} onchange="opsTLRevisar()" style="width:15px;height:15px;flex-shrink:0;"><span style="flex:1;"><b>${opsEsc(h.folio || "")}</b> · ${opsEsc(h.descripcion || "")}</span>${tlCalChip(h)}</label>`).join("")}
+                </div>
+                <label style="${tlLbl}">2. ¿Qué técnico lo va a usar?</label>
+                <select id="tl-tec" style="${tlInp}"><option value="">Selecciona a la persona...</option>
+                    ${tecsF.length ? `<optgroup label="Van a este servicio">${tecsF.map(id => { const t = pers.find(p => p.id === id) || opsTecPorId(id); return t ? `<option value="${opsEsc(id)}" ${id === (f.tecnicoResponsableId || tecsF[0]) ? "selected" : ""}>${opsEsc(t.nombre || id)}</option>` : ""; }).join("")}</optgroup>` : ""}
+                    <optgroup label="Todo el personal">${pers.filter(p => !tecsF.includes(p.id)).map(t => `<option value="${opsEsc(t.id)}">${opsEsc(opsPersonalHerrEtiqueta(t))}</option>`).join("")}</optgroup></select>
+                <label style="${tlLbl}">3. ¿En qué servicio?</label>
+                <select id="tl-folio" onchange="opsTLFolioCambio()" style="${tlInp}"><option value="">Sin servicio (uso interno)</option>
+                    ${folios.map(x => `<option value="${opsEsc(x.id)}" ${f && x.id === f.id ? "selected" : ""}>${opsEsc(opsFmtFechaCorta(x.fechaProgramada))} · ${opsEsc(x.estacion || "Sin estación")}${x.tipoServicio ? " · " + opsEsc(x.tipoServicio) : ""}${x.folioNumero ? " · N.º " + opsEsc(x.folioNumero) : ""}</option>`).join("")}</select>
+                <label style="${tlLbl}">4. Razón social del cliente</label>
+                <input id="tl-rs" value="${opsEsc(f ? (f.estacionRazonSocial || f.razonSocial || f.clienteNombre || "") : "")}" placeholder="Ej. Servicio Balleza, S.A. de C.V." style="${tlInp}">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <label style="${tlLbl}">5. Sale (fecha y hora)<input id="tl-desde" type="datetime-local" value="${tlLocal(ini)}" onchange="opsTLRevisar()" style="${tlInp}"></label>
+                    <label style="${tlLbl}">Regresa (fecha y hora)<input id="tl-hasta" type="datetime-local" value="${tlLocal(fin)}" onchange="opsTLRevisar()" style="${tlInp}"></label>
+                </div>
+                <div id="tl-dur" style="font-size:11.5px;color:#1D2E73;font-weight:700;margin:-4px 0 8px;"></div>
+                <label style="${tlLbl}">Notas para ${opsEsc(tlNombreResp().split(",")[0])} (opcional)</label>
+                <textarea id="tl-notas" rows="2" placeholder="Ej. se necesita con su estuche y cargador" style="${tlInp}resize:vertical;"></textarea>
+                <div id="tl-avisos"></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+                    <button onclick="opsTLCerrar()" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Cancelar</button>
+                    <button id="tl-btn" onclick="opsTLGuardarSolicitud()" style="background:#1D2E73;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar solicitud</button>
+                </div></div></div></div>`;
+        window.opsTLRevisar();
+    };
+    window.opsTLFiltrarEq = function (v) { const q = opsAsNorm(v || ""); document.querySelectorAll("#tl-eq-lista label").forEach(l => { l.style.display = !q || String(l.dataset.q || "").includes(q) ? "flex" : "none"; }); };
+    window.opsTLFolioCambio = function () {
+        const f = cacheFolios.find(x => x.id === (document.getElementById("tl-folio") || {}).value); if (!f) return;
+        const rs = document.getElementById("tl-rs"); if (rs && !rs.value) rs.value = f.estacionRazonSocial || f.razonSocial || f.clienteNombre || "";
+        if (f.fechaProgramada) { const d = new Date(f.fechaProgramada); if (!/T\d/.test(String(f.fechaProgramada))) d.setHours(8, 0, 0, 0);
+            const fin = new Date(String(opsFolioFechaFin(f) || f.fechaProgramada).slice(0, 10) + "T18:00:00");
+            document.getElementById("tl-desde").value = tlLocal(d); document.getElementById("tl-hasta").value = tlLocal(fin > d ? fin : new Date(d.getTime() + 9 * 3600000)); }
+        const tec = document.getElementById("tl-tec"), t0 = f.tecnicoResponsableId || (f.tecnicosAsignadosIds || [])[0];
+        if (tec && !tec.value && t0 && [...tec.options].some(o => o.value === t0)) tec.value = t0;
+        window.opsTLRevisar();
+    };
+    window.opsTLRevisar = function () {
+        const d = (document.getElementById("tl-desde") || {}).value, h = (document.getElementById("tl-hasta") || {}).value;
+        const dur = document.getElementById("tl-dur"); if (dur) dur.textContent = d && h ? (new Date(h) > new Date(d) ? "Tiempo fuera del cuarto: " + tlDuracion(d, h) : "La hora de regreso debe ser después de la salida.") : "";
+        const box = document.getElementById("tl-avisos"); if (!box) return;
+        const ids = [...document.querySelectorAll(".tl-eq:checked")].map(x => x.value);
+        const avisos = d && h ? ids.flatMap(id => { const e = cacheHerr.find(x => x.id === id); return tlConflictos(id, new Date(d).toISOString(), new Date(h).toISOString()).map(t => `<b>${opsEsc(e ? e.folio || e.descripcion : id)}:</b> ${opsEsc(t)}`); }) : [];
+        box.innerHTML = avisos.length ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 11px;font-size:12px;color:#92400e;line-height:1.55;margin-bottom:6px;"><b>Ojo antes de enviar:</b><br>${avisos.join("<br>")}<div style="margin-top:4px;color:#a16207;">Puedes enviarla de todos modos; ${opsEsc(tlNombreResp().split(",")[0])} decide.</div></div>` : "";
+    };
+    window.opsTLGuardarSolicitud = async function () {
+        const g = id => ((document.getElementById(id) || {}).value || "").trim();
+        const ids = [...document.querySelectorAll(".tl-eq:checked")].map(x => x.value);
+        const tecId = g("tl-tec"), d = g("tl-desde"), h = g("tl-hasta");
+        if (!ids.length) { alert("Marca al menos un equipo."); return; }
+        if (!tecId) { alert("Elige qué técnico lo va a usar."); return; }
+        if (!d || !h) { alert("Pon la fecha y hora de salida y de regreso."); return; }
+        if (new Date(h) <= new Date(d)) { alert("La hora de regreso debe ser después de la salida."); return; }
+        const t = opsPersonalHerramienta().find(p => p.id === tecId) || opsTecPorId(tecId) || {};
+        const f = cacheFolios.find(x => x.id === g("tl-folio"));
+        const btn = document.getElementById("tl-btn"); if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
+        try {
+            const sb = await opsSb();
+            const filas = ids.map(id => { const e = cacheHerr.find(x => x.id === id) || {}; return {
+                herramienta_id: id, herramienta_folio: e.folio || null, herramienta_desc: e.descripcion || null,
+                folio_id: f ? f.id : null, servicio_txt: f ? [opsFmtFechaCorta(f.fechaProgramada), f.estacion, f.tipoServicio, f.folioNumero ? "N.º " + f.folioNumero : ""].filter(Boolean).join(" · ") : null,
+                razon_social: g("tl-rs") || null, tecnico_id: tecId, tecnico_nombre: t.nombre || null, tecnico_correo: t.correo ? String(t.correo).toLowerCase() : null,
+                desde: new Date(d).toISOString(), hasta: new Date(h).toISOString(), notas: g("tl-notas") || null, estatus: "Pendiente",
+                solicito_nombre: opsNombreActual(), solicito_correo: String(opsUsuarioActual() || "").toLowerCase() || null }; });
+            const r = await sb.from("tecnolab_solicitudes").insert(filas).select(); if (r.error) throw r.error;
+            const lista = filas.map(x => (x.herramienta_folio || "") + " " + (x.herramienta_desc || "")).join(", ");
+            await tlAvisar(tlCorreosResp(), `TecnoLab: ${opsNombreActual()} pide ${lista} para ${t.nombre || "un técnico"}${f ? " (servicio " + (f.estacion || "") + ")" : ""}, del ${tlFmtDT(filas[0].desde)} al ${tlFmtDT(filas[0].hasta)}. Entra a Herramientas → TecnoLab para autorizar.`);
+            if (f) { try { const { db, fs } = await opsGetFB(); fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[TecnoLab] Se pidió ${lista} para ${t.nombre || ""}, del ${tlFmtDT(filas[0].desde)} al ${tlFmtDT(filas[0].hasta)}. Falta que lo autorice ${tlNombreResp()}.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "estatus", createdAt: opsFechaHora() }).catch(() => {}); } catch (e) {} }
+            tlSol = (r.data || []).concat(tlSol || []);
+            if (window.mostrarPush) window.mostrarPush("TecnoLab", "Solicitud enviada a " + tlNombreResp() + ".", ICON.check);
+            if (f) { tlCerrar(); try { opsPanelMaterialPintar(f); } catch (e) {} } else window.opsTLAbrir("solicitudes");
+            tlPintarBanner();
+        } catch (e) { alert("No se pudo enviar: " + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = "Enviar solicitud"; } }
+    };
+    async function tlActualizarSol(id, cambios) {
+        const sb = await opsSb(); const r = await sb.from("tecnolab_solicitudes").update({ ...cambios, actualizado_en: new Date().toISOString() }).eq("id", id).select(); if (r.error) throw r.error;
+        const s = (tlSol || []).find(x => x.id === id); if (s) Object.assign(s, cambios); return s;
+    }
+    window.opsTLDecidir = async function (id, ok) {
+        const s = (tlSol || []).find(x => x.id === id); if (!s) return;
+        if (!tlEsResp()) { alert("Solo " + tlNombreResp() + " puede autorizar equipo de TecnoLab."); return; }
+        if (ok) { const c = tlConflictos(s.herramienta_id, s.desde, s.hasta, s.id).filter(x => !/asignada a/.test(x)); if (c.length && !confirm("Ojo:\n- " + c.join("\n- ") + "\n\n¿Autorizar de todos modos?")) return; }
+        const resp = ok ? (prompt("Nota para quien lo pidió (opcional):", "") ?? null) : prompt("¿Por qué no se autoriza? (le llega a quien lo pidió y al técnico)", "");
+        if (resp === null) return; if (!ok && !resp.trim()) { alert("Escribe el motivo."); return; }
+        try {
+            await tlActualizarSol(id, { estatus: ok ? "Aprobada" : "Rechazada", respuesta: resp.trim() || null, respondio: opsNombreActual(), respondido_en: new Date().toISOString() });
+            await tlAvisar([s.solicito_correo, s.tecnico_correo], `TecnoLab: ${s.herramienta_folio || ""} ${s.herramienta_desc || ""} para ${s.tecnico_nombre || ""} (${tlFmtDT(s.desde)} → ${tlFmtDT(s.hasta)}) ${ok ? "ya está AUTORIZADO. Pasa por él al cuarto de control." : "NO se autorizó: " + resp}`);
+            window.opsTLAbrir();
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsTLCancelar = async function (id) {
+        const s = (tlSol || []).find(x => x.id === id); if (!s) return;
+        const m = prompt("¿Por qué se cancela? (opcional)", ""); if (m === null) return;
+        try { await tlActualizarSol(id, { estatus: "Cancelada", respuesta: m.trim() || null, respondio: opsNombreActual(), respondido_en: new Date().toISOString() });
+            await tlAvisar(tlCorreosResp().concat([s.tecnico_correo, s.solicito_correo]), `TecnoLab: se canceló la solicitud de ${s.herramienta_folio || ""} ${s.herramienta_desc || ""} para ${s.tecnico_nombre || ""}.${m ? " Motivo: " + m : ""}`);
+            if (document.getElementById("ops-panel-material")) tlCargarSol(true);
+            window.opsTLAbrir();
+        } catch (e) { alert("No se pudo cancelar: " + (e.message || e)); }
+    };
+    // Entregar: abre el préstamo normal ya lleno (técnico, servicio, fecha de regreso, dónde y razón social).
+    let tlEntregaPend = null;
+    window.opsTLEntregar = function (id) {
+        const s = (tlSol || []).find(x => x.id === id); if (!s) return;
+        const h = cacheHerr.find(x => x.id === s.herramienta_id); if (!h) { alert("Ese equipo ya no existe en el inventario."); return; }
+        if (h.estado === "prestamo") { alert(`${h.folio} sigue prestado a ${(h.prestamo || {}).aNombre || "otra persona"}. Primero registra que lo devolvió.`); return; }
+        tlEntregaPend = { solId: id, herrId: h.id };
+        tlCerrar(); window.opsAbrirModalMovimiento(h.id);
+        const set = (k, v) => { const el = document.getElementById(k); if (el && v != null) el.value = v; };
+        const tipo = document.getElementById("ops-in-tipomov");
+        if (!tipo || ![...tipo.options].some(o => o.value === "prestamo")) { tlEntregaPend = null; return; }
+        tipo.value = "prestamo"; window.opsToggleCamposMovimiento();
+        set("ops-in-tecnico", s.tecnico_id); window.opsPrestamoLlenarServicios();
+        if (s.folio_id) set("ops-in-prestamo-folio", s.folio_id);
+        const hasta = String(tlLocal(new Date(s.hasta))).slice(0, 10); set("ops-in-prestamo-hasta", hasta < opsHoy() ? opsHoy() : hasta);
+        const f = s.folio_id ? cacheFolios.find(x => x.id === s.folio_id) : null;
+        set("ops-in-lab-ubic", f ? [f.estacion, f.municipio || f.ciudad].filter(Boolean).join(", ") : "");
+        set("ops-in-lab-rs", s.razon_social || "");
+        set("ops-in-obs", `Solicitud TecnoLab: sale ${tlFmtDT(s.desde)}, regresa ${tlFmtDT(s.hasta)}.`);
+    };
+    async function tlAlPrestar(herrId) {
+        if (!tlEntregaPend || tlEntregaPend.herrId !== herrId) return;
+        const id = tlEntregaPend.solId; tlEntregaPend = null;
+        try { const s = await tlActualizarSol(id, { estatus: "Entregada", entregado_en: new Date().toISOString(), entrego: opsNombreActual() }); tlPintarBanner(); void s; } catch (e) { console.warn("[TecnoLab] entregar:", e); }
+    }
+    async function tlAlDevolver(herrId) {
+        if (tlSol === null) await tlCargarSol(true);
+        const s = (tlSol || []).find(x => x.herramienta_id === herrId && x.estatus === "Entregada"); if (!s) return;
+        try { await tlActualizarSol(s.id, { estatus: "Devuelta", devuelto_en: new Date().toISOString(), recibio: opsNombreActual() }); tlPintarBanner(); } catch (e) { console.warn("[TecnoLab] devolver:", e); }
+    }
+    // Sección dentro del panel del servicio (Calendario).
+    function tlPanelHTML(f) {
+        if (!tlEquipos().length) return "";
+        if (tlSol === null) { tlCargarSol(); return `<div style="margin-top:8px;font-size:11.5px;color:#94a3b8;">Cargando equipo de TecnoLab…</div>`; }
+        const mias = tlSol.filter(s => s.folio_id === f.id && s.estatus !== "Cancelada");
+        return `<div style="margin-top:10px;border-top:1px dashed #e2e8f0;padding-top:8px;">
+            <div style="font-size:12px;font-weight:800;color:#1D2E73;margin-bottom:6px;">Equipo de TecnoLab (lo autoriza ${opsEsc(tlNombreResp())})</div>
+            ${mias.length ? mias.map(s => tlSolHTML(s, true)).join("") : `<div style="font-size:11.5px;color:#94a3b8;margin-bottom:6px;">No se ha pedido equipo de TecnoLab para este servicio.</div>`}
+            <button onclick="opsTLNuevaSolicitud('${f.id}')" style="border:1px solid #0369a1;background:#fff;color:#0369a1;border-radius:8px;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;">Pedir equipo de TecnoLab</button>
+        </div>`;
+    }
+
+    // ── Configurar calibración de un equipo ──
+    window.opsTLCalConfig = function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        if (!tlEsResp()) { window.opsTLComentarios(id); return; }
+        const c = tlCalCfg(h);
+        document.getElementById("ops-modal-wrap").innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:440px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:22px;">
+                <div style="font-size:16px;font-weight:800;color:#1D2E73;">Calibración del equipo</div>
+                <div style="font-size:12px;color:#64748b;margin-bottom:12px;">${opsEsc(h.folio || "")} · ${opsEsc(h.descripcion || "")}</div>
+                <label style="${tlLbl}">¿Cada cuánto se calibra?</label>
+                <select id="tl-cada" style="${tlInp}">${[[6, "Cada 6 meses"], [12, "Cada año (12 meses)"], [24, "Cada 2 años"], [36, "Cada 3 años"], [60, "Cada 5 años"], [120, "Cada 10 años"]].map(([v, t]) => `<option value="${v}" ${c.cadaMeses === v ? "selected" : ""}>${t}</option>`).join("")}${[6, 12, 24, 36, 60, 120].includes(c.cadaMeses) ? "" : `<option value="${c.cadaMeses}" selected>Cada ${c.cadaMeses} meses</option>`}</select>
+                <label style="${tlLbl}">¿En qué mes toca? (laboratorio: abril)</label>
+                <select id="tl-mes" style="${tlInp}"><option value="0" ${!c.mesFijo ? "selected" : ""}>Sin mes fijo (contar desde la última)</option>${TL_MESES.slice(1).map((m, i) => `<option value="${i + 1}" ${c.mesFijo === i + 1 ? "selected" : ""} style="text-transform:capitalize;">${m}</option>`).join("")}</select>
+                <label style="${tlLbl}">Última calibración</label>
+                <input id="tl-ult" type="date" value="${opsEsc(c.ultima || "")}" style="${tlInp}">
+                <label style="${tlLbl}">¿Quién la calibra? (opcional)</label>
+                <input id="tl-prov" value="${opsEsc(c.proveedor)}" placeholder="Laboratorio o proveedor" style="${tlInp}">
+                <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:#334155;margin-bottom:12px;"><input id="tl-sin" type="checkbox" ${c.sinCal ? "checked" : ""} style="width:15px;height:15px;">Este equipo no requiere calibración</label>
+                <div style="font-size:11.5px;color:#64748b;background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:12px;">Cuando registres la calibración en <b>Mantenimiento / calibración</b> (tipo Calibración), la última fecha se actualiza sola. Se avisa a ${opsEsc(tlNombreResp())} 60, 30 y 7 días antes, el día y si se vence.</div>
+                <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;">
+                    <button onclick="opsHerrMantenimiento('${h.id}')" style="background:#fff;border:1px solid #0369a1;color:#0369a1;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Registrar calibración hecha</button>
+                    <div style="display:flex;gap:8px;"><button onclick="opsTLAbrir('calendario')" style="background:#f1f5f9;border:none;color:#475569;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Regresar</button>
+                    <button onclick="opsTLCalGuardar('${h.id}')" style="background:#1D2E73;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Guardar</button></div>
+                </div></div></div>`;
+    };
+    window.opsTLCalGuardar = async function (id) {
+        const h = cacheHerr.find(x => x.id === id); if (!h) return;
+        const g = k => ((document.getElementById(k) || {}).value || "").trim();
+        const cal = { ...(h.calibracion || {}), cadaMeses: Number(g("tl-cada")) || 12, mesFijo: Number(g("tl-mes")) || 0, ultima: g("tl-ult") || null, proveedor: g("tl-prov") || null, sinCalibracion: !!(document.getElementById("tl-sin") || {}).checked };
+        try { const tmp = { ...h, calibracion: cal }; await opsSbHerrActualizar(id, { calibracion: cal, proximoMantenimiento: tlProxCal(tmp) || null }); window.opsTLAbrir("calendario"); }
+        catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
+    };
+    window.opsTLCalTodosAbril = async function () {
+        const eq = tlEquipos(); if (!confirm(`Esto pone a los ${eq.length} equipos de TecnoLab: calibración cada año, en abril. Los que ya tienen otra configuración también cambian. ¿Continuar?`)) return;
+        let n = 0; for (const h of eq) { const cal = { ...(h.calibracion || {}), cadaMeses: 12, mesFijo: 4, sinCalibracion: false };
+            try { await opsSbHerrActualizar(h.id, { calibracion: cal, proximoMantenimiento: tlProxCal({ ...h, calibracion: cal }) }); n++; } catch (e) {} }
+        alert(n + " equipo(s) actualizados."); window.opsTLAbrir("calendario");
+    };
+
+    // ── Comentarios y reportes de falla (con archivos de cualquier tipo) ──
+    window.opsTLComentarios = async function (herrId) {
+        const h = cacheHerr.find(x => x.id === herrId); if (!h) return;
+        const wrap = document.getElementById("ops-modal-wrap");
+        const shell = cuerpo => `<div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;">
+            <div style="background:#fff;border-radius:14px;width:600px;max-width:96vw;max-height:93vh;overflow-y:auto;padding:22px;">
+                <div style="display:flex;justify-content:space-between;gap:10px;"><div><div style="font-size:16px;font-weight:800;color:#1D2E73;">Comentarios y fallas</div>
+                <div style="font-size:12px;color:#64748b;">${opsEsc(h.folio || "")} · ${opsEsc(h.descripcion || "")} · ${tlCalChip(h)}</div></div>
+                <button onclick="opsTLCerrar()" style="background:#f1f5f9;border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;">${ICON.close}</button></div>${cuerpo}</div></div>`;
+        wrap.innerHTML = shell(`<div style="height:80px;border-radius:10px;background:#f1f5f9;margin-top:12px;"></div>`);
+        let lista = [], err = null;
+        try { const sb = await opsSb(); const r = await sb.from("tecnolab_comentarios").select("*").eq("herramienta_id", herrId).order("creado_en", { ascending: true }); if (r.error) throw r.error; lista = r.data || []; }
+        catch (e) { err = e.message || String(e); }
+        const yo = String(opsUsuarioActual() || "").toLowerCase();
+        const colTipo = { falla: ["#b91c1c", "#fee2e2"], problema: ["#c2410c", "#ffedd5"], calibracion: ["#0369a1", "#e0f2fe"], comentario: ["#475569", "#f1f5f9"], otro: ["#475569", "#f1f5f9"] };
+        wrap.innerHTML = shell(`
+            ${err ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:10px 12px;font-size:12px;margin-top:12px;">No se pudieron leer los comentarios: ${opsEsc(err)}. Si dice que la tabla no existe, falta correr <b>tecnolab.sql</b> en Supabase.</div>` : ""}
+            <div style="margin:12px 0;display:flex;flex-direction:column;gap:8px;">
+            ${lista.length ? lista.map(c => { const mio = String(c.autor_correo || "").toLowerCase() === yo, ct = colTipo[c.tipo] || colTipo.otro; return `<div style="align-self:${mio ? "flex-end" : "flex-start"};max-width:85%;background:${mio ? "#eef2ff" : "#f8fafc"};border:1px solid ${mio ? "#c7d2fe" : "#e2e8f0"};border-radius:12px;padding:8px 11px;">
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:#64748b;"><b style="color:#1e293b;">${opsEsc(c.autor_nombre || c.autor_correo || "")}</b>${tlChip(opsEsc(TL_TIPOS_COM[c.tipo] || c.tipo || ""), ct[0], ct[1])}<span>${tlFmtDT(c.creado_en)}${c.origen === "app" ? " · desde la app" : ""}</span></div>
+                <div style="font-size:12.5px;color:#334155;white-space:pre-wrap;margin-top:3px;">${opsEsc(c.texto || "")}</div>
+                ${(c.archivos || []).length ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;">${c.archivos.map(a => `<button onclick="opsHerrCompraFoto('${opsEsc(a.ruta)}')" title="Abrir archivo" style="background:#fff;border:1px solid #cbd5e1;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">${ICON.clip || ""} ${opsEsc(String(a.nombre || "archivo").slice(0, 40))}</button>`).join("")}</div>` : ""}
+            </div>`; }).join("") : `<div style="text-align:center;color:#94a3b8;font-size:12px;padding:18px;border:1px dashed #cbd5e1;border-radius:10px;">Todavía no hay comentarios. Aquí se reportan fallas, problemas o cualquier detalle del equipo.</div>`}
+            </div>
+            <div style="background:#f8fafc;border-radius:12px;padding:12px;">
+                <div style="display:grid;grid-template-columns:180px 1fr;gap:8px;">
+                    <label style="${tlLbl}">Tipo<select id="tl-c-tipo" style="${tlInp}">${Object.keys(TL_TIPOS_COM).map(k => `<option value="${k}">${TL_TIPOS_COM[k]}</option>`).join("")}</select></label>
+                    <label style="${tlLbl}">Archivos (fotos, video, PDF, Excel… lo que sea)<input id="tl-c-arch" type="file" multiple style="width:100%;margin-top:8px;font-size:12px;"></label>
+                </div>
+                <textarea id="tl-c-txt" rows="3" placeholder="Escribe qué pasó o qué necesitas avisar…" style="${tlInp}resize:vertical;"></textarea>
+                <div style="display:flex;justify-content:flex-end;"><button id="tl-c-btn" onclick="opsTLComentar('${herrId}')" style="background:#1D2E73;color:#fff;border:none;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">Enviar</button></div>
+            </div>`);
+    };
+    window.opsTLComentar = async function (herrId) {
+        const h = cacheHerr.find(x => x.id === herrId); if (!h) return;
+        const txt = ((document.getElementById("tl-c-txt") || {}).value || "").trim(), tipo = (document.getElementById("tl-c-tipo") || {}).value || "comentario";
+        const files = [...((document.getElementById("tl-c-arch") || {}).files || [])];
+        if (!txt && !files.length) { alert("Escribe algo o adjunta un archivo."); return; }
+        if (files.some(f => f.size > 50 * 1024 * 1024)) { alert("Algún archivo pesa más de 50 MB."); return; }
+        const btn = document.getElementById("tl-c-btn"); if (btn) { btn.disabled = true; btn.textContent = "Enviando…"; }
+        try {
+            const sb = await opsSb(), archivos = [];
+            for (let i = 0; i < files.length; i++) { const f = files[i], ext = (String(f.name || "").split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 6) || "bin";
+                const ruta = "tecnolab/" + herrId + "/" + Date.now() + "_" + (i + 1) + "." + ext;
+                const up = await sb.storage.from("viaticos-comprobantes").upload(ruta, f, { contentType: f.type || "application/octet-stream", upsert: false }); if (up.error) throw up.error;
+                archivos.push({ ruta, nombre: f.name || ("archivo." + ext), tipo: f.type || null, tam: f.size }); }
+            const r = await sb.from("tecnolab_comentarios").insert({ herramienta_id: herrId, herramienta_folio: h.folio || null, tipo, texto: txt || null, archivos, autor_nombre: opsNombreActual(), autor_correo: String(opsUsuarioActual() || "").toLowerCase(), origen: "portal" });
+            if (r.error) throw r.error;
+            const quien = [h.tecnicoActualId ? (opsTecPorId(h.tecnicoActualId) || {}).correo : null, h.prestamo ? h.prestamo.aCorreo : null];
+            await tlAvisar(tlCorreosResp().concat(quien), `TecnoLab · ${TL_TIPOS_COM[tipo] || "Comentario"} en ${h.folio || ""} ${h.descripcion || ""} (${opsNombreActual()}): ${txt.slice(0, 160)}${files.length ? " · " + files.length + " archivo(s)" : ""}`, { herramientaId: herrId });
+            if (tipo === "falla" && tlEsResp() && h.estado !== "reparacion" && confirm("¿El equipo queda fuera de servicio por esta falla? (Se abre Mantenimiento para registrarlo)")) { window.opsHerrMantenimiento(herrId); return; }
+            window.opsTLComentarios(herrId);
+        } catch (e) { alert("No se pudo enviar: " + (e.message || e)); if (btn) { btn.disabled = false; btn.textContent = "Enviar"; } }
+    };
     function opsLeerCheckLab() { const r = {}; document.querySelectorAll(".ops-lab-chk").forEach(c => { r[OPS_LAB_CHECK[Number(c.dataset.i)]] = c.checked; }); return r; }
     async function opsRegistrarPrestamo(herramientaId, obs) {
         const h = cacheHerr.find(x => x.id === herramientaId); if (!h) return;
@@ -5116,6 +5605,7 @@
             }
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.mostrarPush) window.mostrarPush("Herramientas", `${h.folio} prestada a ${prestamo.aNombre} hasta el ${hastaTxt}.`, ICON.lock);
+            tlAlPrestar(herramientaId);
         } catch (e) {
             alert("No se pudo registrar el préstamo: " + (e.message || e));
             if (btn) { btn.disabled = false; btn.textContent = "Confirmar"; }
@@ -5192,6 +5682,7 @@
                 observaciones: `${p.aNombre || "Quien la pidió"} devolvió la pieza prestada${p.hasta && p.hasta < opsHoy() ? " (con retraso; debía regresar el " + p.hasta + ")" : ""}.` + (obs ? " Condición: " + obs : "") });
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.mostrarPush) window.mostrarPush("Herramientas", `${h.folio} ya regresó del préstamo.`, ICON.check);
+            tlAlDevolver(herramientaId);
         } catch (e) {
             alert("No se pudo registrar la devolución: " + (e.message || e));
             if (btn) { btn.disabled = false; btn.textContent = "Ya la devolvió"; }
@@ -17136,6 +17627,7 @@
         el.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Material y herramienta</div>
             ${filas || `<div style="font-size:11.5px;color:#94a3b8;margin-bottom:6px;">No se ha pedido material a Almacén para este servicio.</div>`}
             ${gest ? `<button onclick="opsNecAbrirPedido('${f.id}')" style="border:1px solid #1D2E73;background:#fff;color:#1D2E73;border-radius:8px;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;">${receta && !peds.length ? "Pedir a Almacén lo de la receta" : "Pedir material o herramienta a Almacén"}</button>` : ""}
+            ${gest || tlEsResp() ? tlPanelHTML(f) : ""}
         </div>`;
     }
     window.opsNecReprogramar = function (id) {
@@ -23250,6 +23742,7 @@
             if (!vivo) return;
             cacheHerr = lista;
             opsRefrescarVistasHerr();
+            setTimeout(() => { try { tlRevisarAvisosCal(); } catch (e) {} }, 5000);
         }).catch(err => {
             console.error("[operaciones.js] no se pudieron cargar herramientas de Supabase:", err);
             if (window.mostrarPush) window.mostrarPush("Operaciones", "No se pudieron cargar las herramientas (Supabase). Revisa tu conexión.", "⚠️");
