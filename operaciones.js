@@ -3857,11 +3857,27 @@
 
     // Al elegir "almacén de una persona" en el alta: serie HT y se le asigna de inmediato (29-oct-2026).
     window.opsAltaAlmacenCambio = function (sel) {
-        const v = sel.value || "", prev = document.getElementById("ops-folio-prev"), dest = document.getElementById("ops-in-tecnico-destino");
-        if (v.startsWith("tec:")) { if (prev) prev.textContent = "HT-######"; if (dest) dest.value = v.slice(4); }
-        else { if (prev) prev.textContent = opsPrefijoAlmacenPublico(v) + "-######"; if (dest && dest.value && sel.dataset.antes && sel.dataset.antes.startsWith("tec:")) dest.value = ""; }
+        const v = sel.value || "", dest = document.getElementById("ops-in-tecnico-destino");
+        if (v.startsWith("tec:")) { if (dest) dest.value = v.slice(4); }
+        else { if (dest && dest.value && sel.dataset.antes && sel.dataset.antes.startsWith("tec:")) dest.value = ""; }
         sel.dataset.antes = v;
+        window.opsAltaFolioPrev();
     };
+    // 14-nov-2026 (Glen): al dar de alta se elige con qué folio sale — automático según el almacén, la serie de
+    // otro almacén, o escrito a mano (ej. el número que ya trae la pieza o el del técnico) — y a qué almacén se carga.
+    window.opsAltaFolioPrev = function () {
+        const alm = ((document.getElementById("ops-in-almacen-alta") || {}).value || "");
+        const serie = ((document.getElementById("ops-in-serie-alta") || {}).value || "auto");
+        const man = document.getElementById("ops-in-folio-manual"), prev = document.getElementById("ops-folio-prev");
+        if (man) man.style.display = serie === "manual" ? "block" : "none";
+        if (!prev) return;
+        if (serie === "manual") { const v = opsFolioManualLimpio(man ? man.value : ""); prev.textContent = v || "(escríbelo arriba)"; prev.style.color = v && opsFolioOcupado(v) ? "#b91c1c" : ""; if (v && opsFolioOcupado(v)) prev.textContent = v + " — YA EXISTE, elige otro"; return; }
+        prev.style.color = "";
+        const base = serie === "auto" ? (alm.startsWith("tec:") ? "" : alm) : serie;
+        prev.textContent = opsPrefijoAlmacenPublico(base) + "-######";
+    };
+    function opsFolioManualLimpio(v) { return String(v || "").toUpperCase().trim().replace(/\s+/g, "-").replace(/[^A-Z0-9\-]/g, "").slice(0, 30); }
+    function opsFolioOcupado(v) { const u = String(v).toUpperCase(); return cacheHerr.some(h => String(h.id).toUpperCase() === u || String(h.folio || "").toUpperCase() === u); }
     window.opsAbrirModalPieza = function (id) {
         const h = id ? cacheHerr.find(x => x.id === id) : null;
         opsRequisicionSeleccionada = null;
@@ -3916,7 +3932,7 @@
 
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">Uso / para qué sirve (opcional)</label>
                 <input id="ops-in-uso" value="${opsEsc(h?.uso || "")}" placeholder="Ej. Apriete de tuercas hidráulicas" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;">
-                ${id ? "" : `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿En qué almacén entra? (define la serie del folio)</label>
+                ${id ? "" : `<label style="font-size:11.5px;color:#64748b;font-weight:600;">¿A qué almacén se carga?</label>
                 <select id="ops-in-almacen-alta" onchange="opsAltaAlmacenCambio(this)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
                     <option value="">Almacén General (HT)</option>
                     ${cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(a => `<option value="${opsEsc(a.id)}">${opsEsc(a.nombre)} (${opsEsc(opsPrefijoAlmacen(a.id))})${a.requiereAutorizacion ? " · requiere autorización" : ""}</option>`).join("")}
@@ -3924,6 +3940,14 @@
                     ${tecnicosActivos.map(t => `<option value="tec:${opsEsc(t.id)}">${opsEsc(opsPersonalHerrEtiqueta(t))}</option>`).join("")}
                     </optgroup>
                 </select>
+                <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Con qué folio sale?</label>
+                <select id="ops-in-serie-alta" onchange="opsAltaFolioPrev()" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;">
+                    <option value="auto">Automático, según el almacén elegido</option>
+                    <option value="">Serie del Almacén General (HT)</option>
+                    ${cacheAlmacenes.filter(a => a.tipo === "ubicacion" && a.activo !== false).sort((a, b) => String(a.nombre || "").localeCompare(String(b.nombre || ""), "es")).map(a => `<option value="${opsEsc(a.id)}">Serie ${opsEsc(opsPrefijoAlmacen(a.id))} · ${opsEsc(a.nombre)}</option>`).join("")}
+                    <option value="manual">Escribirlo yo (ej. el número del técnico o el que ya trae la pieza)</option>
+                </select>
+                <input id="ops-in-folio-manual" oninput="opsAltaFolioPrev()" placeholder="Ej. T12-003" style="display:none;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 4px;text-transform:uppercase;font-weight:700;box-sizing:border-box;">
                 <div style="font-size:10.5px;color:#64748b;margin:0 0 10px;">Folio que tendrá: <b id="ops-folio-prev">HT-######</b></div>`}
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin:0 0 10px;">
                     <div style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:6px;">Documentos de la pieza (opcional)</div>
@@ -4107,6 +4131,10 @@
             let almacenAltaId = ((document.getElementById("ops-in-almacen-alta") || {}).value || "") || null;
             if (almacenAltaId && almacenAltaId.startsWith("tec:")) almacenAltaId = null; // almacén de una persona: serie HT y se le asigna
             const almAltaObj = almacenAltaId ? cacheAlmacenes.find(a => a.id === almacenAltaId) : null;
+            const serieAlta = ((document.getElementById("ops-in-serie-alta") || {}).value || "auto");
+            const folioManual = serieAlta === "manual" ? opsFolioManualLimpio((document.getElementById("ops-in-folio-manual") || {}).value) : null;
+            if (serieAlta === "manual" && !folioManual) { alert("Escribe el folio con el que va a salir la pieza."); throw new Error("__cancel"); }
+            if (folioManual && opsFolioOcupado(folioManual)) { alert(`El folio ${folioManual} ya lo tiene otra pieza. Elige otro.`); throw new Error("__cancel"); }
             if (almAltaObj && !opsPuedeMeterEn(almAltaObj)) { alert(almAltaObj.nombre + " requiere autorización: solo los autorizadores pueden dar de alta piezas ahí."); const bg = document.getElementById("ops-pieza-btn-guardar"); if (bg) { bg.disabled = false; bg.textContent = "Generar folio y guardar"; } return; }
             const pieza = {
                 almacenId: almacenAltaId,
@@ -4114,6 +4142,7 @@
                 departamento, plaza, condicion, uso, peso, pesoUnidad, medida,
                 fotoBase64: window.__opsFotoPiezaTmp || null,
                 requiereAutorizacion, tecnicoDestinoId, requisicion: req,
+                folioManual, serieAlmacenId: serieAlta === "auto" || serieAlta === "manual" ? undefined : (serieAlta || null),
                 fechaAlta: opsHoy(), capturadoPor: (typeof opsUsuarioActual === "function" ? opsUsuarioActual() : null),
             };
             if (tecnicoDestinoId) {
@@ -4157,14 +4186,16 @@
     async function opsCrearPiezaNueva(p) {
         const { db, fs } = await opsGetFB();
         const almAlta = p.almacenId ? cacheAlmacenes.find(x => x.id === p.almacenId) : null;
-        const folio = await opsSiguienteFolioHerramienta(almAlta ? almAlta.id : null);
+        if (p.folioManual && opsFolioOcupado(p.folioManual)) throw new Error("El folio " + p.folioManual + " ya existe.");
+        const folio = p.folioManual || await opsSiguienteFolioHerramienta(p.serieAlmacenId !== undefined ? p.serieAlmacenId : (almAlta ? almAlta.id : null));
+        const recDest = p.tecnicoDestinoId ? cacheTec.find(t => t.id === p.tecnicoDestinoId) : null;
         await opsSbHerrGuardar(folio, {
             almacenId: almAlta ? almAlta.id : null,
             folio, descripcion: p.descripcion, marca: p.marca, modelo: p.modelo, categoria: p.categoria, numeroSerie: p.numeroSerie,
             departamento: p.departamento, plaza: p.plaza || "Chihuahua", condicion: p.condicion, uso: p.uso, peso: p.peso, pesoUnidad: p.pesoUnidad, medida: p.medida,
             fotoBase64: p.fotoBase64 || null,
             estado: "disponible",
-            ubicacionActual: almAlta ? almAlta.nombre : UBICACIONES[0],
+            ubicacionActual: recDest ? "Por entregar a " + (recDest.nombre || "técnico") + " (falta que la acepte en Flotilla)" : (almAlta ? almAlta.nombre : UBICACIONES[0]),
             tecnicoActualId: null,
             fechaAsignacion: null,
             firmaEntrega: null, firmaRecepcion: null,
