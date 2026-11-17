@@ -11974,6 +11974,7 @@
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button onclick="opsRevExportarCompletados()" class="mkt-add-btn" style="background:#15803d;" title="Todos los servicios terminados con las fechas, cliente y tipo que tengas filtrados (sin importar si ya están revisados): PDF de cada uno con la liga del video, todas sus evidencias y un resumen en Excel">Exportar completados (con evidencias)</button>
                     <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
+                    <button onclick="opsRevListaOS()" class="mkt-add-btn" style="background:#b45309;" title="Pega los números de O.S. que necesitas y baja un ZIP con el PDF de cada una (evidencias, orden de servicio, firma y liga del video)">Descargar por lista de O.S.</button>
                 </div>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
@@ -12541,6 +12542,77 @@
             opsRevExpAviso("Listo: " + lista.length + " servicio(s) exportado(s)." + (fallos.length ? "<br>" + fallos.length + " con problema (ver «No se pudieron armar.txt» en el ZIP)." : ""));
             setTimeout(() => opsRevExpAviso(""), 8000);
         } catch (e) { opsRevExpAviso(""); alert("No se pudo armar la exportación: " + (e.message || e)); }
+    };
+
+    // ── Descargar por lista de O.S. (17-nov-2026, Glen) ──
+    // Se pegan los números de O.S. (separados por espacio, coma o renglón) y se elige el cliente.
+    // Busca en TODAS las fechas y estatus; por cada O.S. del cliente arma el PDF completo
+    // (evidencias, orden de servicio, firma y liga del video válida 1 año) y baja un solo ZIP.
+    // Si una O.S. tiene varios cierres de ese cliente, bajan todos. Las que no aparecen van en
+    // «No encontradas.txt». Cliente por estación: si el servicio quedó «Sin cliente» pero la
+    // estación dice Petro Seven / Petromax, cuenta como Petro Seven.
+    window.opsRevListaOS = function () {
+        const s = opsRevEstado();
+        const clientes = [...new Set(cacheFolios.filter(f => opsRevFechaCierre(f)).map(opsRevCliente))].sort((a, b) => a.localeCompare(b, "es"));
+        const pre = s.cliente !== "todos" ? s.cliente : (clientes.includes("Petro Seven") ? "Petro Seven" : "todos");
+        const ov = document.createElement("div");
+        ov.id = "opsrev-lista-os";
+        ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100001;display:flex;align-items:center;justify-content:center;padding:16px;";
+        ov.innerHTML = `<div style="background:#fff;border-radius:14px;padding:18px;width:100%;max-width:460px;box-shadow:0 20px 50px rgba(0,0,0,.3);">
+            <div style="font-size:15px;font-weight:800;color:#1D2E73;margin-bottom:4px;">Descargar por lista de O.S.</div>
+            <div style="font-size:11.5px;color:#64748b;margin-bottom:10px;line-height:1.45;">Pega los números de orden de servicio (uno por renglón o separados por espacio/coma). Se busca en todas las fechas y estatus. Cada O.S. baja como PDF con evidencias, orden de servicio, firma y liga del video.</div>
+            <label style="font-size:12px;font-weight:700;color:#334155;">Cliente</label>
+            <select id="opsrev-lista-cli" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12.5px;margin:4px 0 10px;">
+                <option value="todos">Todos los clientes</option>${clientes.map(c => `<option value="${opsEsc(c)}" ${c === pre ? "selected" : ""}>${opsEsc(c)}</option>`).join("")}</select>
+            <label style="font-size:12px;font-weight:700;color:#334155;">Números de O.S.</label>
+            <textarea id="opsrev-lista-txt" rows="9" placeholder="4417&#10;4500&#10;4501" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12.5px;margin-top:4px;font-family:inherit;"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                <button onclick="document.getElementById('opsrev-lista-os').remove()" style="border:none;background:#e2e8f0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">Cancelar</button>
+                <button onclick="opsRevListaOSDescargar()" style="border:none;background:#b45309;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">Descargar ZIP</button>
+            </div></div>`;
+        ov.onclick = e => { if (e.target === ov) ov.remove(); };
+        document.body.appendChild(ov);
+        setTimeout(() => { const t = document.getElementById("opsrev-lista-txt"); if (t) t.focus(); }, 50);
+    };
+    window.opsRevListaOSDescargar = async function () {
+        const cli = (document.getElementById("opsrev-lista-cli") || {}).value || "todos";
+        const nums = [...new Set(String((document.getElementById("opsrev-lista-txt") || {}).value || "").split(/[^0-9]+/).filter(Boolean))];
+        if (!nums.length) { alert("Pega al menos un número de O.S."); return; }
+        const delCliente = f => cli === "todos" || opsRevCliente(f) === cli || opsClienteCanon(f.estacion || "") === cli || opsClienteCanon(f.estacionNombreComercial || "") === cli;
+        const cerrados = cacheFolios.filter(f => !f.cancelado && opsRevFechaCierre(f) && delCliente(f));
+        const elegidos = new Map(), faltan = [];
+        nums.forEach(n => {
+            const hay = cerrados.filter(f => [opsRevOS(f), f.osTecnico, f.folioOS].join(" ").split(/[^0-9]+/).includes(n));
+            if (!hay.length) faltan.push(n);
+            hay.forEach(f => elegidos.set(f.id, f));
+        });
+        const lista = [...elegidos.values()].sort((a, b) => opsRevOS(a).localeCompare(opsRevOS(b), "es", { numeric: true }));
+        if (!lista.length) { alert("No se encontró ninguna de esas O.S." + (cli !== "todos" ? " de " + cli : "") + " en los cierres."); return; }
+        if (!confirm("Se encontraron " + lista.length + " cierre(s) para " + (nums.length - faltan.length) + " de " + nums.length + " O.S." + (cli !== "todos" ? " de " + cli : "") + "." + (faltan.length ? "\n\nNo aparecen: " + faltan.join(", ") : "") + "\n\nPuede tardar unos minutos; no cierres la pestaña. ¿Continuar?")) return;
+        const ov = document.getElementById("opsrev-lista-os"); if (ov) ov.remove();
+        const fallos = [];
+        try {
+            const JSZip = await opsRevCargarZip();
+            const zip = new JSZip(), usados = {}; let n = 0;
+            for (const f of lista) {
+                n++;
+                opsRevExpAviso("Armando " + n + " de " + lista.length + "…<br><span style='font-weight:500;font-size:11.5px;opacity:.85;'>O.S. " + opsEsc(opsRevOS(f)) + " · " + opsEsc(f.estacion || "") + "</span>");
+                let nombre = opsRevExpLimpio("OS-" + (opsRevOS(f) || f.id).replace(/[^0-9]+/g, "-") + "_" + (f.estacion || "estacion") + "_" + opsRevFechaCierre(f).slice(0, 10), 90).replace(/ /g, "_");
+                if (usados[nombre]) nombre += "_" + (++usados[nombre]); else usados[nombre] = 1;
+                // Límite de 2 min por O.S.: si una foto no termina de bajar, se salta y se reporta (no se queda trabado).
+                try { const r = await Promise.race([opsRevArmarPdf(f, 31536000), new Promise((_, ko) => setTimeout(() => ko(new Error("tardó más de 2 minutos en bajar sus fotos; descárgala sola desde su ficha")), 120000))]); zip.file(nombre + ".pdf", r.doc.output("blob")); }
+                catch (er) { fallos.push("O.S. " + opsRevOS(f) + " · " + (f.estacion || "") + ": " + (er.message || er)); }
+            }
+            if (faltan.length) zip.file("No encontradas.txt", "O.S. que no aparecen en Revisión de cierres" + (cli !== "todos" ? " para " + cli : "") + ":\r\n\r\n" + faltan.join("\r\n") + "\r\n");
+            if (fallos.length) zip.file("No se pudieron armar.txt", fallos.join("\r\n"));
+            opsRevExpAviso("Comprimiendo el ZIP…");
+            const blob = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = "Ordenes_" + (cli !== "todos" ? opsRevExpLimpio(cli, 40).replace(/ /g, "_") + "_" : "") + opsRevHoyISO() + ".zip"; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+            opsRevExpAviso("Listo: " + (lista.length - fallos.length) + " PDF(s)." + (faltan.length ? "<br>No encontradas: " + faltan.join(", ") : "") + (fallos.length ? "<br>" + fallos.length + " con problema (ver el .txt en el ZIP)." : ""));
+            setTimeout(() => opsRevExpAviso(""), 10000);
+        } catch (e) { opsRevExpAviso(""); alert("No se pudo armar el ZIP: " + (e.message || e)); }
     };
 
     // ═══════════════════ EVIDENCIAS DEL SERVICIO (subidas desde la app) ═══════════════════
