@@ -12680,12 +12680,43 @@
                         ? `<div style="position:relative;"><video src="${e.imagen || ""}" muted playsinline preload="metadata" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:7px;border:1px solid #e2e8f0;background:#0f172a;"></video><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><svg width="28" height="28" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.55)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></div></div>`
                         : `<img src="${e.imagen || ""}" alt="Evidencia" style="width:100%;aspect-ratio:1;object-fit:${e.tipo === "firma" ? "contain" : "cover"};background:#fff;border-radius:7px;border:1px solid #e2e8f0;">`}
                     <div style="font-size:9.5px;color:#64748b;line-height:1.2;margin-top:2px;">${opsEsc(et[e.tipo] || e.tipo || "")}<br>${opsEsc(e.por || "")}</div></div>`).join("")}</div>`
-                : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay evidencias. El técnico las sube al terminar la visita en la app.</div>`}</div>`;
+                : `<div style="font-size:12px;color:#94a3b8;">Todavía no hay evidencias. El técnico las sube al terminar la visita en la app.</div>`}
+                ${opsPuedeGestionar() ? `<label title="Puedes elegir varias a la vez" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;font-size:12px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:8px 10px;border-radius:8px;cursor:pointer;">
+                    + Agregar fotos de evidencia
+                    <input type="file" accept="image/*" multiple style="display:none;" onchange="opsEvidAgregar('${f.id}', this)"></label>
+                    <div id="ops-evid-estado" style="font-size:11px;color:#64748b;text-align:center;margin-top:3px;"></div>` : ""}</div>`;
         } catch (e) {
             const b2 = document.getElementById("ops-panel-evidencias");
             if (b2) b2.innerHTML = `<div class="opf-sec"><div class="opf-sec-tit">Evidencias</div><div style="font-size:11.5px;color:#E7402B;">No se pudieron cargar.</div></div>`;
         }
     }
+    // Agregar fotos de evidencia desde el portal (17-nov-2026): para servicios que el técnico cerró sin foto.
+    // Se guardan igual que las de la app: imagen en ops-evidencias + registro tipo "foto" en evidencias del folio.
+    window.opsEvidAgregar = async function (id, input) {
+        if (!opsPuedeGestionar()) return;
+        const f = cacheFolios.find(x => x.id === id); if (!f) return;
+        const files = [...(input.files || [])].filter(x => /^image\//.test(x.type || "image/"));
+        input.value = "";
+        if (!files.length) return;
+        const est = document.getElementById("ops-evid-estado");
+        const yo = opsNombreActual();
+        let ok = 0;
+        try {
+            const { db, fs } = await opsGetFB();
+            for (let i = 0; i < files.length; i++) {
+                if (est) est.textContent = "Subiendo " + (i + 1) + " de " + files.length + "…";
+                const dataUrl = await opsComprimirImagenBase64(files[i], 1600, 0.8);
+                const blob = await (await fetch(dataUrl)).blob();
+                const r = await opsSubirArchivo("folios/" + id + "/evidencias", new File([blob], "foto_" + (i + 1) + ".jpg", { type: "image/jpeg" }));
+                await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "evidencias"), { tipo: "foto", por: yo, en: new Date().toISOString(), origen: "portal", bucket: r.bucket, ruta: r.ruta, nota: "Agregada desde el portal por " + yo, orden: Date.now() });
+                ok++;
+            }
+            if (est) est.textContent = ok + " foto(s) agregada(s)";
+        } catch (e) {
+            alert("Se subieron " + ok + " de " + files.length + " foto(s). Error: " + (e.message || e));
+        }
+        opsPanelEvidenciasPintar(f);
+    };
     window.opsVerEvidencia = function (i) {
         const e = (window.__opsEvidencias || [])[i]; if (!e) return;
         const ov = document.createElement("div");
