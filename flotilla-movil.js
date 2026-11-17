@@ -8135,6 +8135,7 @@ async function fmOpsCerrarCuadrilla(f,id,quien,ahora){
 const FM_POLIZAS_URL='https://j2tecno-app.expo.app/';
 function fmOpsEsPoliza(f){
   if(!f)return false;
+  if(f.tipoAlta==='poliza')return true;
   const txt=[f.categoriaServicio,f.tipoServicioDemo,f.conceptoGeneral,f.servicioNombre,f.tipoServicio,
     (f.serviciosProgramados||[]).map(function(x){return x&&x.nombre;}).join(' '),
     (function(){try{return opsSvTipo(f);}catch(e){return '';}})()].filter(Boolean).join(' ');
