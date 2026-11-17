@@ -12232,9 +12232,17 @@
     }
     async function opsRevImagen(url) {
         const b = await (await fetch(url)).blob();
-        const dataUrl = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(b); });
-        const dim = await new Promise(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => ok({ w: 4, h: 3 }); im.src = dataUrl; });
-        return { dataUrl, ...dim, blob: b };
+        const dataUrl0 = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = ko; fr.readAsDataURL(b); });
+        // 17-nov-2026 (Glen): las fotos del celular traen la orientación en sus datos (EXIF). El navegador la
+        // respeta, pero jsPDF no: la foto entraba de lado y estirada. Se redibuja en un canvas (ya derecha y con
+        // su proporción real) y se manda ese JPEG al PDF. Fondo blanco para firmas PNG transparentes.
+        const im = await new Promise((ok, ko) => { const x = new Image(); x.onload = () => ok(x); x.onerror = ko; x.src = dataUrl0; });
+        const w0 = im.naturalWidth || 4, h0 = im.naturalHeight || 3, MAX = 2200, k = Math.min(1, MAX / Math.max(w0, h0));
+        const cv = document.createElement("canvas"); cv.width = Math.round(w0 * k); cv.height = Math.round(h0 * k);
+        const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+        cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high"; cx.drawImage(im, 0, 0, cv.width, cv.height);
+        const dataUrl = cv.toDataURL("image/jpeg", 0.9);
+        return { dataUrl, w: cv.width, h: cv.height, blob: b };
     }
     // Arma el PDF completo del cierre. Regresa { doc, ev }.
     async function opsRevArmarPdf(f, segVideo) {
@@ -19884,7 +19892,8 @@
         }
 
         // ── Equipo de seguridad (29-oct-2026) ──
-        const pasoSeg = s.tipo ? opsAsSeguridadHTML(receta, num(), lock(listo3)) : "";
+        // 17-nov-2026 (Glen): solo sale si se eligió un servicio del catálogo que trae equipo; no se edita aquí.
+        const pasoSeg = s.tipo && receta && (receta.equipoSeguridad || []).some(x => String(x.nombre || "").trim()) ? opsAsSeguridadHTML(receta, num(), lock(listo3)) : (opsAS.seguridad = [], opsAS.seguridadDeReceta = "", "");
         // ── Contacto, O.S., comentarios ──
         const pasoContacto = s.tipo && s.tipo !== "programacion" && !multiEst ? `
         <div class="opsas-sec ${lock(listo3)}">
@@ -21046,7 +21055,7 @@
             ${vehHTML}
             <div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Herramienta</div>
             ${herrHTML}
-            ${seg.length ? `<div class="opsas-note" style="margin-top:12px;">La receta pide ${seg.length} pieza(s) de equipo de seguridad: ya salen marcadas en la sección "Equipo de seguridad".</div>` : ""}
+            ${seg.length ? `<div class="opsas-note" style="margin-top:12px;">La receta pide ${seg.length} pieza(s) de equipo de seguridad: se muestran en la sección "Equipo de seguridad".</div>` : ""}
             ${mat.length ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 8px;">Materiales para ${cant} ${cant === 1 ? "unidad" : "unidades"}</div>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span class="opsas-pill" style="background:#eef2ff;color:#1D2E73;">${nPedirM} de ${mat.length} por pedir</span><span class="opsas-note" style="margin:0;">Activa "Pedir" solo en lo que realmente se necesita de Almacén.</span></div>
             <div class="opsas-list" style="padding:0;"><table style="width:100%;border-collapse:collapse;font-size:12px;">${mat.map(m => { const on = s.matSel[m.nombre] !== undefined; return `<tr style="border-bottom:1px solid #f1f5f9;${on ? "background:#eef2ff;" : ""}"><td style="padding:6px 10px;color:#334155;">${opsEsc(m.nombre)}${m.nota ? ` <small style="color:#94a3b8;">· ${opsEsc(m.nota)}</small>` : ""}<br><small style="color:#94a3b8;">Receta: ${fmtCant(m)} ${opsEsc(m.unidad || "")}</small></td><td style="padding:6px 6px;text-align:right;white-space:nowrap;">${on ? `<input type="number" min="0" step="any" value="${opsEsc(s.matSel[m.nombre])}" data-k="${opsEsc(m.nombre)}" onchange="opsAsCantMat(this)" style="width:70px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;text-align:right;"> <small>${opsEsc(m.unidad || "")}</small>` : ""}</td><td style="padding:6px 10px;text-align:right;width:1%;"><button type="button" data-k="${opsEsc(m.nombre)}" data-q="${fmtCant(m)}" onclick="opsAsTogglePedirMat(this)" style="white-space:nowrap;border:1px solid #1D2E73;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;${on ? "background:#1D2E73;color:#fff;" : "background:#fff;color:#1D2E73;"}">${on ? "✓ Pedir" : "Pedir"}</button></td></tr>`; }).join("")}</table></div>
@@ -21060,30 +21069,20 @@
         </div>`;
     }
     function opsAsSeguridadHTML(receta, numero, cls) {
+        // 17-nov-2026 (Glen): el equipo de seguridad se define en el catálogo de servicios. En la
+        // programación solo se muestra (sin marcar ni agregar) y se guarda tal cual lo trae el servicio.
         const s = opsAS;
-        const deReceta = (receta && receta.equipoSeguridad) || [];
-        // Primera vez con esta receta: se marcan solas las piezas que pide.
-        const claveRec = receta ? receta.id : "";
-        if (s.seguridadDeReceta !== claveRec) {
-            s.seguridadDeReceta = claveRec;
-            deReceta.forEach(x => { const n = String(x.nombre || "").trim(); if (n && !s.seguridad.includes(n)) s.seguridad.push(n); });
-        }
-        const base = OPS_EQUIPO_SEGURIDAD.map(x => ({ ...x }));
-        deReceta.forEach(x => { const n = String(x.nombre || "").trim(); if (n && !base.some(b => opsAsNorm(b.n) === opsAsNorm(n))) base.push({ n, nom: "", cant: x.cantidad }); });
-        s.seguridad.forEach(n => { if (!base.some(b => b.n === n)) base.push({ n, nom: "" }); });
-        base.sort((a, b) => opsAsAlfa(a.n, b.n));
-        const cantDe = n => { const r = deReceta.find(x => opsAsNorm(x.nombre) === opsAsNorm(n)); return r && r.cantidad ? " × " + r.cantidad : ""; };
+        const deReceta = ((receta && receta.equipoSeguridad) || []).filter(x => String(x.nombre || "").trim()).slice().sort((a, b) => opsAsAlfa(a.nombre, b.nombre));
+        s.seguridadDeReceta = receta ? receta.id : "";
+        s.seguridad = deReceta.map(x => String(x.nombre).trim());
+        const nomDe = n => (OPS_EQUIPO_SEGURIDAD.find(b => opsNormalizaTexto(b.n) === opsNormalizaTexto(n)) || {}).nom || "";
         return `
         <div class="opsas-sec ${cls}">
-            <div class="opsas-sh" style="cursor:pointer;${s.segAbierto ? "" : "margin-bottom:0;"}" onclick="opsAS.segAbierto=!opsAS.segAbierto;opsAsPintar()"><div class="opsas-num">${numero}</div><div class="opsas-tt">Equipo de seguridad</div><div class="opsas-hint" style="display:flex;align-items:center;gap:5px;">${s.seguridad.length} marcado(s) · ${s.segAbierto ? "ocultar" : "ver / marcar"} ${OPS_SVG(s.segAbierto ? '<path d="m18 15-6-6-6 6"/>' : '<path d="m6 9 6 6 6-6"/>', 13)}</div></div>
-            ${s.segAbierto ? "" : (s.seguridad.length ? `<div class="opsas-note" style="margin-top:8px;">${opsEsc(s.seguridad.slice().sort(opsAsAlfa).join(", "))}</div>` : "")}
-            <div style="display:${s.segAbierto ? "grid" : "none"};grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
-                ${base.map(b => `<label class="opsas-segchk"><input type="checkbox" ${s.seguridad.includes(b.n) ? "checked" : ""} data-n="${opsEsc(b.n)}" onchange="opsAsToggleSeg(this.dataset.n,this.checked)"><span>${opsEsc(b.n)}${cantDe(b.n)}${b.nom ? `<small>${opsEsc(b.nom)}</small>` : ""}</span></label>`).join("")}
+            <div class="opsas-sh" style="margin-bottom:8px;"><div class="opsas-num">${numero}</div><div class="opsas-tt">Equipo de seguridad</div><div class="opsas-hint">Lo pide el servicio del catálogo · ${deReceta.length} pieza(s)</div></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
+                ${deReceta.map(x => `<div class="opsas-segchk" style="cursor:default;"><span>✔ ${opsEsc(x.nombre)}${x.cantidad ? " × " + opsEsc(String(x.cantidad)) : ""}${nomDe(x.nombre) ? `<small>${opsEsc(nomDe(x.nombre))}</small>` : ""}</span></div>`).join("")}
             </div>
-            <div style="display:${s.segAbierto ? "flex" : "none"};gap:6px;margin-top:8px;max-width:420px;">
-                <input class="opsas-in" placeholder="Otro equipo que no está en la lista…" value="${opsEsc(s.segOtro)}" oninput="opsAS.segOtro=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();opsAsAgregarSeg();}">
-                <button type="button" class="opsas-ghost" style="white-space:nowrap;" onclick="opsAsAgregarSeg()">+ Agregar</button>
-            </div>
+            <div class="opsas-note" style="margin-top:8px;">Para cambiarlo, edita el servicio en <b>Servicios</b> (catálogo).</div>
         </div>`;
     }
     window.opsAsToggleSeg = function (n, on) {
@@ -23343,6 +23342,23 @@
         servicioEditDraft[lista].push(JSON.parse(JSON.stringify(plantilla)));
         opsRenderFichaServicio();
     };
+    // 17-nov-2026 (Glen): checklist de equipo de seguridad del catálogo.
+    window.opsServSegToggle = function (n, on) {
+        if (!servicioEditDraft) return;
+        const N = x => opsNormalizaTexto(x || "");
+        const l = (servicioEditDraft.equipoSeguridad || []).filter(x => N(x.nombre) !== N(n));
+        if (on) l.push({ nombre: n, cantidad: 1 });
+        servicioEditDraft.equipoSeguridad = l; opsRenderFichaServicio();
+    };
+    window.opsServSegCant = function (n, v) {
+        if (!servicioEditDraft) return;
+        const e = (servicioEditDraft.equipoSeguridad || []).find(x => opsNormalizaTexto(x.nombre || "") === opsNormalizaTexto(n));
+        if (e) { e.cantidad = String(v || "").trim() || 1; opsServPintarEstado(); }
+    };
+    window.opsServSegOtro = function () {
+        const el = document.getElementById("ops-serv-seg-otro"); const n = String((el && el.value) || "").trim(); if (!n) return;
+        window.opsServSegToggle(n, true);
+    };
     window.opsServQuitarFila = function (lista, idx) {
         servicioEditDraft[lista].splice(idx, 1);
         opsRenderFichaServicio();
@@ -23637,14 +23653,23 @@
 
         const tabHerramienta = `
                 <div style="margin-top:14px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Equipo de seguridad</div>
-                    ${(s.equipoSeguridad || []).map((e, i) => `
-                        <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
-                            ${inp(e.nombre, `equipoSeguridad.${i}.nombre`, false, "Nombre")}
-                            ${inp(e.cantidad, `equipoSeguridad.${i}.cantidad`, false, "Cant.", "90px")}
-                            ${gestion ? `<button onclick="opsServQuitarFila('equipoSeguridad',${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
-                        </div>`).join("")}
-                    ${gestion ? `<button onclick="opsServAgregarFila('equipoSeguridad',{nombre:'',cantidad:1})" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar equipo</button>` : ""}
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Equipo de seguridad (${(s.equipoSeguridad || []).length})</div>
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:6px;">Marca lo que pide este servicio y cuántas piezas. Es lo que verá Operaciones al programarlo.</div>
+                    ${(() => {
+                        const sel = s.equipoSeguridad || [], N = x => opsNormalizaTexto(x || "");
+                        const lista = OPS_EQUIPO_SEGURIDAD.map(b => ({ n: b.n, nom: b.nom }));
+                        sel.forEach(e => { if (String(e.nombre || "").trim() && !lista.some(b => N(b.n) === N(e.nombre))) lista.push({ n: e.nombre, nom: "" }); });
+                        lista.sort((a, b) => String(a.n).localeCompare(String(b.n), "es"));
+                        return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:5px;">${lista.map(b => {
+                            const e = sel.find(x => N(x.nombre) === N(b.n));
+                            return `<div style="display:flex;align-items:center;gap:6px;border:1px solid ${e ? "#93c5fd" : "#e2e8f0"};background:${e ? "#eff6ff" : "#fff"};border-radius:7px;padding:5px 7px;">
+                                <input type="checkbox" ${e ? "checked" : ""} ${gestion ? "" : "disabled"} data-n="${opsEsc(b.n)}" onchange="opsServSegToggle(this.dataset.n,this.checked)" style="flex-shrink:0;">
+                                <div style="flex:1;min-width:0;font-size:11.5px;color:#1e293b;line-height:1.25;">${opsEsc(b.n)}${b.nom ? `<div style="font-size:9.5px;color:#94a3b8;">${opsEsc(b.nom)}</div>` : ""}</div>
+                                ${e ? `<input value="${opsEsc(String(e.cantidad ?? ""))}" ${gestion ? "" : "disabled"} title="Cantidad" placeholder="Cant." data-n="${opsEsc(b.n)}" onchange="opsServSegCant(this.dataset.n,this.value)" style="width:70px;border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;font-size:11px;">` : ""}
+                            </div>`;
+                        }).join("")}</div>`;
+                    })()}
+                    ${gestion ? `<div style="display:flex;gap:6px;margin-top:6px;max-width:380px;"><input id="ops-serv-seg-otro" placeholder="Otro equipo que no está en la lista…" onkeydown="if(event.key==='Enter'){event.preventDefault();opsServSegOtro();}" style="flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11px;"><button onclick="opsServSegOtro()" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">+ Agregar</button></div>` : ""}
                 </div>
 
                 <div style="margin-top:16px;">
