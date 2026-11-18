@@ -7532,7 +7532,22 @@
     // Funcionan igual (rotación, bitácora, vales); cada una tiene su propia lista de personas.
     const OPS_GUARDIA_TIPOS = { tecnica: { n: "Guardia técnica", d: "Atiende folios en campo", c: "#1D2E73" }, administrativa: { n: "Guardia administrativa", d: "Plataformas, publicación de folios y gestión", c: "#7c3aed" } };
     function opsTipoGuardia(g) { return g && g.tipo === "administrativa" ? "administrativa" : "tecnica"; }
-    function opsPersonalGuardiaTipo(tipo) { const todos = opsPersonalGuardias(); return tipo === "administrativa" ? todos.filter(t => opsEsAdministrativo(t)) : todos.filter(t => !opsEsAdministrativo(t)); }
+    // Guardias por PLAZA (18-nov-2026, Glen): Chihuahua, Juárez, Parral y Monterrey tienen cada una su guardia
+    // técnica y su guardia administrativa en los MISMOS días, con el mismo pago. Las guardias guardadas antes
+    // de este cambio no tienen plaza y se toman como Chihuahua. La pestaña Guardias trabaja sobre la plaza elegida.
+    const OPS_GD_PLAZAS = ["Chihuahua", "Juárez", "Parral", "Monterrey"];
+    let opsGdPlaza = "Chihuahua";
+    function opsGdPlazaTxt(p) { const x = String(p || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); return /juarez/.test(x) ? "Juárez" : /parral/.test(x) ? "Parral" : /monterrey/.test(x) ? "Monterrey" : "Chihuahua"; }
+    function opsGdPlazaDe(g) { return opsGdPlazaTxt(g && g.plaza); }
+    function opsGdPlazaTec(t) { return opsGdPlazaTxt(t && t.plaza); }
+    // Corre fn() como si la plaza elegida fuera p (para contar/listar guardias de todas las plazas).
+    function opsGdConPlaza(p, fn) { const antes = opsGdPlaza; opsGdPlaza = p; try { return fn(); } finally { opsGdPlaza = antes; } }
+    function opsGdEtiq(t) { const p = opsGdPlazaTec(t); return t.nombre + (p !== opsGdPlaza ? " (" + p + ")" : ""); }
+    // Primero la gente de la plaza elegida; después los demás (por si alguien de otra plaza cubre).
+    function opsPersonalGuardiaTipo(tipo) {
+        const todos = opsPersonalGuardias(), l = tipo === "administrativa" ? todos.filter(t => opsEsAdministrativo(t)) : todos.filter(t => !opsEsAdministrativo(t));
+        return l.filter(t => opsGdPlazaTec(t) === opsGdPlaza).concat(l.filter(t => opsGdPlazaTec(t) !== opsGdPlaza));
+    }
     // ═══════════════════════ GUARDIAS 2.0 (4-nov-2026, Glen) ═══════════════════════
     // Pensado para que cualquiera lo entienda: 1) quién está de guardia, 2) qué folios atendió
     // (se juntan solos), 3) Operaciones revisa día por día, 4) Operaciones aprueba y Administración paga.
@@ -7553,7 +7568,7 @@
     function opsGdSemActual() { return opsSemanaGuardiaDe(new Date()); }
     function opsGdNoche(d) { const x = new Date(d.getTime()); if (x.getHours() < OPS_TURNO_INI) x.setDate(x.getDate() - 1); return x; }
     function opsGdTerminada(sem) { return new Date() >= new Date(opsSumarDias(sem, 4) + "T08:00:00"); }
-    function opsGdProg(sem, tipo) { return cacheGuardiasProgramadas.find(x => x.semanaInicio === sem && opsTipoGuardia(x) === tipo) || null; }
+    function opsGdProg(sem, tipo, plaza) { const p = plaza || opsGdPlaza; return cacheGuardiasProgramadas.find(x => x.semanaInicio === sem && opsTipoGuardia(x) === tipo && opsGdPlazaDe(x) === p) || null; }
     function opsGdDeshora(d) { const w = d.getDay(); if (w === 0 || w === 6) return true; const h = d.getHours(); return h < OPS_TURNO_INI || h >= OPS_TURNO_FIN; }
     // 12-nov-2026: si Operaciones capturó la "Fecha real de ejecución", esa manda para saber en qué día
     // de guardia cae el folio (p. ej. folios de guardia que el técnico subió a la app días después).
@@ -7578,9 +7593,23 @@
         return opsGdDeshora(d) ? { si: true, motivo: "Se levantó fuera de horario" } : { si: false, motivo: "Se levantó en horario de oficina" };
     }
     function opsGdDiaFolio(f) { const d = opsGdRefFolio(f); return d ? opsGdISO(opsGdNoche(d)) : null; }
-    function opsGdFoliosSemana(sem) {
-        const dias = new Set(opsGdDias(sem));
-        return cacheFolios.filter(f => opsGdFolioGuardia(f).si && dias.has(opsGdDiaFolio(f)))
+    // ¿A qué plaza le toca un folio de guardia? A la plaza cuya guardia técnica de ese día lo atendió;
+    // si no lo atendió ninguna, a la plaza de la estación (o del técnico).
+    function opsGdPlazaFolioGuardia(f) {
+        const dia = opsGdDiaFolio(f);
+        if (dia) {
+            const sem = opsGdSemDeDia(dia);
+            for (const p of OPS_GD_PLAZAS) {
+                const g = opsGdProg(sem, "tecnica", p); if (!g) continue;
+                const tec = (g.coberturas || {})[dia] || g.tecnicoId;
+                if (tec && opsGdFolioAtendioTec(f, tec)) return p;
+            }
+        }
+        try { return opsGdPlazaTxt(opsPlazaFolio(f)); } catch (e) { return "Chihuahua"; }
+    }
+    function opsGdFoliosSemana(sem, plaza) {
+        const dias = new Set(opsGdDias(sem)), p = plaza || opsGdPlaza;
+        return cacheFolios.filter(f => opsGdFolioGuardia(f).si && dias.has(opsGdDiaFolio(f)) && opsGdPlazaFolioGuardia(f) === p)
             .sort((a, b) => String(a.fechaSolicitud || "").localeCompare(String(b.fechaSolicitud || "")));
     }
     function opsGdAusencia(tecId, dia) { return tecId ? cacheAusencias.find(a => a.tecnicoId === tecId && a.fechaInicio <= dia && a.fechaFin >= dia) || null : null; }
@@ -7704,13 +7733,20 @@
         const el = document.getElementById("ops-tab-content"); if (!el) return;
         if (!opsGdCfgOk) { opsGdCfgOk = true; opsGtelCargar().then(() => { if (tabActual === "guardias") opsRenderGuardias(); }).catch(() => {}); }
         const pest = [["semana", "Esta semana"], ["calendario", "Quién toca"], ["historial", "Historial"], ["pago", "Pago de guardias"], ["llamadas", "Llamadas"], ["herramienta", "Herramienta y material"]];
-        const porAprobar = cacheGuardiasProgramadas.filter(g => opsGdEstadoPago(g.semanaInicio, opsTipoGuardia(g)).k === "revisar").length;
-        const porPagar = cacheGuardiasProgramadas.filter(g => (g.pago || {}).estado === "aprobado").length;
+        // Pendientes de pago por plaza (para el globito de cada plaza y de "Pago de guardias")
+        const pendPlaza = {}; OPS_GD_PLAZAS.forEach(p => pendPlaza[p] = 0);
+        cacheGuardiasProgramadas.forEach(g => { const p = opsGdPlazaDe(g); const k = opsGdConPlaza(p, () => opsGdEstadoPago(g.semanaInicio, opsTipoGuardia(g)).k); if (k === "revisar" || k === "aprobado") pendPlaza[p]++; });
+        const porAprobar = pendPlaza[opsGdPlaza], porPagar = 0;
         el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
             <div><div style="font-size:20px;font-weight:800;color:#1D2E73;">Guardias</div>
             <div style="font-size:12.5px;color:#64748b;">La guardia va del <b>viernes 5:00 p. m.</b> al <b>viernes siguiente 8:00 a. m.</b> Los folios que se levantan fuera de horario se juntan solos.</div></div>
-            ${opsPuedeGestionar() && opsPuedeCrear() ? opsGdBtn("opsGdAsignarModal()", "+ Asignar guardia", "#1D2E73", "#fff") : ""}
+            ${opsPuedeGestionar() && opsPuedeCrear() ? opsGdBtn("opsGdAsignarModal()", "+ Asignar guardia · " + opsEsc(opsGdPlaza), "#1D2E73", "#fff") : ""}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;background:#fff;border-radius:12px;padding:8px 10px;">
+            <span style="font-size:12px;font-weight:800;color:#334155;margin-right:4px;">Plaza:</span>
+            ${OPS_GD_PLAZAS.map(p => `<button onclick="opsGdPlazaSet('${p}')" style="border:1.5px solid ${opsGdPlaza === p ? "#E7402B" : "#e2e8f0"};background:${opsGdPlaza === p ? "#E7402B" : "#fff"};color:${opsGdPlaza === p ? "#fff" : "#334155"};border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer;">${p}${pendPlaza[p] ? ` <span style="background:${opsGdPlaza === p ? "#fff" : "#E7402B"};color:${opsGdPlaza === p ? "#E7402B" : "#fff"};border-radius:999px;padding:0 6px;font-size:10.5px;">${pendPlaza[p]}</span>` : ""}</button>`).join("")}
+            <span style="font-size:11px;color:#94a3b8;margin-left:4px;">Cada plaza tiene su propia guardia técnica y administrativa en los mismos días.</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">${pest.map(([k, t]) => `<button onclick="opsGdIr('${k}')" style="border:none;border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;background:${opsGdVista === k ? "#1D2E73" : "#fff"};color:${opsGdVista === k ? "#fff" : "#334155"};">${t}${k === "pago" && (porAprobar || porPagar) ? ` <span style="background:#E7402B;color:#fff;border-radius:999px;padding:0 6px;font-size:10.5px;">${porAprobar + porPagar}</span>` : ""}</button>`).join("")}</div>
         <div id="ops-gd-cuerpo"></div>`;
@@ -7742,6 +7778,7 @@
     }
     window.opsGdCompartir = function (turno, modo) { opsResGuardiaTurno = Number(turno) || 0; if (modo === "wa") window.opsResGuardiaWA(); else window.opsResGuardiaImagen(); };
     window.opsGdIr = function (k) { opsGdVista = k; opsRenderGuardias(); };
+    window.opsGdPlazaSet = function (p) { opsGdPlaza = opsGdPlazaTxt(p); opsRenderGuardias(); };
     window.opsGdMover = function (n) { opsGdSem = opsSumarDias(opsGdSem || opsGdSemActual(), 7 * n); opsGdVista = "semana"; opsRenderGuardias(); };
     window.opsGdAbrirSemana = function (sem) { opsGdSem = sem; opsGdVista = "semana"; opsRenderGuardias(); };
     function opsGdSemanaHTML() {
@@ -7758,12 +7795,12 @@
             const personas = [...new Set(opsGdCalculo(sem, tipo).dias.filter(d => d.monto > 0).map(d => d.tec))];
             return `<div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;border-top:4px solid ${T.c};">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-                    <div><div style="font-size:11px;font-weight:800;color:${T.c};text-transform:uppercase;letter-spacing:.4px;">${T.n}</div>
+                    <div><div style="font-size:11px;font-weight:800;color:${T.c};text-transform:uppercase;letter-spacing:.4px;">${T.n} · ${opsEsc(opsGdPlaza)}</div>
                     <div style="font-size:19px;font-weight:900;color:#0f172a;">${opsEsc(g ? opsNombreTecnico(g.tecnicoId) : "Nadie asignado")}</div>
                     <div style="font-size:11.5px;color:#64748b;">${T.d}</div></div>
                     <div style="text-align:right;">${opsGdChip(e)}<div style="font-size:12px;color:#334155;margin-top:6px;">${opsGdResumenTxt(sem, tipo)}</div></div>
                 </div>
-                ${g ? opsGdTira(sem, tipo) : `<div style="padding:14px;background:#f8fafc;border-radius:10px;font-size:12.5px;color:#64748b;">Esta semana no tiene a nadie de ${T.n.toLowerCase()}.${gestion ? " Usa \"+ Asignar guardia\"." : ""}</div>`}
+                ${g ? opsGdTira(sem, tipo) : `<div style="padding:14px;background:#f8fafc;border-radius:10px;font-size:12.5px;color:#64748b;">Esta semana no tiene a nadie de ${T.n.toLowerCase()} en ${opsEsc(opsGdPlaza)}.${gestion ? " Usa \"+ Asignar guardia\"." : ""}</div>`}
                 ${g ? `<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">${pasos(tipo)}
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">${personas.map(id => opsGdBtn(`opsGdVale('${sem}','${tipo}','${id}')`, "Vale " + opsEsc(String(opsNombreTecnico(id)).split(" ")[0]), "#fff", "#1D2E73")).join("")}
                     ${e.k === "revisar" && opsGdPuedeAprobar() ? opsGdBtn(`opsGdAprobar('${sem}','${tipo}')`, "Aprobar pago", "#15803d", "#fff") : ""}
@@ -7817,12 +7854,12 @@
         const x = opsGdDiasInfo(sem, tipo).find(y => y.dia === dia) || {}, rev = x.rev || {};
         const lista = opsPersonalGuardiaTipo(tipo).concat(tipo === "tecnica" ? [] : []);
         const d = new Date(dia + "T12:00:00");
-        opsMiniModal(`${OPS_GD_DIAS_TXT[d.getDay()]} ${opsEsc(opsFechaCorta(dia))} · ${OPS_GUARDIA_TIPOS[tipo].n}`, `
+        opsMiniModal(`${OPS_GD_DIAS_TXT[d.getDay()]} ${opsEsc(opsFechaCorta(dia))} · ${OPS_GUARDIA_TIPOS[tipo].n} · ${opsEsc(opsGdPlaza)}`, `
             ${x.aus ? `<div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;"><b>${opsEsc(opsNombreTecnico(x.tec))}</b> tiene ${opsEsc(x.aus.tipo)} este día. Si alguien más cubrió, elígelo abajo.</div>` : ""}
             <label style="font-size:12px;font-weight:700;color:#334155;">¿Quién estuvo de guardia este día?</label>
             <select id="gd-dia-tec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:13px;margin:5px 0 12px;">
                 <option value="">${opsEsc(opsNombreTecnico(g.tecnicoId))} (el de la semana)</option>
-                ${lista.filter(t => t.id !== g.tecnicoId).map(t => `<option value="${t.id}" ${(g.coberturas || {})[dia] === t.id ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}
+                ${lista.filter(t => t.id !== g.tecnicoId).map(t => `<option value="${t.id}" ${(g.coberturas || {})[dia] === t.id ? "selected" : ""}>${opsEsc(opsGdEtiq(t))}</option>`).join("")}
             </select>
             <label style="font-size:12px;font-weight:700;color:#334155;">¿Cumplió con los estándares de guardia?</label>
             <div style="display:flex;gap:14px;margin:6px 0 10px;font-size:13px;">
@@ -7851,15 +7888,16 @@
     // ── Asignar guardia (la guardia en sí, no la herramienta) ──
     window.opsGdAsignarModal = function () {
         const actual = opsGdSemActual(), sems = Array.from({ length: 13 }, (_, i) => opsSumarDias(actual, 7 * i));
-        const opts = tipo => opsPersonalGuardiaTipo(tipo).map(t => `<option value="${t.id}">${opsEsc(t.nombre)}</option>`).join("");
-        opsMiniModal("Asignar guardia", `
+        const opts = tipo => opsPersonalGuardiaTipo(tipo).map(t => `<option value="${t.id}">${opsEsc(opsGdEtiq(t))}</option>`).join("");
+        opsMiniModal("Asignar guardia · " + opsEsc(opsGdPlaza), `
+            <div style="background:#fef2f2;color:#991b1b;border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:10px;">Plaza <b>${opsEsc(opsGdPlaza)}</b>. Para otra plaza, ciérralo y elige la plaza arriba.</div>
             <label style="font-size:12px;font-weight:700;color:#334155;">Semana</label>
             <select id="gd-as-sem" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:13px;margin:5px 0 12px;">${sems.map(s => `<option value="${s}" ${s === (opsGdSem || actual) ? "selected" : ""}>${opsEsc(opsGuardiaHorarioTxt(s))}</option>`).join("")}</select>
             <label style="font-size:12px;font-weight:700;color:#334155;">Tipo de guardia</label>
             <select id="gd-as-tipo" onchange="document.getElementById('gd-as-tec').innerHTML = this.value === 'administrativa' ? window.__gdOptsAdm : window.__gdOptsTec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:13px;margin:5px 0 12px;">${Object.entries(OPS_GUARDIA_TIPOS).map(([k, T]) => `<option value="${k}">${T.n} — ${T.d}</option>`).join("")}</select>
             <label style="font-size:12px;font-weight:700;color:#334155;">¿Quién?</label>
             <select id="gd-as-tec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:13px;margin:5px 0 6px;">${opts("tecnica")}</select>
-            <div style="font-size:11.5px;color:#64748b;">Se le avisa a la persona. Si ya había alguien esa semana, se reemplaza.</div>`, async err => {
+            <div style="font-size:11.5px;color:#64748b;">Se le avisa a la persona. Si ya había alguien esa semana <b>en esta plaza</b>, se reemplaza (las otras plazas no se tocan).</div>`, async err => {
             const sem = document.getElementById("gd-as-sem").value, tipo = document.getElementById("gd-as-tipo").value, tec = document.getElementById("gd-as-tec").value;
             if (!tec) { err.textContent = "Elige a la persona."; return false; }
             const g = opsGdProg(sem, tipo);
@@ -7881,7 +7919,7 @@
             for (const d of pag) {
                 const [a, m, dd] = d.dia.split("-");
                 const ok = d.folios.filter(y => y.ok).map(y => y.f.folioClienteId || y.f.folioOS || "S/F");
-                const concepto = (tipo === "administrativa" ? "GUARDIA ADMINISTRATIVA" : "GUARDIA TÉCNICA") + ` DEL ${dd}/${m}/${a}` + (tipo === "tecnica" ? (d.base ? " · " + d.baseTxt.toUpperCase() : "") + (ok.length ? " · " + ok.length + " FOLIO(S)" : "") : "");
+                const concepto = (tipo === "administrativa" ? "GUARDIA ADMINISTRATIVA" : "GUARDIA TÉCNICA") + (opsGdPlaza !== "Chihuahua" ? " " + opsGdPlaza.toUpperCase() : "") + ` DEL ${dd}/${m}/${a}` + (tipo === "tecnica" ? (d.base ? " · " + d.baseTxt.toUpperCase() : "") + (ok.length ? " · " + ok.length + " FOLIO(S)" : "") : "");
                 const r = await sb.from("ops_guardia_tel_vales").insert({ fecha_guardia: d.dia, tecnico_id: d.tec, tecnico_nombre: opsNombreTecnico(d.tec), monto: d.monto, concepto, orden_servicio: ok.join(", ").slice(0, 200) || "NA", autoriza: aut, creado_por: opsUsuarioActual(), tipo_guardia: tipo }).select("id").single();
                 if (r.error) { if (String(r.error.code) === "23505") continue; throw r.error; }
                 await sb.from("ops_guardia_tel_vales").update({ folio: "GT-" + String(r.data.id).padStart(5, "0") }).eq("id", r.data.id);
@@ -7890,7 +7928,7 @@
                 dias: pag.map(d => ({ dia: d.dia, tecnicoId: d.tec, monto: d.monto, base: d.base, folios: d.folios.map(y => ({ id: y.f.id, folio: y.f.folioClienteId || y.f.folioOS || "S/F", estacion: y.f.estacion || "", ok: y.ok, incluido: !!y.incluido, motivo: y.motivo })) })) };
             await opsGdGuardarProg(g, { pago });
             const quienes = [...new Set(pag.map(d => opsNombreTecnico(d.tec)))].join(", ");
-            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. Ya puedes pagarla en Operaciones → Guardias → Pago de guardias.`);
+            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGdPlaza} · ${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. Ya puedes pagarla en Operaciones → Guardias → Pago de guardias.`);
             await opsGtelCargar(); opsRenderGuardias();
         } catch (e) { alert("No se pudo aprobar: " + (e.message || e)); }
     };
@@ -7911,7 +7949,7 @@
             const pago = { estado: "rechazado", rechazadoPor: opsNombreActual(), rechazadoEn: opsFechaHora(), motivoRechazo: m.trim(), anterior: g.pago || null };
             await opsGdGuardarProg(g, { pago });
             const ids = [...new Set(opsGdDiasInfo(sem, tipo).map(x => x.tec).filter(Boolean))];
-            opsGdAvisar(ids.map(opsGdCorreoDe).concat(OPS_GD_AVISO_PAGO), `Se rechazó la guardia del ${opsGuardiaHorarioTxt(sem)} (${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()}). Motivo: ${m.trim()}. Rechazó ${pago.rechazadoPor}.`);
+            opsGdAvisar(ids.map(opsGdCorreoDe).concat(OPS_GD_AVISO_PAGO), `Se rechazó la guardia del ${opsGuardiaHorarioTxt(sem)} (${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()} · ${opsGdPlaza}). Motivo: ${m.trim()}. Rechazó ${pago.rechazadoPor}.`);
             await opsGtelCargar(); opsRenderGuardias();
         } catch (e) { alert("No se pudo rechazar: " + (e.message || e)); }
     };
@@ -7967,7 +8005,7 @@
             .k{color:#555;font-size:11px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:7px;vertical-align:top}th{background:#eef2ff;text-align:left}
             .tot{font-size:15px;font-weight:bold;text-align:right;margin-top:6px}.f{display:flex;justify-content:space-between;margin-top:60px;text-align:center;gap:20px}.f div{border-top:1px solid #111;padding-top:5px;flex:1}
             .nd{display:inline-block;border:1.5px solid #111;padding:3px 10px;font-weight:bold;letter-spacing:1px}@media print{button{display:none}}</style></head><body>
-            <div class="top"><div><h1>HEDMA TECNOCONTROL · VALE GENERAL DE GUARDIA</h1><div class="k">${opsEsc(OPS_GUARDIA_TIPOS[tipo].n)} · ${opsEsc(opsGuardiaHorarioTxt(sem, true))}</div></div><span class="nd">NO DEDUCIBLE</span></div>
+            <div class="top"><div><h1>HEDMA TECNOCONTROL · VALE GENERAL DE GUARDIA</h1><div class="k">${opsEsc(OPS_GUARDIA_TIPOS[tipo].n)} · Plaza ${opsEsc(opsGdPlaza)} · ${opsEsc(opsGuardiaHorarioTxt(sem, true))}</div></div><span class="nd">NO DEDUCIBLE</span></div>
             <div><span class="k">Persona:</span> <b>${opsEsc(nombre)}</b> &nbsp; <span class="k">Fecha de emisión:</span> <b>${new Date().toLocaleDateString("es-MX")}</b> &nbsp; <span class="k">Estatus:</span> <b>${p.estado === "pagado" ? "PAGADO" : p.estado === "aprobado" ? "APROBADO" : "POR APROBAR"}</b></div>
             ${tipo === "tecnica" ? `<div class="k" style="margin-top:6px;">Tarifa: sábado ${opsViaDinero(T.sab)} y domingo ${opsViaDinero(T.dom)} por día completo (sus folios van incluidos) · de lunes a viernes ${opsViaDinero(T.folio)} por folio cerrado, con evidencias y atendido por quien estaba de guardia.</div>` : ""}
             <table><thead><tr><th style="width:130px">Día</th><th>Concepto</th><th style="width:100px;text-align:right">Importe</th></tr></thead><tbody>${dias.map(fila).join("")}</tbody></table>
@@ -7979,7 +8017,7 @@
     };
     function opsGdFilasSemanas() {
         const out = [];
-        cacheGuardiasProgramadas.forEach(g => { const tipo = opsTipoGuardia(g); out.push({ g, sem: g.semanaInicio, tipo, e: opsGdEstadoPago(g.semanaInicio, tipo) }); });
+        cacheGuardiasProgramadas.filter(g => opsGdPlazaDe(g) === opsGdPlaza).forEach(g => { const tipo = opsTipoGuardia(g); out.push({ g, sem: g.semanaInicio, tipo, e: opsGdEstadoPago(g.semanaInicio, tipo) }); });
         return out.sort((a, b) => b.sem.localeCompare(a.sem) || a.tipo.localeCompare(b.tipo));
     }
     window.opsGdHistSet = function (k, v) { opsGdHist[k] = v; const c = document.getElementById("ops-gd-cuerpo"); if (c) c.innerHTML = opsGdHistorialHTML(); if (k === "q") { const i = document.getElementById("gd-h-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } } };
@@ -8110,9 +8148,9 @@
     async function opsGdAvisarFalta(tecId, ini, fin) {
         const dias = []; for (let d = ini; d <= fin; d = opsSumarDias(d, 1)) dias.push(d);
         const hits = [];
-        dias.forEach(dia => ["tecnica", "administrativa"].forEach(tipo => { const g = opsGdProg(opsGdSemDeDia(dia), tipo); if (g && ((g.coberturas || {})[dia] || g.tecnicoId) === tecId) hits.push({ dia, tipo }); }));
+        dias.forEach(dia => ["tecnica", "administrativa"].forEach(tipo => OPS_GD_PLAZAS.forEach(p => { const g = opsGdProg(opsGdSemDeDia(dia), tipo, p); if (g && ((g.coberturas || {})[dia] || g.tecnicoId) === tecId) hits.push({ dia, tipo, p }); })));
         if (!hits.length) return;
-        const txt = `${opsNombreTecnico(tecId)} tiene FALTA y estaba de guardia el ${hits.map(h => opsFechaCorta(h.dia)).join(", ")}: esos días no se le pagan. Si alguien cubrió, regístralo en Operaciones → Guardias (clic en el día).`;
+        const txt = `${opsNombreTecnico(tecId)} tiene FALTA y estaba de guardia el ${hits.map(h => opsFechaCorta(h.dia) + (h.p !== "Chihuahua" ? " (" + h.p + ")" : "")).join(", ")}: esos días no se le pagan. Si alguien cubrió, regístralo en Operaciones → Guardias (clic en el día).`;
         opsGdAvisar(OPS_GD_AVISO_OPS.concat(OPS_GD_AVISO_PAGO), txt);
         opsViaToast("Estaba de guardia: se avisó a Operaciones y a Administración.", "#b45309");
     }
@@ -8248,12 +8286,12 @@
         const ini = new Date(opsSumarDias(sem, -3) + "T17:00:00"), fin = new Date(opsSumarDias(sem, 4) + "T08:00:00");
         const quien = opsGtelDeGuardia(sem);
         const folios = opsGdFoliosSemana(sem); // mismo criterio que Guardias → Esta semana (4-nov-2026)
-        return { sem, ini, fin, quien, folios };
+        return { sem, ini, fin, quien, folios, plaza: opsGdPlaza };
     }
     function opsResGuardiaLineas(D) {
         const h = d => d ? new Date(d).toLocaleString("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
         const cerr = D.folios.filter(f => f.fechaSolucion).length;
-        const L = [`RESUMEN DE GUARDIA · ${opsGuardiaHorarioTxt(D.sem)}`, `De guardia: ${D.quien ? D.quien.nombre : "sin asignar"}`, `Folios: ${D.folios.length} · cerrados ${cerr} · abiertos ${D.folios.length - cerr}`, ""];
+        const L = [`RESUMEN DE GUARDIA · ${D.plaza.toUpperCase()} · ${opsGuardiaHorarioTxt(D.sem)}`, `De guardia: ${D.quien ? D.quien.nombre : "sin asignar"}`, `Folios: ${D.folios.length} · cerrados ${cerr} · abiertos ${D.folios.length - cerr}`, ""];
         D.folios.forEach((f, i) => { const v = opsFolioVenceMs(f), sol = opsAFechaObj(f.fechaSolucion);
             L.push(`${i + 1}. ${f.folioClienteId || f.folioOS || "S/F"} · ${f.estacion || ""}${f.prioridad ? " · " + f.prioridad : ""}`);
             L.push(`   Recibido ${h(f.fechaSolicitud)} · ${(f.tecnicosAsignadosNombres || []).join(", ") || "sin técnico"}`);
@@ -8289,28 +8327,31 @@
     function opsRenderCalendarioGuardias(gestion) {
         const hoyLunes = opsSemanaGuardiaDe(new Date());
         const semanas = [...new Set(cacheGuardiasProgramadas.filter(g => g.semanaInicio >= hoyLunes).map(g => g.semanaInicio))].sort().slice(0, 16);
+        // Las semanas que ya tiene cualquier plaza también se ofrecen en las demás (para llenarlas igual).
         if (!semanas.includes(hoyLunes)) semanas.unshift(hoyLunes);
         const listas = { tecnica: opsPersonalGuardiaTipo("tecnica"), administrativa: opsPersonalGuardiaTipo("administrativa") };
         const celda = (sem, tipo) => {
-            const g = cacheGuardiasProgramadas.find(x => x.semanaInicio === sem && opsTipoGuardia(x) === tipo), T = OPS_GUARDIA_TIPOS[tipo];
+            const g = opsGdProg(sem, tipo), T = OPS_GUARDIA_TIPOS[tipo];
             const lista = listas[tipo].slice(); if (g && !lista.some(t => t.id === g.tecnicoId)) { const t = opsTecPorId(g.tecnicoId); if (t) lista.unshift(t); }
             if (!gestion) return g ? `<strong style="color:${T.c};">${opsEsc(opsNombreTecnico(g.tecnicoId))}</strong>` : `<span style="color:#94a3b8;">—</span>`;
-            return `<select onchange="${g ? `opsCambiarGuardiaProgramada('${g.id}', this.value)` : `opsCrearGuardiaProgramada('${sem}','${tipo}', this.value)`}" style="width:100%;border:1px solid ${g ? T.c + "66" : "#cbd5e1"};border-radius:7px;padding:5px 8px;font-size:12px;">
-                ${g ? "" : `<option value="">Sin asignar…</option>`}${lista.map(t => `<option value="${t.id}" ${g && t.id === g.tecnicoId ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}</select>${g && g.generadoPor === "sugerido" ? `<span style="font-size:10px;color:#94a3b8;">(sugerido)</span>` : ""}`;
+            return `<select onchange="${g ? `opsCambiarGuardiaProgramada('${g.id}', this.value)` : `opsCrearGuardiaProgramada('${sem}','${tipo}', this.value, '${opsGdPlaza}')`}" style="width:100%;border:1px solid ${g ? T.c + "66" : "#cbd5e1"};border-radius:7px;padding:5px 8px;font-size:12px;">
+                ${g ? "" : `<option value="">Sin asignar…</option>`}${lista.map(t => `<option value="${t.id}" ${g && t.id === g.tecnicoId ? "selected" : ""}>${opsEsc(opsGdEtiq(t))}</option>`).join("")}</select>${g && g.generadoPor === "sugerido" ? `<span style="font-size:10px;color:#94a3b8;">(sugerido)</span>` : ""}`;
         };
-        return `<div style="font-size:11.5px;color:#1D2E73;background:#eef2ff;border-radius:8px;padding:7px 10px;margin-bottom:10px;">Cada guardia empieza el <b>viernes a las ${OPS_GUARDIA_INI_TXT}</b> y termina el <b>viernes siguiente a las ${OPS_GUARDIA_FIN_TXT}</b>. Al asignar o cambiar a alguien, se le avisa a esa persona y a Paloma.</div>
+        return `<div style="font-size:12.5px;font-weight:800;color:#E7402B;margin-bottom:6px;">Plaza ${opsEsc(opsGdPlaza)}</div><div style="font-size:11.5px;color:#1D2E73;background:#eef2ff;border-radius:8px;padding:7px 10px;margin-bottom:10px;">Cada guardia empieza el <b>viernes a las ${OPS_GUARDIA_INI_TXT}</b> y termina el <b>viernes siguiente a las ${OPS_GUARDIA_FIN_TXT}</b>. Al asignar o cambiar a alguien, se le avisa a esa persona y a Paloma.</div>
         <div style="display:grid;grid-template-columns:210px 1fr 1fr;gap:6px 12px;align-items:center;font-size:12px;">
             <div></div>${Object.entries(OPS_GUARDIA_TIPOS).map(([k, T]) => `<div style="font-size:11px;font-weight:800;color:${T.c};">${T.n}<div style="font-weight:500;color:#94a3b8;font-size:10.5px;">${T.d}</div></div>`).join("")}
             ${semanas.map(sem => `<div style="font-size:11px;color:#64748b;font-weight:600;padding:6px 0;${sem === hoyLunes ? "color:#b45309;" : ""}">${opsEsc(opsGuardiaHorarioTxt(sem))}${sem === hoyLunes ? " · hoy" : ""}</div><div>${celda(sem, "tecnica")}</div><div>${celda(sem, "administrativa")}</div>`).join("")}
         </div>`;
     }
-    window.opsCrearGuardiaProgramada = async function (sem, tipo, tecId) {
+    window.opsCrearGuardiaProgramada = async function (sem, tipo, tecId, plazaSel) {
         if (!tecId) return;
+        const plaza = opsGdPlazaTxt(plazaSel || opsGdPlaza);
+        if (opsGdProg(sem, tipo, plaza)) { alert("Esa semana ya tiene " + OPS_GUARDIA_TIPOS[tipo].n.toLowerCase() + " en " + plaza + ". Cámbiala en vez de crear otra."); return; }
         try {
             const { db, fs } = await opsGetFB();
-            const ref = await fs.addDoc(fs.collection(db, COL_GUARDIAS_PROGRAMADAS), { semanaInicio: sem, tecnicoId: tecId, tipo, generadoPor: "manual", creadoPor: opsNombreActual(), creadoEn: opsFechaHora() });
-            cacheGuardiasProgramadas.push({ id: ref.id, semanaInicio: sem, tecnicoId: tecId, tipo, generadoPor: "manual" });
-            opsAvisarGuardia(sem, tecId, tipo, false);
+            const ref = await fs.addDoc(fs.collection(db, COL_GUARDIAS_PROGRAMADAS), { semanaInicio: sem, tecnicoId: tecId, tipo, plaza, generadoPor: "manual", creadoPor: opsNombreActual(), creadoEn: opsFechaHora() });
+            cacheGuardiasProgramadas.push({ id: ref.id, semanaInicio: sem, tecnicoId: tecId, tipo, plaza, generadoPor: "manual" });
+            opsAvisarGuardia(sem, tecId, tipo, false, plaza);
             cacheGuardiasProgramadas.sort((a, b) => a.semanaInicio < b.semanaInicio ? -1 : 1);
             opsRenderGuardias();
         } catch (e) { alert("No se pudo asignar: " + (e.message || e)); }
@@ -8422,11 +8463,11 @@
         const f = iso => new Date(iso + "T12:00:00").toLocaleDateString("es-MX", largo ? { weekday: "long", day: "numeric", month: "long" } : { weekday: "short", day: "numeric", month: "short" });
         return `${f(opsSumarDias(sem, -3))} ${OPS_GUARDIA_INI_TXT} → ${f(opsSumarDias(sem, 4))} ${OPS_GUARDIA_FIN_TXT}`;
     }
-    async function opsAvisarGuardia(sem, tecnicoId, tipo, cambio) {
+    async function opsAvisarGuardia(sem, tecnicoId, tipo, cambio, plaza) {
         try {
             const t = opsTecPorId(tecnicoId) || (typeof opsPersonalGuardias === "function" ? opsPersonalGuardias().find(p => p.id === tecnicoId) : null);
             const nombre = (t && t.nombre) || opsNombreTecnico(tecnicoId);
-            const tipoTxt = tipo === "administrativa" ? "guardia administrativa" : "guardia";
+            const tipoTxt = (tipo === "administrativa" ? "guardia administrativa" : "guardia") + (plaza ? " de " + plaza : "");
             const horario = opsGuardiaHorarioTxt(sem, true);
             const para = [];
             if (t && t.correo) para.push({ c: String(t.correo).toLowerCase().trim(), m: `Te toca ${tipoTxt}: del ${horario}. Revisa que tengas tu material de guardia completo.`, v: `Te toca ${tipoTxt} a partir del viernes a las cinco de la tarde.` });
@@ -8455,7 +8496,7 @@
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;padding:22px;">
-                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px;">Sugerir próximas guardias</div>
+                <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:6px;">Sugerir próximas guardias · ${opsEsc(opsGdPlaza)}</div>
                 <div style="font-size:11.5px;color:#64748b;margin-bottom:14px;">Rota entre los técnicos que marques abajo — el que menos guardias lleva hecha entra primero, y se salta automáticamente a quien tenga una ausencia esa semana.</div>
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">¿Qué guardia?</label>
                 <select id="ops-in-guardias-tipo" onchange="opsAbrirModalSugerirGuardias(this.value)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 14px;">${Object.entries(OPS_GUARDIA_TIPOS).map(([k, T]) => `<option value="${k}" ${k === tipo ? "selected" : ""}>${T.n} — ${T.d}</option>`).join("")}</select>
@@ -8464,7 +8505,7 @@
                 <label style="font-size:11.5px;color:#64748b;font-weight:600;">${tipo === "administrativa" ? "Personal administrativo elegible" : "Técnicos elegibles"} para la guardia</label>
                 <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin:4px 0 16px;">
                     ${tecnicosActivos.map(t => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;color:#334155;cursor:pointer;">
-                        <input type="checkbox" class="ops-guardia-elegible" value="${t.id}" checked style="width:14px;height:14px;"> ${opsEsc(t.nombre)}
+                        <input type="checkbox" class="ops-guardia-elegible" value="${t.id}" ${opsGdPlazaTec(t) === opsGdPlaza ? "checked" : ""} style="width:14px;height:14px;"> ${opsEsc(opsGdEtiq(t))}
                     </label>`).join("")}
                 </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -8487,7 +8528,8 @@
         elegiblesIds.forEach(id => conteo[id] = 0);
         cacheGuardiasProgramadas.filter(g => opsTipoGuardia(g) === tipoG).forEach(g => { if (conteo[g.tecnicoId] !== undefined) conteo[g.tecnicoId]++; });
 
-        const yaProgramadas = new Set(cacheGuardiasProgramadas.filter(g => opsTipoGuardia(g) === tipoG).map(g => g.semanaInicio));
+        const plazaG = opsGdPlaza;
+        const yaProgramadas = new Set(cacheGuardiasProgramadas.filter(g => opsTipoGuardia(g) === tipoG && opsGdPlazaDe(g) === plazaG).map(g => g.semanaInicio));
         let semana = opsSemanaGuardiaDe(new Date());
         // Si la semana actual ya está programada, arranca desde la siguiente libre.
         while (yaProgramadas.has(semana)) semana = opsSumarDias(semana, 7);
@@ -8504,17 +8546,17 @@
         }
 
         const resumen = propuesta.map(p => `${opsGuardiaHorarioTxt(p.semanaInicio)}: ${p.tecnicoId ? opsNombreTecnico(p.tecnicoId) : "— nadie disponible esa semana —"}`).join("\n");
-        if (!confirm(`Esto va a programar ${propuesta.length} semana(s):\n\n${resumen}\n\n¿Guardar?`)) return;
+        if (!confirm(`Esto va a programar ${propuesta.length} semana(s) en ${plazaG}:\n\n${resumen}\n\n¿Guardar?`)) return;
 
         try {
             const { db, fs } = await opsGetFB();
             for (const p of propuesta) {
                 if (!p.tecnicoId) continue; // no se guarda una semana sin nadie disponible — Glen la llena a mano después
                 await fs.addDoc(fs.collection(db, COL_GUARDIAS_PROGRAMADAS), {
-                    semanaInicio: p.semanaInicio, tecnicoId: p.tecnicoId, tipo: tipoG, generadoPor: "sugerido",
+                    semanaInicio: p.semanaInicio, tecnicoId: p.tecnicoId, tipo: tipoG, plaza: plazaG, generadoPor: "sugerido",
                     creadoPor: opsNombreActual(), creadoEn: opsFechaHora(),
                 });
-                opsAvisarGuardia(p.semanaInicio, p.tecnicoId, tipoG, false);
+                opsAvisarGuardia(p.semanaInicio, p.tecnicoId, tipoG, false, plazaG);
             }
             const snap = await fs.getDocs(fs.collection(db, COL_GUARDIAS_PROGRAMADAS));
             cacheGuardiasProgramadas = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.semanaInicio < b.semanaInicio ? -1 : 1);
@@ -8532,7 +8574,7 @@
             const { db, fs } = await opsGetFB();
             await fs.updateDoc(fs.doc(db, COL_GUARDIAS_PROGRAMADAS, id), { tecnicoId: nuevoTecnicoId, generadoPor: "manual" });
             const g = cacheGuardiasProgramadas.find(x => x.id === id);
-            if (g) { g.tecnicoId = nuevoTecnicoId; g.generadoPor = "manual"; opsAvisarGuardia(g.semanaInicio, nuevoTecnicoId, opsTipoGuardia(g), true); }
+            if (g) { g.tecnicoId = nuevoTecnicoId; g.generadoPor = "manual"; opsAvisarGuardia(g.semanaInicio, nuevoTecnicoId, opsTipoGuardia(g), true, opsGdPlazaDe(g)); }
         } catch (e) {
             console.error("[opsCambiarGuardiaProgramada]", e);
             alert("No se pudo cambiar: " + e.message);
@@ -8887,13 +8929,16 @@
             ids.forEach(id => { const t = opsTecPorId(id); if (t && !dia.some(x => x.tec.id === id)) dia.push({ tec: t, clientes: f.clientesAtencion || [], origenId: f.id }); });
         });
         cacheFolios.filter(f => f.cancelado !== true && f.conceptoGeneral === "Guardia" && opsFolioCubreDia(f, diaISO)).forEach(f => {
-            (f.tecnicosAsignadosIds || []).forEach(id => { const t = opsTecPorId(id); if (t && !guardia.some(x => x.tec.id === id)) guardia.push({ tec: t, fuente: "calendario" }); });
+            (f.tecnicosAsignadosIds || []).forEach(id => { const t = opsTecPorId(id); if (t && !guardia.some(x => x.tec.id === id)) guardia.push({ tec: t, fuente: "calendario", plaza: opsGdPlazaTec(t) }); });
         });
-        if (!guardia.length) {
-            const g = (cacheGuardiasProgramadas || []).find(x => x.semanaInicio === opsSemanaGuardiaDe(fechaHora || diaISO) && opsTipoGuardia(x) === "tecnica");
-            const t = g ? (opsTecPorId(g.tecnicoId) || (typeof opsPersonalGuardias === "function" ? opsPersonalGuardias().find(p => p.id === g.tecnicoId) : null)) : null;
-            if (t) guardia.push({ tec: t, fuente: "rotación semanal" });
-        }
+        // Rotación semanal: la guardia técnica de cada plaza (18-nov-2026) para las plazas que no la traen del calendario.
+        const semG = opsSemanaGuardiaDe(fechaHora || diaISO);
+        OPS_GD_PLAZAS.forEach(p => {
+            if (guardia.some(x => x.plaza === p)) return;
+            const g = opsGdProg(semG, "tecnica", p);
+            const t = g ? (opsTecPorId(g.tecnicoId) || (typeof opsPersonalGuardias === "function" ? opsPersonalGuardias().find(q => q.id === g.tecnicoId) : null)) : null;
+            if (t && !guardia.some(x => x.tec.id === t.id)) guardia.push({ tec: t, fuente: "rotación semanal" + (p !== "Chihuahua" ? " · " + p : ""), plaza: p });
+        });
         return { dia, guardia };
     }
     function opsTurnoAtiendeCliente(item, f) {
@@ -8914,7 +8959,7 @@
         }
         // En horario de oficina sin turno para ese cliente: no se le carga a la guardia, lo decide Operaciones.
         if (horaDia) return null;
-        if (t.guardia.length) return { tipo: "guardia", tec: t.guardia[0].tec, dia: diaISO };
+        if (t.guardia.length) { const pf = opsGdPlazaTxt(opsPlazaFolio(f)); const x = t.guardia.find(y => y.plaza === pf) || t.guardia.find(y => y.plaza === "Chihuahua") || t.guardia[0]; return { tipo: "guardia", tec: x.tec, dia: diaISO }; }
         return null;
     }
     async function opsAsignarFolioATecnico(f, tec, tipo) {
@@ -9057,7 +9102,7 @@
         return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#ecfeff;border:1px solid #a5f3fc;border-radius:12px;padding:8px 14px;margin:0 0 10px;font-size:12px;color:#155e75;">
             <b>Hoy en folios (${OPS_TURNO_INI} a ${OPS_TURNO_FIN}):</b> ${t.dia.length ? t.dia.map(x => opsEsc(x.tec.nombre)).join(", ") : '<span style="color:#b45309;font-weight:700;">nadie programado</span>'}
             <span style="color:#a5b4fc;">|</span>
-            <b style="color:#5b21b6;">Guardia:</b> <span style="color:#5b21b6;">${t.guardia.length ? t.guardia.map(x => opsEsc(x.tec.nombre)).join(", ") : "sin asignar"}</span>
+            <b style="color:#5b21b6;">Guardia:</b> <span style="color:#5b21b6;">${t.guardia.length ? t.guardia.map(x => opsEsc(x.tec.nombre) + (x.plaza && x.plaza !== "Chihuahua" ? " (" + opsEsc(x.plaza) + ")" : "")).join(", ") : "sin asignar"}</span>
             ${t.dia.length ? `<span style="color:#64748b;">· No mover a ${t.dia.length > 1 ? "estos técnicos" : "este técnico"} sin cubrir los folios.</span>` : ""}
             ${sinTec ? `<button onclick="opsCambiarTab('folios')" style="margin-left:auto;background:#E7402B;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:800;cursor:pointer;">${sinTec} folio(s) sin técnico</button>` : ""}
         </div>`;
@@ -22795,7 +22840,7 @@
         const proximaGuardia = [];
         cacheGuardiasProgramadas.filter(g => g.semanaInicio >= opsLunesDe(hoy)).forEach(g => {
             const dias = enDias(opsSumarDias(g.semanaInicio, -3) + "T17:00:00");
-            if (dias !== null && dias >= 0 && dias <= cfg.anticipacionGuardiaDias) proximaGuardia.push(`${opsNombreTecnico(g.tecnicoId)} entra de ${opsTipoGuardia(g) === "administrativa" ? "guardia administrativa" : "guardia"} el ${opsFechaCorta(g.semanaInicio)} (en ${Math.ceil(dias)} día(s)).`);
+            if (dias !== null && dias >= 0 && dias <= cfg.anticipacionGuardiaDias) proximaGuardia.push(`${opsNombreTecnico(g.tecnicoId)} entra de ${opsTipoGuardia(g) === "administrativa" ? "guardia administrativa" : "guardia"}${opsGdPlazaDe(g) !== "Chihuahua" ? " (" + opsGdPlazaDe(g) + ")" : ""} el ${opsFechaCorta(g.semanaInicio)} (en ${Math.ceil(dias)} día(s)).`);
         });
         const proximaAusencia = [];
         cacheAusencias.filter(a => a.fechaInicio >= opsHoy()).forEach(a => {
@@ -29478,8 +29523,8 @@
         opsGtelBit = b.data || []; opsGtelVales = v.data || [];
         if (c.data && c.data.datos) opsGtelCfg = { ...opsGtelCfg, ...c.data.datos };
     }
-    function opsGtelDeGuardia(lunes, tipo) {
-        const g = cacheGuardiasProgramadas.find(x => x.semanaInicio === lunes && opsTipoGuardia(x) === (tipo || "tecnica"));
+    function opsGtelDeGuardia(lunes, tipo, plaza) {
+        const g = opsGdProg(lunes, tipo || "tecnica", plaza);
         return g ? { id: g.tecnicoId, nombre: opsNombreTecnico(g.tecnicoId) } : null;
     }
     async function opsGtelPintar() {
