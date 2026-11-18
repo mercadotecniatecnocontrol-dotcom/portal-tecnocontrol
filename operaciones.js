@@ -11991,6 +11991,8 @@
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button onclick="opsRevExportarCompletados()" class="mkt-add-btn" style="background:#15803d;" title="Todos los servicios terminados con las fechas, cliente y tipo que tengas filtrados (sin importar si ya están revisados): PDF de cada uno con la liga del video, todas sus evidencias y un resumen en Excel">Exportar completados (con evidencias)</button>
                     <button onclick="opsRevZip()" class="mkt-add-btn" style="background:#1D2E73;">Descargar ZIP para el Drive</button>
+                    <button onclick="opsDriveSubirPendientes()" class="mkt-add-btn" style="background:#0f766e;" title="Sube al Drive (carpeta ORDENES DE SERVICIO → su mes) el PDF de los cierres DONE que todavía no están. Al marcar un DONE nuevo se sube solo.">Subir DONE al Drive</button>
+                    <button onclick="opsDriveConfigurar()" class="mkt-add-btn" style="background:#64748b;" title="Conectar la carpeta del Drive (liga del Apps Script, clave y clientes)">Conectar Drive</button>
                     <button onclick="opsRevListaOS()" class="mkt-add-btn" style="background:#b45309;" title="Pega los números de O.S. que necesitas y baja un ZIP con el PDF de cada una (evidencias, orden de servicio, firma y liga del video)">Descargar por lista de O.S.</button>
                 </div>
             </div>
@@ -12104,6 +12106,8 @@
             opsRevPolRev.set(id, fila);
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión de póliza guardada", texto: OPS_REV_ESTATUS[fila.estatus][0], nivel: "normal", modulo: "Operaciones" });
+            const polDrive = opsRevPolizas.find(x => x.id === id);
+            if (fila.estatus === "revisado" && polDrive) opsDriveEnSegundoPlano(() => opsDriveSubirPolizaApp(polDrive), "Póliza " + (polDrive.folio || polDrive.estacion_nombre || ""));
             if (tabActual === "revision") opsRenderRevision();
         } catch (e) { if (msg) msg.textContent = "No se pudo guardar: " + (e.message || e); }
     };
@@ -12230,8 +12234,128 @@
             try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] " + OPS_REV_ESTATUS[rc.estatus][0] + (rc.cobro.si ? " · Se cobró $" + rc.cobro.monto + (rc.cobro.concepto ? " (" + rc.cobro.concepto + ")" : "") : " · No se cobró") + (rc.cotizacion ? " · Cotización " + rc.cotizacion : "") + (rc.nota ? " · " + rc.nota : ""), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {}
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión guardada", texto: "O.S. " + (opsRevOS(f) || f.estacion) + " · " + OPS_REV_ESTATUS[rc.estatus][0], nivel: "normal", modulo: "Operaciones" });
+            // 18-nov-2026: al quedar DONE, su PDF se sube solo al Drive de órdenes de servicio.
+            if (rc.estatus === "revisado" && !(rc.drive && rc.drive.id)) opsDriveEnSegundoPlano(() => opsDriveSubirFolio(f), "O.S. " + (opsRevOS(f) || f.estacion));
             if (tabActual === "revision") opsRenderRevision();
         } catch (e) { if (msg) msg.textContent = "No se pudo guardar: " + (e.message || e); }
+    };
+
+    // ═══════════════ DRIVE DE ÓRDENES DE SERVICIO (18-nov-2026, Glen) ═══════════════
+    // Cuando un cierre queda DONE, su PDF (el mismo de "Descargar PDF") se sube solo a la carpeta
+    // ORDENES DE SERVICIO del Drive, dentro de la carpeta de su mes (si no existe, se crea).
+    // Lo sube un Apps Script publicado con la cuenta que tiene acceso a esa carpeta; la liga y la
+    // clave se guardan en Supabase (ops_config_externos, id "drive_cierres"), no en el código.
+    // Solo los clientes de la lista (por defecto Petro Seven, que es de quien es esa carpeta).
+    let opsDriveCfg = null, opsDriveCfgCargada = false, opsDriveCorriendo = false;
+    async function opsDriveConfig(forzar) {
+        if (opsDriveCfgCargada && !forzar) return opsDriveCfg;
+        try { const sb = await opsSb(); const { data } = await sb.from("ops_config_externos").select("datos").eq("id", "drive_cierres").maybeSingle(); opsDriveCfg = (data && data.datos) || null; }
+        catch (e) { console.warn("[Drive cierres] config:", e); opsDriveCfg = null; }
+        opsDriveCfgCargada = true; return opsDriveCfg;
+    }
+    function opsDriveListo(cfg) { return !!(cfg && cfg.url && cfg.token && cfg.activo !== false); }
+    function opsDriveAplica(cfg, cliente) {
+        const l = (cfg && Array.isArray(cfg.clientes) && cfg.clientes.length) ? cfg.clientes : ["Petro Seven"];
+        return l.some(c => opsNormalizaTexto(opsClienteCanon(c)) === opsNormalizaTexto(opsClienteCanon(cliente)));
+    }
+    function opsDriveNombre(tipo, os, estacion, fecha) {
+        return (tipo + " - OS " + (os || "sin OS") + " - " + (estacion || "estacion") + " - " + String(fecha || "").slice(0, 10))
+            .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[\\/:*?"<>|#%]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) + ".pdf";
+    }
+    async function opsDriveEnviar(cfg, blob, nombre, fechaISO) {
+        const b64 = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(",")[1] || ""); fr.onerror = ko; fr.readAsDataURL(blob); });
+        const d = new Date(String(fechaISO || "").slice(0, 10) + "T12:00:00");
+        if (isNaN(d)) throw new Error("El cierre no tiene fecha");
+        const r = await fetch(cfg.url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: cfg.token, mes: d.getMonth() + 1, anio: d.getFullYear(), nombre, base64: b64 }) });
+        let j = null; try { j = await r.json(); } catch (e) { throw new Error("El script del Drive no contestó bien (revisa que esté publicado para «Cualquier usuario»)."); }
+        if (!j || !j.ok) throw new Error((j && j.error) || "El Drive no aceptó el archivo");
+        return j;
+    }
+    async function opsDriveSubirFolio(f) {
+        const cfg = await opsDriveConfig();
+        if (!opsDriveListo(cfg)) return { omitido: "Drive sin configurar" };
+        if (!opsDriveAplica(cfg, opsRevCliente(f))) return { omitido: "cliente" };
+        const { doc } = await opsRevArmarPdf(f, 31536000);
+        const nombre = opsDriveNombre(opsRevEsPoliza(f) ? "POLIZA" : "SERVICIO TECNICO", opsRevOS(f), f.estacion, opsRevFechaCierre(f));
+        const j = await opsDriveEnviar(cfg, doc.output("blob"), nombre, opsRevFechaCierre(f));
+        const rc = Object.assign({}, f.revisionCierre || {}, { drive: { id: j.id, url: j.url, carpeta: j.carpeta, nombre, en: opsFechaHora() } });
+        try { const { db, fs } = await opsGetFB(); await fs.updateDoc(fs.doc(db, COL_FOLIOS, f.id), { revisionCierre: rc }); f.revisionCierre = rc; } catch (e) { console.warn("[Drive cierres] no se marcó el folio:", e); }
+        return j;
+    }
+    async function opsDriveSubirPolizaApp(p) {
+        const cfg = await opsDriveConfig();
+        if (!opsDriveListo(cfg)) return { omitido: "Drive sin configurar" };
+        if (!opsDriveAplica(cfg, p.cliente_razon_social || "")) return { omitido: "cliente" };
+        const evp = await opsRevEvidenciasPolizaApp(p.id);
+        const doc = await opsRevArmarPdfPolizaApp(p, evp);
+        const nombre = opsDriveNombre("POLIZA", p.folio, p.estacion_nombre, p.fecha);
+        const j = await opsDriveEnviar(cfg, doc.output("blob"), nombre, p.fecha);
+        // Columna opcional "drive" (jsonb). Si todavía no existe, no pasa nada: el Drive no duplica por nombre.
+        try { const sb = await opsSb(); await sb.from("ops_revision_polizas").update({ drive: { id: j.id, url: j.url, carpeta: j.carpeta, nombre, en: new Date().toISOString() } }).eq("poliza_id", p.id); } catch (e) {}
+        return j;
+    }
+    // Se lanza al marcar DONE: no detiene a quien revisa; avisa si se subió o si falló.
+    function opsDriveEnSegundoPlano(fn, etiqueta) {
+        Promise.resolve().then(fn).then(j => {
+            if (j && !j.omitido && window.tcNotif) window.tcNotif.agregar({ titulo: "PDF en el Drive", texto: etiqueta + " → carpeta " + (j.carpeta || "") + (j.existia ? " (ya estaba)" : ""), nivel: "normal", modulo: "Operaciones" });
+        }).catch(e => {
+            console.warn("[Drive cierres]", e);
+            if (window.tcNotif) window.tcNotif.agregar({ titulo: "No se subió el PDF al Drive", texto: etiqueta + ": " + (e.message || e) + ". Usa «Subir DONE al Drive» para reintentar.", nivel: "urgente", modulo: "Operaciones" });
+        });
+    }
+    window.opsDriveConfigurar = async function () {
+        if (!opsPuedeGestionar()) return;
+        const cfg = (await opsDriveConfig(true)) || {};
+        const url = prompt("1/3 · Liga de la aplicación web del Apps Script (termina en /exec):", cfg.url || ""); if (url === null) return;
+        const token = prompt("2/3 · Clave (la misma que pusiste en CLAVE dentro del script):", cfg.token || ""); if (token === null) return;
+        const cli = prompt("3/3 · Clientes cuyos PDF se suben a esa carpeta (separados por coma):", (cfg.clientes && cfg.clientes.length ? cfg.clientes : ["Petro Seven"]).join(", ")); if (cli === null) return;
+        const datos = { url: url.trim(), token: token.trim(), clientes: cli.split(",").map(x => x.trim()).filter(Boolean), activo: true };
+        try {
+            if (datos.url) {
+                const r = await fetch(datos.url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: datos.token, prueba: true }) });
+                const j = await r.json(); if (!j.ok) throw new Error(j.error || "sin respuesta");
+                datos.carpeta = j.carpeta;
+            }
+            const sb = await opsSb();
+            const { error } = await sb.from("ops_config_externos").upsert({ id: "drive_cierres", datos, actualizado_en: new Date().toISOString(), actualizado_por: opsUsuarioActual() });
+            if (error) throw error;
+            opsDriveCfg = datos; opsDriveCfgCargada = true;
+            alert("Listo. Conectado a la carpeta «" + (datos.carpeta || "?") + "». Desde ahora cada DONE de " + datos.clientes.join(", ") + " sube su PDF solo.");
+        } catch (e) { alert("No se pudo conectar con el Drive: " + (e.message || e) + "\n\nRevisa la liga, la clave y que el script esté publicado como «Cualquier usuario»."); }
+    };
+    // Sube los DONE que todavía no están en el Drive (por defecto octubre y noviembre de 2026).
+    window.opsDriveSubirPendientes = async function () {
+        if (!opsPuedeGestionar() || opsDriveCorriendo) return;
+        const cfg = await opsDriveConfig(true);
+        if (!opsDriveListo(cfg)) { if (confirm("Todavía no está conectado el Drive. ¿Conectarlo ahora?")) window.opsDriveConfigurar(); return; }
+        const desde = prompt("Subir los DONE cerrados desde (AAAA-MM-DD):", "2026-10-01"); if (!desde) return;
+        const hasta = prompt("Hasta (AAAA-MM-DD):", opsRevHoyISO()); if (!hasta) return;
+        const enRango = d => { d = String(d || "").slice(0, 10); return d >= desde && d <= hasta; };
+        const folios = cacheFolios.filter(f => !f.cancelado && (f.revisionCierre || {}).estatus === "revisado" && !((f.revisionCierre || {}).drive || {}).id && enRango(opsRevFechaCierre(f)) && opsDriveAplica(cfg, opsRevCliente(f)));
+        let pols = [];
+        try {
+            const sb = await opsSb(), h = new Date(hasta + "T00:00:00"); h.setDate(h.getDate() + 1);
+            const [r1, r2] = await Promise.all([sb.rpc("ops_polizas_para_revision", { p_desde: new Date(desde + "T00:00:00").toISOString(), p_hasta: h.toISOString() }), sb.from("ops_revision_polizas").select("*")]);
+            const rev = new Map(((r2 && r2.data) || []).map(x => [x.poliza_id, x]));
+            const ligadas = new Set(cacheFolios.map(f => f.polizaApp && f.polizaApp.id).filter(Boolean));
+            pols = ((r1 && r1.data) || []).filter(p => !ligadas.has(p.id) && (rev.get(p.id) || {}).estatus === "revisado" && !((rev.get(p.id) || {}).drive || {}).id && opsDriveAplica(cfg, p.cliente_razon_social || ""));
+        } catch (e) { console.warn("[Drive cierres] pólizas:", e); }
+        const total = folios.length + pols.length;
+        if (!total) { alert("No hay cierres DONE pendientes de subir entre " + desde + " y " + hasta + " (" + cfg.clientes.join(", ") + ")."); return; }
+        if (!confirm("Se subirán " + total + " PDF al Drive (" + folios.length + " servicios/pólizas del portal y " + pols.length + " pólizas de la app), cada uno a la carpeta de su mes.\n\nTarda unos segundos por PDF. No cierres esta pestaña. ¿Continuar?")) return;
+        opsDriveCorriendo = true; let ok = 0, ya = 0; const fallos = []; let n = 0;
+        try {
+            for (const f of folios) {
+                n++; opsRevExpAviso("Subiendo al Drive " + n + " de " + total + "…<br><span style='font-weight:500;font-size:11.5px;opacity:.85;'>O.S. " + opsEsc(opsRevOS(f) || "") + " · " + opsEsc(f.estacion || "") + "</span>");
+                try { const j = await opsDriveSubirFolio(f); if (j.existia) ya++; else if (!j.omitido) ok++; } catch (e) { fallos.push("O.S. " + (opsRevOS(f) || f.estacion) + ": " + (e.message || e)); }
+            }
+            for (const p of pols) {
+                n++; opsRevExpAviso("Subiendo al Drive " + n + " de " + total + "…<br><span style='font-weight:500;font-size:11.5px;opacity:.85;'>Póliza " + opsEsc(p.folio || "") + " · " + opsEsc(p.estacion_nombre || "") + "</span>");
+                try { const j = await opsDriveSubirPolizaApp(p); if (j.existia) ya++; else if (!j.omitido) ok++; } catch (e) { fallos.push("Póliza " + (p.folio || p.estacion_nombre) + ": " + (e.message || e)); }
+            }
+        } finally { opsDriveCorriendo = false; opsRevExpAviso(""); }
+        alert("Drive: " + ok + " PDF subido(s)" + (ya ? ", " + ya + " ya estaban" : "") + (fallos.length ? ".\n\nNo se pudieron subir " + fallos.length + ":\n" + fallos.slice(0, 15).join("\n") : "."));
+        if (tabActual === "revision") opsRenderRevision();
     };
 
     // ── Evidencias del folio con ligas firmadas (imágenes 1 h; video 1 año para el cliente) ──
@@ -16673,8 +16797,8 @@
                 ${porNorma ? `<div><label class="opsas-lb">Norma</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].norma=this.value;opsAsPintar()">${normasV.map(n => `<option value="${opsEsc(n)}" ${c.norma === n ? "selected" : ""}>${opsEsc(n)}</option>`).join("")}</select></div>` : ""}
                 <div><label class="opsas-lb">Persona</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].tecId=this.value;opsAsPintar()"><option value="">Selecciona…</option>${tecs.map(t => `<option value="${t.id}" ${c.tecId === t.id ? "selected" : ""}>${opsEsc(t.nombre)}</option>`).join("")}</select></div>
                 <div><label class="opsas-lb">Concepto ${String(c.concepto || "").trim() && !cacheConceptosCom.some(x => opsAsNorm(x) === opsAsNorm(c.concepto)) ? `<a href="#" onclick="event.preventDefault();opsAsGuardarConcepto(${i})" style="color:#15803d;font-weight:700;">· guardar en la lista</a>` : ""}</label><input class="opsas-in" list="opsas-conceptos" value="${opsEsc(c.concepto)}" placeholder="Elige o escribe uno nuevo" oninput="opsAS.comisiones[${i}].concepto=this.value" onchange="opsAsPintar()"></div>
-                <div><label class="opsas-lb">Tipo</label><select class="opsas-in" onchange="opsAS.comisiones[${i}].tipo=this.value;opsAsPintar()"><option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo</option><option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% precio</option></select></div>
-                <div><label class="opsas-lb">${c.tipo === "pct" ? "Porcentaje" : "Monto"}</label><input type="number" min="0" step="0.01" class="opsas-in" ${c.pendienteMonto ? "disabled placeholder=\"Pendiente\"" : ""} value="${c.pendienteMonto ? "" : opsEsc(c.valor)}" onchange="opsAS.comisiones[${i}].valor=this.value;opsAsPintar()"></div>
+                <div><label class="opsas-lb">Tipo</label><select class="opsas-in" onchange="opsAS.comRecAuto=false;opsAS.comisiones[${i}].tipo=this.value;opsAsPintar()"><option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo</option><option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% precio</option></select></div>
+                <div><label class="opsas-lb">${c.tipo === "pct" ? "Porcentaje" : "Monto"}</label><input type="number" min="0" step="0.01" class="opsas-in" ${c.pendienteMonto ? "disabled placeholder=\"Pendiente\"" : ""} value="${c.pendienteMonto ? "" : opsEsc(c.valor)}" onchange="opsAS.comRecAuto=false;opsAS.comisiones[${i}].valor=this.value;opsAsPintar()"></div>
                 <label title="Guarda a la persona y el concepto; el monto se llena después, cuando se revise" style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:${c.pendienteMonto ? "#b45309" : "#64748b"};padding-bottom:9px;cursor:pointer;"><input type="checkbox" ${c.pendienteMonto ? "checked" : ""} onchange="opsAS.comisiones[${i}].pendienteMonto=this.checked;opsAsPintar()">Monto por revisar</label>
                 <div><label class="opsas-lb">A pagar</label><div style="padding:8px 4px;font-size:13px;font-weight:800;color:${c.pendienteMonto ? "#b45309" : "#1D2E73"};">${c.pendienteMonto ? "Pendiente" : opsDinero(opsAsComisionMonto(c, R.baseComision))}</div></div>
                 <button type="button" onclick="opsAS.comisiones.splice(${i},1);opsAsPintar()" title="Quitar" style="height:36px;background:#fef2f2;border:none;color:#E7402B;border-radius:8px;cursor:pointer;font-weight:800;">×</button>
@@ -16683,6 +16807,9 @@
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Comisiones al personal</div><div class="opsas-hint">Avisa a Pagos y RH al guardar y al finalizar</div></div>
             ${porNorma ? `<div class="opsas-note" style="margin:0 0 8px;">Esta visita lleva ${normasV.length} normas (${normasV.map(opsEsc).join(", ")}). Cada comisión se paga en el servicio de <b>su norma</b>; si es porcentaje, se calcula sobre el precio de esa norma.</div>` : ""}
+            ${(() => { const rc = s.tipo === "receta" ? opsRecComision(opsAsReceta()) : null; if (!rc) return "";
+                const n = (s.comisiones || []).filter(c => c.tecId && !c.pendienteMonto).length, tot = rc.tipo === "pct" ? rc.valor + "% del precio" : opsDinero(rc.valor);
+                return `<div class="opsas-note" style="margin:0 0 8px;background:#eef2ff;color:#1D2E73;">Comisión de la receta: <b>${tot}</b> en total${rc.nota ? " (" + opsEsc(rc.nota) + ")" : ""}. ${s.comRecAuto === true ? (n ? `Se reparte en partes iguales entre ${n} persona(s).` : "Se reparte en partes iguales entre quienes elijas.") : `Ya la cambiaste a mano. <a href="#" onclick="event.preventDefault();opsAsComRecetaReactivar()" style="color:#1D2E73;font-weight:800;">Volver a repartir según la receta</a>`}</div>`; })()}
             <datalist id="opsas-conceptos">${cacheConceptosCom.map(x => `<option value="${opsEsc(x)}"></option>`).join("")}</datalist>
             ${filas ? `<div class="opsas-note" style="margin:0 0 8px;">El personal que eliges en la programación aparece aquí solo. Si todavía no sabes el monto, marca <b>"Monto por revisar"</b> y se llena después en Operaciones → Comisiones.</div>` + filas : `<div class="opsas-note" style="margin:0 0 8px;">Sin comisiones capturadas. Cuando elijas personal en la programación, aparece aquí solo.</div>`}
             ${(s.comisiones || []).some(c => c.tipo === "pct") && !R.precioVisita ? `<div class="opsas-box" style="margin:0 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -16724,6 +16851,7 @@
         const v = prompt("Monto total de comisión a repartir entre " + s.comisiones.length + " personas:");
         if (v === null || isNaN(Number(v))) return;
         const parte = Math.round((Number(v) / s.comisiones.length) * 100) / 100;
+        s.comRecAuto = false;
         s.comisiones.forEach(c => { c.tipo = "monto"; c.valor = String(parte); });
         opsAsPintar();
     };
@@ -19659,6 +19787,22 @@
     };
 
     function opsAsReceta() { return opsAS && opsAS.recetaId ? cacheServiciosCatalogo.find(r => r.id === opsAS.recetaId) : null; }
+    // 18-nov-2026 (Glen): comisión total de la receta → { tipo: "monto"|"pct", valor } o null si no tiene.
+    function opsRecComision(r) {
+        const c = (r && r.comision) || {}, v = Number(c.valor) || 0;
+        return v > 0 ? { tipo: c.tipo === "pct" ? "pct" : "monto", valor: v, nota: c.nota || "" } : null;
+    }
+    // Reparte la comisión de la receta en partes iguales entre las personas de "Comisiones al personal".
+    // Solo mientras esté en automático: si alguien cambia un monto o el tipo a mano, ya no se toca.
+    function opsAsComRecetaAplicar() {
+        const s = opsAS; if (!s || s.comRecAuto !== true) return;
+        const rc = s.tipo === "receta" ? opsRecComision(opsAsReceta()) : null; if (!rc) return;
+        const filas = (s.comisiones || []).filter(c => c.tecId && !c.pendienteMonto);
+        if (!filas.length) return;
+        const parte = rc.tipo === "pct" ? Math.round(rc.valor / filas.length * 1000) / 1000 : Math.round(rc.valor / filas.length * 100) / 100;
+        filas.forEach(c => { c.tipo = rc.tipo; c.valor = String(parte); c.deReceta = true; });
+    }
+    window.opsAsComRecetaReactivar = function () { if (!opsAS) return; opsAS.comRecAuto = true; opsAsPintar(); };
     // Calibración de dispensarios (SCFI): tiempo de ejecución = 1 hora por dispensario (Glen, oct-2026).
     const OPS_HORAS_POR_DISPENSARIO = 1;
     function opsAsEsCalDispensarios() {
@@ -19801,6 +19945,7 @@
 
     function opsAsPintar() {
         const s = opsAS; if (!s) return;
+        opsAsComRecetaAplicar();
         opsAsCargarSugerido(); opsAsCargarSugeridosExtra();
         setTimeout(() => { try { opsAsCalcularTraslado(false); } catch (e) {} }, 0);
         const wrap = document.getElementById("ops-modal-wrap");
@@ -20053,6 +20198,8 @@
             if (r && r.horasEjecucion && !s.dur) { s.dur = String(r.horasEjecucion); s.durU = "h"; }
             const sug = r?.vehiculos?.sugerido?.nombre;
             if (sug && !s.vehiculo) s.vehiculo = sug;
+            s.comRecAuto = !!opsRecComision(r);
+            if (r && String(r.avisoProgramacion || "").trim() && window.tcNotif && window.tcNotif.aviso) window.tcNotif.aviso(String(r.avisoProgramacion).trim(), "pendiente", "Aviso de " + (r.nombre || "este servicio"));
         }
         if (["tipo", "recetaId", "norma"].includes(campo)) { opsAsAutoDuracionDispensarios(); s.precioSel = ""; s.precioPers = ""; s.precioDeSugerido = false; s.precioSugerido = null; s.precioEditor = false; }
         opsAsPintar();
@@ -21031,7 +21178,7 @@
         const s = opsAS; if (!s) return;
         s.comisiones = s.comisiones || [];
         const equipo = opsAsTecsElegidos();
-        s.comisiones = s.comisiones.filter(c => !c.auto || equipo.includes(c.tecId) || String(c.valor || "") !== "" || c.pendienteMonto);
+        s.comisiones = s.comisiones.filter(c => !c.auto || equipo.includes(c.tecId) || (String(c.valor || "") !== "" && !(c.deReceta && s.comRecAuto === true)) || c.pendienteMonto);
         const normasV = opsAsNormasVisita().filter(Boolean);
         equipo.forEach(id => {
             if (s.comisiones.some(c => c.tecId === id)) return;
@@ -21094,6 +21241,7 @@
         return `
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Lo que pide "${opsEsc(r.nombre)}"</div><div class="opsas-hint">Sale de su receta en Servicios</div></div>
+            ${String(r.avisoProgramacion || "").trim() ? `<div style="background:#fff7ed;border:1px solid #fdba74;border-left:4px solid #E7402B;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:#7c2d12;line-height:1.45;"><b>Aviso para programar este servicio:</b><div style="white-space:pre-wrap;margin-top:3px;">${opsEsc(r.avisoProgramacion)}</div></div>` : ""}
             <div style="max-width:220px;margin-bottom:12px;"><label class="opsas-lb">Cantidad (tanques / unidades)</label><input type="number" min="1" class="opsas-in" value="${cant}" onchange="opsAsSet('cantidad',this.value)"></div>
             ${r.vehiculos?.duracionNota ? `<div class="opsas-note" style="margin:-4px 0 12px;">${opsEsc(r.vehiculos.duracionNota)}</div>` : ""}
             <div style="font-size:12px;font-weight:800;color:#1D2E73;text-transform:uppercase;letter-spacing:.4px;margin:4px 0 8px;">Personal</div>
@@ -23315,6 +23463,8 @@
             else if (JSON.stringify(antes[campo]) !== JSON.stringify(despues[campo])) cambios.push(`${label} editado(s)`);
         });
         if (JSON.stringify(antes.vehiculos) !== JSON.stringify(despues.vehiculos)) cambios.push("Vehículos modificados");
+        if (JSON.stringify(antes.comision || null) !== JSON.stringify(despues.comision || null)) cambios.push("Comisión editada");
+        if ((antes.avisoProgramacion || "") !== (despues.avisoProgramacion || "")) cambios.push("Aviso al programar editado");
         return cambios.length ? cambios.join(" · ") : "Guardado sin cambios de contenido detectados";
     }
 
@@ -23406,6 +23556,13 @@
     window.opsServSegOtro = function () {
         const el = document.getElementById("ops-serv-seg-otro"); const n = String((el && el.value) || "").trim(); if (!n) return;
         window.opsServSegToggle(n, true);
+    };
+    // 18-nov-2026 (Glen): comisión total de la receta.
+    window.opsServCom = function (k, v, sinPintar) {
+        if (!servicioEditDraft) return;
+        const c = servicioEditDraft.comision = Object.assign({ tipo: "monto", valor: null, nota: "" }, servicioEditDraft.comision || {});
+        c[k] = k === "valor" ? (v === "" ? null : Math.max(0, Number(v) || 0)) : v;
+        if (sinPintar) opsServPintarEstado(); else opsRenderFichaServicio();
     };
     window.opsServQuitarFila = function (lista, idx) {
         servicioEditDraft[lista].splice(idx, 1);
@@ -23748,7 +23905,40 @@
                         </div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Sin cambios registrados todavía — el historial empieza a llenarse desde el primer "Guardar cambios".</div>')}
                 </div>`;
 
-        const contenidoTab = { resumen: tabResumen, materiales: tabMateriales, herramienta: tabHerramienta, historial: tabHistorial }[fichaServTabActual];
+        // 18-nov-2026 (Glen): comisión del servicio (una bolsa que se reparte entre quienes van) y aviso
+        // que sale al programarlo (ej. "lo hacen Pepito e Ismael de Desarrollos, no llevan auxiliares").
+        const tabComision = (() => {
+            const c = s.comision || {}, verCom = opsComVer(), editaCom = gestion && verCom;
+            const rc = opsRecComision(s), nRec = (s.personal || []).reduce((a, p) => a + (Number(p.cantidad) || 0), 0);
+            const fmt = v => rc && rc.tipo === "pct" ? (Math.round(v * 1000) / 1000) + "% del precio" : opsDinero(v);
+            const tabla = rc ? [1, 2, 3, 4, 5, 6].map(n => `<tr style="${n === nRec ? "background:#eef2ff;font-weight:700;" : ""}"><td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;">${n} ${n === 1 ? "persona" : "personas"}${n === nRec ? " (lo que pide la receta)" : ""}</td><td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#1D2E73;">${fmt(rc.valor / n)} c/u</td></tr>`).join("") : "";
+            return `
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Comisión por realizar este servicio</div>
+                    ${verCom ? `
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:8px;line-height:1.45;">Escribe la comisión <b>total</b> del servicio. Si lo hace una sola persona se la lleva completa; si van más, se reparte en partes iguales entre todos los que van. Al programarlo se llena sola en "Comisiones al personal" y se puede cambiar a mano.</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                        <div><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">Tipo</div>
+                            <select ${editaCom ? "" : "disabled"} onchange="opsServCom('tipo',this.value)" style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;">
+                                <option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo (total)</option>
+                                <option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% del precio (total)</option>
+                            </select></div>
+                        <div><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">${c.tipo === "pct" ? "Porcentaje total" : "Monto total"}</div>
+                            <input type="number" min="0" step="0.01" ${editaCom ? "" : "disabled"} value="${opsEsc(c.valor ?? "")}" placeholder="${c.tipo === "pct" ? "Ej. 10" : "Ej. 1200"}" onchange="opsServCom('valor',this.value)" style="width:130px;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;"></div>
+                        <div style="flex:1;min-width:180px;"><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">Nota (opcional)</div>
+                            <input ${editaCom ? "" : "disabled"} value="${opsEsc(c.nota || "")}" placeholder="Ej. incluye obra civil" oninput="opsServCom('nota',this.value,true)" style="width:100%;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;"></div>
+                    </div>
+                    ${rc ? `<table style="width:100%;max-width:380px;border-collapse:collapse;font-size:11.5px;margin-top:10px;color:#334155;">${tabla}</table>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Sin comisión capturada.</div>`}`
+                    : `<div style="font-size:11px;color:#94a3b8;">No tienes permiso para ver montos de comisión.</div>`}
+                </div>
+                <div style="margin-top:18px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Aviso al programar</div>
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:6px;">Sale en grande a quien programe este servicio (en "Nuevo servicio" del Calendario).</div>
+                    <textarea ${gestion ? "" : "disabled"} oninput="opsServCampo('avisoProgramacion', this.value)" placeholder="Ej. Este servicio lo hacen Pepito e Ismael (equipo de Desarrollos). No necesitan auxiliares porque saben hacer todo el trabajo; ellos comisionan lo de 4 personas." style="width:100%;min-height:80px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12px;resize:vertical;box-sizing:border-box;">${opsEsc(s.avisoProgramacion || "")}</textarea>
+                </div>`;
+        })();
+
+        const contenidoTab = { resumen: tabResumen, materiales: tabMateriales, herramienta: tabHerramienta, comision: tabComision, historial: tabHistorial }[fichaServTabActual];
 
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99998;display:flex;align-items:center;justify-content:center;padding:26px;" onclick="if(event.target===this){opsServCerrarFicha();}">
@@ -23767,7 +23957,7 @@
                 </div>
 
                 <div style="display:flex;gap:2px;margin:12px 0;border-bottom:1px solid #e2e8f0;overflow-x:auto;">
-                    ${["resumen:Resumen", "materiales:Materiales", "herramienta:Herramienta y seguridad", "historial:Historial"].map(x => {
+                    ${["resumen:Resumen", "materiales:Materiales", "herramienta:Herramienta y seguridad", "comision:Comisión y aviso", "historial:Historial"].map(x => {
                         const [tid, label] = x.split(":");
                         const on = fichaServTabActual === tid;
                         return `<button onclick="opsFichaServCambiarTab('${tid}')" style="background:none;border:none;padding:8px 9px;font-size:11px;font-weight:600;white-space:nowrap;color:${on ? "#1D2E73" : "#64748b"};border-bottom:2px solid ${on ? "#1D2E73" : "transparent"};cursor:pointer;">${label}</button>`;
