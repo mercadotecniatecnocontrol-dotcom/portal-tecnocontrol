@@ -1969,7 +1969,7 @@
         for (let i = 1; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); doc.text("Expediente " + (h.folio || "") + " · página " + i + " de " + doc.getNumberOfPages(), M, 772); }
         doc.save("Expediente_" + (h.folio || herramientaId) + ".pdf");
     };
-    // ── PDF para revisión física (19-nov-2026, Glen) ──
+    // ── PDF para revisión física (19-nov-2026, Glen) · también en el panel de cada almacén ──
     // Lista de la herramienta asignada a un técnico, con casillas Conforme / Faltante / Dañada,
     // espacio para observaciones y firmas. Se imprime y se llena a mano durante la revisión;
     // después se captura en "Registrar revisión" para que quede en el historial.
