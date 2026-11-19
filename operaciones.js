@@ -23714,7 +23714,7 @@
     }
     window.opsServCerrarFicha = function () {
         if (opsServHayCambios() && opsPuedeGestionar() && !confirm("Esta receta tiene cambios SIN GUARDAR.\n\n¿Cerrar y perder los cambios?\n(Para conservarlos: Cancelar y luego “Guardar cambios”)")) return;
-        document.getElementById("ops-panel-wrap").innerHTML = ""; servicioEditDraft = null; dispoServicioActual = null;
+        document.getElementById("ops-panel-wrap").innerHTML = ""; servicioEditDraft = null; dispoServicioActual = null; window.opsServVehCerrar && window.opsServVehCerrar();
     };
     window.opsServColorAuto = function () { if (!servicioEditDraft) return; delete servicioEditDraft.colorCalendario; opsRenderFichaServicio(); };
 
@@ -23754,7 +23754,7 @@
     window.opsServAgregarAlterno = function () {
         if (!servicioEditDraft.vehiculos) servicioEditDraft.vehiculos = { sugerido: { nombre: "", razon: "" }, alternos: [] };
         if (!servicioEditDraft.vehiculos.alternos) servicioEditDraft.vehiculos.alternos = [];
-        servicioEditDraft.vehiculos.alternos.push({ nombre: "", condicion: "" });
+        servicioEditDraft.vehiculos.alternos.push({ nombre: "", eco: "", condicion: "" });
         opsRenderFichaServicio();
     };
     window.opsServQuitarAlterno = function (idx) {
@@ -23802,6 +23802,102 @@
         return na.includes(nb) || nb.includes(na);
     }
 
+    // ── 19-nov-2026 (Glen): buscador de vehículos de Flotilla en la receta ──
+    // Lista los vehículos REALES (los mismos que ve Flotilla, actualizados en vivo) con quién la trae
+    // y si está libre, asignada o en taller. Al elegir uno se guarda {nombre, eco}; si se escribe
+    // texto libre (ej. "GRANDE") se respeta y se calcula cuántas unidades de ese tamaño están libres.
+    let opsServFlota = [], opsServFlotaEn = 0;
+    async function opsServCargarFlota(forzar) {
+        if (!forzar && opsServFlota.length && Date.now() - opsServFlotaEn < 120000) return opsServFlota;
+        try {
+            const veh = await opsViaCargarFlota();
+            opsServFlota = [...(veh || []), ...(opsViaRemolques || [])];
+            opsServFlotaEn = Date.now();
+        } catch (e) { console.warn("[receta] flota:", e.message || e); }
+        return opsServFlota;
+    }
+    function opsServVehEstado(v) {
+        if (!v) return { semaforo: "gris", texto: "No se encontró en Flotilla" };
+        if (v.EnTaller || v.Status === "taller") return { semaforo: "roja", texto: "En taller · no disponible" + (v.QuienLaTrae ? " · asignada a " + v.QuienLaTrae : "") };
+        if (v.Status && v.Status !== "activo") return { semaforo: "roja", texto: v.Status.toUpperCase() + (v.QuienLaTrae ? " · " + v.QuienLaTrae : "") };
+        if (v.QuienLaTrae) return { semaforo: "amarilla", texto: "Activa · la trae " + v.QuienLaTrae };
+        return { semaforo: "verde", texto: "Disponible · sin asignar" };
+    }
+    function opsServVehEtiqueta(v) { return "ECO " + v.Eco + " · " + (v.Unidad || "") + (v.Placas ? " · " + v.Placas : ""); }
+    function opsServVehBuscarPorTexto(c) {
+        const ecoN = x => String(x ?? "").replace(/\D/g, "").replace(/^0+/, "");
+        if (c.eco) { const v = opsServFlota.find(x => ecoN(x.Eco) === ecoN(c.eco)); if (v) return v; }
+        const m = String(c.nombre || "").match(/eco\s*0*(\d+)/i);
+        if (m) { const v = opsServFlota.find(x => ecoN(x.Eco) === m[1]); if (v) return v; }
+        return opsServFlota.find(x => _coincideTexto(x.Unidad, c.nombre) && _normTxt(c.nombre).length > 3) || null;
+    }
+    function opsServCalcVehDispo() {
+        const s = servicioEditDraft; if (!s) return [];
+        const candidatos = [
+            { nombre: s.vehiculos?.sugerido?.nombre, eco: s.vehiculos?.sugerido?.eco, rol: "Sugerido" },
+            ...((s.vehiculos?.alternos || []).map(v => ({ nombre: v.nombre, eco: v.eco, rol: "Alterno" }))),
+        ].filter(c => c.nombre || c.eco);
+        return candidatos.map(c => {
+            const tam = _normTxt(c.nombre);
+            if (!c.eco && ["chico", "mediano", "grande"].includes(tam)) {
+                const delTam = opsServFlota.filter(v => !OPS_VIA_NO_VEHICULO.test(v.Unidad || "") && opsViaTipoDeVehiculo(v) === tam);
+                const libres = delTam.filter(v => opsServVehEstado(v).semaforo === "verde").length;
+                const activas = delTam.filter(v => opsServVehEstado(v).semaforo !== "roja").length;
+                return { ...c, encontrado: true, estatusTexto: `Tamaño ${tam.toUpperCase()}: ${libres} sin asignar · ${activas} activas de ${delTam.length}`, semaforo: libres ? "verde" : (activas ? "amarilla" : "roja") };
+            }
+            const v = opsServVehBuscarPorTexto(c);
+            if (!v) return { ...c, encontrado: false, estatusTexto: opsServFlota.length ? "No se encontró en Flotilla (elígelo del buscador)" : "Flotilla no respondió", semaforo: "gris" };
+            const e = opsServVehEstado(v);
+            return { ...c, nombre: opsServVehEtiqueta(v), encontrado: true, eco: v.Eco, estatusTexto: e.texto, semaforo: e.semaforo };
+        });
+    }
+    function opsServVehAsegurar(ruta) {
+        if (!servicioEditDraft.vehiculos) servicioEditDraft.vehiculos = { sugerido: { nombre: "", razon: "" }, alternos: [] };
+        if (!servicioEditDraft.vehiculos.sugerido) servicioEditDraft.vehiculos.sugerido = { nombre: "", razon: "" };
+        if (!servicioEditDraft.vehiculos.alternos) servicioEditDraft.vehiculos.alternos = [];
+    }
+    function opsServVehLista() {
+        let d = document.getElementById("ops-serv-veh-lista");
+        if (!d) { d = document.createElement("div"); d.id = "ops-serv-veh-lista"; document.body.appendChild(d); }
+        return d;
+    }
+    window.opsServVehBuscar = async function (ruta, el, escribio) {
+        if (!servicioEditDraft) return;
+        opsServVehAsegurar(ruta);
+        if (escribio) { opsServSet(ruta + ".nombre", el.value); opsServSet(ruta + ".eco", ""); opsServPintarEstado(); }
+        const caja = opsServVehLista();
+        const r = el.getBoundingClientRect();
+        caja.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom + 2}px;width:${Math.max(r.width, 340)}px;max-height:300px;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 10px 28px rgba(15,23,42,.22);z-index:100000;font-size:11.5px;`;
+        if (!opsServFlota.length) { caja.innerHTML = '<div style="padding:9px;color:#94a3b8;">Cargando vehículos de Flotilla…</div>'; await opsServCargarFlota(); if (document.activeElement !== el) return; }
+        const q = _normTxt(el.value).replace(/^eco\s*/, "");
+        const lista = opsServFlota.filter(v => !q || _normTxt([v.Eco, v.Unidad, v.Placas, v.QuienLaTrae, v.Tipo, v.Plaza, opsViaTipoDeVehiculo(v)].join(" ")).includes(q));
+        const orden = { verde: 0, amarilla: 1, roja: 2, gris: 3 };
+        lista.sort((a, b) => orden[opsServVehEstado(a).semaforo] - orden[opsServVehEstado(b).semaforo] || (Number(a.Eco) || 9999) - (Number(b.Eco) || 9999));
+        caja.innerHTML = `<div style="padding:6px 9px;font-size:10px;color:#64748b;border-bottom:1px solid #f1f5f9;">${lista.length} de ${opsServFlota.length} · Flotilla en vivo · <a href="#" onmousedown="event.preventDefault();opsServVehRefrescar()" style="color:#1D2E73;">actualizar</a></div>` +
+            (lista.length ? lista.map(v => {
+                const e = opsServVehEstado(v);
+                return `<div onmousedown="event.preventDefault();opsServVehElegir('${ruta}','${opsEsc(v.Eco)}')" style="padding:7px 9px;cursor:pointer;border-bottom:1px solid #f8fafc;display:flex;justify-content:space-between;gap:8px;align-items:center;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+                    <div style="min-width:0;"><div style="font-weight:700;color:#1e293b;">ECO ${opsEsc(v.Eco)} · ${opsEsc(v.Unidad)}</div><div style="font-size:10px;color:#64748b;">${opsEsc([v.Placas, v.Plaza, opsViaTipoDeVehiculo(v)].filter(Boolean).join(" · "))}</div></div>
+                    <span style="background:${_bgSemaforo[e.semaforo]};color:${_colorSemaforo[e.semaforo]};font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis;" title="${opsEsc(e.texto)}">${opsEsc(e.texto)}</span>
+                </div>`;
+            }).join("") : '<div style="padding:9px;color:#94a3b8;">Sin coincidencias. Puedes dejar el texto libre (ej. GRANDE).</div>');
+    };
+    window.opsServVehCerrar = function () { const d = document.getElementById("ops-serv-veh-lista"); if (d) d.remove(); };
+    window.opsServVehRefrescar = async function () {
+        const el = document.activeElement; await opsServCargarFlota(true);
+        if (el && el.dataset && el.dataset.vehruta) window.opsServVehBuscar(el.dataset.vehruta, el);
+        if (dispoServicioActual) { dispoServicioActual.vehiculosDispo = opsServCalcVehDispo(); }
+    };
+    window.opsServVehElegir = function (ruta, eco) {
+        const v = opsServFlota.find(x => String(x.Eco) === String(eco)); if (!v || !servicioEditDraft) return;
+        opsServVehAsegurar(ruta);
+        opsServSet(ruta + ".nombre", opsServVehEtiqueta(v));
+        opsServSet(ruta + ".eco", v.Eco);
+        window.opsServVehCerrar();
+        if (dispoServicioActual) dispoServicioActual.vehiculosDispo = opsServCalcVehDispo();
+        opsRenderFichaServicio();
+    };
+
     async function opsVerificarDisponibilidadServicio() {
         const s = servicioEditDraft;
         const herramientaDispo = (s.herramientaRequerida || []).map(req => {
@@ -23816,26 +23912,9 @@
             return { descripcion: req.descripcion, cantidad: req.cantidad || 1, total, disponibles, semaforo };
         });
 
-        let vehiculosDispo = [];
-        try {
-            const { db, fs } = await opsGetFB();
-            const snap = await fs.getDocs(fs.collection(db, "flotilla_vehiculos"));
-            const flota = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            const candidatos = [
-                { nombre: s.vehiculos?.sugerido?.nombre, rol: "Sugerido" },
-                ...((s.vehiculos?.alternos || []).map(v => ({ nombre: v.nombre, rol: "Alterno" }))),
-            ].filter(c => c.nombre);
-            vehiculosDispo = candidatos.map(c => {
-                const match = flota.find(v => _coincideTexto((v.marca || "") + " " + (v.modelo || ""), c.nombre) || _coincideTexto(v.eco ? "eco " + v.eco : "", c.nombre));
-                if (!match) return { ...c, encontrado: false, estatusTexto: "No se encontró en la flota (revisa el nombre)", semaforo: "gris" };
-                const estatus = (match.estatus || match.estado || "").toLowerCase();
-                const libre = estatus.includes("activo") || estatus.includes("disponible") || !estatus;
-                return { ...c, encontrado: true, eco: match.eco, estatusTexto: match.estatus || match.estado || "—", semaforo: libre ? "verde" : "roja" };
-            });
-        } catch (err) {
-            console.warn("[operaciones.js] no se pudo verificar flota:", err);
-        }
-
+        // 19-nov-2026 (Glen): vehículos desde Flotilla EN VIVO (Supabase fl_docs), con quién la trae y estatus.
+        await opsServCargarFlota();
+        const vehiculosDispo = opsServCalcVehDispo();
         dispoServicioActual = { herramientaDispo, vehiculosDispo };
         opsRenderFichaServicio();
     }
@@ -23917,6 +23996,12 @@
         const wrap = document.getElementById("ops-panel-wrap");
         const gestion = opsPuedeGestionar();
         const inp = (val, ruta, esNumero, placeholder, ancho) => `<input value="${opsEsc(val ?? "")}" placeholder="${opsEsc(placeholder || "")}" ${esNumero ? 'type="number" step="any"' : ""} oninput="opsServCampo('${ruta}', this.value, ${!!esNumero})" style="width:${ancho || "100%"};border:1px solid #cbd5e1;border-radius:6px;padding:5px 7px;font-size:11.5px;" ${gestion ? "" : "disabled"}>`;
+        // 19-nov-2026: buscador de vehículos de Flotilla (con quién la trae y si está disponible).
+        const vehPick = (obj, ruta, ph) => {
+            const v = obj && (obj.nombre || obj.eco) && opsServFlota.length ? opsServVehBuscarPorTexto(obj) : null;
+            const e = v ? opsServVehEstado(v) : null;
+            return `<div style="flex:1;min-width:0;"><input value="${opsEsc(obj?.nombre ?? "")}" placeholder="${opsEsc(ph)}" data-vehruta="${ruta}" autocomplete="off" onfocus="opsServVehBuscar('${ruta}', this)" oninput="opsServVehBuscar('${ruta}', this, true)" onblur="setTimeout(opsServVehCerrar, 150)" style="width:100%;box-sizing:border-box;border:1px solid ${obj?.eco ? "#93c5fd" : "#cbd5e1"};border-radius:6px;padding:5px 7px;font-size:11.5px;" ${gestion ? "" : "disabled"}>${e ? `<div style="margin-top:3px;"><span style="background:${_bgSemaforo[e.semaforo]};color:${_colorSemaforo[e.semaforo]};font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:999px;">${opsEsc(e.texto)}</span></div>` : (obj?.nombre && !obj?.eco && opsServFlota.length && !["chico", "mediano", "grande"].includes(_normTxt(obj.nombre)) ? '<div style="font-size:9.5px;color:#94a3b8;margin-top:3px;">Texto libre: no está ligado a un vehículo de Flotilla</div>' : "")}</div>`;
+        };
 
         const calculo = opsCalcularCostoServicio(s, calculoActual.cantidad, calculoActual.dias);
 
@@ -23998,13 +24083,13 @@
                     <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Vehículo</div>
                     <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Sugerido</div>
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
-                        ${inp(s.vehiculos?.sugerido?.nombre, "vehiculos.sugerido.nombre", false, "Nombre del vehículo")}
+                        ${vehPick(s.vehiculos?.sugerido, "vehiculos.sugerido", "Buscar vehículo: ECO, unidad, placas, quién la trae…")}
                         ${inp(s.vehiculos?.sugerido?.razon, "vehiculos.sugerido.razon", false, "Razón")}
                     </div>
                     <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Alternos</div>
                     ${(s.vehiculos?.alternos || []).map((v, i) => `
                         <div style="display:flex;gap:6px;margin-bottom:5px;align-items:center;">
-                            ${inp(v.nombre, `vehiculos.alternos.${i}.nombre`, false, "Nombre")}
+                            ${vehPick(v, `vehiculos.alternos.${i}`, "Buscar vehículo alterno…")}
                             ${inp(v.condicion, `vehiculos.alternos.${i}.condicion`, false, "Condición")}
                             ${gestion ? `<button onclick="opsServQuitarAlterno(${i})" style="background:#fee2e2;border:none;color:#E7402B;width:26px;height:26px;border-radius:6px;cursor:pointer;flex-shrink:0;">${ICON.close}</button>` : ""}
                         </div>`).join("")}
