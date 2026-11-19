@@ -1969,6 +1969,87 @@
         for (let i = 1; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); doc.text("Expediente " + (h.folio || "") + " · página " + i + " de " + doc.getNumberOfPages(), M, 772); }
         doc.save("Expediente_" + (h.folio || herramientaId) + ".pdf");
     };
+    // ── PDF para revisión física (19-nov-2026, Glen) ──
+    // Lista de la herramienta asignada a un técnico, con casillas Conforme / Faltante / Dañada,
+    // espacio para observaciones y firmas. Se imprime y se llena a mano durante la revisión;
+    // después se captura en "Registrar revisión" para que quede en el historial.
+    window.opsHerrPdfRevisionFisica = function (idInterno) {
+        const t = cacheTec.find(x => x.id === idInterno);
+        const lista = cacheHerr.filter(h => h.tecnicoActualId === idInterno)
+            .sort((a, b) => String(a.folio || "").localeCompare(String(b.folio || ""), "es", { numeric: true }));
+        if (!t || !lista.length) { alert("Este técnico no tiene herramienta asignada."); return; }
+        if (!window.jspdf || !window.jspdf.jsPDF) { alert("No se cargó la librería de PDF. Recarga la página."); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+        const W = 792, H = 612, M = 36;
+        const limpio = v => String(v ?? "").replace(/[^\x20-\x7E -ÿ—–•·]/g, "");
+        const hoy = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+        // Columnas: #, Folio, Descripción, Marca / serie, Conforme, Faltante, Dañada, Observaciones
+        const cols = [
+            { t: "#", w: 24, a: "center" }, { t: "Folio", w: 70 }, { t: "Descripción", w: 220 }, { t: "Marca / serie", w: 120 },
+            { t: "Conforme", w: 52, a: "center", box: true }, { t: "Faltante", w: 52, a: "center", box: true }, { t: "Dañada", w: 52, a: "center", box: true },
+            { t: "Observaciones", w: W - 2 * M - (24 + 70 + 220 + 120 + 52 * 3) }
+        ];
+        let y;
+        const encabezado = () => {
+            doc.setFillColor(...PDF_AZUL); doc.rect(0, 0, W, 58, "F"); doc.setFillColor(...PDF_ROJO); doc.rect(0, 58, W, 3, "F");
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("REVISIÓN FÍSICA DE HERRAMIENTA", M, 27);
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("HEDMA TECNOCONTROL S.A. DE C.V. · Control de Herramientas", M, 43);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(limpio(t.nombre), W - M, 27, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Técnico N.° " + limpio(t.numeroOperativo || "—") + " · " + lista.length + " pieza(s) · Impreso el " + hoy, W - M, 43, { align: "right" });
+            y = 78;
+        };
+        const cabeceraTabla = () => {
+            doc.setFillColor(...PDF_GRIS_CLARO); doc.rect(M, y, W - 2 * M, 18, "F");
+            doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+            let x = M; cols.forEach(c => { doc.text(c.t, c.a === "center" ? x + c.w / 2 : x + 4, y + 12, c.a === "center" ? { align: "center" } : undefined); x += c.w; });
+            y += 18;
+        };
+        encabezado();
+        doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+        doc.text("Instrucciones: revisa cada pieza frente al técnico y marca con una X una sola casilla. Anota en Observaciones cualquier detalle. Al terminar, firmen ambos y captura el resultado en el portal (Técnicos > Herramientas > Registrar revisión).", M, y, { maxWidth: W - 2 * M });
+        y += 22;
+        cabeceraTabla();
+        lista.forEach((h, i) => {
+            doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
+            const desc = doc.splitTextToSize(limpio(h.descripcion || "—"), cols[2].w - 8);
+            const marca = doc.splitTextToSize(limpio([[h.marca, h.modelo].filter(Boolean).join(" "), h.numeroSerie ? "S/N " + h.numeroSerie : ""].filter(Boolean).join(" · ") || "—"), cols[3].w - 8);
+            const alto = Math.max(22, Math.max(desc.length, marca.length) * 10 + 10);
+            if (y + alto > H - 120) { doc.addPage(); encabezado(); cabeceraTabla(); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); }
+            if (i % 2) { doc.setFillColor(248, 249, 251); doc.rect(M, y, W - 2 * M, alto, "F"); }
+            doc.setDrawColor(...PDF_GRIS_LINEA); doc.setLineWidth(0.5); doc.line(M, y + alto, W - M, y + alto);
+            doc.setTextColor(20, 20, 20);
+            let x = M;
+            cols.forEach((c, k) => {
+                if (k > 0) doc.line(x, y, x, y + alto);
+                if (k === 0) doc.text(String(i + 1), x + c.w / 2, y + 13, { align: "center" });
+                if (k === 1) { doc.setFont("helvetica", "bold"); doc.text(limpio(h.folio || "—"), x + 4, y + 13); doc.setFont("helvetica", "normal"); }
+                if (k === 2) doc.text(desc, x + 4, y + 13);
+                if (k === 3) { doc.setTextColor(...PDF_GRIS); doc.text(marca, x + 4, y + 13); doc.setTextColor(20, 20, 20); }
+                if (c.box) { doc.setDrawColor(...PDF_AZUL); doc.setLineWidth(0.9); doc.rect(x + c.w / 2 - 6, y + alto / 2 - 6, 12, 12); doc.setDrawColor(...PDF_GRIS_LINEA); doc.setLineWidth(0.5); }
+                x += c.w;
+            });
+            y += alto;
+        });
+        // Resumen y firmas
+        if (y + 115 > H - 20) { doc.addPage(); encabezado(); }
+        y += 16;
+        doc.setTextColor(...PDF_AZUL); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        doc.text("Totales:   Conformes ______     Faltantes ______     Dañadas ______", M, y);
+        doc.text("Fecha y hora de la revisión: ________________________", W - M, y, { align: "right" });
+        y += 54;
+        const fw = (W - 2 * M - 60) / 2;
+        [["Técnico que entrega a revisión", limpio(t.nombre)], ["Revisó (nombre y firma)", ""]].forEach(([tit, nom], k) => {
+            const x = M + k * (fw + 60);
+            doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.7); doc.line(x, y, x + fw, y);
+            doc.setTextColor(20, 20, 20); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(nom || " ", x + fw / 2, y + 12, { align: "center" });
+            doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(tit, x + fw / 2, y + 24, { align: "center" });
+        });
+        doc.setTextColor(...PDF_GRIS); doc.setFontSize(7.3);
+        for (let i = 1; i <= doc.getNumberOfPages(); i++) { doc.setPage(i); doc.text("Revisión física · " + limpio(t.nombre) + " · página " + i + " de " + doc.getNumberOfPages(), M, H - 14); }
+        const archivo = "Revision_fisica_" + String(t.numeroOperativo || "").replace(/[^0-9A-Za-z]/g, "") + "_" + limpio(t.nombre).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_") + "_" + new Date().toISOString().slice(0, 10) + ".pdf";
+        doc.save(archivo);
+    };
     // ── Firma de QUIEN ENTREGA (9-nov-2026, Glen) ──
     // Al asignar/traspasar una herramienta desde el portal se pide la firma
     // autógrafa de quien la entrega; queda en la pieza (firmaEntrega) y sale
@@ -6899,6 +6980,7 @@
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Herramientas asignadas (${asignadas.length})</div>
                         ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.search} Registrar revisión</button>` : ""}
                     </div>
+                    ${asignadas.length ? `<div style="margin-bottom:8px;"><button onclick="opsHerrPdfRevisionFisica('${idInterno}')" title="Descarga la lista de herramienta de este técnico con casillas para palomear y espacio para firmas" style="background:#1D2E73;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px;">${ICON.printer} PDF para revisión física</button></div>` : ""}
                     ${asignadas.length ? asignadas.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eef1f5;font-size:12px;"><span style="color:#059669;">${ICON.check}</span><strong>${opsEsc(h.folio)}</strong> — ${opsEsc(h.descripcion)}</div>`).join("") : '<div style="color:#94a3b8;font-size:12px;">Ninguna.</div>'}
                 </div>
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;">
