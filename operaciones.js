@@ -7775,7 +7775,23 @@
     // De lunes a viernes: $100 por cada folio, SOLO si el folio es válido: está cerrado, tiene evidencias y lo
     // atendió quien estaba de guardia ese día (corrección de Glen, 10-nov-2026). Operaciones
     // puede validarlo o quitarlo a mano (con motivo). La guardia administrativa sigue pagándose por día.
-    function opsGdTarifas() { return { sab: Number(opsGtelCfg.montoSabadoTec) || 300, dom: Number(opsGtelCfg.montoDomingoTec) || 300, folio: Number(opsGtelCfg.montoFolioTec) || 100 }; }
+    // ── Reglas por PLAZA (19-nov-2026, Glen) ──
+    // Parral: $500 fijos por fin de semana a cada técnico (sábado $250 + domingo $250), sin importar cuántos
+    // servicios atienda; entre semana no hay pago por folio. Puede haber un 2.º técnico de APOYO cuando se
+    // cubre la zona Camargo (cobra lo mismo). Se paga en efectivo de la CAJA CHICA de la plaza: el encargado
+    // entrega, sube la foto del vale firmado y queda pagada (Cristina recibe el aviso para reponer la caja).
+    // Se pueden sobreescribir desde ops_config_guardia_tel → datos.reglasPlaza.
+    const OPS_GD_REGLA_PLAZA = { Parral: { finde: 500, folio: 0, cajaChica: true, zonaApoyo: "Camargo" } };
+    function opsGdRegla(plaza) {
+        const p = plaza || opsGdPlaza, r = OPS_GD_REGLA_PLAZA[p], c = (opsGtelCfg.reglasPlaza || {})[p];
+        return r || c ? Object.assign({}, r || {}, c || {}) : null;
+    }
+    function opsGdTarifas() {
+        const R = opsGdRegla();
+        if (R && Number(R.finde) > 0) return { sab: Number(R.finde) / 2, dom: Number(R.finde) / 2, folio: Number(R.folio) || 0, finde: Number(R.finde) };
+        return { sab: Number(opsGtelCfg.montoSabadoTec) || 300, dom: Number(opsGtelCfg.montoDomingoTec) || 300, folio: Number(opsGtelCfg.montoFolioTec) || 100 };
+    }
+    function opsGdApoyo(g) { const R = opsGdRegla(); return R && R.zonaApoyo && g && g.apoyo && g.apoyo.tecnicoId ? g.apoyo : null; }
     function opsGdFolioEvid(f) { return (Number(f.evidenciasFotos) || 0) + (Number(f.evidenciasDocumentos) || 0) + (Number(f.evidenciasVideos) || 0); }
     function opsGdFolioAtendioTec(f, tec) {
         if (!tec) return false;
@@ -7809,15 +7825,29 @@
             const base = w === 6 ? T.sab : w === 0 ? T.dom : 0;
             // Fin de semana: el día completo se paga fijo y sus folios van incluidos (no suman $100).
             // Solo van "incluidos" los que atendió quien estaba de guardia; los de otros técnicos se muestran aparte.
-            const fol = x.folios.map(f => base ? (opsGdFolioAtendioTec(f, x.tec) || f.guardiaPagoManual === true ? { f, ok: false, incluido: true, motivo: "Incluido en el pago del " + (w === 6 ? "sábado" : "domingo") } : { f, ok: false, motivo: opsGdNoAtendioTxt(f) }) : { f, ...opsGdFolioPago(f, x.tec) });
+            const apo = base ? opsGdApoyo(opsGdProg(sem, tipo)) : null;
+            const fol = x.folios.filter(f => !(apo && opsGdFolioAtendioTec(f, apo.tecnicoId) && !opsGdFolioAtendioTec(f, x.tec))).map(f => base ? (opsGdFolioAtendioTec(f, x.tec) || f.guardiaPagoManual === true ? { f, ok: false, incluido: true, motivo: "Incluido en el pago del " + (w === 6 ? "sábado" : "domingo") } : { f, ok: false, motivo: opsGdNoAtendioTxt(f) }) : { f, ...opsGdFolioPago(f, x.tec) });
             const monto = base + fol.filter(y => y.ok).length * T.folio;
             out.push({ dia: x.dia, tec: x.tec, base, baseTxt: w === 6 ? "Guardia de sábado" : w === 0 ? "Guardia de domingo" : "", folios: fol, monto });
         });
+        // Técnico de APOYO (Parral → zona Camargo): sábado y domingo con la misma tarifa, si no tuvo ausencia.
+        if (tipo === "tecnica") {
+            const g = opsGdProg(sem, tipo), apo = opsGdApoyo(g);
+            if (apo) info.forEach(x => {
+                const w = new Date(x.dia + "T12:00:00").getDay(); if (w !== 6 && w !== 0) return;
+                if (opsGdAusencia(apo.tecnicoId, x.dia)) return;
+                const base = w === 6 ? T.sab : T.dom;
+                const fol = x.folios.filter(f => opsGdFolioAtendioTec(f, apo.tecnicoId) && !opsGdFolioAtendioTec(f, x.tec)).map(f => ({ f, ok: false, incluido: true, motivo: "Incluido en el pago del " + (w === 6 ? "sábado" : "domingo") + " (apoyo)" }));
+                out.push({ dia: x.dia, tec: apo.tecnicoId, base, baseTxt: (w === 6 ? "Guardia de sábado" : "Guardia de domingo") + " · apoyo zona " + (apo.zona || ""), folios: fol, monto: base, apoyo: true, zona: apo.zona || "" });
+            });
+            out.sort((a, b) => a.dia.localeCompare(b.dia) || (a.apoyo ? 1 : 0) - (b.apoyo ? 1 : 0));
+        }
         return { dias: out.filter(d => d.monto > 0 || d.folios.length), total: out.reduce((a, d) => a + d.monto, 0) };
     }
     function opsGdResumenTxt(sem, tipo) {
         const c = opsGdCalculo(sem, tipo), T = opsGdTarifas();
         if (tipo !== "tecnica") return `${c.dias.length} día(s) × ${opsViaDinero(opsGdMonto())} = <b>${opsViaDinero(c.total)}</b>`;
+        if (T.finde) { const per = [...new Set(c.dias.filter(d => d.base).map(d => d.tec))].length; return `Fin de semana ${opsViaDinero(T.finde)} × ${per} técnico(s) = <b>${opsViaDinero(c.total)}</b>`; }
         const fin = c.dias.filter(d => d.base).reduce((a, d) => a + d.base, 0), fv = c.dias.reduce((a, d) => a + d.folios.filter(y => y.ok).length, 0), fn = c.dias.reduce((a, d) => a + d.folios.filter(y => !y.ok && !y.incluido).length, 0);
         return `Sáb/dom ${opsViaDinero(fin)} + ${fv} folio(s) entre semana × ${opsViaDinero(T.folio)}${fn ? ` <span style="color:#b91c1c;">(${fn} sin validar)</span>` : ""} = <b>${opsViaDinero(c.total)}</b>`;
     }
@@ -7935,16 +7965,17 @@
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
                     <div><div style="font-size:11px;font-weight:800;color:${T.c};text-transform:uppercase;letter-spacing:.4px;">${T.n} · ${opsEsc(opsGdPlaza)}</div>
                     <div style="font-size:19px;font-weight:900;color:#0f172a;">${opsEsc(g ? opsNombreTecnico(g.tecnicoId) : "Nadie asignado")}</div>
-                    <div style="font-size:11.5px;color:#64748b;">${T.d}</div></div>
+                    <div style="font-size:11.5px;color:#64748b;">${T.d}</div>${tipo === "tecnica" ? opsGdApoyoHTML(sem, g, e) : ""}</div>
                     <div style="text-align:right;">${opsGdChip(e)}<div style="font-size:12px;color:#334155;margin-top:6px;">${opsGdResumenTxt(sem, tipo)}</div></div>
                 </div>
                 ${g ? opsGdTira(sem, tipo) : `<div style="padding:14px;background:#f8fafc;border-radius:10px;font-size:12.5px;color:#64748b;">Esta semana no tiene a nadie de ${T.n.toLowerCase()} en ${opsEsc(opsGdPlaza)}.${gestion ? " Usa \"+ Asignar guardia\"." : ""}</div>`}
                 ${g ? `<div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">${pasos(tipo)}
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">${personas.map(id => opsGdBtn(`opsGdVale('${sem}','${tipo}','${id}')`, "Vale " + opsEsc(String(opsNombreTecnico(id)).split(" ")[0]), "#fff", "#1D2E73")).join("")}
                     ${e.k === "revisar" && opsGdPuedeAprobar() ? opsGdBtn(`opsGdAprobar('${sem}','${tipo}')`, "Aprobar pago", "#15803d", "#fff") : ""}
-                    ${e.k === "aprobado" && opsGdPuedePagar() ? opsGdBtn(`opsGdPagado('${sem}','${tipo}')`, "Marcar pagada", "#1d4ed8", "#fff") : ""}
+                    ${e.k === "aprobado" ? opsGdBotonPago(sem, tipo) : ""}
                     ${["revisar", "aprobado", "curso"].includes(e.k) && opsGdPuedeAprobar() ? opsGdBtn(`opsGdRechazar('${sem}','${tipo}')`, "Rechazar", "#fff", "#b91c1c") : ""}
                     ${e.k === "rechazado" && opsGdPuedeAprobar() ? opsGdBtn(`opsGdReabrir('${sem}','${tipo}')`, "Reabrir", "#fff", "#334155") : ""}</div></div>
+                ${tipo === "tecnica" && g ? opsGdGastosHTML(sem, g) : ""}${g && g.pago && g.pago.formaPago === "caja_chica" ? `<div style="margin-top:8px;background:#ecfdf5;color:#065f46;border-radius:8px;padding:8px 10px;font-size:12px;"><b>Entregada de caja chica</b> por ${opsEsc(g.pago.entregadoPor || "")} · ${opsEsc(String(g.pago.pagadoEn || "").replace("T", " ").slice(0, 16))}${(g.pago.evidencias || []).map((r, i) => ` · <a href="#" onclick="event.preventDefault();opsHerrCompraFoto('${opsEsc(r)}')" style="color:#065f46;font-weight:700;">Vale firmado ${i + 1}</a>`).join("")}</div>` : ""}
                 ${e.k === "rechazado" && g.pago ? `<div style="margin-top:8px;background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px 10px;font-size:12px;"><b>Rechazada</b> por ${opsEsc(g.pago.rechazadoPor || "")} · ${opsEsc(String(g.pago.rechazadoEn || "").replace("T", " ").slice(0, 16))}<br>Motivo: ${opsEsc(g.pago.motivoRechazo || "")}</div>` : ""}` : ""}
             </div>`;
         };
@@ -7959,7 +7990,7 @@
                 <td style="padding:8px;">${opsEsc((f.tecnicosAsignadosNombres || []).join(", ") || "Sin técnico")}${otro ? `<div style="font-size:10.5px;color:#b45309;font-weight:700;">No era quien estaba de guardia</div>` : ""}</td>
                 <td style="padding:8px;max-width:320px;">${opsEsc(String(queHizo(f)).slice(0, 220)) || '<span style="color:#94a3b8;">Sin resumen todavía</span>'}</td>
                 <td style="padding:8px;white-space:nowrap;">${f.fechaSolucion ? '<span style="color:#15803d;font-weight:700;">Cerrado</span>' : '<span style="color:#b45309;font-weight:700;">Abierto</span>'}<div style="font-size:10.5px;color:#64748b;">${opsGdFolioEvid(f)} evidencia(s)</div></td>
-                <td style="padding:8px;min-width:150px;">${(() => { const wd = dia ? new Date(dia + "T12:00:00").getDay() : -1; if ((wd === 0 || wd === 6) && !(opsGdFolioAtendioTec(f, deGuardia) || f.guardiaPagoManual === true)) return `<div style="font-weight:800;color:#b91c1c;">✗ No cuenta</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(opsGdNoAtendioTxt(f))}</div>`; if (wd === 0 || wd === 6) return `<div style="font-weight:800;color:#1D2E73;">Incluido en el ${wd === 6 ? "sábado" : "domingo"}</div><div style="font-size:10.5px;color:#64748b;">Ese día se paga completo (${opsViaDinero(wd === 6 ? opsGdTarifas().sab : opsGdTarifas().dom)}), no por folio</div>`; const pg = opsGdFolioPago(f, deGuardia); const ap = opsGdPuedeAprobar(); return `<div style="font-weight:800;color:${pg.ok ? "#15803d" : "#b91c1c"};">${pg.ok ? "✓ " + opsViaDinero(opsGdTarifas().folio) : "✗ No se paga"}</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(pg.motivo)}</div>${ap ? `<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">${pg.ok ? `<button onclick="opsGdFolioPagoSet('${f.id}',false)" style="border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Quitar pago</button>` : `<button onclick="opsGdFolioPagoSet('${f.id}',true)" style="border:1px solid #bbf7d0;background:#fff;color:#15803d;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Validar pago</button>`}${pg.manual ? `<button onclick="opsGdFolioPagoSet('${f.id}','auto')" style="border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Automático</button>` : ""}</div>` : ""}`; })()}</td>
+                <td style="padding:8px;min-width:150px;">${(() => { const wd = dia ? new Date(dia + "T12:00:00").getDay() : -1; const apoF = (wd === 0 || wd === 6) ? opsGdApoyo(opsGdProg(sem, "tecnica")) : null; if (apoF && opsGdFolioAtendioTec(f, apoF.tecnicoId) && !opsGdFolioAtendioTec(f, deGuardia)) return `<div style="font-weight:800;color:#1D2E73;">Incluido en el ${wd === 6 ? "sábado" : "domingo"} (apoyo)</div><div style="font-size:10.5px;color:#64748b;">Lo atendió el apoyo de zona ${opsEsc(apoF.zona || "")}</div>`; if ((wd === 0 || wd === 6) && !(opsGdFolioAtendioTec(f, deGuardia) || f.guardiaPagoManual === true)) return `<div style="font-weight:800;color:#b91c1c;">✗ No cuenta</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(opsGdNoAtendioTxt(f))}</div>`; if (wd === 0 || wd === 6) return `<div style="font-weight:800;color:#1D2E73;">Incluido en el ${wd === 6 ? "sábado" : "domingo"}</div><div style="font-size:10.5px;color:#64748b;">Ese día se paga completo (${opsViaDinero(wd === 6 ? opsGdTarifas().sab : opsGdTarifas().dom)}), no por folio</div>`; if (!opsGdTarifas().folio) return `<div style="font-weight:800;color:#64748b;">Sin pago por folio</div><div style="font-size:10.5px;color:#64748b;">En ${opsEsc(opsGdPlaza)} solo se paga el fin de semana</div>`; const pg = opsGdFolioPago(f, deGuardia); const ap = opsGdPuedeAprobar(); return `<div style="font-weight:800;color:${pg.ok ? "#15803d" : "#b91c1c"};">${pg.ok ? "✓ " + opsViaDinero(opsGdTarifas().folio) : "✗ No se paga"}</div><div style="font-size:10.5px;color:#64748b;">${opsEsc(pg.motivo)}</div>${ap ? `<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">${pg.ok ? `<button onclick="opsGdFolioPagoSet('${f.id}',false)" style="border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Quitar pago</button>` : `<button onclick="opsGdFolioPagoSet('${f.id}',true)" style="border:1px solid #bbf7d0;background:#fff;color:#15803d;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Validar pago</button>`}${pg.manual ? `<button onclick="opsGdFolioPagoSet('${f.id}','auto')" style="border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:700;cursor:pointer;">Automático</button>` : ""}</div>` : ""}`; })()}</td>
                 <td style="padding:8px;"><button onclick="opsAbrirPanelFolio('${f.id}')" style="border:none;background:#E9ECF5;color:#1D2E73;border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Ver</button></td></tr>`;
         };
         const turno = Math.round((new Date(actual + "T12:00:00") - new Date(sem + "T12:00:00")) / (7 * 86400000));
@@ -8063,10 +8094,11 @@
                 await sb.from("ops_guardia_tel_vales").update({ folio: "GT-" + String(r.data.id).padStart(5, "0") }).eq("id", r.data.id);
             }
             const pago = { estado: "aprobado", aprobadoPor: opsNombreActual(), aprobadoEn: opsFechaHora(), monto: tipo === "tecnica" ? null : opsGdMonto(), tarifas: tipo === "tecnica" ? opsGdTarifas() : null, total: calc.total,
-                dias: pag.map(d => ({ dia: d.dia, tecnicoId: d.tec, monto: d.monto, base: d.base, folios: d.folios.map(y => ({ id: y.f.id, folio: y.f.folioClienteId || y.f.folioOS || "S/F", estacion: y.f.estacion || "", ok: y.ok, incluido: !!y.incluido, motivo: y.motivo })) })) };
+                formaPago: opsGdRegla() && opsGdRegla().cajaChica ? "caja_chica" : "transferencia",
+                dias: pag.map(d => ({ dia: d.dia, tecnicoId: d.tec, monto: d.monto, base: d.base, apoyo: !!d.apoyo, zona: d.zona || "", folios: d.folios.map(y => ({ id: y.f.id, folio: y.f.folioClienteId || y.f.folioOS || "S/F", estacion: y.f.estacion || "", ok: y.ok, incluido: !!y.incluido, motivo: y.motivo })) })) };
             await opsGdGuardarProg(g, { pago });
             const quienes = [...new Set(pag.map(d => opsNombreTecnico(d.tec)))].join(", ");
-            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGdPlaza} · ${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. Ya puedes pagarla en Operaciones → Guardias → Pago de guardias.`);
+            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia aprobada para pago (${opsGdPlaza} · ${opsGuardiaHorarioTxt(sem)}): ${quienes} · ${opsViaDinero(pago.total)}. Aprobó ${pago.aprobadoPor}. ${pago.formaPago === "caja_chica" ? `Se entrega en efectivo de la CAJA CHICA de ${opsGdPlaza}; el encargado sube el vale firmado en Operaciones → Guardias. Te llegará aviso para reponer la caja.` : "Ya puedes pagarla en Operaciones → Guardias → Pago de guardias."}`);
             await opsGtelCargar(); opsRenderGuardias();
         } catch (e) { alert("No se pudo aprobar: " + (e.message || e)); }
     };
@@ -8086,7 +8118,7 @@
             }
             const pago = { estado: "rechazado", rechazadoPor: opsNombreActual(), rechazadoEn: opsFechaHora(), motivoRechazo: m.trim(), anterior: g.pago || null };
             await opsGdGuardarProg(g, { pago });
-            const ids = [...new Set(opsGdDiasInfo(sem, tipo).map(x => x.tec).filter(Boolean))];
+            const ids = [...new Set(opsGdDiasInfo(sem, tipo).map(x => x.tec).concat(g.apoyo ? [g.apoyo.tecnicoId] : []).filter(Boolean))];
             opsGdAvisar(ids.map(opsGdCorreoDe).concat(OPS_GD_AVISO_PAGO), `Se rechazó la guardia del ${opsGuardiaHorarioTxt(sem)} (${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()} · ${opsGdPlaza}). Motivo: ${m.trim()}. Rechazó ${pago.rechazadoPor}.`);
             await opsGtelCargar(); opsRenderGuardias();
         } catch (e) { alert("No se pudo rechazar: " + (e.message || e)); }
@@ -8117,7 +8149,7 @@
         if (p.estado === "rechazado") { alert("Esta guardia fue rechazada (" + (p.motivoRechazo || "sin motivo") + "). No tiene vale."); return; }
         // Si ya se aprobó, el vale sale con lo aprobado; si no, con el cálculo de hoy.
         const dias = (p.estado && Array.isArray(p.dias) && p.dias.some(d => d.monto != null)
-            ? p.dias.filter(d => d.tecnicoId === tecId).map(d => ({ dia: d.dia, tec: d.tecnicoId, monto: d.monto, base: d.base || 0, baseTxt: tipo === "tecnica" ? (new Date(d.dia + "T12:00:00").getDay() === 6 ? "Guardia de sábado" : new Date(d.dia + "T12:00:00").getDay() === 0 ? "Guardia de domingo" : "") : "Guardia administrativa", folios: (d.folios || []).map(y => ({ f: { folioClienteId: y.folio, estacion: y.estacion }, ok: y.ok, incluido: !!y.incluido, motivo: y.motivo })) }))
+            ? p.dias.filter(d => d.tecnicoId === tecId).map(d => ({ dia: d.dia, tec: d.tecnicoId, monto: d.monto, base: d.base || 0, baseTxt: tipo === "tecnica" ? (new Date(d.dia + "T12:00:00").getDay() === 6 ? "Guardia de sábado" : new Date(d.dia + "T12:00:00").getDay() === 0 ? "Guardia de domingo" : "") + (d.apoyo ? " · apoyo zona " + (d.zona || "") : "") : "Guardia administrativa", folios: (d.folios || []).map(y => ({ f: { folioClienteId: y.folio, estacion: y.estacion }, ok: y.ok, incluido: !!y.incluido, motivo: y.motivo })) }))
             : opsGdCalculo(sem, tipo).dias.filter(d => d.tec === tecId));
         if (!dias.some(d => d.monto > 0)) { alert("Esta persona no tiene nada a pagar en esta guardia."); return; }
         const w = window.open("", "_blank"); if (!w) { alert("Permite ventanas emergentes para imprimir."); return; }
@@ -8137,7 +8169,8 @@
             return lin.join("");
         };
         const nFol = dias.reduce((a, d) => a + d.folios.filter(y => y.ok).length, 0), fin = dias.reduce((a, d) => a + (d.base || 0), 0);
-        const resumen = tipo === "tecnica" ? `Sábado y domingo ${opsViaDinero(fin)} + ${nFol} folio(s) entre semana × ${opsViaDinero(T.folio)} = ${opsViaDinero(total)}` : `${dias.length} día(s) × ${opsViaDinero(dias[0].monto)} = ${opsViaDinero(total)}`;
+        const cajaCh = p.formaPago === "caja_chica" || (!p.formaPago && opsGdRegla() && opsGdRegla().cajaChica);
+        const resumen = tipo === "tecnica" && T.finde ? `Fin de semana completo = ${opsViaDinero(total)}` : tipo === "tecnica" ? `Sábado y domingo ${opsViaDinero(fin)} + ${nFol} folio(s) entre semana × ${opsViaDinero(T.folio)} = ${opsViaDinero(total)}` : `${dias.length} día(s) × ${opsViaDinero(dias[0].monto)} = ${opsViaDinero(total)}`;
         w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Vale de guardia ${opsEsc(nombre)}</title><style>
             body{font-family:Arial,sans-serif;font-size:12.5px;color:#111;margin:28px}h1{font-size:18px;margin:0;color:#1D2E73}.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1D2E73;padding-bottom:8px;margin-bottom:14px}
             .k{color:#555;font-size:11px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:7px;vertical-align:top}th{background:#eef2ff;text-align:left}
@@ -8145,13 +8178,117 @@
             .nd{display:inline-block;border:1.5px solid #111;padding:3px 10px;font-weight:bold;letter-spacing:1px}@media print{button{display:none}}</style></head><body>
             <div class="top"><div><h1>HEDMA TECNOCONTROL · VALE GENERAL DE GUARDIA</h1><div class="k">${opsEsc(OPS_GUARDIA_TIPOS[tipo].n)} · Plaza ${opsEsc(opsGdPlaza)} · ${opsEsc(opsGuardiaHorarioTxt(sem, true))}</div></div><span class="nd">NO DEDUCIBLE</span></div>
             <div><span class="k">Persona:</span> <b>${opsEsc(nombre)}</b> &nbsp; <span class="k">Fecha de emisión:</span> <b>${new Date().toLocaleDateString("es-MX")}</b> &nbsp; <span class="k">Estatus:</span> <b>${p.estado === "pagado" ? "PAGADO" : p.estado === "aprobado" ? "APROBADO" : "POR APROBAR"}</b></div>
-            ${tipo === "tecnica" ? `<div class="k" style="margin-top:6px;">Tarifa: sábado ${opsViaDinero(T.sab)} y domingo ${opsViaDinero(T.dom)} por día completo (sus folios van incluidos) · de lunes a viernes ${opsViaDinero(T.folio)} por folio cerrado, con evidencias y atendido por quien estaba de guardia.</div>` : ""}
+            ${tipo === "tecnica" && T.finde ? `<div class="k" style="margin-top:6px;">Tarifa plaza ${opsEsc(opsGdPlaza)}: ${opsViaDinero(T.finde)} por fin de semana completo (sábado ${opsViaDinero(T.sab)} + domingo ${opsViaDinero(T.dom)}), sin importar cuántos servicios se atiendan.${cajaCh ? " Se entrega en efectivo de la caja chica de la plaza. No se comprueba con factura." : ""}</div>` : tipo === "tecnica" ? `<div class="k" style="margin-top:6px;">Tarifa: sábado ${opsViaDinero(T.sab)} y domingo ${opsViaDinero(T.dom)} por día completo (sus folios van incluidos) · de lunes a viernes ${opsViaDinero(T.folio)} por folio cerrado, con evidencias y atendido por quien estaba de guardia.</div>` : ""}
             <table><thead><tr><th style="width:130px">Día</th><th>Concepto</th><th style="width:100px;text-align:right">Importe</th></tr></thead><tbody>${dias.map(fila).join("")}</tbody></table>
             <div class="tot">${resumen}</div>
             <p>Recibo la cantidad de <b>${opsViaDinero(total)}</b> por concepto de guardia (gasto no deducible) correspondiente a lo arriba descrito.</p>
-            <div class="f"><div><b>${opsEsc(nombre)}</b><br>Recibe</div><div><b>${opsEsc(aut)}</b><br>Autoriza (Operaciones)</div><div><b>${opsEsc(p.pagadoPor || "")}</b><br>Paga (Administración)</div></div>
+            <div class="f"><div><b>${opsEsc(nombre)}</b><br>Recibe</div><div><b>${opsEsc(aut)}</b><br>Autoriza (Operaciones)</div><div><b>${opsEsc(p.entregadoPor || p.pagadoPor || "")}</b><br>${cajaCh ? "Entrega (caja chica " + opsEsc(opsGdPlaza) + ")" : "Paga (Administración)"}</div></div>
             <button onclick="print()" style="margin-top:24px;padding:9px 16px;">Imprimir</button></body></html>`);
         w.document.close();
+    };
+    // ── Parral (19-nov-2026): apoyo de zona, entrega de caja chica y gastos con ticket ──
+    function opsGdApoyoHTML(sem, g, e) {
+        const R = opsGdRegla(); if (!R || !R.zonaApoyo || !g) return "";
+        const apo = g.apoyo && g.apoyo.tecnicoId ? g.apoyo : null, puede = opsPuedeGestionar() && !(g.pago || {}).estado;
+        return `<div style="margin-top:6px;font-size:12px;color:#334155;background:#f8fafc;border-radius:8px;padding:6px 9px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <span>Apoyo zona <b>${opsEsc(apo ? apo.zona || R.zonaApoyo : R.zonaApoyo)}</b>: <b>${apo ? opsEsc(opsNombreTecnico(apo.tecnicoId)) : '<span style="color:#94a3b8;">sin apoyo</span>'}</b></span>
+            ${puede ? `<button onclick="opsGdApoyoModal('${sem}')" style="border:1px solid #cbd5e1;background:#fff;color:#1D2E73;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">${apo ? "Cambiar" : "+ Asignar apoyo"}</button>${apo ? `<button onclick="opsGdApoyoQuitar('${sem}')" style="border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;">Quitar</button>` : ""}` : ""}</div>`;
+    }
+    window.opsGdApoyoModal = function (sem) {
+        const g = opsGdProg(sem, "tecnica"), R = opsGdRegla(); if (!g || !R) return;
+        const lista = opsPersonalGuardiaTipo("tecnica").filter(t => t.id !== g.tecnicoId);
+        opsMiniModal("Técnico de apoyo · " + opsEsc(opsGdPlaza), `
+            <div style="font-size:12px;color:#64748b;margin-bottom:10px;">Segundo técnico de guardia del fin de semana (${opsEsc(opsGuardiaHorarioTxt(sem))}). Cobra lo mismo: ${opsViaDinero(opsGdTarifas().finde || 0)}.</div>
+            <label style="font-size:12px;font-weight:700;color:#334155;">¿Quién?</label>
+            <select id="gd-apo-tec" style="${OPS_MINI_IN}"><option value="">— Elige —</option>${lista.map(t => `<option value="${opsEsc(t.id)}" ${g.apoyo && g.apoyo.tecnicoId === t.id ? "selected" : ""}>${opsEsc(opsGdEtiq(t))}</option>`).join("")}</select>
+            <label style="font-size:12px;font-weight:700;color:#334155;">Zona que cubre</label>
+            <input id="gd-apo-zona" value="${opsEsc((g.apoyo && g.apoyo.zona) || R.zonaApoyo)}" style="${OPS_MINI_IN}">`, async err => {
+            const tec = document.getElementById("gd-apo-tec").value, zona = document.getElementById("gd-apo-zona").value.trim() || R.zonaApoyo;
+            if (!tec) { err.textContent = "Elige al técnico de apoyo."; return false; }
+            await opsGdGuardarProg(g, { apoyo: { tecnicoId: tec, zona, por: opsNombreActual(), en: opsFechaHora() } });
+            opsGdAvisar([opsGdCorreoDe(tec)], `Estás de guardia de apoyo (zona ${zona}, plaza ${opsGdPlaza}) el fin de semana del ${opsGuardiaHorarioTxt(sem)}.`);
+            opsRenderGuardias();
+        });
+    };
+    window.opsGdApoyoQuitar = async function (sem) {
+        const g = opsGdProg(sem, "tecnica"); if (!g || !confirm("¿Quitar al técnico de apoyo de esta guardia?")) return;
+        try { await opsGdGuardarProg(g, { apoyo: null }); opsRenderGuardias(); } catch (e) { alert("No se pudo quitar: " + (e.message || e)); }
+    };
+    function opsGdPuedeCajaChica() { return opsGdPuedePagar() || opsPuedeGestionar(); }
+    function opsGdBotonPago(sem, tipo) {
+        const g = opsGdProg(sem, tipo), caja = (g && g.pago && g.pago.formaPago === "caja_chica") || (!(g && g.pago && g.pago.formaPago) && opsGdRegla() && opsGdRegla().cajaChica);
+        if (caja) return opsGdPuedeCajaChica() ? opsGdBtn(`opsGdCajaChica('${sem}','${tipo}')`, "Entregar de caja chica", "#047857", "#fff") : "";
+        return opsGdPuedePagar() ? opsGdBtn(`opsGdPagado('${sem}','${tipo}')`, "Marcar pagada", "#1d4ed8", "#fff") : "";
+    }
+    async function opsGdSubirArchivos(carpeta, files) {
+        const sb = await opsSb(), rutas = [];
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i], ext = (String(f.name).split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+            const ruta = carpeta + "/" + Date.now() + "_" + (i + 1) + "." + ext;
+            const up = await sb.storage.from("viaticos-comprobantes").upload(ruta, f, { contentType: f.type || "application/octet-stream", upsert: false });
+            if (up.error) throw up.error; rutas.push(ruta);
+        }
+        return rutas;
+    }
+    window.opsGdCajaChica = function (sem, tipo) {
+        const g = opsGdProg(sem, tipo); if (!g || !g.pago || g.pago.estado !== "aprobado") return;
+        const ids = [...new Set((g.pago.dias || []).map(x => x.tecnicoId))];
+        const por = ids.map(id => opsNombreTecnico(id) + ": " + opsViaDinero((g.pago.dias || []).filter(x => x.tecnicoId === id).reduce((a, x) => a + (Number(x.monto) || 0), 0))).join(" · ");
+        opsMiniModal("Entregar guardia de caja chica · " + opsEsc(opsGdPlaza), `
+            <div style="background:#ecfdf5;color:#065f46;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-bottom:10px;">${opsEsc(por)}<br><b>Total ${opsViaDinero(g.pago.total)}</b> · ${opsEsc(opsGuardiaHorarioTxt(sem))}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:10px;">1) Imprime el vale de cada técnico (botón "Vale …"), 2) entrega el efectivo y que lo firmen, 3) sube aquí la foto del vale firmado. Ya no se usa el vale de caja chica a mano: la guardia no se comprueba con factura.</div>
+            <label style="font-size:12px;font-weight:700;color:#334155;">¿Quién entregó?</label>
+            <input id="gd-cc-por" value="${opsEsc(opsNombreActual())}" style="${OPS_MINI_IN}">
+            <label style="font-size:12px;font-weight:700;color:#334155;">Foto o PDF del vale firmado (uno por técnico)</label>
+            <input id="gd-cc-fotos" type="file" accept="image/*,application/pdf" multiple style="${OPS_MINI_IN}">`, async err => {
+            const fotos = document.getElementById("gd-cc-fotos").files, quien = document.getElementById("gd-cc-por").value.trim();
+            if (!quien) { err.textContent = "Escribe quién entregó el dinero."; return false; }
+            if (!fotos.length) { err.textContent = "Sube la foto del vale firmado."; return false; }
+            const evidencias = await opsGdSubirArchivos("guardias-caja-chica/" + g.id, fotos);
+            const sb = await opsSb();
+            for (const x of g.pago.dias || []) await sb.from("ops_guardia_tel_vales").update({ estatus: "Pagado", pagado_en: opsHoy() }).eq("fecha_guardia", x.dia).eq("tecnico_id", x.tecnicoId).neq("estatus", "Cancelado");
+            await opsGdGuardarProg(g, { pago: { ...g.pago, estado: "pagado", formaPago: "caja_chica", entregadoPor: quien, evidencias, pagadoPor: opsNombreActual(), pagadoEn: opsFechaHora() } });
+            opsGdAvisar(ids.map(opsGdCorreoDe), `Se registró la entrega de tu guardia del ${opsGuardiaHorarioTxt(sem)} (caja chica ${opsGdPlaza}).`);
+            opsGdAvisar(OPS_GD_AVISO_PAGO, `Guardia de ${opsGdPlaza} (${opsGuardiaHorarioTxt(sem)}) entregada de CAJA CHICA por ${quien}: ${por}. Total ${opsViaDinero(g.pago.total)} por reponer a la caja chica.`);
+            await opsGtelCargar(); opsRenderGuardias();
+        });
+    };
+    // Gastos de material durante la guardia (ticket de ferretería, etc.): van ligados al folio del servicio,
+    // con foto del ticket. No suman al pago de la guardia.
+    function opsGdGastosHTML(sem, g) {
+        const R = opsGdRegla(), l = g.gastos || []; if (!R || !R.cajaChica) return "";
+        const tot = l.reduce((a, x) => a + (Number(x.monto) || 0), 0);
+        return `<div style="margin-top:10px;border:1px dashed #cbd5e1;border-radius:10px;padding:8px 10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span style="font-size:12px;font-weight:800;color:#334155;">Gastos con ticket durante la guardia (${l.length}) · ${opsViaDinero(tot)} <span style="font-weight:500;color:#64748b;">· no suman al pago de la guardia</span></span>
+            ${opsPuedeGestionar() || opsGdPuedePagar() ? `<button onclick="opsGdGastoModal('${sem}')" style="border:1px solid #cbd5e1;background:#fff;color:#1D2E73;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;">+ Gasto con ticket</button>` : ""}</div>
+            ${l.map(x => `<div style="font-size:11.5px;color:#334155;padding:4px 0;border-top:1px solid #f1f5f9;margin-top:4px;">${opsEsc(opsFechaCorta(x.fecha))} · <b>${opsViaDinero(x.monto)}</b> · ${opsEsc(x.concepto)}${x.folio ? " · folio " + opsEsc(x.folio) : ""} · ${opsEsc(x.tecnico || "")}${(x.tickets || []).map((r, i) => ` · <a href="#" onclick="event.preventDefault();opsHerrCompraFoto('${opsEsc(r)}')" style="color:#1D2E73;font-weight:700;">ticket${x.tickets.length > 1 ? " " + (i + 1) : ""}</a>`).join("")}</div>`).join("")}
+        </div>`;
+    }
+    window.opsGdGastoModal = function (sem) {
+        const g = opsGdProg(sem, "tecnica"); if (!g) return;
+        const folios = opsGdFoliosSemana(sem), gente = [g.tecnicoId].concat(g.apoyo ? [g.apoyo.tecnicoId] : []).filter(Boolean);
+        opsMiniModal("Gasto con ticket · guardia " + opsEsc(opsGdPlaza), `
+            <label style="font-size:12px;font-weight:700;color:#334155;">Servicio (folio)</label>
+            <select id="gd-gs-folio" style="${OPS_MINI_IN}"><option value="">Sin folio</option>${folios.map(f => `<option value="${opsEsc(f.id)}">${opsEsc((f.folioClienteId || f.folioOS || "S/F") + " · " + (f.estacion || ""))}</option>`).join("")}</select>
+            <label style="font-size:12px;font-weight:700;color:#334155;">Técnico</label>
+            <select id="gd-gs-tec" style="${OPS_MINI_IN}">${gente.map(id => `<option value="${opsEsc(id)}">${opsEsc(opsNombreTecnico(id))}</option>`).join("")}</select>
+            <div style="display:flex;gap:8px;"><div style="flex:1;"><label style="font-size:12px;font-weight:700;color:#334155;">Fecha</label><input id="gd-gs-fecha" type="date" value="${opsHoy()}" style="${OPS_MINI_IN}"></div>
+            <div style="flex:1;"><label style="font-size:12px;font-weight:700;color:#334155;">Monto</label><input id="gd-gs-monto" type="number" min="0" step="0.01" style="${OPS_MINI_IN}"></div></div>
+            <label style="font-size:12px;font-weight:700;color:#334155;">Concepto</label>
+            <input id="gd-gs-conc" placeholder="Ej. cadena, material eléctrico…" style="${OPS_MINI_IN}">
+            <label style="font-size:12px;font-weight:700;color:#334155;">Foto del ticket</label>
+            <input id="gd-gs-fotos" type="file" accept="image/*,application/pdf" multiple style="${OPS_MINI_IN}">`, async err => {
+            const v = id => document.getElementById(id).value, monto = Number(v("gd-gs-monto")) || 0, fotos = document.getElementById("gd-gs-fotos").files;
+            if (!monto) { err.textContent = "Captura el monto."; return false; }
+            if (!v("gd-gs-conc").trim()) { err.textContent = "Escribe el concepto."; return false; }
+            if (!fotos.length) { err.textContent = "Sube la foto del ticket."; return false; }
+            const tickets = await opsGdSubirArchivos("guardias-gastos/" + g.id, fotos);
+            const f = folios.find(x => x.id === v("gd-gs-folio"));
+            const gasto = { fecha: v("gd-gs-fecha") || opsHoy(), monto, concepto: v("gd-gs-conc").trim(), folioId: f ? f.id : null, folio: f ? (f.folioClienteId || f.folioOS || "S/F") : "", tecnicoId: v("gd-gs-tec"), tecnico: opsNombreTecnico(v("gd-gs-tec")), tickets, por: opsNombreActual(), en: opsFechaHora() };
+            await opsGdGuardarProg(g, { gastos: (g.gastos || []).concat([gasto]) });
+            if (f) { try { const { db, fs } = await opsGetFB(); fs.addDoc(fs.collection(db, COL_FOLIOS, f.id, "comentarios"), { texto: `[Gasto de guardia] ${opsViaDinero(monto)} · ${gasto.concepto} (${gasto.tecnico}). Ticket en Operaciones → Guardias.`, autor: opsNombreActual(), autorEmail: opsUsuarioActual(), tipo: "guardia", createdAt: opsFechaHora() }).catch(() => {}); } catch (e) {} }
+            opsRenderGuardias();
+        });
     };
     function opsGdFilasSemanas() {
         const out = [];
@@ -8215,7 +8352,7 @@
                         <div style="font-weight:800;color:#0f172a;min-width:110px;text-align:right;">${opsViaDinero(tot)}</div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">${ids.map(id => opsGdBtn(`opsGdVale('${r.sem}','${r.tipo}','${id}')`, "Vale " + opsEsc(String(opsNombreTecnico(id)).split(" ")[0]), "#fff", "#1D2E73")).join("")}
                             ${k === "revisar" ? opsGdBtn(`opsGdAbrirSemana('${r.sem}')`, "Revisar", "#fff", "#334155") + (opsGdPuedeAprobar() ? opsGdBtn(`opsGdAprobar('${r.sem}','${r.tipo}')`, "Aprobar pago", "#15803d", "#fff") : "") : ""}
-                            ${k === "aprobado" && opsGdPuedePagar() ? opsGdBtn(`opsGdPagado('${r.sem}','${r.tipo}')`, "Marcar pagada", "#1d4ed8", "#fff") : ""}
+                            ${k === "aprobado" ? opsGdBotonPago(r.sem, r.tipo) : ""}
                             ${["revisar", "aprobado"].includes(k) && opsGdPuedeAprobar() ? opsGdBtn(`opsGdRechazar('${r.sem}','${r.tipo}')`, "Rechazar", "#fff", "#b91c1c") : ""}
                             ${k === "rechazado" && opsGdPuedeAprobar() ? opsGdBtn(`opsGdReabrir('${r.sem}','${r.tipo}')`, "Reabrir", "#fff", "#334155") : ""}</div>
                     </div>`; }).join("") : `<div style="font-size:12.5px;color:#94a3b8;padding:6px 0;">Nada aquí.</div>`}
@@ -8223,6 +8360,7 @@
         };
         return `<div style="background:#eef2ff;border-radius:12px;padding:10px 14px;font-size:12.5px;color:#1D2E73;margin-bottom:12px;">
                 <b>Así se paga:</b> 1) termina la guardia el viernes 8:00 a. m. → 2) <b>Operaciones</b> revisa los días y la aprueba → 3) <b>Administración</b> (Cristina) la paga y la marca como pagada. A la persona le llega un aviso. Guardia técnica: sábado <b>${opsViaDinero(opsGdTarifas().sab)}</b> + domingo <b>${opsViaDinero(opsGdTarifas().dom)}</b> por día completo; de lunes a viernes <b>${opsViaDinero(opsGdTarifas().folio)}</b> por folio válido (cerrado, con evidencias y atendido por la guardia). Guardia administrativa: <b>${opsViaDinero(opsGdMonto())}</b> por día.</div>
+            ${opsGdRegla() ? `<div style="background:#ecfdf5;border-radius:12px;padding:10px 14px;font-size:12.5px;color:#065f46;margin-bottom:12px;"><b>Plaza ${opsEsc(opsGdPlaza)}:</b> ${opsViaDinero(opsGdTarifas().finde || 0)} por fin de semana a cada técnico${opsGdRegla().zonaApoyo ? ` (incluido el apoyo de zona ${opsEsc(opsGdRegla().zonaApoyo)})` : ""}, sin importar cuántos servicios atienda; entre semana no hay pago por folio.${opsGdRegla().cajaChica ? " Se entrega de la <b>caja chica de la plaza</b>: el encargado sube la foto del vale firmado y queda pagada." : ""}</div>` : ""}
             ${grupo("revisar", "1 · Falta aprobar (Operaciones)", "Guardias que ya terminaron. Revisa los días en rojo antes de aprobar.", "#b45309")}
             ${grupo("aprobado", "2 · Falta pagar (Administración)", "Ya aprobadas por Operaciones. Imprime el vale, paga y marca como pagada.", "#1d4ed8")}
             ${grupo("pagado", "3 · Pagadas", "Últimas guardias pagadas.", "#15803d")}
