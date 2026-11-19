@@ -1407,27 +1407,21 @@ async function cargarMisTareas(){
   }
 
   // ── Listener en tiempo real: transferencias donde SOY el receptor designado ──
-  // A diferencia del aviso discreto de la campanita, esto es una alerta
-  // INVASIVA a propósito (pedida explícitamente): un modal que se pone
-  // encima de lo que el técnico esté haciendo, para que no se le pase por
-  // alto que alguien le está transfiriendo un vehículo y tiene un plazo.
-  // Se vuelve a mostrar cada vez que se abre la app mientras siga pendiente
-  // (no solo una vez), pero no se repite en cada re-render dentro de la
-  // misma sesión una vez que el técnico ya la vio/cerró.
+  // 19-nov-2026: ya no abre una ventana que interrumpe; alimenta la tarjeta
+  // "Por aceptar" (fmPendRefrescar), que se vuelve más insistente con el tiempo.
   if(miPerfil?.email && !_unsubRecibirPendiente){
     try{
       _unsubRecibirPendiente = db.collection('flotilla_transferencias')
         .where('receptorEmail','==',miPerfil.email.toLowerCase())
         .where('estatus','==','Pendiente recepción')
         .onSnapshot(snap=>{
-          const pendientes = snap.docs.map(d=>({id:d.id,...d.data()}));
-          const nueva = pendientes.find(t=>!window._recibirModalVistos.has(t.id));
-          if(nueva) mostrarModalRecibirPendiente(nueva);
+          window._fmPendVeh = snap.docs.map(d=>({id:d.id,...d.data()}));
+          fmPendRefrescar();
         }, err=>{console.warn('[MOVIL recibirPendiente onSnapshot]',err);});
     }catch(e){console.error('[MOVIL recibirPendiente]',e);}
   }
 
-  // Traspasos de herramienta donde soy el receptor — mismo trato invasivo.
+  // Traspasos de herramienta donde soy el receptor — misma tarjeta "Por aceptar".
   herrEscucharPendientes();
 
   // ── Listener en tiempo real: respuestas del admin a MIS check lists ──
@@ -1449,37 +1443,92 @@ async function cargarMisTareas(){
 }
 
 window._recibirModalVistos = window._recibirModalVistos || new Set();
-function mostrarModalRecibirPendiente(t){
-  if(document.getElementById('fm-modal-recibir-pend'))return; // ya hay uno abierto
-  window._recibirModalVistos.add(t.id);
-  const venceTxt = t.venceEn ? new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-  const ov=document.createElement('div');
-  ov.id='fm-modal-recibir-pend';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML=`
-    <div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:24px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-      <div style="width:52px;height:52px;border-radius:50%;background:#FEF3C7;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
-      </div>
-      <div style="font-size:16px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Tienes un vehículo por recibir</div>
-      <div style="font-size:13px;color:#374151;line-height:1.5;margin-bottom:14px"><strong>${t.entregaNombre||t.entregaEmail||'Alguien'}</strong> te envió un código para recibir el <strong>ECO ${t.vehiculoEco||'—'}${t.vehiculoUnidad?' · '+t.vehiculoUnidad:''}</strong>.</div>
-      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#B45309;margin-bottom:2px">Vence</div>
-        <div style="font-size:13px;font-weight:800;color:#92400E">${venceTxt}</div>
-      </div>
-      <button onclick="utilIrARecibirCodigo('${t.codigo}')" style="width:100%;padding:12px;background:#0A1628;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;margin-bottom:8px">Recibir ahora</button>
-      <button onclick="document.getElementById('fm-modal-recibir-pend').remove()" style="width:100%;padding:10px;background:none;border:none;color:#94A3B8;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Recordarme más tarde</button>
+
+// ══ POR ACEPTAR (19-nov-2026) ═══════════════════════════════════════════
+// Traspasos de herramienta y transferencias de vehículo donde YO soy el receptor.
+// Ya NO vencen ni se ocultan: siguen pendientes hasta que se aceptan, se rechazan
+// o quien los envió los cancela. En vez de una ventana que interrumpe, una tarjeta
+// flotante que se vuelve más insistente mientras más tiempo pasa:
+//   · menos de 2 h → pastilla azul discreta "Por aceptar (n)"
+//   · de 2 a 8 h   → tarjeta ámbar; "Más tarde" la oculta 30 min; aviso al abrir la app
+//   · 8 h o más    → tarjeta roja fija (ya no se puede ocultar) y vibración cada hora
+// Nunca tapa la pantalla completa: el técnico sigue trabajando y acepta cuando pueda.
+window._fmPendVeh=window._fmPendVeh||[];
+window._fmPendHerr=window._fmPendHerr||[];
+let _fmPendTimer=null,_fmPendOcultoHasta=0,_fmPendAvisoAbrir=false,_fmPendUltVibra=0;
+const FM_PEND_ICO='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>';
+const FM_PEND_COL={1:{bg:'#1D2E73',sub:'#C7D2FE'},2:{bg:'#B45309',sub:'#FEF3C7'},3:{bg:'#B91C1C',sub:'#FEE2E2'}};
+function fmPendItems(){
+  const v=(window._fmPendVeh||[]).map(t=>({tipo:'veh',id:t.id,codigo:t.codigo,titulo:'Vehículo ECO '+(t.vehiculoEco||'—')+(t.vehiculoUnidad?' · '+t.vehiculoUnidad:''),de:t.entregaNombre||t.entregaEmail||'Alguien',desde:t.reactivadaEn||t.creadoEn}));
+  const h=(window._fmPendHerr||[]).map(t=>({tipo:'herr',id:t.id,titulo:'Herramienta '+(t.folio||'—')+(t.descripcion?' · '+t.descripcion:''),de:t.entregaNombre||t.entregaEmail||'Almacén',desde:t.creadoEn}));
+  return v.concat(h).sort((a,b)=>String(a.desde||'').localeCompare(String(b.desde||''))); // el más viejo primero
+}
+function fmPendHoras(it){ const t=new Date(it.desde||Date.now()).getTime(); return isNaN(t)?0:Math.max(0,(Date.now()-t)/3600000); }
+function fmPendHaceTxt(it){ const h=fmPendHoras(it); if(h<1) return 'hace '+Math.max(1,Math.round(h*60))+' min'; if(h<24) return 'hace '+Math.floor(h)+' h'; const d=Math.floor(h/24); return 'hace '+d+' día'+(d===1?'':'s'); }
+function fmPendNivel(items){ if(!items.length) return 0; const h=fmPendHoras(items[0]); return h>=8?3:h>=2?2:1; }
+function fmPendFilasHTML(items){
+  return items.map(it=>{
+    const h=fmPendHoras(it), col=h>=8?'#B91C1C':h>=2?'#B45309':'#1D2E73';
+    const botones=it.tipo==='herr'
+      ?`<button onclick="document.getElementById('fm-pend-hoja')?.remove();herrAceptarTraspaso('${it.id}')" style="flex:1;padding:10px;border:none;border-radius:9px;background:#15803D;color:#fff;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Aceptar</button>
+        <button onclick="document.getElementById('fm-pend-hoja')?.remove();herrRechazarTraspaso('${it.id}')" style="padding:10px 12px;border:1.5px solid #FECACA;border-radius:9px;background:#fff;color:#B91C1C;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Rechazar</button>`
+      :`<button onclick="document.getElementById('fm-pend-hoja')?.remove();utilIrARecibirCodigo('${esc(it.codigo)}')" style="flex:1;padding:10px;border:none;border-radius:9px;background:#15803D;color:#fff;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Recibir vehículo</button>`;
+    return `<div style="border:1.5px solid #E2E8F0;border-left:4px solid ${col};border-radius:12px;padding:11px 12px;margin-bottom:8px;background:#fff">
+      <div style="font-size:13px;font-weight:800;color:#0A1628">${esc(it.titulo)}</div>
+      <div style="font-size:11.5px;color:#64748B;margin:2px 0 9px">Te lo envía <b>${esc(it.de)}</b> · <span style="color:${col};font-weight:800">${fmPendHaceTxt(it)}</span></div>
+      <div style="display:flex;gap:8px">${botones}</div>
     </div>`;
-  document.body.appendChild(ov);
+  }).join('');
+}
+// Sección fija en Utilitarios (siempre a la mano, aunque se haya ocultado la tarjeta).
+function fmPendSeccionHTML(){
+  const items=fmPendItems();
+  if(!items.length) return '<div id="fm-pend-sec"></div>';
+  return `<div id="fm-pend-sec" class="fm-card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;color:#0A1628">${FM_PEND_ICO}<div style="font-size:14px;font-weight:900">Por aceptar (${items.length})</div></div>
+    <div style="font-size:11.5px;color:#64748B;margin-bottom:10px">Mientras no lo aceptes, sigue a nombre de quien te lo envía.</div>
+    ${fmPendFilasHTML(items)}
+  </div>`;
+}
+window.fmPendAbrir=function(){
+  const items=fmPendItems();
+  if(!items.length){ toast('No tienes nada por aceptar','ok'); return; }
+  fmHojaModal('fm-pend-hoja','Por aceptar ('+items.length+')','<div style="font-size:12px;color:#475569;margin-bottom:10px">Revisa y acepta lo que te enviaron. Mientras no lo aceptes, sigue a nombre de quien te lo envía.</div>'+fmPendFilasHTML(items));
+};
+window.fmPendMasTarde=function(){ _fmPendOcultoHasta=Date.now()+30*60000; fmPendRefrescar(); };
+function fmPendRefrescar(){
+  const items=fmPendItems(), nivel=fmPendNivel(items);
+  const sec=document.getElementById('fm-pend-sec'); if(sec) sec.outerHTML=fmPendSeccionHTML();
+  let el=document.getElementById('fm-pend-flot');
+  if(!nivel){ el?.remove(); if(_fmPendTimer){ clearInterval(_fmPendTimer); _fmPendTimer=null; } return; }
+  if(!_fmPendTimer) _fmPendTimer=setInterval(fmPendRefrescar,60000); // sube de nivel solo con el tiempo
+  if(nivel>=2&&!_fmPendAvisoAbrir){ _fmPendAvisoAbrir=true; toast(items.length===1?'Tienes algo por aceptar desde '+fmPendHaceTxt(items[0]):'Tienes '+items.length+' cosas por aceptar','err'); }
+  if(nivel===3&&Date.now()-_fmPendUltVibra>3600000){ _fmPendUltVibra=Date.now(); try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){} }
+  if(nivel<3&&Date.now()<_fmPendOcultoHasta){ el?.remove(); return; }
+  if(!el){ el=document.createElement('div'); el.id='fm-pend-flot'; document.body.appendChild(el); }
+  const c=FM_PEND_COL[nivel], n=items.length, it=items[0];
+  if(nivel===1){
+    el.style.cssText='position:fixed;right:12px;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:9000';
+    el.innerHTML=`<button onclick="fmPendAbrir()" title="Ver lo que tienes por aceptar" style="display:flex;align-items:center;gap:6px;background:${c.bg};color:#fff;border:none;border-radius:99px;padding:9px 14px;font-family:inherit;font-size:12.5px;font-weight:800;box-shadow:0 6px 18px rgba(10,22,40,.3);cursor:pointer">${FM_PEND_ICO}Por aceptar (${n})</button>`;
+    return;
+  }
+  el.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:9000;max-width:420px;margin:0 auto';
+  el.innerHTML=`<div style="background:${c.bg};color:#fff;border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(10,22,40,.35)">
+    <div style="flex:1;min-width:0;cursor:pointer" onclick="fmPendAbrir()">
+      <div style="font-size:13px;font-weight:900">${n===1?'Tienes algo por aceptar':'Tienes '+n+' cosas por aceptar'}</div>
+      <div style="font-size:11.5px;color:${c.sub};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.titulo)} · ${fmPendHaceTxt(it)}</div>
+    </div>
+    <button onclick="fmPendAbrir()" style="background:#fff;color:${c.bg};border:none;border-radius:9px;padding:8px 11px;font-family:inherit;font-size:12px;font-weight:900;cursor:pointer;flex-shrink:0">Aceptar ahora</button>
+    ${nivel===2?`<button onclick="fmPendMasTarde()" title="Ocultar 30 minutos" style="background:none;border:none;color:${c.sub};font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;flex-shrink:0;padding:4px">Más tarde</button>`:''}
+  </div>`;
 }
 
-// Atajo directo desde el modal invasivo: valida el código y salta al paso de
+// Atajo directo desde "Por aceptar": valida el código y salta al paso de
 // firma, sin que el técnico tenga que volver a escribirlo a mano.
 window.utilIrARecibirCodigo=async function(codigo){
-  document.getElementById('fm-modal-recibir-pend')?.remove();
   try{
     const snap=await db.collection('flotilla_transferencias').where('codigo','==',codigo).where('estatus','==','Pendiente recepción').get();
-    if(snap.empty){toast('El código ya no está disponible (puede que ya haya vencido o se haya cancelado)','err');fmVista('util');return;}
+    if(snap.empty){toast('Esta transferencia ya no está disponible (se canceló o ya se recibió)','err');fmVista('util');return;}
     const t={id:snap.docs[0].id,...snap.docs[0].data()};
     utilState.modo='recibir';
     utilState.transferenciaId=t.id;
@@ -1500,7 +1549,7 @@ window.utilIrARecibirCodigo=async function(codigo){
 // Modal invasivo para la respuesta del admin a un check list semanal —
 // mismo look&feel que el de "vehículo por recibir".
 function mostrarModalRespuestaChk(r){
-  if(document.getElementById('fm-modal-recibir-pend')||document.getElementById('fm-modal-resp-chk'))return;
+  if(document.getElementById('fm-modal-resp-chk'))return;
   window._recibirModalVistos.add('chk_'+r.id+'_'+(r.respuestaAdminEn||''));
   const fechaTxt = r.respuestaAdminEn ? new Date(r.respuestaAdminEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
   const ov=document.createElement('div');
@@ -4418,8 +4467,8 @@ window.utilRechazarTransferencia=async function(){
 // Vive dentro de Utilitarios, como flujo independiente del wizard de
 // vehículo. Mismo patrón que ya usa flotilla_transferencias: se crea
 // una "solicitud" (ops_herramienta_traspasos) con estatus "Pendiente
-// recepción", el receptor la acepta/rechaza con un modal invasivo, y
-// vence sola a las 24h si nadie responde. Al aceptar, el propio
+// recepción" y el receptor la acepta/rechaza desde "Por aceptar". Desde
+// el 19-nov-2026 ya no vence: sigue pendiente hasta que alguien la resuelva. Al aceptar, el propio
 // navegador del receptor actualiza ops_herramientas/ops_movimientos
 // (Opción A acordada con Glen: mismo nivel de confianza que ya tiene
 // flotilla_vehiculos — la UI controla el flujo, no hay Cloud Function).
@@ -4937,7 +4986,7 @@ function herrRenderPaso3(){
       </div>`:`
       <div style="font-size:14px;font-weight:800;color:#0A0F1E;margin-bottom:14px">${herrState.receptorNombre} (${herrState.receptorEmail})</div>
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;font-size:11.5px;color:#92400E">
-        ${herrState.receptorNombre.split(' ')[0]||'El receptor'} tendrá 24 horas para aceptar. Mientras confirma, la herramienta sigue apareciendo ${herrDeOtro()?'en '+herrState.origenSel.nombre:'como tuya'}.
+        ${herrState.receptorNombre.split(' ')[0]||'El receptor'} debe aceptarla en su app. Mientras no la acepte, la herramienta sigue apareciendo ${herrDeOtro()?'en '+herrState.origenSel.nombre:'como tuya'}.
       </div>
       <div style="font-size:12px;font-weight:800;color:#334155;margin:14px 0 4px">Tu firma de entrega *</div>
       <div style="border:1.5px solid #CBD5E1;border-radius:10px;background:#fff"><canvas id="herr-ent-firma" width="320" height="140" style="display:block;width:100%;height:140px;touch-action:none;border-radius:10px"></canvas></div>
@@ -4976,8 +5025,6 @@ window.herrEnviarTraspaso=async function(){
     const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
     const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
     const now=new Date();
-    const venceEn=new Date(now.getTime()+24*60*60*1000);
-    const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const ubicacion=await herrObtenerUbicacion();
     // Origen: mi herramienta, o (administrativo de Operaciones) el almacén/técnico elegido.
     const deOtro=herrDeOtro(), oS=herrState.origenSel||{};
@@ -5017,12 +5064,12 @@ window.herrEnviarTraspaso=async function(){
       herramientaId:h.id, folio:h.folio||'', descripcion:h.descripcion||'',
       entregaTecnicoId:oTec, entregaEmail:userEmail, entregaNombre:userName, iniciadoPorAdmin:porAdmin,
       receptorTecnicoId:receptorTec?receptorTec.id:null,
-      receptorEmail:herrState.receptorEmail, receptorNombre:herrState.receptorNombre,
+      receptorEmail:String(herrState.receptorEmail||'').toLowerCase().trim(), receptorNombre:herrState.receptorNombre,
       // Mismo dato en vocabulario "almacén" (el almacén de un técnico usa su propio
       // id de ops_tecnicos; null = Almacén General) — para el puente con Aspel.
       almacenOrigenId:oAlm,
       almacenDestinoId:(receptorTec?receptorTec.id:null)||'general',
-      estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:venceEn.toISOString(),
+      estatus:'Pendiente recepción', creadoEn:now.toISOString(), venceEn:null, // ya no vence (19-nov-2026)
       lugarLat:ubicacion?ubicacion.lat:null, lugarLng:ubicacion?ubicacion.lng:null,
       origen:'flotilla_movil',
       firmaEntrega:firmaEnt?{ img:firmaEnt, nombre:userName, en:now.toISOString(), email:userEmail, via:'app' }:null,
@@ -5032,10 +5079,10 @@ window.herrEnviarTraspaso=async function(){
     await Promise.all([
       db.collection('flotilla_notificaciones').add({
         tipo:'herramienta_traspaso_iniciada', traspasoId:ref.id, para:herrState.receptorEmail,
-        mensaje:`${userName} te está traspasando la herramienta ${h.folio||''} (${h.descripcion||''}). Acéptala antes del ${venceTxt} o el traspaso vencerá.`,
+        mensaje:`${userName} te está traspasando la herramienta ${h.folio||''} (${h.descripcion||''}). Acéptala en Flotilla → Por aceptar. Mientras no la aceptes, sigue a nombre de quien te la envía.`,
         leido:false, creadaEn:now.toISOString(),
       }).catch(()=>{}),
-      ...(receptorTec?[]:[]), // sin acción extra — el modal invasivo llega por el listener, no por esta notificación
+      ...(receptorTec?[]:[]), // sin acción extra — la tarjeta "Por aceptar" llega por el listener, no por esta notificación
     ]);
 
     // Aviso al técnico al que se le saca la herramienta (mejor esfuerzo).
@@ -5071,9 +5118,9 @@ function herrRenderPaso4(){
 }
 
 // ── Listener en tiempo real: traspasos de herramienta donde SOY el receptor ──
-// Mismo trato invasivo que ya usa mostrarModalRecibirPendiente para vehículos.
+// Alimenta la tarjeta "Por aceptar" (igual que los vehículos). Ya no se ocultan
+// los "vencidos": no hay vencimiento, siguen a la vista hasta resolverse.
 let _unsubHerrPendiente=null;
-window._herrModalVistos=window._herrModalVistos||new Set();
 
 function herrEscucharPendientes(){
   if(!miPerfil?.email||_unsubHerrPendiente)return;
@@ -5082,40 +5129,14 @@ function herrEscucharPendientes(){
       .where('receptorEmail','==',miPerfil.email.toLowerCase())
       .where('estatus','==','Pendiente recepción')
       .onSnapshot(snap=>{
-        const pendientes=snap.docs.map(d=>({id:d.id,...d.data()}))
-          .filter(t=>!t.venceEn||new Date(t.venceEn).getTime()>Date.now()); // ignora ya vencidos
-        const nueva=pendientes.find(t=>!window._herrModalVistos.has(t.id));
-        if(nueva)herrMostrarModalPendiente(nueva);
+        window._fmPendHerr=snap.docs.map(d=>({id:d.id,...d.data()}));
+        fmPendRefrescar();
       },err=>{console.warn('[HERR pendientes onSnapshot]',err);});
   }catch(e){console.error('[HERR escucharPendientes]',e);}
 }
 
-function herrMostrarModalPendiente(t){
-  if(document.getElementById('fm-modal-herr-pend'))return;
-  window._herrModalVistos.add(t.id);
-  const venceTxt=t.venceEn?new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
-  const ov=document.createElement('div');
-  ov.id='fm-modal-herr-pend';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
-  ov.innerHTML=`
-    <div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:24px 22px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-      <div style="width:52px;height:52px;border-radius:50%;background:#EAF0FF;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#0B5FFF">${IC.doc}</div>
-      <div style="font-size:16px;font-weight:800;color:#0A0F1E;margin-bottom:6px">Tienes herramienta por recibir</div>
-      <div style="font-size:13px;color:#374151;line-height:1.5;margin-bottom:14px"><strong>${t.entregaNombre||t.entregaEmail||'Alguien'}</strong> te quiere traspasar <strong>${t.folio||'—'} — ${t.descripcion||''}</strong>.</div>
-      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#B45309;margin-bottom:2px">Vence</div>
-        <div style="font-size:13px;font-weight:800;color:#92400E">${venceTxt}</div>
-      </div>
-      <button onclick="herrAceptarTraspaso('${t.id}')" style="width:100%;padding:12px;background:#15803D;color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;margin-bottom:8px">Aceptar</button>
-      <button onclick="herrRechazarTraspaso('${t.id}')" style="width:100%;padding:10px;background:none;border:none;color:#B91C1C;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:4px">Rechazar</button>
-      <button onclick="document.getElementById('fm-modal-herr-pend').remove()" style="width:100%;padding:8px;background:none;border:none;color:#94A3B8;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">Recordarme más tarde</button>
-    </div>`;
-  document.body.appendChild(ov);
-}
-
 // 29-oct-2026: antes de aceptar, el técnico dice en qué condición la recibe, con comentario y foto.
 window.herrAceptarTraspaso=async function(traspasoId){
-  document.getElementById('fm-modal-herr-pend')?.remove();
   window.__herrRec={id:traspasoId,cond:'completa',foto:null};
   fmHojaModal('fm-herr-rec','Recibir herramienta',
     '<div style="font-size:12px;color:#475569;line-height:1.45;margin-bottom:10px">Revisa la pieza antes de aceptarla. Lo que anotes queda en su historial.</div>'+
@@ -5147,11 +5168,7 @@ window.herrAceptarTraspasoConfirmar=async function(){
     const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
     if(!doc.exists){toast('El traspaso ya no está disponible.','err');return;}
     const t=doc.data();
-    if(t.venceEn&&new Date(t.venceEn).getTime()<Date.now()){
-      await opsDb().collection(C.OPS_TRASP).doc(traspasoId).update({estatus:'Vencido'});
-      toast('Este traspaso ya venció.','err');
-      return;
-    }
+    if(t.estatus!=='Pendiente recepción'){ toast('Este traspaso ya no está pendiente (se canceló o ya se resolvió).','err'); return; }
     const userEmail=(window.auth?.currentUser?.email||miPerfil?.email||'').toLowerCase();
     const userName=window.auth?.currentUser?.displayName||miPerfil?.nombre||userEmail;
     let receptorId=t.receptorTecnicoId;
@@ -5256,7 +5273,6 @@ window.herrCompraEnviar=async function(){
   }catch(e){ msg.textContent='No se pudo enviar: '+(e.message||e); btn.disabled=false; btn.textContent='Enviar a Operaciones'; }
 };
 window.herrRechazarTraspaso=async function(traspasoId){
-  document.getElementById('fm-modal-herr-pend')?.remove();
   const motivo=prompt('¿Por qué rechazas este traspaso? (opcional)')||'';
   try{
     const doc=await opsDb().collection(C.OPS_TRASP).doc(traspasoId).get();
@@ -5471,7 +5487,7 @@ function renderUtil(){
       </div>
     </div>
 
-    ${utilState.paso===1?renderUtilPaso1():
+    ${utilState.paso===1?fmPendSeccionHTML()+renderUtilPaso1():
       utilState.paso===2?renderUtilPaso2():
       (utilState.paso===3&&utilState.modo==='recibir'&&!utilState.evidenciaConfirmada)?renderUtilRevisionEntrega():
       utilState.paso===3?renderUtilPaso3():
@@ -6163,12 +6179,9 @@ window.utilConfirmarFirma=async function(){
       // Foto odómetro separada
       const fotoKmComp=utilState.fotoKm?await comprimirBase64(utilState.fotoKm,800,0.65):null;
       const receptorEmail=(utilState.datosEntrega?.receptorEmail||'').toLowerCase();
-      // Mismo plazo que ya hace cumplir flRevisarTransferenciasPendientes en el
-      // portal (24h) — antes esto no se decía en ningún lado al iniciar la
-      // transferencia, así que ni el receptor ni la plataforma sabían de
-      // cuánto tiempo disponían hasta que ya casi vencía.
-      const venceEn=new Date(now.getTime()+24*60*60*1000);
-      const venceTxt=venceEn.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      // 19-nov-2026: la transferencia ya no vence. Sigue pendiente hasta que el
+      // receptor la reciba o un administrador la cancele; los recordatorios suben
+      // de nivel con el tiempo (tarjeta "Por aceptar" en la app + avisos del portal).
       // Crear documento de transferencia
       const docObj={
         codigo,tipo:'transferencia',
@@ -6180,7 +6193,7 @@ window.utilConfirmarFirma=async function(){
         fotoKm:fotoKmComp||null,
         receptorNombre:utilState.datosEntrega?.receptor||'',
         receptorEmail,
-        venceEn:venceEn.toISOString(),
+        venceEn:null,
         comentarioEntrega:utilState.datosEntrega?.comentarioEntrega||'',
         comentarioRecepcion:document.getElementById('util-comentario-recepcion')?.value?.trim()||'',
         estatus:'Pendiente recepción',
@@ -6218,8 +6231,8 @@ window.utilConfirmarFirma=async function(){
           tipo:'transferencia_iniciada',codigo,vehiculoEco:docObj.vehiculoEco,
           para:email,
           mensaje:esReceptor
-            ?`${userName} te está transfiriendo el ECO ${docObj.vehiculoEco||'—'}. Debes recibirlo (confirmar con tu firma) antes del ${venceTxt}, o la transferencia vencerá.`
-            :`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${docObj.receptorNombre||'—'}${receptorEmail?' ('+receptorEmail+')':' — sin correo capturado, no se le pudo notificar directamente'}. Pendiente de recepción, vence el ${venceTxt}.`,
+            ?`${userName} te está transfiriendo el ECO ${docObj.vehiculoEco||'—'}. Recíbelo en Flotilla → Por aceptar (confirma con tu firma). Mientras no lo recibas, sigue a nombre de ${userName}.`
+            :`${userName} inició transferencia del ECO ${docObj.vehiculoEco||'—'} a ${docObj.receptorNombre||'—'}${receptorEmail?' ('+receptorEmail+')':' — sin correo capturado, no se le pudo notificar directamente'}. Pendiente de recepción.`,
           leido:false,creadaEn:now.toISOString(),
         }).catch(()=>{});
       }));

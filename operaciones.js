@@ -2759,7 +2759,10 @@
             unsubTraspasos = fs.onSnapshot(fs.query(fs.collection(db, COL_HERR_TRASPASOS), fs.where("estatus", "==", "Pendiente recepción")), snap => {
                 cacheTraspasosPend = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 if (tabActual === "dashboard") opsRenderDashboard();
+                try { opsTraspasosRecordatorios(); } catch (e) { console.warn("[Herramienta] recordatorios", e); }
             }, () => { cacheTraspasosPend = []; });
+            // Los recordatorios suben de nivel con el tiempo aunque no cambie nada.
+            if (!opsTraspasoRecordandoTimer) opsTraspasoRecordandoTimer = setInterval(() => { try { opsTraspasosRecordatorios(); } catch (e) {} }, 15 * 60000);
         }
         if (!unsubConfigCalibracion) {
             unsubConfigCalibracion = fs.onSnapshot(fs.doc(db, COL_CONFIG_CALIBRACION, "general"), snap => {
@@ -2977,6 +2980,54 @@
         }, 30);
     }
 
+    // ═══ Traspasos de herramienta sin vencimiento (19-nov-2026) ═══
+    // Un traspaso ya no vence: queda "Pendiente recepción" hasta que el receptor lo acepta
+    // o lo rechaza en Flotilla, o hasta que se cancela aquí. Los recordatorios suben de nivel:
+    //   2 h → al receptor · 8 h → también a quien lo envió · 24 h → también a los
+    //   administradores de Operaciones, y se repite cada 24 h mientras siga pendiente.
+    // En la app del receptor, además, la tarjeta "Por aceptar" se vuelve más insistente.
+    // Corre en el portal de quien gestiona herramientas; avisoNivel/avisoUltimoEn evitan repetir.
+    function opsTraspasoHoras(t) { const ms = Date.now() - new Date(t.creadoEn || Date.now()).getTime(); return ms > 0 ? ms / 3600000 : 0; }
+    function opsTraspasoHaceTxt(t) {
+        const h = opsTraspasoHoras(t);
+        if (h < 1) return "hace " + Math.max(1, Math.round(h * 60)) + " min";
+        if (h < 24) return "hace " + Math.floor(h) + " h";
+        const d = Math.floor(h / 24); return "hace " + d + " día" + (d === 1 ? "" : "s");
+    }
+    let opsTraspasoRecordandoTimer = null;
+    async function opsTraspasosRecordatorios() {
+        if (!opsPuedeHacer("gestionar_herramientas")) return;
+        const H = 3600000, ahora = Date.now();
+        let fb = null;
+        for (const t of (cacheTraspasosPend || [])) {
+            if (t.destinoTipo === "almacen" || !t.receptorEmail) continue; // devoluciones las recibe Almacén aquí mismo
+            const horas = opsTraspasoHoras(t);
+            const nivel = horas >= 24 ? 3 : horas >= 8 ? 2 : horas >= 2 ? 1 : 0;
+            const ult = t.avisoNivel || 0;
+            const repetir = nivel === 3 && ult === 3 && t.avisoUltimoEn && (ahora - new Date(t.avisoUltimoEn).getTime()) >= 24 * H;
+            if (!nivel || (nivel <= ult && !repetir)) continue;
+            const enIso = new Date().toISOString();
+            try {
+                fb = fb || await opsGetFB();
+                await fs_updateTraspaso(fb, t.id, { avisoNivel: nivel, avisoUltimoEn: enIso });
+                Object.assign(t, { avisoNivel: nivel, avisoUltimoEn: enIso });
+                const rec = String(t.receptorEmail).toLowerCase().trim();
+                const dest = new Set([rec]);
+                if (nivel >= 2) [t.entregaEmail, t.creadoPorEmail].forEach(c => { if (c) dest.add(String(c).toLowerCase().trim()); });
+                if (nivel === 3) OPS_ADMINS.forEach(c => dest.add(c));
+                const hace = opsTraspasoHaceTxt(t), pieza = `${t.folio || ""} (${t.descripcion || ""})`;
+                await Promise.all([...dest].map(para => window.tcNotificar2(fb.fs, fb.db, {
+                    tipo: "herramienta_traspaso_recordatorio", traspasoId: t.id, para,
+                    mensaje: para === rec
+                        ? `Tienes por aceptar la herramienta ${pieza} desde ${hace}. Acéptala en Flotilla → Por aceptar. Mientras no la aceptes, sigue a nombre de ${t.entregaNombre || "quien te la envía"}.`
+                        : `${t.receptorNombre || rec} no ha aceptado la herramienta ${pieza} (enviada ${hace} por ${t.entregaNombre || "Almacén"}).`,
+                    leido: false, creadaEn: enIso,
+                }).catch(() => {})));
+            } catch (e) { console.warn("[Herramienta] recordatorio de traspaso", e); }
+        }
+    }
+    async function fs_updateTraspaso(fb, id, datos) { await fb.fs.updateDoc(fb.fs.doc(fb.db, COL_HERR_TRASPASOS, id), datos); }
+
     // ═══ Pendientes de herramienta (29-oct-2026): traspasos por aceptar, préstamos, piezas fuera en servicio
     //     y compras que reportan los técnicos (reposición). Todo en un solo apartado arriba del inventario. ═══
     let opsHerrComprasTec = null, opsHerrPendAbierto = true;
@@ -2988,7 +3039,7 @@
     }
     function opsHerrPendientesHTML(gestion) {
         const hoy = opsHoy(), en3 = opsDiaISOmas(hoy, 3);
-        const trasp = (cacheTraspasosPend || []).slice().sort((a, b) => String(a.venceEn || "").localeCompare(String(b.venceEn || "")));
+        const trasp = (cacheTraspasosPend || []).slice().sort((a, b) => String(a.creadoEn || "").localeCompare(String(b.creadoEn || ""))); // el más viejo primero
         const prest = cacheHerr.filter(h => h.estado === "prestamo" && h.prestamo).sort((a, b) => String(a.prestamo.hasta || "").localeCompare(String(b.prestamo.hasta || "")));
         const fuera = cacheHerr.filter(h => opsHerrServicioActivo(h) && !(h.estado === "prestamo" && opsHerrServicioActivo(h).deP)).sort((a, b) => String(a.servicioLigado.regresoEsperado || "").localeCompare(String(b.servicioLigado.regresoEsperado || "")));
         const compras = (opsHerrComprasTec || []).filter(c => c.estatus !== "Resuelta" && c.estatus !== "Rechazada");
@@ -2996,7 +3047,7 @@
         const mtto = cacheHerr.filter(h => h.estado !== "baja" && ((h.mantenimientos || []).some(m => m.abierto) || (h.proximoMantenimiento && h.proximoMantenimiento <= en30)))
             .sort((a, b) => String(a.proximoMantenimiento || "0").localeCompare(String(b.proximoMantenimiento || "0")));
         const venc = x => x && x < hoy, pronto = x => x && x >= hoy && x <= en3;
-        const nUrg = trasp.filter(t => t.venceEn && t.venceEn.slice(0, 10) <= en3).length + prest.filter(h => venc(h.prestamo.hasta)).length + fuera.filter(h => venc(h.servicioLigado.regresoEsperado)).length + compras.filter(c => c.estatus === "Por revisar").length + mtto.filter(h => h.proximoMantenimiento && h.proximoMantenimiento < hoy).length;
+        const nUrg = trasp.filter(t => opsTraspasoHoras(t) >= 24).length + prest.filter(h => venc(h.prestamo.hasta)).length + fuera.filter(h => venc(h.servicioLigado.regresoEsperado)).length + compras.filter(c => c.estatus === "Por revisar").length + mtto.filter(h => h.proximoMantenimiento && h.proximoMantenimiento < hoy).length;
         const total = trasp.length + prest.length + fuera.length + compras.length + mtto.length;
         if (!total) return "";
         const chip = (t, c, bg) => `<span style="font-size:10.5px;font-weight:800;color:${c};background:${bg};border-radius:99px;padding:2px 8px;white-space:nowrap;">${t}</span>`;
@@ -3004,7 +3055,7 @@
         const col = (tit, n, color, cuerpo) => `<div style="flex:1;min-width:260px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;"><div style="font-size:12.5px;font-weight:800;color:${color};margin-bottom:8px;">${tit} (${n})</div>${cuerpo || `<div style="font-size:11.5px;color:#94a3b8;">Nada pendiente.</div>`}</div>`;
         const cuerpoTr = trasp.slice(0, 8).map(t => t.destinoTipo === "almacen" ? fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Técnico")} la regresa a <b>${opsEsc(t.almacenDestinoNombre || "Almacén General")}</b></div>`,
             gestion ? chip("Recibir", "#fff", "#15803d") : chip("Por recibir", "#166534", "#dcfce7"), gestion ? `opsRecibirEnAlmacen('${t.id}')` : "") : fila(`<b>${opsEsc(t.folio || "")}</b> · ${opsEsc(t.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(t.entregaNombre || t.entregaEmail || "Almacén")} → ${opsEsc(t.receptorNombre || t.receptorEmail || "")}</div>`,
-            t.venceEn ? chip((t.venceEn < new Date().toISOString() ? "Venció " : "Vence ") + opsFmtFechaCorta(t.venceEn), t.venceEn.slice(0, 10) <= en3 ? "#b45309" : "#475569", t.venceEn.slice(0, 10) <= en3 ? "#fef3c7" : "#f1f5f9") : "", t.herramientaId ? `opsAbrirModalMovimiento('${t.herramientaId}')` : "")).join("");
+            (() => { const hh = opsTraspasoHoras(t); return chip("Pendiente " + opsTraspasoHaceTxt(t), hh >= 8 ? "#b91c1c" : hh >= 2 ? "#b45309" : "#475569", hh >= 8 ? "#fee2e2" : hh >= 2 ? "#fef3c7" : "#f1f5f9"); })(), t.herramientaId ? `opsAbrirModalMovimiento('${t.herramientaId}')` : "")).join("");
         const cuerpoPr = prest.slice(0, 8).map(h => fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:11px;color:#64748b;">Prestada a ${opsEsc(h.prestamo.aNombre || "")}${h.prestamo.folioEstacion ? " · " + opsEsc(h.prestamo.folioEstacion) : ""}</div>`,
             chip((venc(h.prestamo.hasta) ? "Debió regresar " : "Regresa ") + opsFmtFechaCorta(h.prestamo.hasta), venc(h.prestamo.hasta) ? "#b91c1c" : pronto(h.prestamo.hasta) ? "#b45309" : "#3730a3", venc(h.prestamo.hasta) ? "#fee2e2" : pronto(h.prestamo.hasta) ? "#fef3c7" : "#e0e7ff"), `opsAbrirModalMovimiento('${h.id}')`)).join("");
         const cuerpoFu = fuera.slice(0, 8).map(h => { const sv = h.servicioLigado; return fila(`<b>${opsEsc(h.folio)}</b> · ${opsEsc(h.descripcion || "")}<div style="font-size:11px;color:#64748b;">${opsEsc(sv.estacion || "Servicio")} · la lleva ${opsEsc(sv.entregadoA || "")}</div>`,
@@ -3511,14 +3562,14 @@
                 if (aTec) {
                     // De técnico a técnico: traspaso que el receptor acepta (igual que una sola pieza).
                     const entrega = cacheTec.find(t => t.id === h.tecnicoActualId);
-                    const now = new Date(), vence = new Date(now.getTime() + 86400000);
+                    const now = new Date();
                     await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
                         herramientaId: h.id, folio: h.folio || "", descripcion: h.descripcion || "",
                         entregaTecnicoId: h.tecnicoActualId, entregaEmail: entrega && entrega.correo ? entrega.correo : null, entregaNombre: entrega ? entrega.nombre : "Almacén",
-                        receptorTecnicoId: aTec, receptorEmail: receptor.correo, receptorNombre: receptor.nombre,
+                        receptorTecnicoId: aTec, receptorEmail: String(receptor.correo || "").toLowerCase().trim() || null, receptorNombre: receptor.nombre,
                         almacenOrigenId: opsAlmacenIdDe(h), almacenDestinoId: opsAlmacenIdDe(aTec),
                         comentario: nota, evidenciaBase64: null, estatus: "Pendiente recepción",
-                        creadoEn: now.toISOString(), venceEn: vence.toISOString(),
+                        creadoEn: now.toISOString(), venceEn: null,
                         origen: "operaciones_masivo", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
                         firmaEntrega: feMas,
                     });
@@ -3541,7 +3592,7 @@
             } catch (e) { saltadas.push(`${h.folio} (error: ${e.message || e})`); }
         }
         if (pendientes.length && receptor && receptor.correo) {
-            try { await window.tcNotificar2(fs, db, { tipo: "herramienta_traspaso_iniciada", para: receptor.correo, mensaje: `${opsNombreActual()} te está traspasando ${pendientes.length} herramienta(s): ${pendientes.join(", ")}. Acéptalas desde Flotilla en las próximas 24 h.`, leido: false, creadaEn: new Date().toISOString() }); } catch (e) {}
+            try { await window.tcNotificar2(fs, db, { tipo: "herramienta_traspaso_iniciada", para: receptor.correo, mensaje: `${opsNombreActual()} te está traspasando ${pendientes.length} herramienta(s): ${pendientes.join(", ")}. Acéptalas en Flotilla → Por aceptar.`, leido: false, creadaEn: new Date().toISOString() }); } catch (e) {}
         }
         try { if (typeof opsCargarTraspasosPendientes === "function") await opsCargarTraspasosPendientes(); } catch (e) {}
         alert(`Listo.\n${ok.length ? ok.length + " pieza(s) movidas a " + destNombre + "." : ""}${pendientes.length ? "\n" + pendientes.length + " traspaso(s) pendientes de que " + destNombre + " los acepte." : ""}${saltadas.length ? "\n\nNo se movieron: " + saltadas.join(", ") : ""}`);
@@ -4365,21 +4416,20 @@
         if (p.tecnicoDestinoId) {
             try {
                 const receptor = cacheTec.find(t => t.id === p.tecnicoDestinoId);
-                const now = new Date(), vence = new Date(now.getTime() + 86400000);
-                const venceTxt = vence.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                const now = new Date();
                 const ref = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
                     herramientaId: folio, folio, descripcion: p.descripcion || "",
                     entregaTecnicoId: null, entregaEmail: null, entregaNombre: almAlta ? almAlta.nombre : "Almacén",
-                    receptorTecnicoId: p.tecnicoDestinoId, receptorEmail: receptor && receptor.correo ? receptor.correo : null, receptorNombre: receptor ? receptor.nombre : "",
+                    receptorTecnicoId: p.tecnicoDestinoId, receptorEmail: receptor && receptor.correo ? String(receptor.correo).toLowerCase().trim() : null, receptorNombre: receptor ? receptor.nombre : "",
                     almacenOrigenId: almAlta ? almAlta.id : ALMACEN_GENERAL_ID, almacenDestinoId: opsAlmacenIdDe(p.tecnicoDestinoId),
                     comentario: "Alta de pieza nueva", evidenciaBase64: null, estatus: "Pendiente recepción",
-                    creadoEn: now.toISOString(), venceEn: vence.toISOString(),
+                    creadoEn: now.toISOString(), venceEn: null,
                     origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
                     firmaEntrega: p.firmaEntrega || null,
                 });
                 if (receptor && receptor.correo) {
                     await window.tcNotificar2(fs, db, { tipo: "herramienta_traspaso_iniciada", traspasoId: ref.id, para: receptor.correo,
-                        mensaje: `${opsNombreActual()} te está entregando la herramienta ${folio} (${p.descripcion || ""}). Acéptala y fírmala antes del ${venceTxt} desde Flotilla.`,
+                        mensaje: `${opsNombreActual()} te está entregando la herramienta ${folio} (${p.descripcion || ""}). Acéptala y fírmala en Flotilla → Por aceptar.`,
                         leido: false, creadaEn: now.toISOString() }).catch(() => {});
                 }
                 try { if (typeof opsCargarTraspasosPendientes === "function") opsCargarTraspasosPendientes(); } catch (e) {}
@@ -5873,7 +5923,7 @@
     function opsAbrirModalTraspasoPendiente(herramientaId, pend) {
         const h = cacheHerr.find(x => x.id === herramientaId);
         const wrap = document.getElementById("ops-modal-wrap");
-        const venceTxt = pend.venceEn ? new Date(pend.venceEn).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+        const enviadoTxt = pend.creadoEn ? opsFmtFechaCorta(pend.creadoEn) + " · " + opsTraspasoHaceTxt(pend) : "—";
         wrap.innerHTML = `
         <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
             <div style="background:#fff;border-radius:14px;width:380px;max-width:92vw;padding:22px;">
@@ -5882,7 +5932,7 @@
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:11px 13px;font-size:12.5px;color:#92400e;line-height:1.7;margin-bottom:16px;">
                     <div><strong>De:</strong> ${opsEsc(pend.entregaNombre || "—")}</div>
                     <div><strong>Para:</strong> ${opsEsc(pend.receptorNombre || "—")}</div>
-                    <div><strong>Vence:</strong> ${venceTxt}</div>
+                    <div><strong>Enviado:</strong> ${enviadoTxt}</div>
                     <div style="margin-top:4px;">Esta pieza está bloqueada hasta que ${opsEsc((pend.receptorNombre || "el receptor").split(" ")[0])} la acepte o la rechace desde Flotilla — o hasta que canceles el traspaso aquí.</div>
                 </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -6069,8 +6119,6 @@
         try {
             const { db, fs } = await opsGetFB();
             const now = new Date();
-            const venceEn = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-            const venceTxt = venceEn.toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
             const traspasoRef = await fs.addDoc(fs.collection(db, COL_HERR_TRASPASOS), {
                 herramientaId, folio: h.folio || "", descripcion: h.descripcion || "",
@@ -6078,21 +6126,21 @@
                 entregaEmail: entrega && entrega.correo ? entrega.correo : null,
                 entregaNombre: entrega ? entrega.nombre : "Almacén",
                 receptorTecnicoId: tecnicoNuevoId,
-                receptorEmail: receptor.correo,
+                receptorEmail: String(receptor.correo).toLowerCase().trim(),
                 receptorNombre: receptor.nombre,
                 almacenOrigenId: opsAlmacenIdDe(h),
                 almacenDestinoId: opsAlmacenIdDe(tecnicoNuevoId),
                 comentario: comentario || null,
                 evidenciaBase64: opsTraspasoFotoBase64 || null,
                 estatus: "Pendiente recepción",
-                creadoEn: now.toISOString(), venceEn: venceEn.toISOString(),
+                creadoEn: now.toISOString(), venceEn: null, // ya no vence (19-nov-2026)
                 origen: "operaciones", creadoPorEmail: opsUsuarioActual(), creadoPorNombre: opsNombreActual(),
                 firmaEntrega: feTr,
             });
 
             await window.tcNotificar2(fs, db, {
                 tipo: "herramienta_traspaso_iniciada", traspasoId: traspasoRef.id, para: receptor.correo,
-                mensaje: `${opsNombreActual()} te está traspasando la herramienta ${h.folio || ""} (${h.descripcion || ""}). Acéptala antes del ${venceTxt} desde Flotilla, o el traspaso vencerá.`,
+                mensaje: `${opsNombreActual()} te está traspasando la herramienta ${h.folio || ""} (${h.descripcion || ""}). Acéptala en Flotilla → Por aceptar. Mientras no la aceptes, sigue a nombre de quien te la envía.`,
                 leido: false, creadaEn: now.toISOString(),
             }).catch(err => console.warn("[operaciones.js] no se pudo notificar al receptor:", err));
 

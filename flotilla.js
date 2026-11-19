@@ -1217,77 +1217,54 @@ function ldTrans(){
         resolve();
         if(window._flInitDone&&hAdm())flRevisarTransferenciasPendientes();
       },(err)=>{console.error('[FL] onSnapshot transferencias',err);if(!flTrans)flTrans=[];resolve();});
+      // Los recordatorios suben de nivel con el tiempo aunque no cambie nada en la colección.
+      setInterval(()=>{if(window._flInitDone&&hAdm())flRevisarTransferenciasPendientes();},15*60000);
     }catch(e){console.error('[FL] ldTrans',e);flTrans=[];resolve();}
   });
 }
 
-// ── Aviso de transferencia pendiente demasiado tiempo (24h / 42h / 48h) ──
-// No hay backend con tareas programadas en este sistema, así que esto solo
-// se detecta cuando un administrador tiene el portal abierto — no es
-// instantáneo, pero evita que una transferencia se quede olvidada para
-// siempre sin que nadie se entere.
+// ── Recordatorios de transferencia pendiente (19-nov-2026) ──
+// Las transferencias YA NO VENCEN: siguen "Pendiente recepción" hasta que el
+// receptor las recibe o un administrador las cancela. En lugar de vencer, los
+// avisos suben de nivel con el tiempo (la app del receptor además muestra la
+// tarjeta "Por aceptar", que se vuelve más insistente sin interrumpirlo):
+//   · 2 h  → aviso al receptor
+//   · 8 h  → aviso al receptor y a quien entregó
+//   · 24 h → aviso al receptor, a quien entregó y a los administradores de Flotilla,
+//            y se repite cada 24 h mientras siga pendiente.
+// No hay backend con tareas programadas: esto corre cuando un administrador tiene
+// el portal abierto. Los campos avisoNivel/avisoUltimoEn evitan avisos repetidos.
 async function flRevisarTransferenciasPendientes(){
-  const ahora=Date.now();
+  const ahora=Date.now(), H=3600000;
   const pendientes=flTrans.filter(t=>t.estatus==='Pendiente recepción');
-  // Si un admin reactivó la transferencia, el conteo vuelve a empezar desde
-  // ese momento (reactivadaEn) en vez de la fecha de creación original.
   const ref=t=>new Date(t.reactivadaEn||t.creadoEn).getTime();
-
-  // 10h — aviso temprano (mitad del plazo de 24h)
-  const stale=pendientes.filter(t=>!t.avisadoPendiente&&(ahora-ref(t))>10*60*60*1000);
-  for(const t of stale){
+  for(const t of pendientes){
+    const horas=(ahora-ref(t))/H; if(isNaN(horas)) continue;
+    const nivel=horas>=24?3:horas>=8?2:horas>=2?1:0;
+    const ult=t.avisoNivel||0;
+    const repetir=nivel===3&&ult===3&&t.avisoUltimoEn&&(ahora-new Date(t.avisoUltimoEn).getTime())>=24*H;
+    if(!nivel||(nivel<=ult&&!repetir)) continue;
+    const enIso=new Date().toISOString();
     try{
-      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPendiente:true});
-      const destinatarios=new Set(FLOTILLA_ADMINS);
-      if(t.receptorEmail)destinatarios.add(t.receptorEmail);
-      await Promise.all([...destinatarios].map(admEmail=>window.tcNotificar2(fs, db,{
-        tipo:'transferencia_pendiente_larga',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
-        para:admEmail,
-        mensaje:`Transferencia del ECO ${t.vehiculoEco||'—'} sigue "Pendiente recepción" desde hace más de 72h (código ${t.codigo}). Entregó: ${t.entregaNombre||'—'}.`,
-        leido:false,creadaEn:new Date().toISOString(),
-      }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 72h',e);}
-  }
-
-  // 20h — aviso de "por vencer" (4h antes del vencimiento final de 24h), va al entregador y al receptor designado
-  const porVencer=pendientes.filter(t=>!t.avisadoPorVencer&&(ahora-ref(t))>20*60*60*1000);
-  for(const t of porVencer){
-    try{
-      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisadoPorVencer:true});
-      const destinatarios=new Set(FLOTILLA_ADMINS);
-      if(t.entregaEmail)destinatarios.add(t.entregaEmail);
-      if(t.receptorEmail)destinatarios.add(t.receptorEmail);
-      await Promise.all([...destinatarios].map(email=>window.tcNotificar2(fs, db,{
-        tipo:'transferencia_por_vencer',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
-        para:email,
-        mensaje:`⚠ La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) vence en menos de 4 horas si no se recibe. Entregó: ${t.entregaNombre||'—'}.`,
-        leido:false,creadaEn:new Date().toISOString(),
-      }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 20h',e);}
-  }
-
-  // 24h — vencimiento automático: la transferencia se marca "Vencida" y el
-  // vehículo se libera de vuelta a quien la inició (nunca llegó a completarse).
-  // Un administrador siempre puede reactivarla o cancelarla desde el historial.
-  const vencidas=pendientes.filter(t=>(ahora-ref(t))>24*60*60*1000);
-  for(const t of vencidas){
-    try{
-      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{estatus:'Vencida',venciadoEn:new Date().toISOString()});
-      if(t.entregaEmail){
-        try{
-          const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
-          if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:null,transferenciaPendienteEco:null,transferenciaPendienteReceptor:null});
-        }catch(e2){console.warn('[FL] limpiar transferenciaPendiente al vencer',e2);}
-      }
-      const destinatarios=new Set(FLOTILLA_ADMINS);
-      if(t.entregaEmail)destinatarios.add(t.entregaEmail);
-      await Promise.all([...destinatarios].map(email=>window.tcNotificar2(fs, db,{
-        tipo:'transferencia_vencida',codigo:t.codigo,vehiculoEco:t.vehiculoEco||'—',
-        para:email,
-        mensaje:`La transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo}) venció después de 24 horas sin ser recibida. El vehículo sigue asignado a ${t.entregaNombre||'—'}. Un administrador puede reactivarla o cancelarla desde el historial de transferencias.`,
-        leido:false,creadaEn:new Date().toISOString(),
-      }).catch(()=>{})));
-    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes 24h',e);}
+      await fs.updateDoc(fs.doc(db,C.TRANS,t.id),{avisoNivel:nivel,avisoUltimoEn:enIso});
+      Object.assign(t,{avisoNivel:nivel,avisoUltimoEn:enIso});
+      const dias=Math.floor(horas/24), haceTxt=horas<24?Math.floor(horas)+' h':dias+' día'+(dias===1?'':'s');
+      const eco=t.vehiculoEco||'—';
+      const destinatarios=new Set();
+      if(t.receptorEmail)destinatarios.add(String(t.receptorEmail).toLowerCase());
+      if(nivel>=2&&t.entregaEmail)destinatarios.add(String(t.entregaEmail).toLowerCase());
+      if(nivel===3)FLOTILLA_ADMINS.forEach(e=>destinatarios.add(e));
+      await Promise.all([...destinatarios].map(email=>{
+        const esRec=email===String(t.receptorEmail||'').toLowerCase();
+        const mensaje=esRec
+          ?`Tienes por recibir el ECO ${eco} desde hace ${haceTxt}. Recíbelo en Flotilla → Por aceptar. Mientras no lo recibas, sigue a nombre de ${t.entregaNombre||'quien te lo envía'}.`
+          :`La transferencia del ECO ${eco} (código ${t.codigo||'—'}) de ${t.entregaNombre||'—'} a ${t.receptorNombre||t.receptorEmail||'—'} lleva ${haceTxt} sin recibirse.`;
+        return window.tcNotificar2(fs, db,{
+          tipo:nivel===3?'transferencia_pendiente_larga':'transferencia_recordatorio',codigo:t.codigo,vehiculoEco:eco,
+          para:email,mensaje,leido:false,creadaEn:enIso,
+        }).catch(()=>{});
+      }));
+    }catch(e){console.warn('[FL] flRevisarTransferenciasPendientes',e);}
   }
 }
 let _unsubChkSem=null;
@@ -5597,24 +5574,32 @@ window.flActualizarEvidenciaSolicitud = function(solId) {
 };
 
 // ── HISTORIAL DE TRANSFERENCIAS — filtros y exportación ─────────
-// Reactivar una transferencia "Vencida": vuelve a "Pendiente recepción" y le
-// da otros 7 días completos (el conteo se reinicia desde ahora, no desde la
-// fecha de creación original).
+// Reactivar una transferencia "Vencida" (de antes del 19-nov-2026, cuando aún
+// vencían): vuelve a "Pendiente recepción" y ya no vuelve a vencer. Los
+// recordatorios se cuentan desde ahora.
 window.flReactivarTransferencia=async function(id){
   if(!hAdm())return;
   const t=flTrans.find(x=>x.id===id);if(!t)return;
-  if(!(await flConfirmar(`¿Reactivar la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Tendrá otros 7 días para completarse.`,{peligroso:false})))return;
+  if(!(await flConfirmar(`¿Reactivar la transferencia del ECO ${t.vehiculoEco||'—'} (código ${t.codigo})? Volverá a quedar pendiente hasta que ${t.receptorNombre||'el receptor'} la reciba o la canceles.`,{peligroso:false})))return;
   try{
     const ahora=new Date().toISOString();
     await fs.updateDoc(fs.doc(db,C.TRANS,id),{
       estatus:'Pendiente recepción',
       reactivadaEn:ahora,
-      avisadoPendiente:false,
-      avisadoPorVencer:false,
+      avisoNivel:0,
+      avisoUltimoEn:null,
       venciadoEn:null,
+      venceEn:null,
     });
-    Object.assign(t,{estatus:'Pendiente recepción',reactivadaEn:ahora,avisadoPendiente:false,avisadoPorVencer:false,venciadoEn:null});
-    flToast('Transferencia reactivada — 7 días más para completarse','ok');
+    Object.assign(t,{estatus:'Pendiente recepción',reactivadaEn:ahora,avisoNivel:0,avisoUltimoEn:null,venciadoEn:null,venceEn:null});
+    // Vuelve a marcar al entregador como "con transferencia pendiente" (se limpió al vencer).
+    if(t.entregaEmail){
+      try{
+        const snapEnt=await fs.getDocs(fs.query(fs.collection(db,'fl_usuarios'),fs.where('email','==',t.entregaEmail)));
+        if(!snapEnt.empty) await fs.updateDoc(snapEnt.docs[0].ref,{transferenciaPendiente:t.codigo||null,transferenciaPendienteEco:t.vehiculoEco||null,transferenciaPendienteReceptor:t.receptorNombre||t.receptorEmail||''});
+      }catch(e2){console.warn('[FL] marcar transferenciaPendiente al reactivar',e2);}
+    }
+    flToast('Transferencia reactivada — vuelve a aparecerle al receptor en "Por aceptar"','ok');
     document.getElementById('fl-trans-r')&&(document.getElementById('fl-trans-r').innerHTML=rTransListFiltrada(flTrans));
     document.querySelector('.fl-ov')?.remove();
   }catch(e){console.error('[FL] flReactivarTransferencia',e);flToast('No se pudo reactivar','err');}
@@ -5645,6 +5630,14 @@ window.flCancelarTransferencia=async function(id){
   }catch(e){console.error('[FL] flCancelarTransferencia',e);flToast('No se pudo cancelar','err');}
 };
 
+// "hace 3 h" / "hace 2 días" — cuánto lleva pendiente una transferencia.
+function flPendHaceTxt(iso){
+  const h=(Date.now()-new Date(iso||Date.now()).getTime())/3600000;
+  if(!(h>=0))return '';
+  if(h<1)return 'hace '+Math.max(1,Math.round(h*60))+' min';
+  if(h<24)return 'hace '+Math.floor(h)+' h';
+  const d=Math.floor(h/24);return 'hace '+d+' día'+(d===1?'':'s');
+}
 function rTransListFiltrada(lista){
   if(!lista||!lista.length)return`<div style="padding:20px;text-align:center;color:#94A3B8;font-size:12px">Sin transferencias registradas</div>`;
   // Prioridad de seguimiento: Pendiente y Vencida primero (requieren acción),
@@ -5690,14 +5683,14 @@ function rTransListFiltrada(lista){
       </div>
       ${fotos.length?`<div style="display:flex;gap:5px;margin-top:8px">${fotos.map(f=>`<img src="${f}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #E8EDF5">`).join('')}${(t.entregaFotos||t.fotos||[]).length>4?`<div style="width:44px;height:44px;border-radius:6px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#64748B">+${(t.entregaFotos||t.fotos||[]).length-4}</div>`:''}
       </div>`:''}
-      ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que ${t.receptorNombre||'el receptor'} confirme con el código ${t.codigo||'—'}${t.venceEn?` · Vence el ${new Date(t.venceEn).toLocaleString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}`:''}</div>`:''}
+      ${isPend?`<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:7px;font-size:11px;font-weight:700;color:#B45309">Esperando que ${t.receptorNombre||'el receptor'} confirme con el código ${t.codigo||'—'} · pendiente ${flPendHaceTxt(t.reactivadaEn||t.creadoEn)}</div>`:''}
       ${isPend&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
         <button onclick="flRecibirTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">Recibir desde portal</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
       </div>`:''}
       ${isVencida?`<div style="margin-top:8px;padding:6px 10px;background:#FEF2F2;border-radius:7px;font-size:11px;font-weight:700;color:#B91C1C">Código vencido${t.venciadoEn?` desde el ${new Date(t.venciadoEn).toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})}`:''} — el vehículo sigue asignado a ${t.entregaNombre||'—'}. Debía recibirlo ${t.receptorNombre||t.receptorEmail||'—'} con el código ${t.codigo||'—'}.${hAdm()?' Reactiva o cancela abajo.':''}</div>`:''}
       ${isVencida&&hAdm()?`<div style="margin-top:8px;display:flex;gap:8px" onclick="event.stopPropagation()">
-        <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar (+24h)</button>
+        <button onclick="flReactivarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#0A1628;color:#fff;border:none;border-radius:8px;cursor:pointer">↻ Reactivar</button>
         <button onclick="flCancelarTransferencia('${t.id}')" style="flex:1;font-size:11px;font-weight:800;padding:8px;background:#fff;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer">✕ Cancelar</button>
       </div>`:''}
     </div>`;
