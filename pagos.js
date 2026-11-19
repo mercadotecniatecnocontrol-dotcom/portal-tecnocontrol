@@ -1294,6 +1294,9 @@ window.__vp2Detalle=async function(id,desde){
     if(s.entregado_en) tl.push(['#16a34a','Pagado <b>'+din(s.monto_entregado)+'</b> por '+esc(s.pagado_por_nombre||s.entregado_por||'')+' ('+esc(FORMAS[s.forma_entrega]||s.forma_entrega||'')+(s.referencia_pago?', ref. '+esc(s.referencia_pago):'')+') · '+fh(s.entregado_en)]);
     comps.forEach(cp=>tl.push([cp.estatus==='Aceptado'?'#16a34a':cp.estatus==='Rechazado'?'#dc2626':'#2563eb','Comprobante <b>'+din(cp.total)+'</b> ('+esc(CATS[cp.categoria]||cp.categoria||'')+') subido por '+esc(cp.tecnico_nombre||'')+' · '+fh(cp.creado_en)+' — '+esc(cp.estatus)+(cp.revisado_por?' por '+esc(cp.revisado_por):'')]));
     (t.correcciones||[]).forEach(z=>tl.push(['#7c3aed','Corregido por <b>'+esc(z.por||'')+'</b>: '+esc((z.cambios||[]).join('; '))+(z.motivo?' — Motivo: '+esc(z.motivo):'')+' · '+fh(z.en)]));
+    comps.forEach(cp=>((cp.validacion||{}).historial||[]).forEach(h=>tl.push(['#7c3aed','Comprobante de '+din(cp.total)+' editado por <b>'+esc(h.por||'')+'</b>: '+esc((h.cambios||[]).join('; '))+(h.comentario?' — “'+esc(h.comentario)+'”':'')+' · '+fh(h.en)])));
+    (t.comprobantesEliminados||[]).forEach(z=>{ const k2=z.comprobante||{}; tl.push(['#dc2626','Factura de <b>'+din(k2.total)+'</b> ('+esc(CATS[k2.categoria]||k2.categoria||'')+(k2.emisor_nombre?', '+esc(k2.emisor_nombre):'')+') eliminada por <b>'+esc(z.por||'')+'</b>'+(z.comentario?' — “'+esc(z.comentario)+'”':'')+' · '+fh(z.en)]); });
+    ((t.sobrante||{}).historial||[]).forEach(h=>tl.push(['#0e7490','Sobrante: '+esc((h.cambios||[]).join('; '))+' por <b>'+esc(h.por||'')+'</b>'+(h.comentario?' — “'+esc(h.comentario)+'”':'')+' · '+fh(h.en)]));
     if(s.cierre) tl.push(['#15803d','Cerrado · '+esc((s.cierre&&(s.cierre.por||s.cierre.cerradoPor))||'')+' '+fh(s.cierre&&(s.cierre.en||s.cierre.fecha))]);
     const bA=(ruta,txt)=>ruta?'<button class="vp2-btn" style="height:30px;font-size:11.5px" onclick="window.__vp2Archivo(\''+esc(ruta)+'\')">'+txt+'</button>':'';
     modal(
@@ -1334,13 +1337,16 @@ window.__vp2Detalle=async function(id,desde){
               (cp.motivo_rechazo?'<div style="font-size:11px;color:#b91c1c">Rechazado: '+esc(cp.motivo_rechazo)+'</div>':'')+
               '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+(arch.length?arch.map((ru,i)=>bA(ru,'Archivo '+(i+1))).join(''):bA(cp.xml_path,'XML')+bA(cp.pdf_path,'PDF')+bA(cp.foto_path,'Foto'))+
               (desde==='conta'&&!s.cierre&&cp.estatus!=='Aceptado'?'<button class="vp2-btn pri" style="height:30px;font-size:11.5px" onclick="window.__vp2Revisar('+cp.id+','+s.id+',\'Aceptado\')">Aceptar</button>':'')+
-              (desde==='conta'&&!s.cierre&&cp.estatus!=='Rechazado'?'<button class="vp2-btn" style="height:30px;font-size:11.5px;color:#b91c1c" onclick="window.__vp2Revisar('+cp.id+','+s.id+',\'Rechazado\')">Rechazar</button>':'')+'</div></div>'; }).join('')
+              (desde==='conta'&&!s.cierre&&cp.estatus!=='Rechazado'?'<button class="vp2-btn" style="height:30px;font-size:11.5px;color:#b91c1c" onclick="window.__vp2Revisar('+cp.id+','+s.id+',\'Rechazado\')">Rechazar</button>':'')+
+              (desde==='conta'&&esConta()?'<button class="vp2-btn" style="height:30px;font-size:11.5px;border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2CompEditar('+cp.id+','+s.id+',\'conta\')">'+IC.nota+' Editar / eliminar</button>':'')+
+              (((cp.validacion||{}).historial||[]).length?'<span style="font-size:10.5px;color:#7c3aed;font-weight:700;align-self:center">Editado '+cp.validacion.historial.length+' vez/veces</span>':'')+'</div></div>'; }).join('')
             :(s.entregado_en?'<div style="font-size:12px;color:#9ca3af">El técnico todavía no sube comprobantes.</div>':''))+
         '</div></div>'+
       '<div class="vp2-sec" style="margin-top:16px">Historial</div><div class="vp2-tl">'+tl.map(a=>'<div style="--c:'+a[0]+'">'+a[1]+'</div>').join('')+'</div>'+
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">'+
         (desde==='conta'&&s.estatus==='Pagada'&&!s.cierre?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2ComprobarUrgente('+s.id+')">'+IC.doc+' Comprobar por el técnico (urgencia)</button>':'')+
         (desde==='conta'&&ec&&ec.falta>0.5&&s.responsable_email&&!s.cierre?'<button class="vp2-btn dark" onclick="window.__vp2Recordar('+s.id+')">Recordarle al técnico</button>':'')+
+        (desde==='conta'&&esConta()&&s.entregado_en&&(t.sobrante||sobranteDe(s,comps).exc>0.5)?'<button class="vp2-btn" style="border-color:#0e7490;color:#0e7490" onclick="window.__vp2Sobrante('+s.id+',\'conta\')">'+IC.dinero+(t.sobrante?' Sobrante '+din(t.sobrante.monto)+' · '+esc(t.sobrante.estatus):' Capturar sobrante '+din(sobranteDe(s,comps).exc))+'</button>':'')+
         (ED?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2Editar('+s.id+')">'+IC.nota+' Editar / corregir</button>':'')+
         (s.estatus==='Pendiente'&&desde==='pagos'?'<button class="vp2-btn pri" onclick="window.__vp2Deposito('+s.id+')">'+IC.dinero+' Registrar depósito</button>':'')+
         '<button class="vp2-btn" onclick="window.__vp2Cerrar()">Cerrar</button></div>');
@@ -1634,7 +1640,7 @@ async function cargarConta(){ tecnicos(); const p=contConta(); if(!p) return; p.
     pintarConta(); if(C.concil===null) cargarConcil(); }
   catch(e){ p.innerHTML='<div class="vp2"><div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div></div>'; } }
 // ── Interfaz de Contabilidad (29-oct-2026): menú lateral + secciones, preparada para Aspel, CONTPAQi y bancos ──
-const C_SECC=[['inicio','Inicio','M3 12l9-9 9 9M5 10v10h14V10'],['viaticos','Viáticos','M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],['calendario','Calendario','M3 4h18v18H3zM16 2v4M8 2v4M3 10h18'],['bancos','Bancos · conciliación','M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z'],['polizas','Aspel / CONTPAQi','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8']];
+const C_SECC=[['inicio','Inicio','M3 12l9-9 9 9M5 10v10h14V10'],['viaticos','Viáticos','M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],['calendario','Calendario','M3 4h18v18H3zM16 2v4M8 2v4M3 10h18'],['sobrantes','Sobrantes','M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'],['seguimiento','Seguimiento general','M3 3v18h18M7 14l4-4 4 4 5-5'],['bancos','Bancos · conciliación','M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z'],['polizas','Aspel / CONTPAQi','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8']];
 function svgP(d){ return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>'; }
 function cssConta(){ if(document.getElementById('vp2c-css')) return; const st=document.createElement('style'); st.id='vp2c-css'; st.textContent=`
 .vp2c{display:grid;grid-template-columns:230px 1fr;gap:0;background:#f4f5f7;border-radius:18px;overflow:hidden;margin-bottom:22px;min-height:640px}
@@ -1693,17 +1699,20 @@ function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=
     const ev=[]; todos.filter(pasaQ).forEach(({s,e})=>{ if(s.fecha_limite_comprobacion) ev.push({d:s.fecha_limite_comprobacion,k:e.k,c:e.c,t:(s.responsable_nombre||s.integrantes||'').split(',')[0]+' · '+s.folio,s:'Límite para comprobar',m:e.falta>0.5?'Falta '+din(e.falta):e.t,fn:'window.__vp2Detalle('+s.id+',\'conta\')'});
       if(s.entregado_en) ev.push({d:String(s.entregado_en).slice(0,10),k:'pagado',c:'#16a34a',t:'Pagado · '+s.folio,s:s.responsable_nombre||'',m:din(s.monto_entregado),fn:'window.__vp2Detalle('+s.id+',\'conta\')'}); });
     cuerpo=calendarioHTML(C,ev,[{k:'vencido',t:'Vencido sin comprobar',c:'#b91c1c'},{k:'pend',t:'Pendiente de comprobar',c:'#a16207'},{k:'revisar',t:'Por revisar',c:'#1d4ed8'},{k:'comprobado',t:'Comprobado',c:'#15803d'},{k:'cerrado',t:'Cerrado',c:'#15803d'},{k:'pagado',t:'Día en que se pagó',c:'#16a34a'}],'c');
+  } else if(C.secc==='sobrantes'){ titulo='Sobrantes'; sub='Cuando un técnico comprueba más de lo que se le depositó, la diferencia es un sobrante: la empresa se lo debe. Captúralo, destínalo a una cuenta de acreedor y márcalo como saldado cuando se le pague.'; cuerpo=sobrantesHTML();
+  } else if(C.secc==='seguimiento'){ titulo='Seguimiento general'; sub='Las mismas vistas de Operaciones, para consulta: todos los viáticos por etapa (desde que se piden), quién debe comprobar y qué falta por empresa. Haz clic en cualquiera para ver su ficha.'; cuerpo=segHTML();
   } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
   } else { titulo='Aspel / CONTPAQi'; sub='Pólizas de los viáticos listas para importar. Captura una vez tu catálogo de cuentas; el archivo sale con cargos y abonos cuadrados. Revisa siempre antes de importar.'; cuerpo=polizasHTML(); }
-  const pend=cnt('vencido')+porRev;
+  const pend=cnt('vencido')+porRev, sobP=sobPendientes();
   p.innerHTML='<div class="vp2c"><nav class="vp2c-nav"><div class="marca">'+svgP('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6')+'Contabilidad</div><div class="grp">Trabajo diario</div>'+
-    C_SECC.slice(0,3).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+(k==='viaticos'&&pend?'<b>'+pend+'</b>':'')+'</button>').join('')+
-    '<div class="grp">Cierre y auditoría</div>'+C_SECC.slice(3).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+'</button>').join('')+
+    C_SECC.slice(0,5).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+(k==='viaticos'&&pend?'<b>'+pend+'</b>':'')+(k==='sobrantes'&&sobP?'<b>'+sobP+'</b>':'')+'</button>').join('')+
+    '<div class="grp">Cierre y auditoría</div>'+C_SECC.slice(5).map(([k,t,d])=>'<button class="'+(C.secc===k?'on':'')+'" onclick="window.__vp2C(\'secc\',\''+k+'\')">'+svgP(d)+t+'</button>').join('')+
     '<div class="pie">Aspel es la contabilidad oficial. El portal captura, da seguimiento y entrega archivos listos para importar.</div></nav>'+
     '<div class="vp2c-main vp2" style="margin:0;border-radius:0"><div class="vp2-hd"><div><div class="vp2-t">'+esc(titulo)+'</div><div class="vp2-s">'+esc(sub)+'</div></div></div>'+cuerpo+'</div></div>';
 }
 window.__vp2C=function(k,v){ if(k==='mes'){ const d=dObj(C.mes+'-01'); d.setMonth(d.getMonth()+v); C.mes=iso(d).slice(0,7); C.dia=C.mes+'-01'; }
-  else if(k==='ver'){ C.secc='viaticos'; C.filtro=v; } else C[k]=v;
+  else if(k==='ver'){ C.secc='viaticos'; C.filtro=v; } else if(k==='persona'){ C.secc='viaticos'; C.filtro='pend'; C.q=v; } else C[k]=v;
+  if(k==='secc'||k==='segTab'||k==='segEt') C.segN=50; if(k==='sobF') C.sobN=50;
   if(k==='secc'&&(v==='bancos'||v==='inicio')) cargarConcil(); if(k==='secc'&&v==='polizas') cargarCuentas();
   pintarConta(); if(k==='q'){ const i=document.getElementById('vp2-cq'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } } };
 
@@ -1835,6 +1844,236 @@ window.__vp2Revisar=async function(compId,viaId,est){ let mot=null; if(est==='Re
 window.__vp2Recordar=async function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; const e=estConta(s);
   const ok=await avisoApp(s.responsable_email,'viat_tec_recordatorio','Contabilidad: te falta comprobar '+din(e.falta)+' de tus viáticos '+s.folio+' (límite '+fc(s.fecha_limite_comprobacion)+'). Sube fotos o PDF de tus facturas en la app → Comprobar viáticos.',s);
   toast(ok?'Se le mandó el recordatorio a su app.':'No se pudo mandar el recordatorio.'); };
+
+// ───────────── Comprobantes: edición total, borrado, sobrantes y seguimiento (19-nov-2026) ─────────────
+// · Solo Contabilidad (contabilidad@) edita todo un comprobante o lo borra. Cada cambio queda en el historial,
+//   con comentario opcional: ediciones en validacion.historial del comprobante; borrados en
+//   tarifas.comprobantesEliminados del viático (los archivos se conservan en el bucket para auditoría).
+// · Sobrante = lo comprobado y aceptado de más sobre lo depositado. Se guarda en tarifas.sobrante del viático
+//   y Contabilidad lo destina a una cuenta de acreedor (sección Sobrantes). No requiere tablas nuevas.
+// · Seguimiento: las vistas de Operaciones que no existían en Contabilidad (por etapa, quién debe, por empresa).
+const CORREO_CONTA='contabilidad@tecnocontrol.com.mx';
+const esConta=()=>yo().correo===CORREO_CONTA;
+window.__vp2EsConta=esConta;
+const r2=n=>Math.round((Number(n)||0)*100)/100;
+const TIPOS_COMP={cfdi:'Factura (XML)',factura_archivo:'Factura en foto o PDF',no_deducible:'Sin factura (no deducible)'};
+const EST_COMP=['Por revisar','Aceptado','Rechazado'];
+const EST_SOB=['Por destinar','Destinado a cuenta','Saldado','No aplica'];
+const CAMPOS_COMP=[['tipo','Tipo'],['categoria','Concepto'],['total','Total'],['fecha_comprobante','Fecha'],['emisor_nombre','Emisor'],['emisor_rfc','RFC'],['concepto','Descripción'],['forma_pago','Forma de pago'],['uuid','UUID'],['estatus','Estatus'],['motivo_rechazo','Motivo de rechazo']];
+const dsd=d=>d==='ops'?'ops':'conta';
+function sobranteDe(s,comps){ const dep=s.monto_entregado!=null?Number(s.monto_entregado):depositoDe(s); const acept=(comps||[]).filter(x=>x.estatus==='Aceptado').reduce((a,x)=>a+(Number(x.total)||0),0); return {dep:r2(dep),acept:r2(acept),exc:r2(acept-dep)}; }
+async function trasCambio(viaId,desde){ modal('');
+  if(desde==='ops'){ if(typeof window.opsViaRefrescarComp==='function') await window.opsViaRefrescarComp(viaId); return; }
+  if(document.getElementById('vp-conta')) await cargarConta(); await window.__vp2Detalle(viaId,'conta'); }
+async function tarifasMerge(viaId,fn){ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select('tarifas').eq('id',viaId).single(); if(r.error) throw r.error;
+  const t=JSON.parse(JSON.stringify(r.data.tarifas||{})); fn(t);
+  const u=await c.from('ops_solicitudes_viaticos').update({tarifas:t,actualizado_en:new Date().toISOString(),actualizado_por:yo().correo}).eq('id',viaId).select('id');
+  if(u.error) throw u.error; if(!(u.data||[]).length) throw new Error('La base de datos no dejó guardar (sin permiso o el viático ya no existe).');
+  [C.lista,C.todas||[]].forEach(l=>{ const s=l.find(x=>x.id===viaId); if(s) s.tarifas=t; }); return t; }
+const histHTML=(l,col)=>(l||[]).length?'<div class="vp2-tl">'+l.slice().reverse().map(h=>'<div style="--c:'+col+'"><b>'+esc(h.por||'')+'</b> · '+fh(h.en)+'<br>'+esc((h.cambios||[]).join('; '))+(h.comentario?'<br><i style="color:#6b7280">“'+esc(h.comentario)+'”</i>':'')+'</div>').join('')+'</div>':'';
+
+// ── Editar comprobante (todo) ──
+window.__vp2CompEditar=async function(compId,viaId,desde){ desde=dsd(desde); if(!esConta()){ alert('Solo Contabilidad puede editar comprobantes.'); return; } css();
+  try{ const c=await sb(); const r=await c.from('ops_viaticos_comprobantes').select('*').eq('id',compId).single(); if(r.error) throw r.error; const x=r.data; window.__vp2CompActual=x;
+    const v=k=>esc(x[k]==null?'':x[k]); const opt=(o,sel)=>Object.keys(o).map(k=>'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+esc(o[k])+'</option>').join('');
+    const inp=(k,t,extra)=>'<label class="vp2-lb">'+t+'<input id="vp2e-'+k+'" class="vp2-fi" value="'+v(k)+'" '+(extra||'')+'></label>';
+    modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Editar comprobante</div><div style="font-size:12.5px;color:#6b7280">'+esc(x.viatico_folio||'')+' · lo subió '+esc(x.tecnico_nombre||'')+' · '+fh(x.creado_en)+'</div></div><button class="vp2-ib" onclick="window.__vp2Cerrar()">'+IC.cerrar+'</button></div>'+
+      '<div style="font-size:12px;color:#374151;background:#f5f3ff;border-radius:10px;padding:8px 11px;margin:10px 0">Cambia lo que necesites. Cada cambio queda en el historial con tu nombre, la fecha y tu comentario.</div>'+
+      '<div class="vp2-gr" style="grid-template-columns:1fr 1fr;margin:0">'+
+        '<label class="vp2-lb">Tipo<select id="vp2e-tipo" class="vp2-fi">'+opt(TIPOS_COMP,x.tipo)+'</select></label>'+
+        '<label class="vp2-lb">Concepto<select id="vp2e-categoria" class="vp2-fi">'+opt(CATS,x.categoria)+'</select></label>'+
+        inp('total','Total $','type="number" step="0.01" min="0"')+
+        '<label class="vp2-lb">Fecha del comprobante<input id="vp2e-fecha_comprobante" type="date" class="vp2-fi" value="'+esc(String(x.fecha_comprobante||'').slice(0,10))+'"></label>'+
+        inp('emisor_nombre','Emisor o negocio')+inp('emisor_rfc','RFC del emisor')+inp('concepto','Descripción')+inp('forma_pago','Forma de pago SAT','placeholder="28 = débito, 01 = efectivo"')+
+        inp('uuid','UUID (folio fiscal)')+
+        '<label class="vp2-lb">Estatus<select id="vp2e-estatus" class="vp2-fi">'+EST_COMP.map(e=>'<option'+(e===x.estatus?' selected':'')+'>'+e+'</option>').join('')+'</select></label>'+
+      '</div>'+inp('motivo_rechazo','Motivo de rechazo (solo si lo rechazas; le llega al técnico)')+
+      '<label class="vp2-lb">Agregar o reemplazar archivo (XML, PDF o foto)<input id="vp2e-arch" type="file" accept=".xml,text/xml,application/xml,application/pdf,image/*" class="vp2-fi" style="padding:7px"></label>'+
+      '<label class="vp2-lb">Comentario (opcional)<textarea id="vp2e-com" class="vp2-fi" rows="2" placeholder="Ej. el técnico capturó mal el total"></textarea></label>'+
+      (((x.validacion||{}).historial||[]).length?'<div class="vp2-sec">Historial de cambios</div>'+histHTML(x.validacion.historial,'#7c3aed'):'')+
+      '<div id="vp2e-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="vp2-btn" style="color:#b91c1c;border-color:#fecaca;margin-right:auto" onclick="window.__vp2CompEliminar('+x.id+','+x.viatico_id+',\''+desde+'\')">Eliminar factura</button>'+
+      '<button class="vp2-btn" onclick="window.__vp2Cerrar()">Cancelar</button><button id="vp2e-btn" class="vp2-btn pri" onclick="window.__vp2CompGuardar('+x.id+',\''+desde+'\')">Guardar cambios</button></div>');
+  }catch(e){ alert('No se pudo abrir el comprobante: '+(e.message||e)); } };
+window.__vp2CompGuardar=async function(compId,desde){ desde=dsd(desde); const x=window.__vp2CompActual; if(!x||x.id!==compId||!esConta()) return;
+  const g=k=>document.getElementById('vp2e-'+k), err=g('err'), btn=g('btn');
+  const nuevo={}; CAMPOS_COMP.forEach(([k])=>{ const el=g(k); if(!el) return; const t=String(el.value).trim(); nuevo[k]=k==='total'?r2(t):(t===''?null:t); });
+  if(!(nuevo.total>0)){ err.textContent='El total debe ser mayor a cero.'; return; }
+  if(nuevo.estatus==='Rechazado'&&!nuevo.motivo_rechazo){ err.textContent='Escribe el motivo del rechazo: le llega al técnico.'; return; }
+  if(nuevo.estatus!=='Rechazado') nuevo.motivo_rechazo=null;
+  const fmt=(k,val)=>val==null||val===''?'(vacío)':k==='total'?din(val):k==='tipo'?(TIPOS_COMP[val]||val):k==='categoria'?(CATS[val]||val):String(val);
+  const cambios={}, txt=[];
+  CAMPOS_COMP.forEach(([k,lbl])=>{ if(!(k in nuevo)) return; const a=k==='total'?r2(x[k]):(x[k]==null||x[k]===''?null:(k==='fecha_comprobante'?String(x[k]).slice(0,10):String(x[k]))); const b=nuevo[k];
+    if(String(a==null?'':a)!==String(b==null?'':b)){ cambios[k]=b; txt.push(lbl+': '+fmt(k,a)+' → '+fmt(k,b)); } });
+  const f=(g('arch').files||[])[0], com=g('com').value.trim();
+  if(f&&f.size>10*1024*1024){ err.textContent='El archivo pesa más de 10 MB.'; return; }
+  if(!txt.length&&!f&&!com){ err.textContent='No cambiaste nada.'; return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ const c=await sb(), u=yo(), ahora=new Date().toISOString(); const val=JSON.parse(JSON.stringify(x.validacion||{}));
+    if(f){ const ext=(String(f.name||'').split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin', ruta='viaticos/'+x.viatico_id+'/'+Date.now()+'_conta_edit.'+ext;
+      const up=await c.storage.from(BUCKET).upload(ruta,f,{contentType:f.type||undefined,upsert:false}); if(up.error) throw up.error;
+      const campo=ext==='xml'||/xml/.test(f.type||'')?'xml_path':/^image\//.test(f.type||'')?'foto_path':'pdf_path'; cambios[campo]=ruta;
+      if((val.archivos||[]).length) val.archivos=val.archivos.concat([ruta]); else if((cambios.tipo||x.tipo)==='factura_archivo') val.archivos=[x.pdf_path,x.foto_path].filter(Boolean).concat([ruta]);
+      txt.push('Archivo agregado: '+(f.name||ext)); }
+    if('estatus' in cambios){ cambios.revisado_por=u.nombre||u.correo; cambios.revisado_en=ahora; }
+    val.historial=(val.historial||[]).concat([{en:ahora,por:u.nombre||u.correo,correo:u.correo,cambios:txt.length?txt:['Comentario'],comentario:com||null}]);
+    cambios.validacion=val;
+    const r=await c.from('ops_viaticos_comprobantes').update(cambios).eq('id',compId).select('id');
+    if(r.error){ if(String(r.error.code)==='23505') throw new Error('Ese UUID ya está registrado en otro comprobante vigente.'); throw r.error; }
+    if(!(r.data||[]).length) throw new Error('La base de datos no dejó guardar (sin permiso).');
+    if(cambios.estatus==='Rechazado'&&x.tecnico_email) avisoApp(x.tecnico_email,'viat_tec_rechazado','Contabilidad rechazó tu comprobante de '+din(nuevo.total)+' en '+(x.viatico_folio||'tus viáticos')+': '+nuevo.motivo_rechazo+'. Sube otro.',{id:x.viatico_id,folio:x.viatico_folio});
+    toast('Comprobante actualizado.'); await trasCambio(x.viatico_id,desde);
+  }catch(e){ err.textContent='No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar cambios'; } };
+
+// ── Eliminar factura ──
+window.__vp2CompEliminar=function(compId,viaId,desde){ desde=dsd(desde); const x=window.__vp2CompActual; if(!x||x.id!==compId||!esConta()) return;
+  modal('<div style="font-size:18px;font-weight:800">Eliminar factura</div>'+
+    '<div style="font-size:13px;color:#374151;margin:8px 0 12px;line-height:1.55">Vas a borrar el comprobante de <b>'+din(x.total)+'</b> ('+esc(CATS[x.categoria]||x.categoria||'')+') de '+esc(x.viatico_folio||'')+'. Deja de contar en la comprobación y al técnico le llega un aviso. Queda anotado en el historial del viático y los archivos se guardan para auditoría.</div>'+
+    '<label class="vp2-lb">Comentario (opcional)<textarea id="vp2d-com" class="vp2-fi" rows="2" placeholder="Ej. factura duplicada"></textarea></label>'+
+    '<div id="vp2d-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end"><button class="vp2-btn" onclick="window.__vp2CompEditar('+compId+','+viaId+',\''+desde+'\')">Volver</button>'+
+    '<button id="vp2d-btn" class="vp2-btn" style="background:#dc2626;border-color:#dc2626;color:#fff" onclick="window.__vp2CompBorrar('+compId+','+viaId+',\''+desde+'\')">Sí, eliminar</button></div>',true); };
+window.__vp2CompBorrar=async function(compId,viaId,desde){ desde=dsd(desde); const x=window.__vp2CompActual; if(!x||x.id!==compId||!esConta()) return;
+  const err=document.getElementById('vp2d-err'), btn=document.getElementById('vp2d-btn'), com=document.getElementById('vp2d-com').value.trim();
+  btn.disabled=true; btn.textContent='Eliminando…';
+  try{ const c=await sb(), u=yo(), ahora=new Date().toISOString();
+    const d=await c.from('ops_viaticos_comprobantes').delete().eq('id',compId).select('id'); if(d.error) throw d.error;
+    if(!(d.data||[]).length) throw new Error('La base de datos todavía no permite borrar comprobantes (falta el permiso en Supabase).');
+    const foto={id:x.id,categoria:x.categoria,tipo:x.tipo,total:x.total,fecha_comprobante:x.fecha_comprobante,emisor_nombre:x.emisor_nombre,emisor_rfc:x.emisor_rfc,uuid:x.uuid,estatus:x.estatus,tecnico_nombre:x.tecnico_nombre,xml_path:x.xml_path,pdf_path:x.pdf_path,foto_path:x.foto_path,archivos:(x.validacion||{}).archivos||[],historial:(x.validacion||{}).historial||[],subido_en:x.creado_en};
+    try{ await tarifasMerge(viaId,t=>{ t.comprobantesEliminados=(t.comprobantesEliminados||[]).concat([{en:ahora,por:u.nombre||u.correo,correo:u.correo,comentario:com||null,comprobante:foto}]); }); }
+    catch(e){ alert('Se eliminó, pero no se pudo anotar en el historial: '+(e.message||e)); }
+    if(COMPS[viaId]) COMPS[viaId]=COMPS[viaId].filter(k=>k.id!==compId);
+    if(x.tecnico_email) avisoApp(x.tecnico_email,'viat_tec_comp_eliminado','Contabilidad eliminó tu comprobante de '+din(x.total)+' ('+(CATS[x.categoria]||'gasto')+') en '+(x.viatico_folio||'tus viáticos')+(com?'. Motivo: '+com:'')+'. Si hace falta, sube uno nuevo desde la app.',{id:viaId,folio:x.viatico_folio});
+    toast('Factura eliminada.'); await trasCambio(viaId,desde);
+  }catch(e){ err.textContent='No se pudo eliminar: '+(e.message||e); btn.disabled=false; btn.textContent='Sí, eliminar'; } };
+
+// ── Sobrante: capturar y destinar a cuenta de acreedor ──
+window.__vp2Sobrante=async function(viaId,desde){ desde=dsd(desde); if(!esConta()){ alert('Solo Contabilidad registra sobrantes.'); return; } css();
+  try{ const c=await sb(); const [r,k]=await Promise.all([c.from('ops_solicitudes_viaticos').select(COLS).eq('id',viaId).single(),c.from('ops_viaticos_comprobantes').select('id,estatus,total').eq('viatico_id',viaId)]);
+    if(r.error) throw r.error; const s=r.data, so=(s.tarifas||{}).sobrante||null, x=sobranteDe(s,k.data||[]);
+    const cuentas=[...new Set(C.lista.concat(C.todas||[]).map(z=>((z.tarifas||{}).sobrante||{}).cuenta).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+    const est=so?so.estatus:'Por destinar';
+    const box=(t,v,col)=>'<div class="vp2-f"><div class="vp2-k">'+t+'</div><div class="vp2-v" style="font-size:16px;font-weight:800;color:'+(col||'#111827')+'">'+v+'</div></div>';
+    modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Sobrante · '+esc(s.folio)+'</div><div style="font-size:12.5px;color:#6b7280">'+esc(s.responsable_nombre||s.integrantes||'')+' · '+esc(s.destino||'')+'</div></div><button class="vp2-ib" onclick="window.__vp2Cerrar()">'+IC.cerrar+'</button></div>'+
+      '<div class="vp2-gr" style="grid-template-columns:1fr 1fr 1fr">'+box('Depositado',din(x.dep))+box('Comprobado aceptado',din(x.acept),'#15803d')+box('Sobrante calculado',din(Math.max(0,x.exc)),x.exc>0.5?'#0e7490':'#9ca3af')+'</div>'+
+      (x.exc<=0.5&&!so?'<div style="font-size:12px;color:#a16207;background:#fef9c3;border-radius:10px;padding:8px 11px;margin-bottom:10px">Con lo aceptado no sobra nada. Puedes capturarlo de todos modos si sabes que existe.</div>':'')+
+      '<div class="vp2-gr" style="grid-template-columns:1fr 1fr;margin:0">'+
+        '<label class="vp2-lb">Monto del sobrante $<input id="vp2s-monto" type="number" step="0.01" min="0" class="vp2-fi" value="'+r2(so?so.monto:Math.max(0,x.exc))+'"></label>'+
+        '<label class="vp2-lb">Acreedor (a quién se le debe)<input id="vp2s-acr" class="vp2-fi" value="'+esc(so?so.acreedor||'':(s.responsable_nombre||''))+'"></label>'+
+        '<label class="vp2-lb">Cuenta de acreedor<input id="vp2s-cta" class="vp2-fi" list="vp2s-ctas" value="'+esc(so&&so.cuenta||'')+'" placeholder="Ej. 205-01-003 Acreedores diversos"><datalist id="vp2s-ctas">'+cuentas.map(z=>'<option value="'+esc(z)+'">').join('')+'</datalist></label>'+
+        '<label class="vp2-lb">Estatus<select id="vp2s-est" class="vp2-fi">'+EST_SOB.map(e=>'<option'+(e===est?' selected':'')+'>'+e+'</option>').join('')+'</select></label>'+
+      '</div>'+
+      '<label class="vp2-lb">Cómo se saldó (solo si ya se pagó: referencia, fecha, nómina…)<input id="vp2s-ref" class="vp2-fi" value="'+esc(so&&so.referencia||'')+'"></label>'+
+      '<label class="vp2-lb">Comentario (opcional)<textarea id="vp2s-com" class="vp2-fi" rows="2"></textarea></label>'+
+      '<div style="font-size:11.5px;color:#6b7280;margin:-4px 0 10px">Por destinar → falta asignarlo a una cuenta. Destinado a cuenta → ya está en la cuenta de acreedor, falta pagarlo. Saldado → ya se le pagó.</div>'+
+      (so&&(so.historial||[]).length?'<div class="vp2-sec">Historial del sobrante</div>'+histHTML(so.historial,'#0e7490'):'')+
+      '<div id="vp2s-err" style="font-size:12px;color:#b91c1c;font-weight:700;min-height:16px"></div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="vp2-btn" onclick="'+(desde==='ops'?'window.__vp2Cerrar()':'window.__vp2Detalle('+s.id+',\'conta\')')+'">Cancelar</button><button id="vp2s-btn" class="vp2-btn pri" onclick="window.__vp2SobranteGuardar('+s.id+',\''+desde+'\')">Guardar sobrante</button></div>');
+  }catch(e){ alert('No se pudo abrir: '+(e.message||e)); } };
+window.__vp2SobranteGuardar=async function(viaId,desde){ desde=dsd(desde); if(!esConta()) return; const g=k=>document.getElementById('vp2s-'+k), err=g('err'), btn=g('btn');
+  const monto=r2(g('monto').value), acreedor=g('acr').value.trim(), cuenta=g('cta').value.trim(), est=g('est').value, ref=g('ref').value.trim(), com=g('com').value.trim();
+  if(!(monto>0)){ err.textContent='Escribe el monto del sobrante.'; return; }
+  if(!acreedor){ err.textContent='Escribe a quién se le debe.'; return; }
+  if((est==='Destinado a cuenta'||est==='Saldado')&&!cuenta){ err.textContent='Escribe la cuenta de acreedor a la que se destina.'; return; }
+  if(est==='Saldado'&&!ref){ err.textContent='Escribe cómo se saldó (referencia, fecha o nómina).'; return; }
+  btn.disabled=true; btn.textContent='Guardando…';
+  try{ const u=yo(), quien=u.nombre||u.correo, ahora=new Date().toISOString();
+    await tarifasMerge(viaId,t=>{ const p=t.sobrante||{}, cam=[];
+      if(!t.sobrante) cam.push('Se capturó sobrante de '+din(monto));
+      else { if(r2(p.monto)!==monto) cam.push('Monto: '+din(p.monto)+' → '+din(monto)); if((p.acreedor||'')!==acreedor) cam.push('Acreedor: '+(p.acreedor||'(vacío)')+' → '+acreedor);
+        if((p.cuenta||'')!==cuenta) cam.push('Cuenta: '+(p.cuenta||'(vacía)')+' → '+(cuenta||'(vacía)')); if((p.referencia||'')!==ref) cam.push('Saldado con: '+(ref||'(vacío)')); }
+      if((p.estatus||'')!==est) cam.push('Estatus: '+(p.estatus||'—')+' → '+est);
+      if(!cam.length&&!com) throw new Error('No cambiaste nada.');
+      t.sobrante=Object.assign({},p,{monto,acreedor,cuenta:cuenta||null,estatus:est,referencia:ref||null,capturado_en:p.capturado_en||ahora,capturado_por:p.capturado_por||quien,
+        destinado_en:est==='Destinado a cuenta'||est==='Saldado'?(p.destinado_en||ahora):null,saldado_en:est==='Saldado'?(p.saldado_en||ahora):null,actualizado_en:ahora,actualizado_por:quien,
+        historial:(p.historial||[]).concat([{en:ahora,por:quien,correo:u.correo,cambios:cam.length?cam:['Comentario'],comentario:com||null}])}); });
+    toast('Sobrante guardado.');
+    if(desde==='ops'){ await trasCambio(viaId,'ops'); return; }
+    modal(''); if(C.secc==='sobrantes') pintarConta(); else await window.__vp2Detalle(viaId,'conta');
+  }catch(e){ err.textContent=e.message==='No cambiaste nada.'?e.message:'No se pudo guardar: '+(e.message||e); btn.disabled=false; btn.textContent='Guardar sobrante'; } };
+
+// ── Sección Sobrantes ──
+const SOB_K={'Por destinar':'pordestinar','Destinado a cuenta':'destinado','Saldado':'saldado','No aplica':'noaplica'};
+function filasSobrantes(){ return C.lista.map(s=>{ const so=(s.tarifas||{}).sobrante||null, x=sobranteDe(s,COMPS[s.id]);
+  const k=so?(SOB_K[so.estatus]||'pordestinar'):(x.exc>0.5?'sincapturar':null); return k?{s,so,x,k,monto:so?Number(so.monto)||0:x.exc}:null; }).filter(Boolean); }
+function sobPendientes(){ return filasSobrantes().filter(f=>f.k==='sincapturar'||f.k==='pordestinar').length; }
+function sobrantesHTML(){ const q=norm(C.q), F=C.sobF||'pendientes', todas=filasSobrantes();
+  const grp=k=>todas.filter(f=>f.k===k), sum=a=>a.reduce((t,f)=>t+f.monto,0);
+  const pasa=f=>F==='todos'||(F==='pendientes'&&['sincapturar','pordestinar','destinado'].includes(f.k))||f.k===F;
+  const nom=f=>(f.so&&f.so.acreedor)||f.s.responsable_nombre||f.s.integrantes||'';
+  const l=todas.filter(pasa).filter(f=>!q||norm([f.s.folio,nom(f),f.s.destino,f.so&&f.so.cuenta].join(' ')).includes(q)).sort((a,b)=>nom(a).localeCompare(nom(b),'es')||String(a.s.folio).localeCompare(String(b.s.folio)));
+  const sc=grp('sincapturar'), pd=grp('pordestinar'), de=grp('destinado'), sa=grp('saldado');
+  const ESTP={sincapturar:['Sin capturar','#b91c1c','#fee2e2'],pordestinar:['Por destinar','#a16207','#fef9c3'],destinado:['Destinado a cuenta','#1d4ed8','#dbeafe'],saldado:['Saldado','#15803d','#dcfce7'],noaplica:['No aplica','#475569','#f1f5f9']};
+  let h='<div class="vp2-cards">'+
+    card({ico:IC.alerta.replace(/14/g,'18'),warn:sc.length?'Comprobaron de más y no se ha capturado':'',wc:'#dc2626',num:din(sum(sc)),nc:sc.length?'#dc2626':'#111827',lbl:sc.length+' sin capturar',fn:"window.__vp2C('sobF','sincapturar')"})+
+    card({ico:IC.reloj,warn:pd.length?'Falta asignar cuenta':'',num:din(sum(pd)),lbl:pd.length+' por destinar',fn:"window.__vp2C('sobF','pordestinar')"})+
+    card({ico:IC.dinero,num:din(sum(de)),nc:'#1d4ed8',lbl:de.length+' en cuenta de acreedor (falta pagar)',fn:"window.__vp2C('sobF','destinado')"})+
+    card({ico:IC.ok,num:din(sum(sa)),nc:'#15803d',lbl:sa.length+' saldado(s)',fn:"window.__vp2C('sobF','saldado')"})+'</div>';
+  const porCta={}; de.forEach(f=>{ const k=f.so.cuenta||'Sin cuenta'; const o=porCta[k]||(porCta[k]={n:0,m:0}); o.n++; o.m+=f.monto; });
+  const ctas=Object.keys(porCta).sort((a,b)=>a.localeCompare(b,'es'));
+  if(ctas.length) h+='<div class="vp2-sec">Saldo por cuenta de acreedor</div><div class="vp2-chips">'+ctas.map(k=>'<button class="vp2-chip" onclick="window.__vp2C(\'q\',\''+esc(k).replace(/\\/g,'\\\\').replace(/&#39;/g,'\\&#39;')+'\')">'+esc(k)+' · '+din(porCta[k].m)+' ('+porCta[k].n+')</button>').join('')+'</div>';
+  const chip=(f,t)=>'<button class="vp2-chip'+(F===f?' on':'')+'" onclick="window.__vp2C(\'sobF\',\''+f+'\')">'+t+' ('+(f==='todos'?todas.length:f==='pendientes'?todas.filter(z=>['sincapturar','pordestinar','destinado'].includes(z.k)).length:grp(f).length)+')</button>';
+  h+='<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-cq" class="vp2-in" style="min-width:240px" placeholder="Buscar folio, acreedor, cuenta…" value="'+esc(C.q)+'" oninput="window.__vp2C(\'q\',this.value)">'+
+    '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2Recargar(\'c\')">↻ Actualizar</button><button class="vp2-btn" onclick="window.__vp2ExportSob()">'+IC.exp+' Exportar a Excel</button></div>'+
+    '<div class="vp2-chips">'+chip('pendientes','Pendientes')+chip('sincapturar','Sin capturar')+chip('pordestinar','Por destinar')+chip('destinado','Destinados')+chip('saldado','Saldados')+chip('noaplica','No aplica')+chip('todos','Todos')+'</div>';
+  if(!l.length) return h+'<div class="vp2-empty">'+(todas.length?'No hay sobrantes en este filtro.':'No hay sobrantes. Aparecen aquí cuando lo comprobado y aceptado pasa de lo depositado.')+'</div>';
+  const N=C.sobN||50;
+  h+='<div style="overflow-x:auto"><table class="vp2c-tbl" style="min-width:900px"><tr><th>Folio</th><th>Acreedor</th><th style="text-align:right">Depositado</th><th style="text-align:right">Comprobado</th><th style="text-align:right">Sobrante</th><th>Cuenta de acreedor</th><th>Estatus</th><th></th></tr>'+
+    l.slice(0,N).map(f=>{ const e=ESTP[f.k], ult=f.so&&(f.so.historial||[]).slice(-1)[0];
+      return '<tr><td><a href="#" onclick="event.preventDefault();window.__vp2Detalle('+f.s.id+',\'conta\')" style="color:#1d4ed8;font-weight:800">'+esc(f.s.folio)+'</a><div style="font-size:11px;color:#9ca3af">'+esc(f.s.destino||'')+'</div></td>'+
+        '<td><b>'+esc(nom(f))+'</b>'+(ult?'<div style="font-size:11px;color:#9ca3af">'+esc(ult.por||'')+' · '+fh(ult.en)+'</div>':'')+'</td>'+
+        '<td style="text-align:right">'+din(f.x.dep)+'</td><td style="text-align:right;color:#15803d">'+din(f.x.acept)+'</td><td style="text-align:right;font-weight:800;color:#0e7490">'+din(f.monto)+'</td>'+
+        '<td>'+esc(f.so&&f.so.cuenta||'—')+(f.so&&f.so.referencia?'<div style="font-size:11px;color:#15803d">'+esc(f.so.referencia)+'</div>':'')+'</td>'+
+        '<td>'+pill(e[0],e[1],e[2])+'</td>'+
+        '<td style="white-space:nowrap">'+(esConta()?'<button class="vp2-btn" style="height:30px;font-size:11.5px;border-color:#0e7490;color:#0e7490" onclick="window.__vp2Sobrante('+f.s.id+',\'conta\')">'+(f.so?'Actualizar':'Capturar')+'</button>':'')+'</td></tr>'; }).join('')+'</table></div>'+
+    (l.length>N?'<div style="text-align:center;margin-top:10px"><button class="vp2-btn" onclick="window.__vp2C(\'sobN\','+(N+50)+')">Ver más ('+(l.length-N)+')</button></div>':'');
+  return h; }
+window.__vp2ExportSob=function(){ csv('sobrantes_viaticos',[['Folio','Acreedor','Destino','Depositado','Comprobado aceptado','Sobrante','Cuenta de acreedor','Estatus','Cómo se saldó','Capturado','Actualizado por']]
+  .concat(filasSobrantes().map(f=>[f.s.folio,(f.so&&f.so.acreedor)||f.s.responsable_nombre||'',f.s.destino,f.x.dep,f.x.acept,f.monto,f.so&&f.so.cuenta||'',f.so?f.so.estatus:'Sin capturar',f.so&&f.so.referencia||'',f.so&&f.so.capturado_en?String(f.so.capturado_en).slice(0,10):'',f.so&&f.so.actualizado_por||'']))); };
+
+// ── Sección Seguimiento (vistas de Operaciones que faltaban en Contabilidad) ──
+async function cargarTodas(){ try{ const c=await sb(); const r=await c.from('ops_solicitudes_viaticos').select(COLS).order('creado_en',{ascending:false}).limit(1000); if(r.error) throw r.error; C.todas=r.data||[]; C.todasErr=null; }
+  catch(e){ C.todas=[]; C.todasErr=e.message||String(e); } if(C.secc==='seguimiento') pintarConta(); }
+const ETAPAS_C=[['porautorizar','Por autorizar','#b45309','#fef3c7'],['porpagar','Autorizadas por pagar','#1D2E73','#e0e7ff'],['comprobacion','Pagadas en comprobación','#0e7490','#cffafe'],['vencidas','Comprobación vencida','#b91c1c','#fee2e2'],['porcerrar','Comprobadas por cerrar','#15803d','#dcfce7'],['cerradas','Cerradas','#475569','#e2e8f0'],['canceladas','Canceladas / no aplican','#94a3b8','#f1f5f9']];
+function etapaDe(s){ if(s.estatus==='Cancelada'||s.estatus==='Rechazada') return 'canceladas'; if(s.estatus!=='Pagada'&&!s.entregado_en) return s.estatus==='Aprobada'?'porpagar':'porautorizar';
+  const e=estConta(s); return e.k==='cerrado'?'cerradas':e.k==='comprobado'?'porcerrar':e.k==='vencido'?'vencidas':'comprobacion'; }
+function segHTML(){ if(!C.todas){ cargarTodas(); return '<div class="vp2-empty">Cargando todos los viáticos…</div>'; }
+  if(C.todasErr) return '<div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar: '+esc(C.todasErr)+'</div>';
+  const T2=C.segTab||'etapas', q=norm(C.q);
+  const pasaQ=s=>!q||norm([s.folio,s.integrantes,s.responsable_nombre,s.destino,s.cliente,s.empresa_entrega,s.empresa_cobra].join(' ')).includes(q);
+  const tab=(k,t)=>'<button class="vp2-tab'+(T2===k?' on':'')+'" onclick="window.__vp2C(\'segTab\',\''+k+'\')">'+t+'</button>';
+  let h='<div class="vp2-bar"><div class="vp2-tabs">'+tab('etapas','Por etapa')+tab('personas','Quién debe comprobar')+tab('empresas','Pendientes por empresa')+'</div>'+
+    '<span class="vp2-ib" style="margin-left:8px">'+IC.buscar+'</span><input id="vp2-cq" class="vp2-in" style="min-width:220px" placeholder="Buscar folio, persona, destino, empresa…" value="'+esc(C.q)+'" oninput="window.__vp2C(\'q\',this.value)">'+
+    '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2C(\'todas\',null)">↻ Actualizar</button></div>';
+  const todos=C.todas.filter(pasaQ).map(s=>({s,et:etapaDe(s)}));
+  if(T2==='etapas'){ const E2=C.segEt||'porpagar'; const de=k=>todos.filter(x=>x.et===k);
+    const monto=(k,l)=>k==='canceladas'?0:(k==='porautorizar'||k==='porpagar')?l.reduce((a,x)=>a+depositoDe(x.s),0):l.reduce((a,x)=>a+(Number(x.s.monto_entregado)||0),0);
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">'+ETAPAS_C.map(([k,t,c])=>{ const l=de(k), on=E2===k;
+      return '<div class="vp2-card" style="border:1.5px solid '+(on?c:'#e5e7eb')+';background:'+(on?c+'12':'#fff')+';padding:11px 13px" onclick="window.__vp2C(\'segEt\',\''+k+'\')"><div style="font-size:22px;font-weight:800;color:'+c+'">'+l.length+'</div><div style="font-size:12px;font-weight:700;color:#374151">'+t+'</div><div style="font-size:11.5px;color:#6b7280">'+(k==='canceladas'?'no se pagan':din(monto(k,l)))+'</div></div>'; }).join('')+'</div>';
+    const et=ETAPAS_C.find(z=>z[0]===E2), l=de(E2).sort((a,b)=>String(a.s.responsable_nombre||a.s.integrantes||'').localeCompare(String(b.s.responsable_nombre||b.s.integrantes||''),'es')), N=C.segN||50;
+    h+=l.length?l.slice(0,N).map(({s})=>{ const pre=E2==='porautorizar'||E2==='porpagar'||E2==='canceladas', e=pre?null:estConta(s);
+        const der=pre?'<div><div class="vp2-k">A depositar</div><div class="vp2-saldo" style="color:#15803d">'+din(depositoDe(s))+'</div><div style="font-size:11px;color:#9ca3af">'+esc(s.estatus||'')+'</div></div>'
+          :'<div><div class="vp2-k">Falta comprobar</div><div class="vp2-saldo" style="color:'+(e.falta>0.5?'#b91c1c':'#15803d')+'">'+din(e.falta)+'</div><div style="font-size:11px;color:#9ca3af">de '+din(e.dep)+' · límite '+fc(s.fecha_limite_comprobacion)+'</div></div>';
+        return filaViatico(s,{t:et[1],c:et[2],bg:et[3]},der,'window.__vp2Detalle('+s.id+',\'conta\')'); }).join('')+(l.length>N?'<div style="text-align:center"><button class="vp2-btn" onclick="window.__vp2C(\'segN\','+(N+50)+')">Ver más ('+(l.length-N)+')</button></div>':'')
+      :'<div class="vp2-empty">Nada en esta etapa.</div>';
+  } else if(T2==='personas'){ const por={};
+    C.lista.filter(s=>!s.cierre&&pasaQ(s)).forEach(s=>{ const e=estConta(s); if(e.falta<=0.5) return; const k=s.responsable_nombre||s.responsable_email||'Sin responsable'; const p=por[k]||(por[k]={nombre:k,falta:0,n:0,venc:0}); p.falta+=e.falta; p.n++; if(e.k==='vencido') p.venc++; });
+    const l=Object.values(por).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')), tot=l.reduce((a,p)=>a+p.falta,0);
+    h+='<div class="vp2-s" style="margin-bottom:10px">'+l.length+' persona(s) deben comprobar '+din(tot)+'. Haz clic en una persona para ver sus viáticos.</div>'+
+      (l.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px">'+l.map(p=>'<div class="vp2-card" style="padding:11px 13px;border-color:'+(p.venc?'#fecaca':'#e5e7eb')+';background:'+(p.venc?'#fef2f2':'#fff')+'" onclick="window.__vp2C(\'persona\',\''+esc(p.nombre).replace(/&#39;/g,'\\&#39;')+'\')"><div style="font-size:13px;font-weight:800;color:#111827">'+esc(p.nombre)+'</div><div style="font-size:12px;color:'+(p.venc?'#b91c1c':'#4b5563')+';margin-top:2px">'+din(p.falta)+' · '+p.n+' viático(s)'+(p.venc?' · '+p.venc+' vencido(s)':'')+'</div></div>').join('')+'</div>'
+        :'<div class="vp2-empty">Nadie debe comprobantes. ¡Todo al corriente!</div>');
+  } else { const grupos={}, g=k=>grupos[k]||(grupos[k]={depositar:[],comprobar:[],cobrar:[]});
+    C.todas.filter(s=>s.estatus!=='Cancelada'&&s.estatus!=='Rechazada'&&pasaQ(s)).forEach(s=>{ const ent=s.empresa_entrega||'Sin empresa', cob=s.empresa_cobra||ent;
+      if(s.estatus!=='Pagada'&&!s.entregado_en) g(ent).depositar.push(s); else if(!s.cierre&&estConta(s).falta>0.5) g(ent).comprobar.push(s);
+      if((Number(s.cobro_cliente)||0)>0&&!(s.tarifas||{}).noCobrar) g(cob).cobrar.push(s); });
+    const noms=Object.keys(grupos).sort((a,b)=>a.localeCompare(b,'es'));
+    const lista=(l,f)=>l.slice(0,8).map(s=>'<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:4px 0;border-top:1px solid #f3f4f6;cursor:pointer" onclick="window.__vp2Detalle('+s.id+',\'conta\')"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="color:#1d4ed8">'+esc(s.folio)+'</b> '+esc(s.responsable_nombre||s.integrantes||'')+'</span><b>'+din(f(s))+'</b></div>').join('')+(l.length>8?'<div style="font-size:11px;color:#9ca3af">y '+(l.length-8)+' más…</div>':'');
+    const col=(t,c,l,f)=>'<div><div class="vp2-k">'+t+'</div><div style="font-size:17px;font-weight:800;color:'+c+'">'+din(l.reduce((a,s)=>a+(Number(f(s))||0),0))+'</div><div style="font-size:11px;color:#9ca3af">'+l.length+' viático(s)</div>'+lista(l,f)+'</div>';
+    h+=noms.length?noms.map(n=>{ const x=grupos[n]; return '<div class="vp2-side" style="margin-bottom:10px"><div style="font-size:14px;font-weight:800;color:#111827;margin-bottom:8px">'+esc(n)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">'+
+        col('Falta depositar','#1D2E73',x.depositar,depositoDe)+col('Falta comprobar','#b91c1c',x.comprobar,s=>estConta(s).falta)+col('Cobrar al cliente','#15803d',x.cobrar,s=>s.cobro_cliente)+'</div></div>'; }).join('')
+      :'<div class="vp2-empty">No hay pendientes por empresa.</div>';
+  }
+  return h; }
 
 // ───────────── Enganche con las áreas ─────────────
 // En Contabilidad se ocultan los tableros anteriores (indicadores y la bandeja de Flotilla que se colaba desde Pagos).

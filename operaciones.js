@@ -27197,6 +27197,7 @@
         const docs = E.comps.slice().sort((a, b) => String(a.fecha_comprobante || a.creado_en).localeCompare(String(b.fecha_comprobante || b.creado_en))).map(c => {
             const v = c.validacion || {};
             const avisos = (v.avisos || []).map(a => `<div style="font-size:11px;color:#b45309;">• ${opsEsc(a)}</div>`).join("");
+            const histC = v.historial || [], ultC = histC[histC.length - 1];
             const bArch = (ruta, txt) => ruta ? `<button onclick="opsViaAbrirArchivo('${opsEsc(ruta)}')" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:4px 8px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${txt}</button>` : "";
             return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:${c.estatus === "Rechazado" ? "#fffafa" : "#fff"};">
                 <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
@@ -27208,18 +27209,25 @@
                         <div style="font-size:11px;color:#94a3b8;">${opsViaFechaCorta(c.fecha_comprobante)}${c.tipo === "cfdi" ? " · Forma de pago " + opsEsc(c.forma_pago || "—") + " " + opsEsc(OPS_SAT_FORMAS[c.forma_pago] || "") + " · UUID …" + opsEsc(String(c.uuid || "").slice(-8)) : ""} · subió ${opsEsc(c.tecnico_nombre || c.tecnico_email || "")}</div>
                         ${avisos}
                         ${c.estatus === "Rechazado" && c.motivo_rechazo ? `<div style="font-size:11px;color:#b91c1c;margin-top:3px;">Rechazado: ${opsEsc(c.motivo_rechazo)}</div>` : ""}
+                        ${ultC ? `<div style="font-size:10.5px;color:#7c3aed;margin-top:3px;" title="${opsEsc(histC.map(h => (h.por || "") + ": " + (h.cambios || []).join("; ") + (h.comentario ? " (" + h.comentario + ")" : "")).join(" | "))}">Editado ${histC.length} vez/veces · último: ${opsEsc(ultC.por || "")}, ${opsViaFechaCorta(ultC.en)}: ${opsEsc((ultC.cambios || []).join("; "))}${ultC.comentario ? " — “" + opsEsc(ultC.comentario) + "”" : ""}</div>` : ""}
                     </div>
                     <div style="text-align:right;flex-shrink:0;">${opsViaChip(c.estatus, OPS_VIA_EST_DOC)}</div>
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
                     ${bArch(c.xml_path, "XML")}${c.tipo === "factura_archivo" && ((c.validacion || {}).archivos || []).length ? c.validacion.archivos.map((r, i) => bArch(r, "Archivo " + (i + 1))).join("") : bArch(c.pdf_path, "PDF") + bArch(c.foto_path, "Foto")}
                     ${autoriza && !s.cierre && c.estatus !== "Aceptado" ? `<button onclick="opsViaRevisarComp(${c.id},'Aceptado')" style="background:#15803d;border:none;color:#fff;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Aceptar</button>` : ""}
+                    ${window.__vp2EsConta && window.__vp2EsConta() ? `<button onclick="window.__vp2CompEditar(${c.id},${s.id},'ops')" title="Solo Contabilidad: cambia cualquier dato o elimina la factura; queda en el historial" style="background:#fff;border:1px solid #c4b5fd;color:#6d28d9;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Editar / eliminar</button>` : ""}
                     ${autoriza && !s.cierre && c.estatus !== "Rechazado" ? `<button onclick="opsViaRevisarComp(${c.id},'Rechazado')" style="background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:4px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Rechazar</button>` : ""}
                 </div>
             </div>`;
         }).join("");
         const pct = E.ent > 0 ? Math.min(100, Math.round((E.acept / E.ent) * 100)) : 0;
         const pctR = E.ent > 0 ? Math.min(100 - pct, Math.round((E.rev / E.ent) * 100)) : 0;
+        // 19-nov-2026: sobrantes y facturas eliminadas (los guarda Contabilidad desde pagos.js).
+        const esConta = !!(window.__vp2EsConta && window.__vp2EsConta());
+        const elim = (s.tarifas || {}).comprobantesEliminados || [];
+        const sob = (s.tarifas || {}).sobrante || null;
+        const excedente = Math.round((E.acept - E.ent) * 100) / 100;
         const cierre = s.cierre ? `<div style="background:#f1f5f9;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;margin-bottom:12px;">
             <b>Cerrada</b> el ${opsViaFechaCorta(s.cierre.en)} por ${opsEsc(s.cierre.porNombre || s.cierre.por || "")}: ${opsEsc(s.cierre.resultadoTxt || s.cierre.resultado || "")}${s.cierre.monto ? " · " + opsViaDinero(s.cierre.monto) : ""}${s.cierre.nota ? "<br><span style='color:#64748b;'>" + opsEsc(s.cierre.nota) + "</span>" : ""}</div>` : "";
         document.getElementById("ops-modal-wrap").innerHTML = `
@@ -27246,9 +27254,12 @@
                 ${filasCat ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;"><thead><tr style="color:#64748b;font-size:10.5px;text-transform:uppercase;text-align:left;"><th style="padding:6px 8px;">Concepto</th><th style="padding:6px 8px;text-align:right;">Solicitado</th><th style="padding:6px 8px;text-align:right;">Aceptado</th><th style="padding:6px 8px;text-align:right;">En revisión</th></tr></thead><tbody>${filasCat}</tbody></table>` : ""}
                 <div style="font-size:12.5px;font-weight:700;color:#1D2E73;margin-bottom:8px;">Comprobantes (${E.comps.length})</div>
                 ${docs || `<div style="font-size:12px;color:#94a3b8;padding:12px;text-align:center;border:1px dashed #cbd5e1;border-radius:10px;">El técnico aún no sube comprobantes.</div>`}
+                ${elim.length ? `<div style="font-size:12px;font-weight:700;color:#b91c1c;margin:12px 0 6px;">Facturas eliminadas por Contabilidad (${elim.length})</div>${elim.map(z => { const k = z.comprobante || {}; return `<div style="font-size:11.5px;color:#475569;border-left:3px solid #fecaca;padding:3px 8px;margin-bottom:4px;">${opsEsc(OPS_VIA_CATS[k.categoria] || k.categoria || "")} · ${opsViaDinero(k.total)}${k.emisor_nombre ? " · " + opsEsc(k.emisor_nombre) : ""} — eliminada por ${opsEsc(z.por || "")}, ${opsViaFechaCorta(z.en)}${z.comentario ? ": “" + opsEsc(z.comentario) + "”" : ""}</div>`; }).join("")}` : ""}
+                ${sob ? `<div style="background:#ecfeff;border:1px solid #a5f3fc;color:#0e7490;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-top:12px;"><b>Sobrante ${opsViaDinero(sob.monto)}</b> · ${opsEsc(sob.estatus || "")}${sob.cuenta ? " · cuenta " + opsEsc(sob.cuenta) : ""}${sob.acreedor ? " · acreedor " + opsEsc(sob.acreedor) : ""}</div>` : (excedente > 0.5 ? `<div style="background:#ecfeff;border:1px solid #a5f3fc;color:#0e7490;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-top:12px;">Comprobó <b>${opsViaDinero(excedente)}</b> más de lo depositado. Contabilidad debe capturar el sobrante.</div>` : "")}
                 <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;">
                     <button onclick="opsViaRelacionGastos(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;display:inline-flex;gap:6px;align-items:center;"><span style="display:inline-flex;width:15px;height:15px;">${ICON.printer}</span>Relación de gastos</button>
                     ${autoriza ? `<button onclick="opsViaAbrirEntrega(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">${s.entregado_en ? "Editar entrega" : "Registrar entrega"}</button>` : ""}
+                    ${esConta && s.entregado_en && (sob || excedente > 0.5) ? `<button onclick="window.__vp2Sobrante(${s.id},'ops')" style="background:#fff;border:1px solid #67e8f9;color:#0e7490;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:700;">${sob ? "Sobrante" : "Capturar sobrante"}</button>` : ""}
                     ${autoriza && s.entregado_en && !s.cierre ? `<button onclick="opsViaAbrirCierre(${s.id})" class="mkt-add-btn" style="background:#1D2E73;">Cerrar comprobación</button>` : ""}
                     ${autoriza && s.cierre ? `<button onclick="opsViaReabrir(${s.id})" style="background:#fff;border:1px solid #cbd5e1;color:#334155;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;">Reabrir</button>` : ""}
                 </div>
@@ -27256,6 +27267,17 @@
         </div>`;
     };
 
+    // Lo llama pagos.js (Contabilidad) después de editar o eliminar un comprobante o guardar un sobrante.
+    window.opsViaRefrescarComp = async function (id) {
+        try {
+            const sb = await opsSb();
+            const r = await sb.from("ops_solicitudes_viaticos").select("tarifas").eq("id", id).single();
+            const s = opsViaLista.find(x => x.id === id); if (s && !r.error && r.data) s.tarifas = r.data.tarifas;
+        } catch (e) {}
+        try { await opsViaCargarComprobantes(); } catch (e) {}
+        opsViaVerComprobacion(id);
+        if (typeof opsRenderViaticos === "function") opsRenderViaticos();
+    };
     window.opsViaAbrirArchivo = async function (ruta) {
         const w = window.open("", "_blank");
         try {
