@@ -8504,7 +8504,8 @@ window.fmOpsServTerminar=async function(id){
       ro('2','Fecha del servicio',opsSvFecha(fechaServ),f.iniciadoEn?'Hora real en que tocaste «Iniciar servicio».':'Fecha programada por Operaciones.')+
       ro('3','Razón social',e.razonSocial||f.estacionRazonSocial||cliente)+
       fmTermTit('4','No. folio / O.S.',true)+
-      '<input id="fm-term-os" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="'+opsSvEsc(f.osTecnico||'')+'" placeholder="Código de la orden de servicio (letras, números y símbolos; ej. CHH-812/A)" style="'+FM_TERM_INP+'">'+
+      '<input id="fm-term-os" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="'+opsSvEsc(f.osTecnico||'')+'" oninput="fmOsVariasAviso(this)" placeholder="Código de UNA orden de servicio (ej. CHH-812/A)" style="'+FM_TERM_INP+'">'+
+      '<div id="fm-term-os-aviso" style="display:'+(fmOsVarias(f.osTecnico)?'block':'none')+';font-size:11.5px;font-weight:700;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:8px 10px;margin:-6px 0 12px;line-height:1.4">Solo va UNA orden de servicio por registro. Cada O.S. de otra estación se registra aparte con «Servicio no programado».</div>'+
       ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
       (fmPideIdFolio(f)?'<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
         '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO DEL CLIENTE — no olvides llenarlo</div>'+
@@ -8567,6 +8568,17 @@ window.fmOpsTermRes=function(b){
   const ver=function(idx,on){const e=document.getElementById(idx);if(e)e.style.display=on?'block':'none';};
   ver('fm-term-nofin',r==='no_finalizado'); ver('fm-term-noreal',r==='no_realizado');
 };
+// ¿El técnico escribió más de una O.S. en el punto 4? (comas, punto y coma, «y», diagonal entre
+// números, o dos números de 3+ dígitos). Un código como «CHH-812/A» cuenta como una sola.
+function fmOsVarias(v){
+  const s=String(v||'').trim(); if(!s) return false;
+  if(/\d\s*[,;\/]\s*\d|\d\s+y\s+\d|\d\s*-\s*\d{3,}/i.test(s)) return true;
+  return (s.match(/\d{3,}/g)||[]).length>1;
+}
+window.fmOsVariasAviso=function(inp){
+  const m=document.getElementById('fm-term-os-aviso'); if(!m) return;
+  m.style.display=fmOsVarias(inp.value)?'block':'none';
+};
 window.fmOpsServGuardarTermino=async function(id){
   const f=misOpsServ.find(function(x){return x.id===id;}); if(!f)return;
   const rb=document.querySelector('#fm-term-res button[data-on]');
@@ -8581,6 +8593,10 @@ window.fmOpsServGuardarTermino=async function(id){
   const faltan=[]; const blando=function(t){faltan.push(String(t).replace(/^Falta (el )?/,''));};
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
   if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){blando('Falta el punto 4: No. folio / O.S.');}
+  // 19-nov-2026: UNA sola O.S. por servicio (esto sí bloquea). Antes se cerraban 15 O.S. de varias
+  // estaciones en un solo registro y Operaciones tuvo que separarlas a mano.
+  if(fmOsVarias(osNum)){err('En el punto 4 va UNA sola orden de servicio. Si hiciste varias, cierra aquí solo la de esta estación y registra cada una de las demás con «Servicio no programado» (una por O.S., con su hoja y sus fotos).');document.getElementById('fm-term-os')?.focus();return;}
+  if(res==='finalizado'&&(ev.orden_servicio||[]).length>1){blando('Subiste '+ev.orden_servicio.length+' fotos de orden de servicio. Si son de O.S. distintas, cada una va en su propio servicio («Servicio no programado»). Si es una sola O.S. de varias hojas, está bien.');}
   // Candado del ID del folio (22-oct-2026, junta Operaciones): en folios de OXXO y Petro Seven el técnico
   // captura el ID de ServiceNow / Fractal que se publicó en WhatsApp y debe coincidir con el programado.
   let idFolio=null, idExc=false;
