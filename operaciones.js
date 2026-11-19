@@ -1974,10 +1974,17 @@
     // espacio para observaciones y firmas. Se imprime y se llena a mano durante la revisión;
     // después se captura en "Registrar revisión" para que quede en el historial.
     window.opsHerrPdfRevisionFisica = function (idInterno) {
-        const t = cacheTec.find(x => x.id === idInterno);
-        const lista = cacheHerr.filter(h => h.tecnicoActualId === idInterno)
-            .sort((a, b) => String(a.folio || "").localeCompare(String(b.folio || ""), "es", { numeric: true }));
-        if (!t || !lista.length) { alert("Este técnico no tiene herramienta asignada."); return; }
+        // Sirve para el almacén de un técnico y también para Almacén General / ubicaciones físicas (19-nov-2026).
+        const ubic = idInterno ? cacheAlmacenes.find(a => a.id === idInterno && a.tipo === "ubicacion") : null;
+        const tec = !ubic && idInterno ? cacheTec.find(x => x.id === idInterno) : null;
+        const t = tec || { nombre: ubic ? ubic.nombre : (idInterno ? opsNombreTecnico(idInterno) : "Almacén General"), numeroOperativo: "", esAlmacen: !idInterno || !!ubic };
+        const lista = cacheHerr.filter(h => {
+            if (h.estado === "baja") return false;
+            if (ubic) return !h.tecnicoActualId && h.almacenId === idInterno;
+            if (!idInterno) return !h.tecnicoActualId && !h.almacenId;
+            return h.tecnicoActualId === idInterno;
+        }).sort((a, b) => String(a.folio || "").localeCompare(String(b.folio || ""), "es", { numeric: true }));
+        if (!lista.length) { alert("Este almacén no tiene herramienta para revisar."); return; }
         if (!window.jspdf || !window.jspdf.jsPDF) { alert("No se cargó la librería de PDF. Recarga la página."); return; }
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
@@ -1996,7 +2003,7 @@
             doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.text("REVISIÓN FÍSICA DE HERRAMIENTA", M, 27);
             doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("HEDMA TECNOCONTROL S.A. DE C.V. · Control de Herramientas", M, 43);
             doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(limpio(t.nombre), W - M, 27, { align: "right" });
-            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text("Técnico N.° " + limpio(t.numeroOperativo || "—") + " · " + lista.length + " pieza(s) · Impreso el " + hoy, W - M, 43, { align: "right" });
+            doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text((t.esAlmacen ? "Almacén" : "Técnico N.° " + limpio(t.numeroOperativo || "—")) + " · " + lista.length + " pieza(s) · Impreso el " + hoy, W - M, 43, { align: "right" });
             y = 78;
         };
         const cabeceraTabla = () => {
@@ -2007,7 +2014,7 @@
         };
         encabezado();
         doc.setTextColor(...PDF_GRIS); doc.setFont("helvetica", "normal"); doc.setFontSize(8.5);
-        doc.text("Instrucciones: revisa cada pieza frente al técnico y marca con una X una sola casilla. Anota en Observaciones cualquier detalle. Al terminar, firmen ambos y captura el resultado en el portal (Técnicos > Herramientas > Registrar revisión).", M, y, { maxWidth: W - 2 * M });
+        doc.text(t.esAlmacen ? "Instrucciones: revisa cada pieza frente al responsable del almacén y marca con una X una sola casilla. Anota en Observaciones cualquier detalle. Al terminar, firmen ambos." : "Instrucciones: revisa cada pieza frente al técnico y marca con una X una sola casilla. Anota en Observaciones cualquier detalle. Al terminar, firmen ambos y captura el resultado en el portal (Técnicos > Herramientas > Registrar revisión).", M, y, { maxWidth: W - 2 * M });
         y += 22;
         cabeceraTabla();
         lista.forEach((h, i) => {
@@ -2039,7 +2046,7 @@
         doc.text("Fecha y hora de la revisión: ________________________", W - M, y, { align: "right" });
         y += 54;
         const fw = (W - 2 * M - 60) / 2;
-        [["Técnico que entrega a revisión", limpio(t.nombre)], ["Revisó (nombre y firma)", ""]].forEach(([tit, nom], k) => {
+        [[t.esAlmacen ? "Responsable del almacén (nombre y firma)" : "Técnico que entrega a revisión", t.esAlmacen ? "" : limpio(t.nombre)], ["Revisó (nombre y firma)", ""]].forEach(([tit, nom], k) => {
             const x = M + k * (fw + 60);
             doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.7); doc.line(x, y, x + fw, y);
             doc.setTextColor(20, 20, 20); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(nom || " ", x + fw / 2, y + 12, { align: "center" });
@@ -3423,6 +3430,7 @@
                     </div>
                     <button onclick="document.getElementById('ops-panel-wrap').innerHTML=''" style="background:#f1f5f9;border:none;width:28px;height:28px;border-radius:7px;cursor:pointer;">${ICON.close}</button>
                 </div>
+                ${piezas.length ? `<button onclick="opsHerrPdfRevisionFisica('${opsEsc(almacenId || "")}')" title="Descarga la lista de este almacén con casillas para palomear y espacio para firmas" style="width:100%;background:#fff;color:#1D2E73;border:1.5px solid #1D2E73;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px;">${ICON.printer} PDF para revisión física</button>` : ""}
                 ${opsPuedeGestionar() && piezas.length ? opsMasivoBarraHTML(almacenId) : ""}
                 ${piezas.length ? piezas.map(h => {
                     const e = ESTADOS_HERRAMIENTA[h.estado] || ESTADOS_HERRAMIENTA.disponible;
