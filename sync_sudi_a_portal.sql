@@ -34,20 +34,20 @@ do $$ begin
   end if;
 end $$;
 
-create table if not exists public.sudi_config (
+create table if not exists public.sudi_importacion_config (
   id int primary key default 1 check (id = 1),
   token text not null default md5(random()::text || clock_timestamp()::text) || md5(random()::text),
   importacion_iniciada timestamptz,
   ultima_importacion timestamptz
 );
-alter table public.sudi_config enable row level security;   -- sin políticas: nadie la lee desde la app
-insert into public.sudi_config (id) values (1) on conflict (id) do nothing;
+alter table public.sudi_importacion_config enable row level security;   -- sin políticas: nadie la lee desde la app
+insert into public.sudi_importacion_config (id) values (1) on conflict (id) do nothing;
 
 -- Fecha de la última importación (sin exponer el token), para avisar si SUDI está desactualizado
 create or replace view public.sudi_estado as
   select ultima_importacion,
          (select count(*) from public.sudi_alertas where activa) as alertas_activas
-  from public.sudi_config where id = 1;
+  from public.sudi_importacion_config where id = 1;
 grant select on public.sudi_estado to anon, authenticated;
 
 create or replace function public.sync_sudi_a_portal()
@@ -287,7 +287,7 @@ revoke all on function public.sync_sudi_a_portal() from public, anon, authentica
 
 -- ---------- Importación directa desde SUDI (la usa el botón "Actualizar SUDI") ----------
 -- p_paso: 'inicio' | 'clientes' | 'estaciones' | 'dispensarios' | 'fin'
--- Protegida con el token de sudi_config (solo quien lo tenga puede importar).
+-- Protegida con el token de sudi_importacion_config (solo quien lo tenga puede importar).
 create or replace function public.sudi_importar(p_token text, p_paso text, p_filas jsonb default '[]'::jsonb)
 returns jsonb
 language plpgsql
@@ -296,12 +296,12 @@ set search_path = public
 as $$
 declare n int := 0; ini timestamptz; res jsonb;
 begin
-  if p_token is null or not exists (select 1 from sudi_config where id = 1 and token = p_token) then
+  if p_token is null or not exists (select 1 from sudi_importacion_config where id = 1 and token = p_token) then
     raise exception 'Token de importación inválido';
   end if;
 
   if p_paso = 'inicio' then
-    update sudi_config set importacion_iniciada = now() where id = 1;
+    update sudi_importacion_config set importacion_iniciada = now() where id = 1;
 
   elsif p_paso = 'clientes' then
     insert into sudi_clientes (sudi_id, razon_social, nombre_comercial, rfc, responsable, telefono, correo, fiscal_razon_social, fiscal_nombre_comercial, fiscal_codigo, fiscal_rfc, forma_pago, calle, colonia, num_ext, num_int, cp, estado, municipio, contacto_nombre, contacto_telefono, contacto_correo, contacto_puesto, actualizado_en)
@@ -337,10 +337,10 @@ begin
     get diagnostics n = row_count;
 
   elsif p_paso = 'fin' then
-    select importacion_iniciada into ini from sudi_config where id = 1;
+    select importacion_iniciada into ini from sudi_importacion_config where id = 1;
     -- dispensarios que ya no existen en SUDI (no se actualizaron en esta importación)
     if ini is not null then delete from sudi_dispensarios where actualizado_en < ini; end if;
-    update sudi_config set ultima_importacion = now() where id = 1;
+    update sudi_importacion_config set ultima_importacion = now() where id = 1;
     select jsonb_agg(jsonb_build_object('paso', x.paso, 'filas', x.filas)) into res from sync_sudi_a_portal() x;
     return res;
   else
@@ -356,7 +356,7 @@ grant execute on function public.sudi_importar(text, text, jsonb) to anon, authe
 select * from public.sync_sudi_a_portal();
 
 -- Token para el botón "Actualizar SUDI" (cópialo; solo se pide una vez en esa computadora):
-select token as token_importacion_sudi from public.sudi_config where id = 1;
+select token as token_importacion_sudi from public.sudi_importacion_config where id = 1;
 
 -- Lista de las pendientes (correr aparte si se quiere ver):
 -- select s.sudi_id, s.numero_estacion, s.permiso_pl, s.nombre, c.razon_social
