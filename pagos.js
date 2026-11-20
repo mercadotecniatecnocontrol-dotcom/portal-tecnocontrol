@@ -1238,9 +1238,9 @@ function css(){ if(document.getElementById('vp2-css')) return; const st=document
 .vp2-gw{display:grid;grid-template-columns:repeat(7,1fr);min-height:380px}.vp2-gw>div{border-right:1px solid #f3f4f6;padding:8px 6px;display:flex;flex-direction:column;gap:7px}.vp2-gw>div.hoy{background:#fafffb}
 .vp2-gm{display:grid;grid-template-columns:repeat(7,1fr)}.vp2-gm>div{border-right:1px solid #f3f4f6;border-bottom:1px solid #f3f4f6;min-height:104px;padding:5px;display:flex;flex-direction:column;gap:4px}
 .vp2-gm .dn{font-size:11.5px;font-weight:700;color:#6b7280}.vp2-gm .o{background:#fafafa}.vp2-gm .o .dn{color:#d1d5db}.vp2-gm .hoy .dn{background:#15803d;color:#fff;border-radius:99px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center}
-.vp2-ev{border:1.5px solid var(--c);border-radius:10px;padding:7px 8px;background:#fff;cursor:pointer;font-size:11.5px;line-height:1.3}
-.vp2-ev b{display:block;color:#111827;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vp2-ev span{color:#6b7280;font-size:10.5px}
-.vp2-ev.m{padding:3px 6px;border-radius:7px;border-width:1px;border-left:4px solid var(--c);font-size:10.5px}.vp2-ev.m b{font-size:10.5px}
+.vp2-ev{border:1.5px solid var(--c);border-radius:10px;padding:7px 8px;background:var(--c);color:var(--t,#fff);cursor:pointer;font-size:11.5px;line-height:1.3}
+.vp2-ev b{display:block;color:var(--t,#fff);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vp2-ev span{color:var(--t,#fff);opacity:.85;font-size:10.5px}
+.vp2-ev.m{padding:3px 6px;border-radius:7px;border-width:1px;font-size:10.5px}.vp2-ev.m b{font-size:10.5px}
 .vp2-mas{font-size:10.5px;color:#15803d;font-weight:800;cursor:pointer}
 .vp2-mod{position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:100000;display:flex;align-items:center;justify-content:center;padding:18px}
 .vp2-box{background:#fff;border-radius:18px;width:860px;max-width:97vw;max-height:94vh;overflow-y:auto;padding:22px 24px}
@@ -1358,6 +1358,7 @@ window.__vp2Detalle=async function(id,desde){
 
 // ───────────── Calendario (compartido) ─────────────
 function lunes(x){ const d=dObj(x), w=(d.getDay()+6)%7; d.setDate(d.getDate()-w); return iso(d); }
+function txtSobre(c){ const h=String(c||'').replace('#',''); if(h.length!==6) return '#fff'; const L=x=>{x=parseInt(x,16)/255; return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);}; const l=0.2126*L(h.slice(0,2))+0.7152*L(h.slice(2,4))+0.0722*L(h.slice(4,6)); return (1.05/(l+0.05))>=4.5?'#fff':'#111827'; }
 function calendarioHTML(st, eventos, leyenda, prefijo){
   const H=hoy(), sel=st.dia||H, m=sel.slice(0,7), ini=lunes(m+'-01');
   const porDia={}; eventos.filter(e=>!st.ocultos[e.k]).forEach(e=>{ (porDia[e.d]=porDia[e.d]||[]).push(e); });
@@ -1371,10 +1372,10 @@ function calendarioHTML(st, eventos, leyenda, prefijo){
   if(st.vista==='semana'){
     const dias=[]; for(let i=0;i<7;i++) dias.push(sumar(semSel,i));
     main='<div class="vp2-cal"><div class="vp2-gh">'+dias.map(d=>'<div class="'+(d===H?'hoy':'')+'">'+dObj(d).toLocaleDateString('es-MX',{weekday:'short'})+'<b>'+Number(d.slice(8))+'</b></div>').join('')+'</div>'+
-      '<div class="vp2-gw">'+dias.map(d=>'<div class="'+(d===H?'hoy':'')+'">'+(porDia[d]||[]).map(e=>'<div class="vp2-ev" style="--c:'+e.c+'" onclick="'+e.fn+'"><b>'+esc(e.t)+'</b><span>'+esc(e.s)+'</span><div style="font-weight:800;color:'+e.c+';margin-top:3px">'+esc(e.m)+'</div></div>').join('')+'</div>').join('')+'</div></div>';
+      '<div class="vp2-gw">'+dias.map(d=>'<div class="'+(d===H?'hoy':'')+'">'+(porDia[d]||[]).map(e=>'<div class="vp2-ev" style="--c:'+e.c+';--t:'+txtSobre(e.c)+'" onclick="'+e.fn+'"><b>'+esc(e.t)+'</b><span>'+esc(e.s)+'</span><div style="font-weight:800;margin-top:3px">'+esc(e.m)+'</div></div>').join('')+'</div>').join('')+'</div></div>';
   } else {
     let cel=''; for(let i=0;i<42;i++){ const d=sumar(ini,i); if(i>=35&&d.slice(0,7)!==m) break; const ev=porDia[d]||[];
-      cel+='<div class="'+(d.slice(0,7)!==m?'o ':'')+(d===H?'hoy':'')+'"><span class="dn">'+Number(d.slice(8))+'</span>'+ev.slice(0,3).map(e=>'<div class="vp2-ev m" style="--c:'+e.c+'" onclick="'+e.fn+'"><b>'+esc(e.t)+'</b></div>').join('')+(ev.length>3?'<span class="vp2-mas" onclick="window.__vp2Cal(\''+prefijo+'\',\'semanaDe\',\''+d+'\')">+'+(ev.length-3)+' más</span>':'')+'</div>'; }
+      cel+='<div class="'+(d.slice(0,7)!==m?'o ':'')+(d===H?'hoy':'')+'"><span class="dn">'+Number(d.slice(8))+'</span>'+ev.slice(0,3).map(e=>'<div class="vp2-ev m" style="--c:'+e.c+';--t:'+txtSobre(e.c)+'" onclick="'+e.fn+'"><b>'+esc(e.t)+'</b></div>').join('')+(ev.length>3?'<span class="vp2-mas" onclick="window.__vp2Cal(\''+prefijo+'\',\'semanaDe\',\''+d+'\')">+'+(ev.length-3)+' más</span>':'')+'</div>'; }
     main='<div class="vp2-cal"><div class="vp2-gh">'+['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(x=>'<div>'+x+'</div>').join('')+'</div><div class="vp2-gm">'+cel+'</div></div>';
   }
   return '<div class="vp2-bar"><div class="vp2-tabs">'+['semana','mes'].map(v=>'<button class="vp2-tab'+(st.vista===v?' on':'')+'" onclick="window.__vp2Cal(\''+prefijo+'\',\'vista\',\''+v+'\')">'+(v==='semana'?'Semana':'Mes')+'</button>').join('')+'</div>'+
