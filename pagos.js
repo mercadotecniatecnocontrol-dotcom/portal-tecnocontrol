@@ -2154,3 +2154,170 @@ function iniciar(){ if(!document.getElementById('area-actividades-wrap')) return
 const T=setInterval(()=>{ if(typeof window.verArea!=='function'||!iniciar()) return; clearInterval(T); const orig=window.verArea;
   window.verArea=function(){ if(abierto) window.__actDr(false); const r=orig.apply(this,arguments); setTimeout(pintarBarra,150); setTimeout(pintarBarra,900); return r; }; },250);
 })();
+
+// ══════════════════════════════════════════════════════════════════════
+// SERVICIOS EXTERNOS POR PAGAR — 20-nov-2026
+// Operaciones → Externos manda a pago (botón «Mandar a pago (avisar a Cristina)»)
+// pero Pagos no tenía dónde verlos: solo llegaba el aviso de la campanita.
+// Este panel lee la MISMA tabla de Operaciones (Supabase: ops_servicios_externos,
+// archivos en el bucket privado ops-externos) — no duplica nada. Al marcar
+// «Pagado» escribe pagado_proveedor_en + historial en el mismo registro, así que
+// Operaciones lo ve al instante, y se avisa a quien lo mandó a pago.
+// ══════════════════════════════════════════════════════════════════════
+(function(){
+'use strict';
+if (window.__tcPagosExt) return; window.__tcPagosExt = true;
+const SB_URL='https://vlbyjoqessxcmkejcujp.supabase.co', SB_KEY='sb_publishable_18A7j06AwZqdw3gmqUDJHQ_Twu0t2a8';
+const TABLA='ops_servicios_externos', BUCKET='ops-externos';
+const ESTADOS_PAGABLES=['Factura recibida','Entregada','Facturada al cliente','Cobrada'];
+let _c=null,_cp=null, DATOS=[], FILTRO='enpago', BUSCA='';
+function sb(){ if(window.tcSupabase) return Promise.resolve(window.tcSupabase); if(_c) return Promise.resolve(_c); if(_cp) return _cp;
+  _cp=import('https://esm.sh/@supabase/supabase-js@2').then(m=>{ if(window.tcSupabase) return window.tcSupabase; _c=m.createClient(SB_URL,SB_KEY); return _c; }).catch(e=>{_cp=null;throw e;}); return _cp; }
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>{ const n=Number(v); return isNaN(n)?0:n; };
+const din=n=>'$'+num(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+const hoy=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const fecha=x=>{ if(!x) return '—'; const d=new Date(String(x).slice(0,10)+'T12:00:00'); return isNaN(d)?x:d.toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'}); };
+const dias=x=>{ if(!x) return null; return Math.round((new Date(hoy()+'T12:00:00')-new Date(String(x).slice(0,10)+'T12:00:00'))/86400000); };
+function yo(){ const u=(window.auth&&window.auth.currentUser)||{}; return { correo:String(u.email||'').toLowerCase(), nombre:u.displayName||String(u.email||'') }; }
+
+// Mismas reglas que Operaciones (operaciones.js → opsExtEnvioPago / opsExtEnPago / opsExtSoportes)
+const envioPago=s=>(s.historial||[]).slice().reverse().find(h=>h&&h.tipo==='envio_pago')||null;
+const soportes=s=>(s.evidencias||[]).filter(e=>e&&e.clase==='soporte_pago');
+const evidencias=s=>(s.evidencias||[]).filter(e=>e&&e.clase!=='soporte_pago');
+const enPago=s=>!!envioPago(s)&&!s.pagado_proveedor_en&&s.estado!=='Cancelado';
+const sinMandar=s=>!envioPago(s)&&!s.pagado_proveedor_en&&s.estado!=='Cancelado'&&ESTADOS_PAGABLES.includes(s.estado);
+const pagado=s=>!!s.pagado_proveedor_en&&s.estado!=='Cancelado';
+const FILTROS={
+  enpago:{ t:'Enviados a pago', f:enPago, c:'#7c3aed', bg:'#f5f3ff' },
+  sinmandar:{ t:'Sin mandar a pago', f:sinMandar, c:'#b45309', bg:'#fffbeb' },
+  pagados:{ t:'Pagados', f:pagado, c:'#15803d', bg:'#f0fdf4' },
+};
+
+function css(){ if(document.getElementById('pext-css')) return; const st=document.createElement('style'); st.id='pext-css'; st.textContent=`
+#pagos-ext .pext-card{background:#fff;border-radius:14px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+#pagos-ext .pext-chip{border:1px solid #E2E8F0;background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#334155;font-family:inherit}
+#pagos-ext .pext-chip.on{background:#0A1628;color:#fff;border-color:#0A1628}
+#pagos-ext .pext-btn{padding:5px 9px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;margin:2px 2px 2px 0;font-family:inherit}
+#pagos-ext .pext-ok{padding:6px 11px;border:none;background:#15803d;color:#fff;border-radius:7px;font-size:11.5px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap}
+#pagos-ext td{padding:8px;vertical-align:top;border-bottom:1px solid #F1F5F9}
+#pagos-ext th{padding:7px 8px;text-align:left;font-weight:700}
+`; document.head.appendChild(st); }
+
+function asegurarPanel(){
+  let p=document.getElementById('pagos-ext'); if(p) return p;
+  const ancla=document.getElementById('pagos-cxp')||document.getElementById('pagos-dashboard');
+  if(!ancla||!ancla.parentNode) return null;
+  css();
+  p=document.createElement('div'); p.id='pagos-ext'; p.style.cssText='display:none;margin-top:20px';
+  p.innerHTML=`<div class="pext-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+      <h3 style="margin:0;font-size:15px;color:#0A1628">Servicios externos por pagar (Operaciones)</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="pext-busca" placeholder="Buscar folio, proveedor, estación…" oninput="window.__pextBuscar(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;width:220px">
+        <button onclick="window.__pextRecargar()" style="padding:6px 12px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;font-size:11.5px;font-weight:700;cursor:pointer">↻ Actualizar</button>
+      </div>
+    </div>
+    <p id="pext-resumen" style="font-size:11.5px;color:#5C7089;margin:4px 0 10px"></p>
+    <div id="pext-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#0A1628;color:#fff">
+        <th>Folio</th><th>Proveedor / estación</th><th>Factura</th><th>Total</th><th>Enviado a pago</th><th>Archivos</th><th></th>
+      </tr></thead>
+      <tbody id="pext-tbody"></tbody>
+    </table></div>
+  </div>`;
+  ancla.parentNode.insertBefore(p, ancla.nextSibling);
+  return p;
+}
+
+async function cargar(){
+  const p=asegurarPanel(); if(!p) return;
+  const tb=document.getElementById('pext-tbody');
+  tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">Cargando…</td></tr>';
+  try{
+    const c=await sb();
+    const { data, error }=await c.from(TABLA).select('*').neq('estado','Cancelado').order('id',{ascending:false}).limit(2000);
+    if(error) throw error;
+    DATOS=data||[];
+    render();
+  }catch(e){ tb.innerHTML='<tr><td colspan="7" style="color:#B91C1C;padding:14px">No se pudieron cargar los servicios externos: '+esc(e.message||e)+'</td></tr>'; }
+}
+
+function render(){
+  const tb=document.getElementById('pext-tbody'); if(!tb) return;
+  const cuenta=k=>DATOS.filter(FILTROS[k].f).length;
+  const porPagar=DATOS.filter(enPago);
+  document.getElementById('pext-resumen').textContent=porPagar.length+' enviado(s) a pago · '+din(porPagar.reduce((a,s)=>a+num(s.total),0))+' por pagar a proveedores · '+cuenta('sinmandar')+' con factura que Operaciones aún no manda a pago';
+  document.getElementById('pext-chips').innerHTML=Object.keys(FILTROS).map(k=>`<button class="pext-chip ${FILTRO===k?'on':''}" onclick="window.__pextFiltro('${k}')">${FILTROS[k].t} (${cuenta(k)})</button>`).join('');
+  const q=BUSCA.toLowerCase().trim();
+  let lista=DATOS.filter(FILTROS[FILTRO].f).filter(s=>!q||[s.folio,s.proveedor_nombre,s.estacion,s.cliente,s.factura_proveedor,s.concepto].join(' ').toLowerCase().includes(q));
+  if(FILTRO==='enpago') lista.sort((a,b)=>String((envioPago(a)||{}).en||'').localeCompare(String((envioPago(b)||{}).en||'')));
+  if(FILTRO==='pagados') lista.sort((a,b)=>String(b.pagado_proveedor_en||'').localeCompare(String(a.pagado_proveedor_en||'')));
+  const vacio={ enpago:'No hay servicios externos esperando pago. Aparecen aquí cuando Operaciones presiona «Mandar a pago».', sinmandar:'Nada pendiente de mandar a pago.', pagados:'Todavía no hay servicios externos pagados.' }[FILTRO];
+  tb.innerHTML=lista.map(s=>{
+    const env=envioPago(s), d=env?dias(env.en):null;
+    const b=(ruta,txt)=>ruta?`<button class="pext-btn" onclick="window.__pextAbrir('${esc(ruta)}')">${txt}</button>`:'';
+    const arch=[b(s.factura_pdf_path,'Factura PDF'), b(s.factura_xml_path,'XML'),
+      soportes(s).map((e,i)=>b(e.ruta,'Soporte '+(i+1))).join(''),
+      evidencias(s).map((e,i)=>b(e.ruta,(e.clase==='orden_servicio'?'O.S. ':'Evid. ')+(i+1))).join('')].join('');
+    const nota=env&&env.nota?String(env.nota).replace(/^Enviado a pago \(Cristina\):?\s*/,''):'';
+    const colEnv=env?`<div style="font-weight:700">${esc(fecha(env.en))}${d!=null&&!s.pagado_proveedor_en?` <span style="color:${d>7?'#b91c1c':'#64748b'};font-weight:600">· hace ${d} día(s)</span>`:''}</div>
+        <div style="color:#64748b">por ${esc(env.por||env.correo||'')}</div>${nota?`<div style="color:#7c3aed;margin-top:2px">“${esc(nota)}”</div>`:''}`:'<span style="color:#94a3b8">No se ha mandado</span>';
+    const accion=s.pagado_proveedor_en
+      ? `<span style="font-size:11px;font-weight:800;color:#15803d;background:#dcfce7;border-radius:999px;padding:4px 9px;white-space:nowrap">Pagado · ${esc(fecha(s.pagado_proveedor_en))}</span>`
+      : `<button class="pext-ok" onclick="window.__pextPagado(${Number(s.id)})">Marcar pagado</button>`;
+    return `<tr>
+      <td><div style="font-weight:800">${esc(s.folio||'—')}</div><div style="color:#64748b">${esc(s.estado||'')}</div></td>
+      <td><div style="font-weight:700">${esc(s.proveedor_nombre||'—')}</div><div style="color:#64748b">${esc(s.estacion||'')}${s.cliente?' · '+esc(s.cliente):''}</div>${s.concepto?`<div style="color:#94a3b8;max-width:280px">${esc(String(s.concepto).slice(0,90))}</div>`:''}</td>
+      <td>${esc(s.factura_proveedor||'—')}${s.factura_fecha?`<div style="color:#64748b">${esc(fecha(s.factura_fecha))}</div>`:''}</td>
+      <td style="font-weight:800;white-space:nowrap">${din(s.total)}</td>
+      <td>${colEnv}</td>
+      <td style="max-width:260px">${arch||'<span style="color:#94a3b8">—</span>'}</td>
+      <td>${accion}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:14px">${vacio}</td></tr>`;
+}
+
+window.__pextRecargar=cargar;
+window.__pextFiltro=k=>{ FILTRO=k; render(); };
+window.__pextBuscar=v=>{ BUSCA=v||''; render(); };
+window.__pextAbrir=async function(ruta){
+  const w=window.open('','_blank');
+  try{ const c=await sb(); const { data, error }=await c.storage.from(BUCKET).createSignedUrl(ruta,600); if(error) throw error;
+    if(w) w.location.href=data.signedUrl; else window.open(data.signedUrl,'_blank');
+  }catch(e){ if(w) w.close(); alert('No se pudo abrir el archivo: '+(e.message||e)); }
+};
+window.__pextPagado=async function(id){
+  const s=DATOS.find(x=>Number(x.id)===Number(id)); if(!s) return;
+  const f=prompt(`Marcar pagado al proveedor\n${s.folio||''} · ${s.proveedor_nombre||''} · ${din(s.total)}\n\nFecha de pago (AAAA-MM-DD):`, hoy());
+  if(!f) return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f.trim())){ alert('Usa el formato AAAA-MM-DD.'); return; }
+  const ref=prompt('Referencia / folio de la transferencia (opcional):','');
+  if(ref===null) return;
+  const u=yo(), ahora=new Date().toISOString();
+  const historial=(s.historial||[]).concat([{ estado:s.estado, en:ahora, por:u.nombre||u.correo, nota:'Pagado al proveedor (desde Pagos)'+(ref.trim()?' · Ref: '+ref.trim():'') }]);
+  try{
+    const c=await sb();
+    const { error }=await c.from(TABLA).update({ pagado_proveedor_en:f.trim(), historial, actualizado_en:ahora, actualizado_por:u.correo }).eq('id',s.id);
+    if(error) throw error;
+    Object.assign(s,{ pagado_proveedor_en:f.trim(), historial, actualizado_en:ahora, actualizado_por:u.correo });
+    const env=envioPago(s);
+    if(env&&env.correo&&String(env.correo).toLowerCase()!==u.correo){
+      const msg=`Ya se pagó al proveedor ${s.proveedor_nombre||''} el servicio externo ${s.folio||''} (${s.estacion||''}) · ${din(s.total)}.`;
+      try{
+        if(window.tcNotificar) await window.tcNotificar({ tipo:'ext_pagado', para:String(env.correo).toLowerCase(), mensaje:msg, modulo:'Operaciones', extId:s.id });
+        else await c.from('portal_notificaciones').insert({ tipo:'ext_pagado', para:String(env.correo).toLowerCase(), mensaje:msg, datos:{ modulo:'Operaciones', extId:s.id } });
+      }catch(e){ console.warn('[Pagos · Externos] aviso:', e.message||e); }
+    }
+    render();
+  }catch(e){ alert('No se pudo marcar como pagado: '+(e.message||e)); }
+};
+
+const T=setInterval(()=>{ if(typeof window.verArea!=='function') return; clearInterval(T); const orig=window.verArea;
+  window.verArea=function(area){ const r=orig.apply(this,arguments);
+    setTimeout(()=>{ const p=asegurarPanel(); if(!p) return;
+      if(area==='Pagos'){ p.style.display='block'; cargar(); } else p.style.display='none'; },150);
+    return r; }; },200);
+console.log('[PAGOS · Servicios externos] ✅ listo');
+})();
