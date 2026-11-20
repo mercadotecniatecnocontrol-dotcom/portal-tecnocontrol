@@ -1343,7 +1343,10 @@ window.__vp2Detalle=async function(id,desde){
             :(s.entregado_en?'<div style="font-size:12px;color:#9ca3af">El técnico todavía no sube comprobantes.</div>':''))+
         '</div></div>'+
       '<div class="vp2-sec" style="margin-top:16px">Historial</div><div class="vp2-tl">'+tl.map(a=>'<div style="--c:'+a[0]+'">'+a[1]+'</div>').join('')+'</div>'+
+      (s.cierre?'<div style="background:#f1f5f9;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#334155;margin-top:12px"><b>Comprobación cerrada</b> el '+fh(s.cierre.en||s.cierre.fecha)+' por '+esc(s.cierre.porNombre||s.cierre.por||'')+(s.cierre.resultadoTxt?': '+esc(s.cierre.resultadoTxt):'')+(Number(s.cierre.monto)?' · '+din(s.cierre.monto):'')+(s.cierre.nota?'<br><span style="color:#64748b">'+esc(s.cierre.nota)+'</span>':'')+'</div>':'')+
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap">'+
+        (desde==='conta'&&s.entregado_en&&!s.cierre?'<button class="vp2-btn pri" title="Da por terminada la comprobación de este viático" onclick="window.__vp2AbrirCierre('+s.id+')">'+IC.ok+' Cerrar comprobación</button>':'')+
+        (desde==='conta'&&s.cierre?'<button class="vp2-btn" title="Vuelve a abrir la comprobación para seguir revisando" onclick="window.__vp2Reabrir('+s.id+')">Reabrir comprobación</button>':'')+
         (desde==='conta'&&s.estatus==='Pagada'&&!s.cierre?'<button class="vp2-btn" style="border-color:#7c3aed;color:#7c3aed" onclick="window.__vp2ComprobarUrgente('+s.id+')">'+IC.doc+' Comprobar por el técnico (urgencia)</button>':'')+
         (desde==='conta'&&ec&&ec.falta>0.5&&s.responsable_email&&!s.cierre?'<button class="vp2-btn dark" onclick="window.__vp2Recordar('+s.id+')">Recordarle al técnico</button>':'')+
         (desde==='conta'&&esConta()&&s.entregado_en&&(t.sobrante||sobranteDe(s,comps).exc>0.5)?'<button class="vp2-btn" style="border-color:#0e7490;color:#0e7490" onclick="window.__vp2Sobrante('+s.id+',\'conta\')">'+IC.dinero+(t.sobrante?' Sobrante '+din(t.sobrante.monto)+' · '+esc(t.sobrante.estatus):' Capturar sobrante '+din(sobranteDe(s,comps).exc))+'</button>':'')+
@@ -1844,6 +1847,35 @@ window.__vp2Revisar=async function(compId,viaId,est){ let mot=null; if(est==='Re
 window.__vp2Recordar=async function(id){ const s=C.lista.find(x=>x.id===id); if(!s) return; const e=estConta(s);
   const ok=await avisoApp(s.responsable_email,'viat_tec_recordatorio','Contabilidad: te falta comprobar '+din(e.falta)+' de tus viáticos '+s.folio+' (límite '+fc(s.fecha_limite_comprobacion)+'). Sube fotos o PDF de tus facturas en la app → Comprobar viáticos.',s);
   toast(ok?'Se le mandó el recordatorio a su app.':'No se pudo mandar el recordatorio.'); };
+
+// ───────────── Cerrar / reabrir comprobación desde Contabilidad (20-nov-2026) ─────────────
+// Mismo formato de "cierre" que Operaciones (opsViaGuardarCierre), para que ambos módulos lo lean igual.
+window.__vp2AbrirCierre=async function(id){
+  try{ const c=await sb(); const [r,k]=await Promise.all([ c.from('ops_solicitudes_viaticos').select(COLS).eq('id',id).single(), c.from('ops_viaticos_comprobantes').select('*').eq('viatico_id',id) ]);
+    if(r.error) throw r.error; const s=r.data, comps=k.data||[]; COMPS[id]=comps;
+    const ent=Number(s.monto_entregado)||0, acept=r2(comps.filter(x=>x.estatus==='Aceptado').reduce((a,x)=>a+(Number(x.total)||0),0)), pend=comps.filter(x=>x.estatus==='Por revisar').length, dif=r2(acept-ent);
+    const ops=dif<-0.5?[['devolucion','El técnico devuelve '+din(-dif)],['descuento_nomina','Se descuenta '+din(-dif)+' vía nómina'],['absorbe_empresa','La empresa absorbe la diferencia (autorizado)']]
+      :dif>0.5?[['reembolso','Se reembolsa '+din(dif)+' al técnico'],['sin_reembolso','No se reembolsa el excedente']]:[['saldada','Saldada, sin diferencia']];
+    modal('<div style="display:flex;justify-content:space-between;gap:10px"><div><div style="font-size:18px;font-weight:800">Cerrar comprobación</div><div style="font-size:12.5px;color:#6b7280">'+esc(s.folio)+' · '+esc(s.responsable_nombre||s.integrantes||'')+' · '+esc(s.destino||'')+'</div></div><button class="vp2-ib" title="Volver" onclick="window.__vp2Detalle('+id+',\'conta\')">'+IC.cerrar+'</button></div>'+
+      '<div style="font-size:13px;color:#334155;margin:12px 0;line-height:1.6">Depositado <b>'+din(ent)+'</b> · Aceptado <b>'+din(acept)+'</b> · Diferencia <b style="color:'+(dif<-0.5?'#b91c1c':dif>0.5?'#1d4ed8':'#15803d')+'">'+din(dif)+'</b></div>'+
+      (pend?'<div style="background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px">Hay '+pend+' comprobante(s) sin revisar. No cuentan en la cuenta: acéptalos o recházalos antes de cerrar.</div>':'')+
+      '<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">¿Cómo queda?</div>'+
+      ops.map((o,i)=>'<label style="display:block;border:1px solid #e5e7eb;border-radius:9px;padding:9px 10px;margin-bottom:6px;cursor:pointer;font-size:13px"><input type="radio" name="vp2-cierre" value="'+o[0]+'" data-txt="'+esc(o[1])+'" '+(i===0?'checked':'')+'> '+o[1]+'</label>').join('')+
+      '<div style="font-size:12px;font-weight:700;color:#374151;margin:10px 0 4px">Nota (opcional)</div><textarea id="vp2-cierre-nota" class="vp2-in" style="width:100%;min-height:60px;box-sizing:border-box" placeholder="Medio, referencia, quién autorizó…"></textarea>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="vp2-btn" onclick="window.__vp2Detalle('+id+',\'conta\')">Cancelar</button><button id="vp2-cierre-btn" class="vp2-btn pri" onclick="window.__vp2GuardarCierre('+id+','+dif+')">Cerrar comprobación</button></div>',true);
+  }catch(e){ alert('No se pudo cargar: '+(e.message||e)); } };
+window.__vp2GuardarCierre=async function(id,dif){ const r=document.querySelector('input[name="vp2-cierre"]:checked'); if(!r) return; const btn=document.getElementById('vp2-cierre-btn'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  const u=yo(), ahora=new Date().toISOString(), nota=(document.getElementById('vp2-cierre-nota').value||'').trim();
+  const cierre={resultado:r.value,resultadoTxt:r.getAttribute('data-txt'),monto:Math.abs(dif)||0,nota:nota||null,por:u.correo,porNombre:u.nombre,en:ahora};
+  try{ const c=await sb(); const q=await c.from('ops_solicitudes_viaticos').update({cierre,actualizado_en:ahora,actualizado_por:u.correo}).eq('id',id).select('id,folio,responsable_email').single(); if(q.error) throw q.error;
+    const s=C.lista.find(x=>x.id===id); if(s) s.cierre=cierre;
+    avisoApp(q.data.responsable_email,'viat_tec_cerrada','Contabilidad cerró la comprobación de tus viáticos '+q.data.folio+': '+cierre.resultadoTxt+'.',q.data);
+    toast('Comprobación cerrada.'); await window.__vp2Detalle(id,'conta'); pintarConta();
+  }catch(e){ alert('No se pudo cerrar: '+(e.message||e)); if(btn){ btn.disabled=false; btn.textContent='Cerrar comprobación'; } } };
+window.__vp2Reabrir=async function(id){ if(!confirm('¿Reabrir esta comprobación para seguir revisándola?')) return; const u=yo();
+  try{ const c=await sb(); const q=await c.from('ops_solicitudes_viaticos').update({cierre:null,actualizado_en:new Date().toISOString(),actualizado_por:u.correo}).eq('id',id); if(q.error) throw q.error;
+    const s=C.lista.find(x=>x.id===id); if(s) s.cierre=null; toast('Comprobación reabierta.'); await window.__vp2Detalle(id,'conta'); pintarConta();
+  }catch(e){ alert('No se pudo reabrir: '+(e.message||e)); } };
 
 // ───────────── Comprobantes: edición total, borrado, sobrantes y seguimiento (19-nov-2026) ─────────────
 // · Solo Contabilidad (contabilidad@) edita todo un comprobante o lo borra. Cada cambio queda en el historial,
