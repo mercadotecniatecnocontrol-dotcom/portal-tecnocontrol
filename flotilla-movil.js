@@ -882,6 +882,8 @@ body{margin:0;padding:0;background:#F0F2F7;font-family:'Plus Jakarta Sans',-appl
 .fm-status{display:flex;align-items:center;gap:6px;}
 .fm-online-dot{width:7px;height:7px;border-radius:50%;background:#22C55E;box-shadow:0 0 0 2px rgba(34,197,94,.25);}
 .fm-online-dot.off{background:#EF4444;box-shadow:0 0 0 2px rgba(239,68,68,.25);}
+.fm-checador-btn{height:32px;padding:0 11px;border-radius:16px;background:#10B981;color:#fff;font-weight:800;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:5px;font-family:inherit;}
+.fm-checador-btn svg{width:15px;height:15px;}
 .fm-user-btn{width:32px;height:32px;border-radius:50%;background:#2563EB;border:none;color:#fff;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
 
 /* CONTENT */
@@ -1041,6 +1043,12 @@ const IC={
   car:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h1l3-3h12l3 3h1a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>`,
 };
 
+// Checador de campo: en iPhone/iPad se usa la web (en Android ya tienen la APK)
+function fmEsIOS(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod/i.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1);
+}
+
 // ── HTML BASE ──
 function buildHTML(){
   const el=document.getElementById('fl-movil-root')||document.body;
@@ -1063,6 +1071,7 @@ function buildHTML(){
         </div>
         <div class="fm-status">
           <div class="fm-online-dot" id="fm-dot"></div>
+          ${fmEsIOS()?`<a class="fm-checador-btn" href="https://checadorapp.vercel.app" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Checar</a>`:''}
           <button class="fm-user-btn" id="fm-user-btn" onclick="abrirPerfil()">?</button>
         </div>
       </div>
