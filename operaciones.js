@@ -24222,7 +24222,7 @@
                     <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Sugerido</div>
                     <div style="display:flex;gap:6px;margin-bottom:8px;">
                         ${vehPick(s.vehiculos?.sugerido, "vehiculos.sugerido", "Buscar vehículo: ECO, unidad, placas, quién la trae…")}
-                        ${inp(s.vehiculos?.sugerido?.razon, "vehiculos.sugerido.razon", false, "Razón")}
+                        ${inp(s.vehiculos?.sugerido?.razon, "vehiculos.sugerido.razon", false, "Razón", "35%")}
                     </div>
                     <div style="font-size:10.5px;color:#64748b;margin-bottom:3px;">Alternos</div>
                     ${(s.vehiculos?.alternos || []).map((v, i) => `
