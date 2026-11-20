@@ -8056,7 +8056,7 @@
     };
     // ── Asignar guardia (la guardia en sí, no la herramienta) ──
     window.opsGdAsignarModal = function () {
-        const actual = opsGdSemActual(), sems = Array.from({ length: 13 }, (_, i) => opsSumarDias(actual, 7 * i));
+        const actual = opsGdSemActual(), sems = Array.from({ length: 21 }, (_, i) => opsSumarDias(actual, 7 * (i - 8))); // 8 semanas atrás (registrar guardias ya pasadas) + actual + 12 adelante
         const opts = tipo => opsPersonalGuardiaTipo(tipo).map(t => `<option value="${t.id}">${opsEsc(opsGdEtiq(t))}</option>`).join("");
         opsMiniModal("Asignar guardia · " + opsEsc(opsGdPlaza), `
             <div style="background:#fef2f2;color:#991b1b;border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:10px;">Plaza <b>${opsEsc(opsGdPlaza)}</b>. Para otra plaza, ciérralo y elige la plaza arriba.</div>
