@@ -11120,7 +11120,23 @@
     // El servidor manda cada aviso UNA sola vez aunque varias pantallas tengan el portal abierto.
     // Destinatarios: evento calidad_servicio_programado / calidad_servicio_terminado en "Quién recibe qué".
     const OPS_CALIDAD_DESDE = "2026-11-03";
-    const opsCalidadVistos = new Set();
+    // 21-nov-2026: los folios ya avisados se recuerdan en este navegador, para no
+    // mandar ~80 llamadas al servidor cada vez que se abre el portal.
+    const OPS_CALIDAD_LS = "tc_calidad_avisados_v1";
+    const opsCalidadVistos = (function () {
+        let arr = [];
+        try { arr = JSON.parse(localStorage.getItem(OPS_CALIDAD_LS) || "[]"); } catch (e) { arr = []; }
+        const set = new Set(Array.isArray(arr) ? arr.slice(-3000) : []);
+        const add = set.add.bind(set);
+        let t = null;
+        set.add = function (v) {
+            add(v);
+            clearTimeout(t);
+            t = setTimeout(function () { try { localStorage.setItem(OPS_CALIDAD_LS, JSON.stringify(Array.from(set).slice(-3000))); } catch (e) {} }, 1500);
+            return set;
+        };
+        return set;
+    })();
     function opsCalidadTxt(f) {
         return [f.estacion || f.estacionNombreComercial || "Servicio", opsCalTipoTexto ? opsCalTipoTexto(f) : "", (f.tecnicosAsignadosNombres || []).length ? "técnico(s): " + f.tecnicosAsignadosNombres.join(", ") : ""].filter(Boolean).join(" · ");
     }
