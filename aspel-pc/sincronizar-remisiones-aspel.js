@@ -80,6 +80,21 @@ function texto(v) {
 }
 function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
 function fecha(v) { if (!v) return null; const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); }
+// ── Conexión ──
+function conectar(cfg) {
+  const opciones = Object.assign({ lowercase_keys: false }, cfg.firebird);
+  return new Promise((ok, ko) => Firebird.attach(opciones, (err, db) => (err ? ko(err) : ok(db))));
+}
+function consulta(db, sql, params) {
+  return new Promise((ok, ko) => db.query(sql, params || [], (err, filas) => (err ? ko(err) : ok(filas || []))));
+}
+async function consultaOpcional(db, sql, params, que) {
+  try { return await consulta(db, sql, params); }
+  catch (e) { log('Aviso: no pude leer ' + que + ' (' + (e.message || e) + '). Sigo sin ese dato.'); return []; }
+}
+function lotes(arr, n) { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; }
+function marcas(n) { return new Array(n).fill('?').join(','); }
+
 // ── Columnas reales de cada tabla (Aspel cambia nombres entre versiones) ──
 // Se leen del catálogo de Firebird; si una columna no existe se pide NULL en su lugar.
 const COLS = {};
