@@ -2,12 +2,13 @@
 /**
  * guardian-aspel.js — Portal Operativo Tecnocontrol (13-nov-2026)
  * ---------------------------------------------------------------------------
- * Mantiene SIEMPRE corriendo los 4 procesos de Aspel, sin ventanas que se
+ * Mantiene SIEMPRE corriendo los 5 procesos de Aspel, sin ventanas que se
  * puedan cerrar por error:
  *    vigilar-firebird.js            (marca pedidos como remisionados)
  *    sincronizar-aspel.js           (Aspel -> Supabase, cada 5 min)
  *    sincronizar-partidas-aspel.js  (partidas -> Supabase, cada 5 min)
  *    sincronizar-productos-aspel.js (catálogo -> Supabase, cada 30 min)
+ *    sincronizar-remisiones-aspel.js (remisiones -> Supabase, cada 5 min) [21-nov-2026]
  *
  *  - Los arranca ocultos. Si uno se cae, lo vuelve a arrancar solo.
  *  - Si ya hay una copia corriendo en ventana (la forma vieja), NO abre otra:
@@ -45,6 +46,8 @@ const SCRIPTS = [
   { id: 'aspel', bat: 'iniciar-sincronizador-aspel.bat', archivo: 'sincronizar-aspel.js', prefijo: 'aspel-sync', limiteMin: 15 },
   { id: 'partidas', bat: 'iniciar-sincronizador-partidas.bat', archivo: 'sincronizar-partidas-aspel.js', prefijo: 'partidas-aspel', limiteMin: 15 },
   { id: 'productos', bat: 'iniciar-sincronizador-productos.bat', archivo: 'sincronizar-productos-aspel.js', prefijo: 'productos-aspel', limiteMin: 75 },
+  // (21-nov-2026) Remisiones Aspel -> Supabase (número + datos para el PDF en Almacén)
+  { id: 'remisiones', bat: 'iniciar-sincronizador-remisiones.bat', archivo: 'sincronizar-remisiones-aspel.js', prefijo: 'remisiones-aspel', limiteMin: 15 },
 ];
 
 function log(msg) {
