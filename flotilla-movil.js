@@ -5483,6 +5483,12 @@ window.revGuardar=async function(){
     };
     await revRef.set(revDoc);
 
+    // La foto de la revisión más reciente pasa a ser la foto de perfil de la herramienta (nov-2026)
+    for(const [herrId,dataUrl] of revFotos){
+      try{ await opsDb().collection(C.OPS_HERR).doc(herrId).update({fotoBase64:dataUrl}); }
+      catch(e){ console.warn('[REV] no se pudo actualizar la foto de perfil de',herrId,e); }
+    }
+
     const fotosGuardadas=revFotos;
     revFotos=new Map();
     toast('Revisión guardada — ya se refleja en Operaciones','ok');
