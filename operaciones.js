@@ -7309,6 +7309,14 @@
             observacionesGenerales: observacionesGenerales.trim() || null,
             createdAt: fs.serverTimestamp ? fs.serverTimestamp() : opsFechaHora(),
         });
+        // La foto de la revisión más reciente pasa a ser la foto de perfil de la herramienta (nov-2026)
+        for (const [herrId, dataUrl] of opsRevisionFotos) {
+            try {
+                await opsSbHerrActualizar(herrId, { fotoBase64: dataUrl });
+                const h = cacheHerr.find(x => x.id === herrId);
+                if (h) h.fotoBase64 = dataUrl;
+            } catch (err) { console.warn("[operaciones.js] no se pudo actualizar la foto de perfil de", herrId, err); }
+        }
         opsRevisionFotos = new Map();
         document.getElementById("ops-modal-wrap").innerHTML = "";
         const hayNovedades = herramientas.some(h => h.estado !== "conforme");
