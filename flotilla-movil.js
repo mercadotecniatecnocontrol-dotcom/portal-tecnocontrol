@@ -5390,10 +5390,15 @@ function revRenderPaso2(){
       <div style="border:1px solid #E2E8F0;border-radius:12px;padding:12px 14px;margin-bottom:8px;background:#fff" data-herr-id="${h.id}" data-folio="${(h.folio||'').replace(/"/g,'&quot;')}" data-desc="${(h.descripcion||'').replace(/"/g,'&quot;')}">
         <div style="font-size:12.5px;font-weight:800;color:#0A0F1E;margin-bottom:2px">${h.folio||'—'}</div>
         <div style="font-size:11.5px;color:#64748B;margin-bottom:8px">${h.descripcion||'—'}</div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#F0FDF4;color:#166534"><input type="radio" name="rev2-${h.id}" value="conforme" checked style="margin-right:4px">Conforme</label>
-          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FEF2F2;color:#B91C1C"><input type="radio" name="rev2-${h.id}" value="faltante" style="margin-right:4px">Faltante</label>
-          <label style="flex:1;text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FFF7ED;color:#C2410C"><input type="radio" name="rev2-${h.id}" value="danada" style="margin-right:4px">Dañada</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px" onchange="var c=document.getElementById('rev-cant-${h.id}');if(c)c.style.display=(event.target.value==='incompleto')?'flex':'none';">
+          <label style="text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#F0FDF4;color:#166534"><input type="radio" name="rev2-${h.id}" value="conforme" checked style="margin-right:4px">Conforme</label>
+          <label style="text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FEF2F2;color:#B91C1C"><input type="radio" name="rev2-${h.id}" value="faltante" style="margin-right:4px">Faltante</label>
+          <label style="text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FFFBEB;color:#B45309"><input type="radio" name="rev2-${h.id}" value="incompleto" style="margin-right:4px">Incompleto</label>
+          <label style="text-align:center;font-size:10.5px;font-weight:700;padding:7px;border-radius:8px;background:#FFF7ED;color:#C2410C"><input type="radio" name="rev2-${h.id}" value="danada" style="margin-right:4px">Dañada</label>
+        </div>
+        <div id="rev-cant-${h.id}" style="display:none;gap:6px;align-items:center;margin-bottom:8px;font-size:11px;font-weight:700;color:#B45309">
+          Trae <input type="number" inputmode="numeric" min="0" id="rev-encontrada-${h.id}" style="width:56px;border:1px solid #FCD34D;border-radius:7px;padding:5px 6px;font-size:12px">
+          de <input type="number" inputmode="numeric" min="1" id="rev-esperada-${h.id}" value="${h.cantidadKit||h.piezasKit||''}" style="width:56px;border:1px solid #FCD34D;border-radius:7px;padding:5px 6px;font-size:12px"> piezas
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <label style="display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#1D2E73;background:#E9ECF5;padding:6px 10px;border-radius:7px">
@@ -5460,21 +5465,30 @@ window.revGuardar=async function(){
         herramientaId:herrId, folio:div.getAttribute('data-folio')||'', descripcion:div.getAttribute('data-desc')||'',
         estado:seleccionado?seleccionado.value:'conforme', observacion:(document.getElementById(`rev-obs-${herrId}`)||{}).value?.trim()||null, tieneFoto:!!dataUrl,
       });
+      if(seleccionado&&seleccionado.value==='incompleto'){
+        const n=id=>{const x=parseInt((document.getElementById(id)||{}).value,10);return isNaN(x)?null:x;};
+        herramientas[herramientas.length-1].cantidadEncontrada=n(`rev-encontrada-${herrId}`);
+        herramientas[herramientas.length-1].cantidadEsperada=n(`rev-esperada-${herrId}`);
+      }
     }
     const obsGenerales=(document.getElementById('rev-obs-generales')||{}).value||'';
 
-    await revRef.set({
+    const revDoc={
       tecnicoId: esAutorrevision ? revState.almacenId : (almacen && almacen.tipo === 'tecnico' ? (almacen.tecnicoId || almacen.id) : null),
       tecnicoNombre: revState.almacenNombre, tecnicoNumero:'',
       almacenId: revState.almacenId, almacenNombre: revState.almacenNombre,
       fecha: now, realizadoPor: userName, realizadoPorEmail: userEmail,
       herramientas, observacionesGenerales: obsGenerales.trim()||null,
       origen:'flotilla_movil_admin', createdAt: now,
-    });
+    };
+    await revRef.set(revDoc);
 
+    const fotosGuardadas=revFotos;
     revFotos=new Map();
     toast('Revisión guardada — ya se refleja en Operaciones','ok');
-    revCerrarRevision();
+    const novedades=herramientas.filter(h=>h.estado!=='conforme');
+    if(novedades.length){ revMostrarResultado(revDoc,fotosGuardadas); }
+    else revCerrarRevision();
   }catch(e){
     console.error('[REV] error al guardar revisión',e);
     toast('Error al guardar: '+(e.message||e),'err');
@@ -5482,12 +5496,57 @@ window.revGuardar=async function(){
   }
 };
 
+// ── Al terminar una revisión con novedades: resumen + PDF solo de faltantes (nov-2026, Paloma) ──
+// El PDF lo arma revision-herramienta.js (el mismo que usa el Portal) con las fotos que se acaban de tomar.
+function revMostrarResultado(revDoc,fotos){
+  revState.paso=3; revState.resultado={revDoc,fotos};
+  renderUtil();
+}
+function revRenderResultado(){
+  const r=(revState.resultado||{}).revDoc||{herramientas:[]};
+  const nov=(r.herramientas||[]).filter(h=>h.estado!=='conforme');
+  const etq={faltante:['Faltante','#B91C1C'],incompleto:['Incompleto','#B45309'],danada:['Dañada','#C2410C']};
+  const txtCant=h=>{if(h.estado!=='incompleto'||(h.cantidadEncontrada==null&&h.cantidadEsperada==null))return'';const e=h.cantidadEncontrada,t=h.cantidadEsperada;return` · Trae ${e??'?'} de ${t??'?'}`;};
+  setContent(`
+    <div class="fm-sec-hd"><div><div class="fm-sec-t">Revisión guardada</div><div class="fm-sec-s">${r.almacenNombre||''} — ${nov.length} pieza(s) con novedad</div></div></div>
+    <div class="fm-card" style="padding:12px 14px;margin-bottom:10px">
+      ${nov.map(h=>{const e=etq[h.estado]||[h.estado,'#475569'];return`<div style="padding:6px 0;border-bottom:1px solid #F1F5F9;font-size:12px">
+        <b>${h.folio||''}</b> · ${h.descripcion||''}<div style="font-size:11px;font-weight:700;color:${e[1]}">${e[0]}${txtCant(h)}</div>${h.observacion?`<div style="font-size:11px;color:#64748B;font-style:italic">${h.observacion}</div>`:''}</div>`;}).join('')}
+    </div>
+    <button id="rev-btn-pdf" class="fm-btn primary" style="width:100%;margin-bottom:8px;background:#B91C1C" onclick="revPdfFaltantes()">Descargar PDF de faltantes</button>
+    <button class="fm-btn ghost" style="width:100%" onclick="revCerrarRevision()">Terminar</button>
+  `);
+}
+async function revCargarPDFLib(){
+  if(window.tcRevPDF)return;
+  await new Promise((ok,ko)=>{const sc=document.createElement('script');sc.src='revision-herramienta.js?v=1';sc.onload=ok;sc.onerror=()=>ko(new Error('No se pudo cargar revision-herramienta.js'));document.head.appendChild(sc);});
+}
+window.revPdfFaltantes=async function(){
+  const btn=document.getElementById('rev-btn-pdf');
+  const res=revState.resultado; if(!res)return;
+  if(btn){btn.disabled=true;btn.textContent='Generando PDF...';}
+  try{
+    await revCargarPDFLib();
+    const fotos=res.fotos||new Map();
+    const doc=await window.tcRevPDF(res.revDoc,async id=>fotos.get(id)||null,{soloNovedades:true});
+    const nombre=window.tcRevNombrePDF(res.revDoc,true);
+    const file=new File([doc.output('blob')],nombre,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:'Faltantes de herramienta',text:`Faltantes de herramienta — ${res.revDoc.almacenNombre||''}`}); }
+      catch(e){ if(e&&e.name!=='AbortError') doc.save(nombre); }
+    } else doc.save(nombre);
+  }catch(e){
+    console.error('[REV] PDF de faltantes',e);
+    toast('No se pudo generar el PDF: '+(e.message||e),'err');
+  }finally{ if(btn){btn.disabled=false;btn.textContent='Descargar PDF de faltantes';} }
+};
+
 function renderUtil(){
   // Si el técnico está en medio de un traspaso de herramienta, ese flujo
   // manda — es independiente del wizard de transferencia de vehículo
   // (utilState) para no mezclar sus pasos/borradores.
   if(herrState.activo){ herrRender(); return; }
-  if(revState.activo){ if(revState.paso===1) revRenderPaso1(); else revRenderPaso2(); return; }
+  if(revState.activo){ if(revState.paso===1) revRenderPaso1(); else if(revState.paso===3) revRenderResultado(); else revRenderPaso2(); return; }
   setContent(`
     <div class="fm-sec-hd">
       <div>

@@ -49,6 +49,7 @@
     // construya esa parte: vehiculoId, origen, destino, distanciaKm, casetasMonto,
     // horaSalida. Ninguno rompe folios existentes (todos opcionales).
     const COL_CLIENTES = "ops_clientes"; // Catálogo de clientes con su tabla de SLA por prioridad (P1-P6, en horas)
+    const COL_DESC_HERR = "ops_descuentos_herramienta"; // Descuentos al técnico por herramienta faltante/incompleta/dañada (nov-2026, Paloma) — para nómina/finiquito
     const COL_REVISIONES = "ops_revisiones_herramienta"; // Bitácora de auditorías físicas de herramienta por técnico (distinta de COL_AUDITORIA, que es el log de cambios de campos)
     const COL_HERR_TRASPASOS = "ops_herramienta_traspasos"; // Solicitudes de traspaso técnico-a-técnico que requieren aceptación (mismo patrón que flotilla_transferencias)
     // Almacenes como entidad real (sep-2026, a petición de Glen): Almacén General +
@@ -3281,7 +3282,8 @@
                 ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                 <div style="margin-top:8px;text-align:right;">
                     <button onclick="opsVerRevisionDetalle('${r.id}')" style="background:#1D2E73;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;margin-right:6px;">${ICON.camera} Ver fotos y comentarios</button>
-                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} Descargar PDF</button>
+                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} PDF completo</button>
+                    ${faltantes.length ? `<button id="ops-rev-falt-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}', true)" style="background:#fee2e2;border:none;color:#b91c1c;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;margin-left:6px;">${ICON.download} PDF faltantes</button>` : ""}
                 </div>
             </div>`;
         }).join("");
@@ -7052,8 +7054,13 @@
                 const snap = await fs.getDocs(fs.query(fs.collection(db, COL_REVISIONES), fs.where("tecnicoId", "==", idInterno), fs.orderBy("fecha", "desc")));
                 revisiones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             } catch (err) { console.warn("[operaciones.js] no se pudo leer ops_revisiones_herramienta:", err.message); }
+            let descuentosHerr = [];
+            try {
+                const sd = await fs.getDocs(fs.query(fs.collection(db, COL_DESC_HERR), fs.where("tecnicoId", "==", idInterno)));
+                descuentosHerr = sd.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.estatus !== "cancelado").sort((a, b) => String(b.creadoEn || "").localeCompare(String(a.creadoEn || "")));
+            } catch (err) { console.warn("[operaciones.js] descuentos de herramienta:", err.message); }
             if (fichaTecTabActual !== "auditoria") return; // el usuario cambió de pestaña mientras cargaba
-            el.innerHTML = `
+            el.innerHTML = opsDescHerrHTML(descuentosHerr) + `
                 <div style="background:#fff;border-radius:14px;padding:16px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
                     <div style="font-size:12.5px;font-weight:700;color:#1e293b;">Auditorías de herramienta (${revisiones.length})</div>
                     ${asignadas.length && opsPuedeGestionar() ? `<button onclick="opsAbrirModalRevision('${idInterno}')" class="mkt-add-btn" style="background:#1D2E73;display:inline-flex;align-items:center;gap:6px;">${ICON.search} Nueva revisión</button>` : ""}
@@ -7067,11 +7074,12 @@
                             <span style="font-size:10.5px;font-weight:700;color:${faltantes.length ? "#E7402B" : "#166534"};">${faltantes.length ? `${ICON.alert} ${faltantes.length} con novedad` : `${ICON.check} Todo conforme`}</span>
                         </div>
                         <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Revisó: ${opsEsc(r.realizadoPor || "—")}${conFoto ? ` · ${ICON.camera} ${conFoto} foto(s)` : ""}</div>
-                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.tieneFoto ? ` · ${ICON.camera}` : ""}</div>`).join("")}
+                        ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.estado === "incompleto" ? ` · <b style="color:#b45309;">Incompleto${window.tcRevTxtCantidad && window.tcRevTxtCantidad(h) ? " (" + opsEsc(window.tcRevTxtCantidad(h)) + ")" : ""}</b>` : ""}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.tieneFoto ? ` · ${ICON.camera}` : ""}${h.reposicion ? ` · <span style="color:#7c3aed;">Req. ${opsEsc(h.reposicion.requisicionFolio || "")}${h.reposicion.descontar ? " · descuento " + opsDinero(h.reposicion.montoDescuento || 0) : ""}</span>` : ""}</div>`).join("")}
                         ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                         <div style="margin-top:8px;text-align:right;">
                             <button onclick="opsVerRevisionDetalle('${r.id}')" style="background:#1D2E73;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;margin-right:6px;">${ICON.camera} Ver fotos y comentarios</button>
-                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} Descargar PDF</button>
+                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} PDF completo</button>
+                            ${faltantes.length ? `<button id="ops-rev-falt-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}', true)" style="background:#fee2e2;border:none;color:#b91c1c;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;margin-left:6px;">${ICON.download} PDF faltantes</button>` : ""}
                         </div>
                     </div>`;
                 }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
@@ -7202,10 +7210,15 @@
                     ${asignadas.map(h => `
                     <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px;" data-herr-id="${h.id}" data-folio="${opsEsc(h.folio)}" data-desc="${opsEsc(h.descripcion)}">
                         <div style="font-size:12.5px;font-weight:700;color:#1e293b;margin-bottom:6px;">${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}</div>
-                        <div style="display:flex;gap:6px;margin-bottom:6px;">
+                        <div style="display:flex;gap:6px;margin-bottom:6px;" onchange="var c=document.getElementById('ops-rev-cant-${h.id}');if(c)c.style.display=(event.target.value==='incompleto')?'flex':'none';">
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#f0fdf4;color:#166534;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="conforme" checked style="margin-right:4px;">Conforme</label>
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fef2f2;color:#E7402B;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="faltante" style="margin-right:4px;">Faltante</label>
+                            <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fffbeb;color:#b45309;cursor:pointer;" title="Kits o juegos: sí lo trae, pero le faltan piezas"><input type="radio" name="rev-${h.id}" value="incompleto" style="margin-right:4px;">Incompleto</label>
                             <label style="flex:1;text-align:center;font-size:11px;font-weight:600;padding:6px;border-radius:7px;background:#fff7ed;color:#c2410c;cursor:pointer;"><input type="radio" name="rev-${h.id}" value="danada" style="margin-right:4px;">Dañada</label>
+                        </div>
+                        <div id="ops-rev-cant-${h.id}" style="display:none;gap:8px;align-items:center;margin-bottom:6px;font-size:11.5px;color:#b45309;font-weight:600;">
+                            Trae <input type="number" min="0" id="ops-rev-encontrada-${h.id}" style="width:60px;border:1px solid #fcd34d;border-radius:6px;padding:4px 6px;font-size:12px;">
+                            de <input type="number" min="1" id="ops-rev-esperada-${h.id}" value="${h.cantidadKit || h.piezasKit || ""}" style="width:60px;border:1px solid #fcd34d;border-radius:6px;padding:4px 6px;font-size:12px;"> piezas del kit
                         </div>
                         <input type="text" placeholder="Observación (opcional)" id="ops-rev-obs-${h.id}" style="width:100%;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;font-size:11.5px;box-sizing:border-box;margin-bottom:6px;">
                         <div style="display:flex;align-items:center;gap:8px;">
@@ -7279,6 +7292,10 @@
                 estado: seleccionado ? seleccionado.value : "conforme",
                 observacion: (obsEl && obsEl.value.trim()) || null,
                 tieneFoto: !!dataUrl,
+                ...(seleccionado && seleccionado.value === "incompleto" ? (() => {
+                    const n = v => { const x = parseInt((document.getElementById(v) || {}).value, 10); return isNaN(x) ? null : x; };
+                    return { cantidadEncontrada: n(`ops-rev-encontrada-${herrId}`), cantidadEsperada: n(`ops-rev-esperada-${herrId}`) };
+                })() : {}),
             });
         }
         const observacionesGenerales = (document.getElementById("ops-rev-obs-generales") || {}).value || "";
@@ -7294,8 +7311,11 @@
         });
         opsRevisionFotos = new Map();
         document.getElementById("ops-modal-wrap").innerHTML = "";
-        window.mostrarPush ? mostrarPush("Auditoría", "Revisión de herramienta guardada.", ICON.search) : alert("Revisión guardada.");
+        const hayNovedades = herramientas.some(h => h.estado !== "conforme");
+        window.mostrarPush ? mostrarPush("Auditoría", hayNovedades ? "Revisión guardada. Se está descargando el PDF de faltantes." : "Revisión guardada. Todo conforme.", ICON.search) : alert("Revisión guardada.");
         opsFichaTecCambiarTab(idInterno, "auditoria");
+        // Al terminar, sale solo el PDF con faltantes/incompletas/dañadas (pedido de Paloma, nov-2026)
+        if (hayNovedades && revisionRef && revisionRef.id) window.opsCompartirRevisionPDF(revisionRef.id, true);
     };
 
     // ── PDF de una revisión (con fotos) + compartir por WhatsApp ───
@@ -7319,7 +7339,19 @@
         }
     }
 
-    async function opsGenerarPDFRevision(revision, revisionId) {
+    // PDF compartido con la app de Flotilla (revision-herramienta.js): fotos sin deformar,
+    // estado "Incompleto" y versión "solo faltantes" con firmas.
+    async function opsCargarRevisionPDF() {
+        if (window.tcRevPDF) return;
+        await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "revision-herramienta.js?v=1"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar revision-herramienta.js")); document.head.appendChild(sc); });
+    }
+    async function opsGenerarPDFRevision(revision, revisionId, opts) {
+        await opsCargarRevisionPDF();
+        const { db, fs } = await opsGetFB();
+        const cargarFoto = async herrId => { const f = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", herrId)); return f.exists() ? f.data().fotoBase64 : null; };
+        return window.tcRevPDF(revision, cargarFoto, opts || {});
+    }
+    async function opsGenerarPDFRevisionAnterior(revision, revisionId) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
         const M = 14, W = 216 - M * 2;
@@ -7377,16 +7409,18 @@
         return doc;
     }
 
-    window.opsCompartirRevisionPDF = async function (revisionId) {
-        const btn = document.getElementById(`ops-rev-share-${revisionId}`);
-        if (btn) { btn.disabled = true; btn.textContent = "Generando PDF..."; }
+    window.opsCompartirRevisionPDF = async function (revisionId, soloNovedades) {
+        const btnId = soloNovedades ? `ops-rev-falt-${revisionId}` : `ops-rev-share-${revisionId}`;
+        const btns = Array.from(document.querySelectorAll(`[id="${btnId}"]`));
+        const txtOriginal = btns.map(b => b.innerHTML);
+        btns.forEach(b => { b.disabled = true; b.textContent = "Generando PDF..."; });
         try {
             const { db, fs } = await opsGetFB();
             const snap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId));
             if (!snap.exists()) { alert("No se encontró la revisión."); return; }
             const revision = snap.data();
-            const doc = await opsGenerarPDFRevision(revision, revisionId);
-            const nombreArchivo = `Auditoria_${String(revision.tecnicoNumero || revision.tecnicoNombre || revision.almacenNombre || "tec").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w-]+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
+            const doc = await opsGenerarPDFRevision(revision, revisionId, { soloNovedades: !!soloNovedades });
+            const nombreArchivo = window.tcRevNombrePDF(revision, !!soloNovedades); const _nombreViejo = `Auditoria_${String(revision.tecnicoNumero || revision.tecnicoNombre || revision.almacenNombre || "tec").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w-]+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
             const blob = doc.output("blob");
             const file = new File([blob], nombreArchivo, { type: "application/pdf" });
 
@@ -7406,7 +7440,7 @@
             console.error("[operaciones.js] error al compartir PDF de revisión:", err);
             alert("No se pudo generar/compartir el PDF. Intenta de nuevo.");
         } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = `${ICON.download} Descargar PDF`; }
+            btns.forEach((b, i) => { b.disabled = false; b.innerHTML = txtOriginal[i]; });
         }
     };
 
@@ -7435,24 +7469,38 @@
             if (!snap.exists()) { cuerpo.innerHTML = "No se encontró la revisión."; return; }
             const r = snap.data();
             const piezas = r.herramientas || [];
+            await opsCargarRevisionPDF().catch(() => {});
             const novedades = piezas.filter(h => h.estado !== "conforme").length;
             const tit = document.getElementById("ops-revdet-titulo");
             if (tit) tit.textContent = `${r.tecnicoNombre || r.almacenNombre || "—"} · ${(r.fecha || "").slice(0, 16).replace("T", " ")}`;
-            const colorEstado = e => e === "conforme" ? "#166534" : (e === "faltante" ? "#E7402B" : "#b45309");
+            const colorEstado = e => e === "conforme" ? "#166534" : (e === "faltante" ? "#E7402B" : e === "incompleto" ? "#b45309" : "#c2410c");
+            const etiqueta = e => (window.tcRevEstados && window.tcRevEstados[e] ? window.tcRevEstados[e].label : (e || "—"));
+            const gestion = opsPuedeGestionar();
+            const totalDesc = piezas.reduce((s, h) => s + (h.reposicion && h.reposicion.descontar ? Number(h.reposicion.montoDescuento) || 0 : 0), 0);
+            // Novedades primero, para que lo que hay que reponer/descontar quede arriba
+            const orden = piezas.map((h, i) => ({ h, i })).sort((a, b) => (a.h.estado === "conforme") - (b.h.estado === "conforme"));
             cuerpo.innerHTML = `
-                <div style="margin-bottom:10px;color:#64748b;">Revisó: <b>${opsEsc(r.realizadoPor || "—")}</b> · ${piezas.length} pieza(s) · <span style="color:${novedades ? "#E7402B" : "#166534"};font-weight:700;">${novedades ? novedades + " con novedad" : "Todo conforme"}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                    <div style="color:#64748b;">Revisó: <b>${opsEsc(r.realizadoPor || "—")}</b> · ${piezas.length} pieza(s) · <span style="color:${novedades ? "#E7402B" : "#166534"};font-weight:700;">${novedades ? novedades + " con novedad" : "Todo conforme"}</span>${totalDesc ? ` · <span style="color:#b91c1c;font-weight:700;">A descontar: ${opsDinero(totalDesc)}</span>` : ""}</div>
+                    ${novedades ? `<button id="ops-rev-falt-${revisionId}" onclick="opsCompartirRevisionPDF('${revisionId}', true)" style="background:#E7402B;border:none;color:#fff;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">${ICON.download} PDF solo faltantes</button>` : ""}
+                </div>
                 ${r.observacionesGenerales ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:12px;"><b>Observaciones generales:</b> ${opsEsc(r.observacionesGenerales)}</div>` : ""}
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
-                    ${piezas.map((h, i) => `
-                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;border-top:3px solid ${colorEstado(h.estado)};">
-                            <div id="ops-revdet-foto-${i}" style="height:150px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">${h.tieneFoto ? "Cargando foto..." : "Sin foto"}</div>
-                            <div style="padding:8px 10px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;">
+                    ${orden.map(({ h, i }) => {
+                        const rep = h.reposicion;
+                        const cant = window.tcRevTxtCantidad ? window.tcRevTxtCantidad(h) : "";
+                        return `
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;border-top:3px solid ${colorEstado(h.estado)};display:flex;flex-direction:column;">
+                            <div id="ops-revdet-foto-${i}" style="height:170px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">${h.tieneFoto ? "Cargando foto..." : "Sin foto"}</div>
+                            <div style="padding:8px 10px;flex:1;">
                                 <div style="font-weight:700;color:#1e293b;">${opsEsc(h.folio || "")}</div>
                                 <div style="font-size:11.5px;">${opsEsc(h.descripcion || "")}</div>
-                                <div style="font-size:10.5px;font-weight:700;color:${colorEstado(h.estado)};text-transform:uppercase;margin-top:3px;">${opsEsc(h.estado || "—")}</div>
+                                <div style="font-size:10.5px;font-weight:700;color:${colorEstado(h.estado)};text-transform:uppercase;margin-top:3px;">${opsEsc(etiqueta(h.estado))}${cant ? ` · <span style="text-transform:none;">${opsEsc(cant)}</span>` : ""}</div>
                                 ${h.observacion ? `<div style="font-size:11.5px;color:#475569;margin-top:4px;font-style:italic;">${opsEsc(h.observacion)}</div>` : ""}
+                                ${rep ? `<div style="margin-top:6px;background:#f5f3ff;border-radius:7px;padding:6px 8px;font-size:11px;color:#5b21b6;">Requisición <b>${opsEsc(rep.requisicionFolio || "")}</b> (${opsEsc(String(rep.cantidad || 1))} pza)${rep.descontar ? `<br><span style="color:#b91c1c;font-weight:700;">Se descuenta al técnico: ${opsDinero(rep.montoDescuento || 0)}</span>` : "<br>Sin descuento al técnico"}<br><span style="color:#94a3b8;">${opsEsc(rep.por || "")} · ${opsEsc(String(rep.en || "").slice(0, 10))}</span></div>` : ""}
                             </div>
-                        </div>`).join("")}
+                            ${h.estado !== "conforme" && !rep && gestion ? `<button onclick="opsRevAbrirReposicion('${revisionId}', ${i})" style="margin:0 10px 10px;background:#7c3aed;border:none;color:#fff;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Reponer: requisición / descuento</button>` : ""}
+                        </div>`; }).join("")}
                 </div>`;
             // Fotos de 4 en 4 para no saturar la conexión
             const conFoto = piezas.map((h, i) => ({ h, i })).filter(x => x.h.tieneFoto && x.h.herramientaId);
@@ -7463,7 +7511,7 @@
                         const f = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", h.herramientaId));
                         const b64 = f.exists() ? f.data().fotoBase64 : null;
                         if (box) box.innerHTML = b64
-                            ? `<img src="${b64}" onclick="window.open().document.write('<img src=&quot;'+this.src+'&quot; style=&quot;max-width:100%&quot;>')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block;">`
+                            ? `<img src="${b64}" onclick="window.open().document.write('<img src=&quot;'+this.src+'&quot; style=&quot;max-width:100%&quot;>')" style="width:100%;height:100%;object-fit:contain;cursor:zoom-in;display:block;">`
                             : "Foto no disponible";
                     } catch (e) {
                         console.warn("[operaciones.js] foto de revisión", h.herramientaId, e);
@@ -7475,6 +7523,163 @@
             console.error("[operaciones.js] detalle de revisión:", err);
             cuerpo.innerHTML = "No se pudo cargar la revisión. Intenta de nuevo.";
         }
+    };
+
+    // ═══ Reposición de herramienta desde la auditoría (nov-2026, Paloma) ═══
+    // Desde el detalle de una revisión, por cada pieza faltante / incompleta / dañada:
+    //  · crea la REQUISICIÓN DE COMPRA (requisiciones_compra, misma forma que las demás de Operaciones)
+    //  · si aplica, registra el DESCUENTO al técnico (ops_descuentos_herramienta) para nómina o finiquito
+    //  · deja la marca en la pieza de la revisión para no pedirla dos veces
+    function opsRevCerrarRepo() { const w = document.getElementById("ops-rev-repo-wrap"); if (w) w.remove(); }
+    window.opsRevCerrarRepo = opsRevCerrarRepo;
+    window.opsRevAbrirReposicion = async function (revisionId, idx) {
+        if (!opsPuedeGestionar()) { alert("Solo administradores de Operaciones pueden pedir reposiciones."); return; }
+        const { db, fs } = await opsGetFB();
+        const snap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId));
+        if (!snap.exists()) { alert("No se encontró la revisión."); return; }
+        const r = snap.data(); const h = (r.herramientas || [])[idx];
+        if (!h) return;
+        if (h.reposicion) { alert(`Esta pieza ya tiene la requisición ${h.reposicion.requisicionFolio || ""}.`); return; }
+        const falta = h.estado === "incompleto" && h.cantidadEsperada != null && h.cantidadEncontrada != null ? Math.max(1, h.cantidadEsperada - h.cantidadEncontrada) : 1;
+        const est = (window.tcRevEstados && window.tcRevEstados[h.estado] || {}).label || h.estado;
+        const descSug = h.estado === "incompleto" ? `${h.descripcion} — piezas faltantes del kit (folio ${h.folio})` : `${h.descripcion} (reposición de folio ${h.folio})`;
+        const inp = "width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px;margin:3px 0 10px;font-family:inherit;";
+        opsRevCerrarRepo();
+        const w = document.createElement("div"); w.id = "ops-rev-repo-wrap";
+        w.innerHTML = `
+        <div style="position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="background:#fff;border-radius:14px;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto;padding:20px;">
+            <div style="font-size:15px;font-weight:800;color:#5b21b6;">Reponer herramienta</div>
+            <div style="font-size:12px;color:#475569;margin:4px 0 12px;line-height:1.5;"><b>${opsEsc(h.folio || "")}</b> · ${opsEsc(h.descripcion || "")}<br>
+              Estado: <b>${opsEsc(est)}</b>${window.tcRevTxtCantidad && window.tcRevTxtCantidad(h) ? " · " + opsEsc(window.tcRevTxtCantidad(h)) : ""} · Técnico: <b>${opsEsc(r.tecnicoNombre || r.almacenNombre || "—")}</b>${h.observacion ? `<br><i>${opsEsc(h.observacion)}</i>` : ""}</div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Qué se compra (va a la requisición)</label>
+            <input id="rep-desc" value="${opsEsc(descSug)}" style="${inp}">
+            <div style="display:flex;gap:10px;">
+              <div style="flex:1;"><label style="font-size:11.5px;font-weight:700;color:#334155;">Cantidad</label><input id="rep-cant" type="number" min="1" value="${falta}" style="${inp}"></div>
+              <div style="flex:1;"><label style="font-size:11.5px;font-weight:700;color:#334155;">Urgencia</label><select id="rep-urg" style="${inp}"><option value="media">Media</option><option value="alta">Alta</option><option value="baja">Baja</option></select></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#b91c1c;background:#fef2f2;border-radius:8px;padding:9px 10px;margin-bottom:8px;cursor:pointer;">
+              <input type="checkbox" id="rep-desc-chk" ${h.estado === "danada" ? "" : "checked"} onchange="document.getElementById('rep-desc-box').style.display=this.checked?'block':'none'"> Descontar al técnico
+            </label>
+            <div id="rep-desc-box" style="display:${h.estado === "danada" ? "none" : "block"};">
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto a descontar ($) — costo estimado, se puede ajustar después</label>
+              <input id="rep-monto" type="number" min="0" step="0.01" placeholder="0.00" style="${inp}">
+            </div>
+            <label style="font-size:11.5px;font-weight:700;color:#334155;">Nota para Compras / motivo</label>
+            <textarea id="rep-nota" rows="2" style="${inp};resize:vertical;" placeholder="Ej. Lo tiene Sergio; se repone y se descuenta en su finiquito."></textarea>
+            <div id="rep-err" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:14px;"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button onclick="opsRevCerrarRepo()" style="border:none;background:#f1f5f9;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;">Cancelar</button>
+              <button id="rep-btn" onclick="opsRevGuardarReposicion('${revisionId}', ${idx})" style="border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:800;">Crear requisición</button>
+            </div>
+          </div></div>`;
+        document.body.appendChild(w);
+    };
+
+    window.opsRevGuardarReposicion = async function (revisionId, idx) {
+        const err = document.getElementById("rep-err"), btn = document.getElementById("rep-btn");
+        const desc = (document.getElementById("rep-desc").value || "").trim();
+        const cant = parseInt(document.getElementById("rep-cant").value, 10) || 0;
+        const urg = document.getElementById("rep-urg").value || "media";
+        const descontar = document.getElementById("rep-desc-chk").checked;
+        const monto = Number(document.getElementById("rep-monto").value) || 0;
+        const nota = (document.getElementById("rep-nota").value || "").trim();
+        if (!desc) { err.textContent = "Escribe qué se va a comprar."; return; }
+        if (cant < 1) { err.textContent = "La cantidad debe ser al menos 1."; return; }
+        if (descontar && !(monto > 0)) { err.textContent = "Escribe el monto a descontar (aunque sea estimado)."; return; }
+        btn.disabled = true; btn.textContent = "Creando...";
+        try {
+            const { db, fs } = await opsGetFB();
+            const revRef = fs.doc(db, COL_REVISIONES, revisionId);
+            const snap = await fs.getDoc(revRef);
+            if (!snap.exists()) throw new Error("No se encontró la revisión.");
+            const r = snap.data(); const piezas = (r.herramientas || []).slice(); const h = piezas[idx];
+            if (!h) throw new Error("No se encontró la pieza.");
+            if (h.reposicion) throw new Error("Esta pieza ya tiene requisición " + (h.reposicion.requisicionFolio || ""));
+            const ahora = new Date().toISOString();
+            const tecnico = r.tecnicoNombre || r.almacenNombre || "técnico";
+            const est = (window.tcRevEstados && window.tcRevEstados[h.estado] || {}).label || h.estado;
+            const cantTxt = window.tcRevTxtCantidad ? window.tcRevTxtCantidad(h) : "";
+
+            // 1) Requisición de compra
+            const SF = await opsCargarPuenteCompras();
+            let folio = null; try { folio = await window.tcCpSiguienteFolio("RC"); } catch (e) { folio = "RC-" + String(Date.now() % 10000).padStart(4, "0") + "-R"; }
+            const motivo = `Reposición de herramienta (${est.toLowerCase()}${cantTxt ? ", " + cantTxt : ""}) detectada en la auditoría del ${String(r.fecha || "").slice(0, 10)} a ${tecnico}: ${h.folio} ${h.descripcion}.${h.observacion ? " Obs.: " + h.observacion + "." : ""} ${descontar ? "Se descuenta al técnico " + opsDinero(monto) + "." : "Sin descuento al técnico."}${nota ? " " + nota : ""}`;
+            const data = { folio, folioNum: parseInt(String(folio).split("-")[1], 10) || null, folioPrefijo: "RC", empresa: "TECNOCONTROL",
+                urgencia: urg, tipoCompra: "insumo", motivo,
+                cliente: "TECNOCONTROL", razonSocial: "TECNOCONTROL", ciudad: "Chihuahua", estacionId: null, estacionNombre: null,
+                items: [{ cant: String(cant), unidad: "pza", parte: h.folio || "", desc, proveedor: "" }],
+                firma: null, solicitante: opsNombreActual(), solicitanteEmail: opsUsuarioActual(),
+                comentarios: [{ texto: `Generada desde la auditoría de herramienta de ${tecnico}. ${nota}`.trim(), autor: opsNombreActual(), autorEmail: opsUsuarioActual(), fecha: ahora }],
+                flujoAutorizacion: [{ orden: 1, rol: "solicitante", label: "Solicitante", estatus: "aprobado", uid: null, fecha: ahora }, { orden: 2, rol: "jefe_area", label: "Jefe de área", estatus: "aprobado", uid: null, fecha: ahora, nota: "Aprobado en Operaciones → Auditoría de herramienta" }, { orden: 3, rol: "compras", label: "Compras", estatus: "pendiente", uid: null, fecha: null }],
+                estatus: "pendiente", origen: "operaciones_revision_herramienta", createdAt: ahora,
+                revisionHerramientaId: revisionId, herramientaId: h.herramientaId || null, tecnicoId: r.tecnicoId || null, tecnicoNombre: tecnico,
+                descuentoTecnico: descontar ? monto : 0 };
+            const ref = await SF.addDoc(SF.collection(null, "requisiciones_compra"), data);
+            if (h.tieneFoto && h.herramientaId) {
+                try { const f = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", h.herramientaId)); const b64 = f.exists() ? f.data().fotoBase64 : null;
+                    if (b64) await SF.addDoc(SF.collection(null, "requisiciones_compra", ref.id, "fotos"), { src: b64, origen: "auditoria", autor: r.realizadoPor || "", autorEmail: r.realizadoPorEmail || "", creadoEn: ahora }); } catch (e) { console.warn("[reposición] foto:", e); }
+            }
+            try { if (window.tcCpNotificar) window.tcCpNotificar({ tipo: "requisicion_nueva", mensaje: `Requisición ${folio}: reposición de ${h.folio} ${h.descripcion} (${est.toLowerCase()} en auditoría de ${tecnico}).`, requisicionId: ref.id }); } catch (e) {}
+
+            // 2) Descuento al técnico
+            let descuentoId = null;
+            if (descontar) {
+                const dref = await fs.addDoc(fs.collection(db, COL_DESC_HERR), {
+                    tecnicoId: r.tecnicoId || null, tecnicoNombre: tecnico, revisionId, revisionFecha: r.fecha || null,
+                    herramientaId: h.herramientaId || null, folio: h.folio || "", descripcion: h.descripcion || "", estado: h.estado,
+                    cantidadEncontrada: h.cantidadEncontrada ?? null, cantidadEsperada: h.cantidadEsperada ?? null, cantidad: cant,
+                    monto, motivo: nota || h.observacion || null, requisicionId: ref.id, requisicionFolio: folio,
+                    estatus: "pendiente", creadoPor: opsNombreActual(), creadoPorEmail: opsUsuarioActual(), creadoEn: ahora });
+                descuentoId = dref && dref.id ? dref.id : null;
+                const avisos = (typeof OPS_COM_AVISO_POR_AUTORIZAR !== "undefined" ? OPS_COM_AVISO_POR_AUTORIZAR : []);
+                for (const para of avisos) { try { if (window.tcNotificar) await window.tcNotificar({ tipo: "ops_descuento_herramienta", para, mensaje: `Descuento a ${tecnico} por herramienta ${est.toLowerCase()}: ${h.folio} ${h.descripcion} — ${opsDinero(monto)} (requisición ${folio}).`, modulo: "Operaciones" }); } catch (e) {} }
+            }
+
+            // 3) Marca en la pieza de la revisión
+            piezas[idx] = { ...h, reposicion: { requisicionId: ref.id, requisicionFolio: folio, cantidad: cant, descontar, montoDescuento: descontar ? monto : 0, descuentoId, por: opsNombreActual(), en: ahora } };
+            await fs.updateDoc(revRef, { herramientas: piezas });
+
+            opsRevCerrarRepo();
+            window.mostrarPush ? mostrarPush("Reposición", `Requisición ${folio} creada${descontar ? " y descuento de " + opsDinero(monto) + " registrado" : ""}.`, ICON.check) : alert(`Requisición ${folio} creada.`);
+            window.opsVerRevisionDetalle(revisionId);
+        } catch (e) {
+            console.error("[reposición] ", e);
+            err.textContent = "No se pudo crear: " + (e.message || e);
+            btn.disabled = false; btn.textContent = "Crear requisición";
+        }
+    };
+
+    // Descuentos por herramienta del técnico (pestaña Auditoría de su ficha)
+    function opsDescHerrHTML(lista) {
+        if (!lista || !lista.length) return "";
+        const pend = lista.filter(d => d.estatus === "pendiente");
+        const totalPend = pend.reduce((s, d) => s + (Number(d.monto) || 0), 0);
+        const gestion = opsPuedeGestionar();
+        return `<div style="background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:12px;border-left:4px solid #b91c1c;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                <div style="font-size:12.5px;font-weight:800;color:#b91c1c;">Descuentos por herramienta (${lista.length})</div>
+                <div style="font-size:12px;font-weight:800;color:#b91c1c;">Pendiente de descontar: ${opsDinero(totalPend)}</div>
+            </div>
+            ${lista.map(d => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 9px;background:#f8fafc;border-radius:8px;margin-bottom:5px;font-size:11.5px;">
+                <div style="min-width:0;"><b>${opsEsc(d.folio || "")}</b> · ${opsEsc(d.descripcion || "")} · ${opsEsc((window.tcRevEstados && window.tcRevEstados[d.estado] || {}).label || d.estado || "")}${d.cantidad ? " · " + opsEsc(String(d.cantidad)) + " pza" : ""}
+                    <div style="color:#64748b;">Req. ${opsEsc(d.requisicionFolio || "—")} · auditoría ${opsEsc(String(d.revisionFecha || "").slice(0, 10))}${d.motivo ? " · " + opsEsc(d.motivo) : ""}</div></div>
+                <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+                    <b style="color:#b91c1c;">${opsDinero(d.monto || 0)}</b>
+                    ${d.estatus === "aplicado" ? `<span style="font-size:10.5px;font-weight:800;color:#166534;background:#dcfce7;border-radius:99px;padding:2px 8px;">Descontado</span>` : (gestion ? `<button onclick="opsDescHerrEstatus('${d.id}','aplicado','${opsEsc(d.tecnicoId || "")}')" style="border:none;background:#166534;color:#fff;border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer;">Ya se descontó</button>
+                        <button onclick="opsDescHerrEstatus('${d.id}','cancelado','${opsEsc(d.tecnicoId || "")}')" style="border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:7px;padding:5px 9px;font-size:10.5px;font-weight:700;cursor:pointer;">Cancelar</button>` : `<span style="font-size:10.5px;font-weight:800;color:#b45309;background:#fef3c7;border-radius:99px;padding:2px 8px;">Pendiente</span>`)}
+                </div></div>`).join("")}
+        </div>`;
+    }
+    window.opsDescHerrEstatus = async function (id, estatus, tecnicoId) {
+        const nota = prompt(estatus === "aplicado" ? "¿En qué nómina o finiquito se descontó? (opcional)" : "¿Por qué se cancela el descuento?", "");
+        if (nota === null) return;
+        if (estatus === "cancelado" && !nota.trim()) { alert("Escribe el motivo."); return; }
+        try {
+            const { db, fs } = await opsGetFB();
+            await fs.updateDoc(fs.doc(db, COL_DESC_HERR, id), { estatus, notaEstatus: nota.trim() || null, estatusPor: opsNombreActual(), estatusEn: new Date().toISOString() });
+            if (tecnicoId) opsFichaTecCambiarTab(tecnicoId, "auditoria");
+        } catch (e) { alert("No se pudo guardar: " + (e.message || e)); }
     };
 
     // ── Vehículo: asignar (cierra automáticamente la asignación anterior) ──
