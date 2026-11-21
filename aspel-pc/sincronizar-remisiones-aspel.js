@@ -80,34 +80,48 @@ function texto(v) {
 }
 function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
 function fecha(v) { if (!v) return null; const d = v instanceof Date ? v : new Date(v); return isNaN(d.getTime()) ? null : d.toISOString(); }
-function T(col, largo) { return 'CAST(' + col + ' AS VARCHAR(' + (largo || 60) + ') CHARACTER SET OCTETS)'; }
-
-// ── Conexión ──
-function conectar(cfg) {
-  const opciones = Object.assign({ lowercase_keys: false }, cfg.firebird);
-  return new Promise((ok, ko) => Firebird.attach(opciones, (err, db) => (err ? ko(err) : ok(db))));
+// ── Columnas reales de cada tabla (Aspel cambia nombres entre versiones) ──
+// Se leen del catálogo de Firebird; si una columna no existe se pide NULL en su lugar.
+const COLS = {};
+async function cargarColumnas(db, tablas) {
+  const faltan = tablas.filter((t) => !COLS[t]);
+  if (!faltan.length) return;
+  const filas = await consulta(db,
+    'SELECT TRIM(RDB$RELATION_NAME) AS TABLA, TRIM(RDB$FIELD_NAME) AS CAMPO FROM RDB$RELATION_FIELDS ' +
+    'WHERE TRIM(RDB$RELATION_NAME) IN (' + marcas(faltan.length) + ')', faltan);
+  faltan.forEach((t) => { COLS[t] = new Set(); });
+  filas.forEach((f) => { COLS[texto(f.TABLA)].add(texto(f.CAMPO)); });
 }
-function consulta(db, sql, params) {
-  return new Promise((ok, ko) => db.query(sql, params || [], (err, filas) => (err ? ko(err) : ok(filas || []))));
+function hay(tabla, col) { return !!(COLS[tabla] && COLS[tabla].has(col)); }
+// Texto (bytes Windows-1252) o NULL si no existe
+function T(alias, tabla, col, largo, como) {
+  return (hay(tabla, col) ? 'CAST(' + alias + '.' + col + ' AS VARCHAR(' + (largo || 60) + ') CHARACTER SET OCTETS)' : 'CAST(NULL AS VARCHAR(1))') + ' AS ' + como;
 }
-async function consultaOpcional(db, sql, params, que) {
-  try { return await consulta(db, sql, params); }
-  catch (e) { log('Aviso: no pude leer ' + que + ' (' + (e.message || e) + '). Sigo sin ese dato.'); return []; }
-}
-function lotes(arr, n) { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; }
-function marcas(n) { return new Array(n).fill('?').join(','); }
+// Número / fecha tal cual, o NULL si no existe
+function N(alias, tabla, col, como) { return (hay(tabla, col) ? alias + '.' + col : 'NULL') + ' AS ' + como; }
+// Primera columna que exista de una lista
+function primera(tabla, lista) { return lista.find((c) => hay(tabla, c)) || lista[0]; }
+function columnasFaltantes(tabla, lista) { return lista.filter((c) => !hay(tabla, c)); }
 
 // ── Lectura de encabezados (barata, cada ciclo) ──
 async function leerEncabezados(db, cfg, dias) {
-  const e = cfg.empresa;
-  const sql =
-    'SELECT ' + T('F.CVE_DOC', 40) + ' AS CVE_DOC, ' + T('F.STATUS', 4) + ' AS STATUS, ' +
-    T('F.DOC_ANT', 40) + ' AS DOC_ANT, ' + T('F.TIP_DOC_ANT', 4) + ' AS TIP_DOC_ANT, ' +
-    T('F.CVE_CLPV', 20) + ' AS CVE_CLPV, ' + T('F.CVE_VEND', 10) + ' AS CVE_VEND, ' +
-    T('F.SU_REFER', 40) + ' AS SU_REFER, ' + T('F.CONDICION', 40) + ' AS CONDICION, ' +
-    'F.FECHA_DOC, F.FECHA_ENT, F.CAN_TOT, F.IMP_TOT1, F.IMP_TOT2, F.IMP_TOT3, F.IMP_TOT4, ' +
-    'F.DES_TOT, F.DES_FIN, F.IMPORTE, F.NUM_ALMA, F.NUM_MONED, F.TIPCAMB, F.CVE_OBS, F.VERSION_SINC ' +
-    'FROM FACTR' + e + ' F WHERE F.TIP_DOC = \'R\' AND F.FECHA_DOC >= (CURRENT_DATE - ' + Number(dias) + ')';
+  const F = 'FACTR' + cfg.empresa;
+  const falt = columnasFaltantes(F, ['CVE_DOC', 'STATUS', 'DOC_ANT', 'CVE_CLPV', 'CVE_VEND', 'SU_REFER', 'CONDICION', 'FECHA_DOC', 'FECHA_ENT', 'CAN_TOT', 'IMP_TOT4', 'DES_TOT', 'IMPORTE', 'CVE_OBS', 'VERSION_SINC']);
+  if (falt.length) log('Aviso: ' + F + ' no tiene ' + falt.join(', ') + ' (se dejan vacías).');
+  const sql = 'SELECT ' + [
+    T('F', F, 'CVE_DOC', 40, 'CVE_DOC'), T('F', F, 'STATUS', 4, 'STATUS'),
+    T('F', F, 'DOC_ANT', 40, 'DOC_ANT'), T('F', F, 'TIP_DOC_ANT', 4, 'TIP_DOC_ANT'),
+    T('F', F, 'CVE_CLPV', 20, 'CVE_CLPV'), T('F', F, 'CVE_VEND', 10, 'CVE_VEND'),
+    T('F', F, primera(F, ['SU_REFER', 'SU_REFERENCIA', 'REFERENCIA']), 40, 'SU_REFER'),
+    T('F', F, primera(F, ['CONDICION', 'CONDICIONES']), 40, 'CONDICION'),
+    N('F', F, 'FECHA_DOC', 'FECHA_DOC'), N('F', F, 'FECHA_ENT', 'FECHA_ENT'),
+    N('F', F, 'CAN_TOT', 'CAN_TOT'), N('F', F, 'IMP_TOT1', 'IMP_TOT1'), N('F', F, 'IMP_TOT2', 'IMP_TOT2'),
+    N('F', F, 'IMP_TOT3', 'IMP_TOT3'), N('F', F, 'IMP_TOT4', 'IMP_TOT4'),
+    N('F', F, 'DES_TOT', 'DES_TOT'), N('F', F, 'DES_FIN', 'DES_FIN'), N('F', F, 'IMPORTE', 'IMPORTE'),
+    N('F', F, 'NUM_ALMA', 'NUM_ALMA'), N('F', F, 'NUM_MONED', 'NUM_MONED'), N('F', F, 'TIPCAMB', 'TIPCAMB'),
+    N('F', F, 'CVE_OBS', 'CVE_OBS'), N('F', F, 'VERSION_SINC', 'VERSION_SINC'),
+  ].join(', ') + ' FROM ' + F + ' F WHERE ' + (hay(F, 'TIP_DOC') ? 'F.TIP_DOC = \'R\' AND ' : '') +
+    'F.FECHA_DOC >= (CURRENT_DATE - ' + Number(dias) + ')';
   const filas = await consulta(db, sql);
   return filas.map((f) => ({
     cve_doc: texto(f.CVE_DOC),
@@ -128,26 +142,18 @@ function huella(r) { return [r.status, r.importe, r.version, r.doc_ant].join('|'
 
 // ── Detalle (solo para las remisiones nuevas o cambiadas) ──
 async function leerPartidas(db, cfg, claves) {
-  const e = cfg.empresa;
+  const P = 'PAR_FACTR' + cfg.empresa, I = 'INVE' + cfg.empresa;
   const porDoc = {};
   for (const lote of lotes(claves, 40)) {
-    const completo =
-      'SELECT ' + T('P.CVE_DOC', 40) + ' AS CVE_DOC, P.NUM_PAR, ' + T('P.CVE_ART', 64) + ' AS CVE_ART, ' +
-      T('I.DESCR', 255) + ' AS DESCR, ' + T('P.UNI_VENTA', 20) + ' AS UNIDAD, ' +
-      'P.CANT, P.PREC, P.DESC1, P.TOT_PARTIDA, P.IMPU4, P.TOTIMP4, P.CVE_OBS ' +
-      'FROM PAR_FACTR' + e + ' P LEFT JOIN INVE' + e + ' I ON I.CVE_ART = P.CVE_ART ' +
-      'WHERE TRIM(P.CVE_DOC) IN (' + marcas(lote.length) + ') ORDER BY P.CVE_DOC, P.NUM_PAR';
-    let filas;
-    try { filas = await consulta(db, completo, lote); }
-    catch (err) {
-      log('Aviso: consulta completa de partidas falló (' + err.message + '); uso la básica.');
-      const basica =
-        'SELECT ' + T('P.CVE_DOC', 40) + ' AS CVE_DOC, P.NUM_PAR, ' + T('P.CVE_ART', 64) + ' AS CVE_ART, ' +
-        T('I.DESCR', 255) + ' AS DESCR, P.CANT, P.PREC ' +
-        'FROM PAR_FACTR' + e + ' P LEFT JOIN INVE' + e + ' I ON I.CVE_ART = P.CVE_ART ' +
-        'WHERE TRIM(P.CVE_DOC) IN (' + marcas(lote.length) + ') ORDER BY P.CVE_DOC, P.NUM_PAR';
-      filas = await consulta(db, basica, lote);
-    }
+    const sql = 'SELECT ' + [
+      T('P', P, 'CVE_DOC', 40, 'CVE_DOC'), N('P', P, 'NUM_PAR', 'NUM_PAR'), T('P', P, 'CVE_ART', 64, 'CVE_ART'),
+      T('I', I, 'DESCR', 255, 'DESCR'), T('P', P, primera(P, ['UNI_VENTA', 'UNI_MED']), 20, 'UNIDAD'),
+      N('P', P, 'CANT', 'CANT'), N('P', P, 'PREC', 'PREC'), N('P', P, 'DESC1', 'DESC1'),
+      N('P', P, 'TOT_PARTIDA', 'TOT_PARTIDA'), N('P', P, 'IMPU4', 'IMPU4'), N('P', P, 'TOTIMP4', 'TOTIMP4'),
+      N('P', P, 'CVE_OBS', 'CVE_OBS'),
+    ].join(', ') + ' FROM ' + P + ' P LEFT JOIN ' + I + ' I ON I.CVE_ART = P.CVE_ART ' +
+      'WHERE TRIM(P.CVE_DOC) IN (' + marcas(lote.length) + ')' + (hay(P, 'NUM_PAR') ? ' ORDER BY P.CVE_DOC, P.NUM_PAR' : '');
+    const filas = await consulta(db, sql, lote);
     filas.forEach((f) => {
       const doc = texto(f.CVE_DOC);
       const cant = num(f.CANT), prec = num(f.PREC), desc = num(f.DESC1);
@@ -165,26 +171,30 @@ async function leerPartidas(db, cfg, claves) {
 }
 
 async function leerObservaciones(db, cfg, cves) {
+  const O = 'OBS_DOCF' + cfg.empresa;
   const mapa = {};
+  if (!hay(O, 'CVE_OBS') || !hay(O, 'STR_OBS')) return mapa;
   const lista = cves.filter((x) => x);
   for (const lote of lotes(lista, 100)) {
     const filas = await consultaOpcional(db,
       'SELECT CVE_OBS, CAST(SUBSTRING(STR_OBS FROM 1 FOR 1500) AS VARCHAR(1500) CHARACTER SET OCTETS) AS OBS ' +
-      'FROM OBS_DOCF' + cfg.empresa + ' WHERE CVE_OBS IN (' + marcas(lote.length) + ')', lote, 'observaciones');
+      'FROM ' + O + ' WHERE CVE_OBS IN (' + marcas(lote.length) + ')', lote, 'observaciones');
     filas.forEach((f) => { mapa[num(f.CVE_OBS)] = texto(f.OBS); });
   }
   return mapa;
 }
 
 async function leerClientes(db, cfg, claves) {
+  const C = 'CLIE' + cfg.empresa;
   const mapa = {};
+  if (!hay(C, 'CLAVE')) return mapa;
   for (const lote of lotes(claves.filter(Boolean), 100)) {
-    const filas = await consultaOpcional(db,
-      'SELECT ' + T('CLAVE', 20) + ' AS CLAVE, ' + T('NOMBRE', 255) + ' AS NOMBRE, ' + T('RFC', 20) + ' AS RFC, ' +
-      T('CALLE', 120) + ' AS CALLE, ' + T('NUMEXT', 20) + ' AS NUMEXT, ' + T('NUMINT', 20) + ' AS NUMINT, ' +
-      T('COLONIA', 80) + ' AS COLONIA, ' + T('MUNICIPIO', 80) + ' AS MUNICIPIO, ' + T('ESTADO', 60) + ' AS ESTADO, ' +
-      T('CODIGO', 10) + ' AS CP, ' + T('TELEFONO', 40) + ' AS TEL ' +
-      'FROM CLIE' + cfg.empresa + ' WHERE TRIM(CLAVE) IN (' + marcas(lote.length) + ')', lote, 'clientes');
+    const filas = await consultaOpcional(db, 'SELECT ' + [
+      T('C', C, 'CLAVE', 20, 'CLAVE'), T('C', C, 'NOMBRE', 255, 'NOMBRE'), T('C', C, 'RFC', 20, 'RFC'),
+      T('C', C, 'CALLE', 120, 'CALLE'), T('C', C, 'NUMEXT', 20, 'NUMEXT'), T('C', C, 'NUMINT', 20, 'NUMINT'),
+      T('C', C, 'COLONIA', 80, 'COLONIA'), T('C', C, 'MUNICIPIO', 80, 'MUNICIPIO'), T('C', C, 'ESTADO', 60, 'ESTADO'),
+      T('C', C, 'CODIGO', 10, 'CP'), T('C', C, 'TELEFONO', 40, 'TEL'),
+    ].join(', ') + ' FROM ' + C + ' C WHERE TRIM(C.CLAVE) IN (' + marcas(lote.length) + ')', lote, 'clientes');
     filas.forEach((f) => {
       const calle = [texto(f.CALLE), texto(f.NUMEXT), texto(f.NUMINT) ? ('Int. ' + texto(f.NUMINT)) : ''].filter(Boolean).join(' ');
       const dir = [calle, texto(f.COLONIA) ? ('Col. ' + texto(f.COLONIA)) : '', texto(f.MUNICIPIO), texto(f.ESTADO), texto(f.CP) ? ('C.P. ' + texto(f.CP)) : '']
@@ -196,9 +206,11 @@ async function leerClientes(db, cfg, claves) {
 }
 
 async function leerVendedores(db, cfg) {
-  const filas = await consultaOpcional(db,
-    'SELECT ' + T('CVE_VEND', 10) + ' AS CVE, ' + T('NOMBRE', 120) + ' AS NOMBRE FROM VEND' + cfg.empresa, [], 'vendedores');
+  const V = 'VEND' + cfg.empresa;
   const mapa = {};
+  if (!hay(V, 'CVE_VEND') || !hay(V, 'NOMBRE')) return mapa;
+  const filas = await consultaOpcional(db,
+    'SELECT ' + T('V', V, 'CVE_VEND', 10, 'CVE') + ', ' + T('V', V, 'NOMBRE', 120, 'NOMBRE') + ' FROM ' + V + ' V', [], 'vendedores');
   filas.forEach((f) => { mapa[texto(f.CVE)] = texto(f.NOMBRE); });
   return mapa;
 }
@@ -224,6 +236,8 @@ async function ciclo(cfg) {
   const db = await conectar(cfg);
   try {
     const dias = TODO ? 400 : cfg.diasRemisiones;
+    const e = cfg.empresa;
+    await cargarColumnas(db, ['FACTR' + e, 'PAR_FACTR' + e, 'INVE' + e, 'CLIE' + e, 'VEND' + e, 'OBS_DOCF' + e]);
     const enc = await leerEncabezados(db, cfg, dias);
     const estado = leerEstado();
     const cambios = MODO_PRUEBA ? enc.slice(-5) : enc.filter((r) => estado[r.cve_doc] !== huella(r));
@@ -260,6 +274,7 @@ async function ciclo(cfg) {
     });
 
     if (MODO_PRUEBA) {
+      log('Columnas de FACTR' + cfg.empresa + ': ' + Array.from(COLS['FACTR' + cfg.empresa] || []).sort().join(', '));
       log('PRUEBA: ' + enc.length + ' remisiones en ' + dias + ' días. Últimas ' + filas.length + ':');
       filas.forEach((f) => console.log('   ' + f.cve_doc + ' · pedido ' + (f.pedido_folio || '—') + ' · ' + f.cliente_nombre +
         ' · ' + f.partidas.length + ' partidas · total $' + f.total.toFixed(2) + ' · status ' + f.status));
