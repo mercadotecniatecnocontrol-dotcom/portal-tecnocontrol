@@ -220,6 +220,195 @@
     });
   }
 
+  // ── Remisiones de Aspel (21-nov-2026) ──
+  // La tabla aspel_remisiones la llena aspel-pc/sincronizar-remisiones-aspel.js
+  // (FACTR01 + PAR_FACTR01, cada 5 min). Enlace: pedido_folio = DOC_ANT = folio del portal.
+  // Aquí se guarda un índice ligero folio → números de remisión para pintar las
+  // tarjetas, y el PDF se arma al vuelo con los datos completos.
+  var _remAspel = { porPedido: {}, cargado: false, cargando: false, ts: 0 };
+  function cargarRemisionesAspel(forzar){
+    if (_remAspel.cargando) return;
+    if (!forzar && _remAspel.cargado && (Date.now()-_remAspel.ts) < 5*60*1000) return;
+    _remAspel.cargando = true;
+    var desde = new Date(Date.now() - 180*86400000).toISOString();
+    cargarSupabaseStorage().then(function(sb){
+      return sb.from('aspel_remisiones').select('cve_doc,pedido_folio,status,fecha_doc')
+        .gte('fecha_doc', desde).order('fecha_doc', { ascending: true }).limit(5000);
+    }).then(function(r){
+      _remAspel.cargando = false;
+      if (r.error){ console.warn('[almacen] aspel_remisiones:', r.error.message); return; }
+      var mapa = {};
+      (r.data||[]).forEach(function(x){
+        var f = String(x.pedido_folio||'').trim().toUpperCase(); if (!f) return;
+        (mapa[f] = mapa[f] || []).push({ cve: String(x.cve_doc||'').trim(), status: x.status||'', fecha: x.fecha_doc });
+      });
+      var cambio = JSON.stringify(mapa) !== JSON.stringify(_remAspel.porPedido);
+      _remAspel.porPedido = mapa; _remAspel.cargado = true; _remAspel.ts = Date.now();
+      if (cambio) { try { render(); } catch(e){} }
+    }).catch(function(e){ _remAspel.cargando = false; console.warn('[almacen] aspel_remisiones:', e); });
+  }
+  // Números de remisión de un pedido (Aspel sincronizado + lo que marcó el vigilante), sin canceladas
+  function remisionesDePedido(p){
+    var lista = [];
+    var f = String((p && p.folio)||'').trim().toUpperCase();
+    (_remAspel.porPedido[f]||[]).forEach(function(x){ if (x.status!=='C' && lista.indexOf(x.cve)===-1) lista.push(x.cve); });
+    var v = String((p && p.remisionAspelFolio)||'').trim();
+    if (v && lista.indexOf(v)===-1) lista.push(v);
+    return lista;
+  }
+  function htmlRemisionesAspel(p, estilo){
+    var lista = remisionesDePedido(p);
+    if (!lista.length) return '';
+    return '<div class="alm-destino">' + lista.map(function(c){
+      return '<button type="button" class="alm-destino-chip" title="Descargar PDF de la remisión (datos de Aspel)" '
+        + 'onclick="event.stopPropagation();window.__almPDFRemisionAspel(\''+esc(String(p.folio||''))+'\',\''+esc(c)+'\')" '
+        + 'style="background:#16a34a14;color:#15803d;border-color:#16a34a55;cursor:pointer;font-weight:700;'+(estilo||'')+'">🧾 Remisión '+esc(c)+'</button>';
+    }).join(' ') + '</div>';
+  }
+
+  window.__almPDFRemisionAspel = function(pedidoFolio, cveDoc){
+    if(!window.jspdf){ if(window.mostrarPush) window.mostrarPush('Almacén','Librería PDF no cargada','⚠️'); return; }
+    var ventana = window.open('', '_blank'); // se abre ya (si no, el navegador la bloquea al terminar la consulta)
+    if (ventana) ventana.document.write('<p style="font-family:sans-serif;padding:20px;color:#475569;">Generando remisión '+esc(cveDoc||pedidoFolio||'')+'…</p>');
+    cargarSupabaseStorage().then(function(sb){
+      var q = sb.from('aspel_remisiones').select('*');
+      q = cveDoc ? q.eq('cve_doc', String(cveDoc).trim()) : q.eq('pedido_folio', String(pedidoFolio||'').trim());
+      return q.order('fecha_doc', { ascending: true });
+    }).then(function(r){
+      if (r.error) throw new Error(r.error.message);
+      var docs = r.data||[];
+      if (!docs.length){
+        if (ventana) ventana.close();
+        alert('La remisión '+(cveDoc||'')+' todavía no llega de Aspel.\nEl sincronizador de remisiones la sube cada 5 minutos; intenta de nuevo en un momento.');
+        return;
+      }
+      var docu = construirPDFRemisionAspel(docs);
+      var url = docu.output('bloburl');
+      if (ventana) ventana.location.href = url; else window.open(url, '_blank');
+    }).catch(function(e){
+      if (ventana) ventana.close();
+      console.error('[almacen] PDF remisión Aspel:', e);
+      alert('No se pudo generar la remisión: '+(e && e.message ? e.message : e));
+    });
+  };
+
+  function construirPDFRemisionAspel(docs){
+    var jsPDF = window.jspdf.jsPDF;
+    var docu = new jsPDF({ orientation:'portrait', unit:'mm', format:'letter' });
+    var PW=215.9, PH=279.4, ML=12, MR=12, AW=PW-ML-MR;
+    var azul={r:29,g:46,b:115};
+    function money(n){ return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+    function fnum(n){ var v=Number(n)||0; return (Math.round(v*1000)/1000).toLocaleString('es-MX',{maximumFractionDigits:3}); }
+    function fechaTxt(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d) ? '—' : d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}); }
+    // columnas: cant, unidad, clave, descripción, p. unit, desc %, importe
+    var cols=[ {t:'Cant.',w:15,a:'right'}, {t:'Unidad',w:16,a:'left'}, {t:'Clave',w:28,a:'left'}, {t:'Descripción',w:AW-15-16-28-25-13-27,a:'left'},
+               {t:'P. unitario',w:25,a:'right'}, {t:'Desc.%',w:13,a:'right'}, {t:'Importe',w:27,a:'right'} ];
+
+    docs.forEach(function(d, i){
+      if (i>0) docu.addPage();
+      var y;
+      function encabezado(cont){
+        docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(0,0,PW,3,'F');
+        try{ docu.addImage('data:image/png;base64,'+LOGO_TECNOCONTROL_B64,'PNG',ML,8,30,8.93); }catch(e){}
+        docu.setTextColor(azul.r,azul.g,azul.b); docu.setFont('helvetica','bold'); docu.setFontSize(15);
+        docu.text('REMISIÓN'+(cont?' (continuación)':''), PW-MR, 13, {align:'right'});
+        docu.setFontSize(11); docu.text('No. '+String(d.cve_doc||'').trim(), PW-MR, 19, {align:'right'});
+        y = 24;
+      }
+      encabezado(false);
+      if (d.status==='C'){
+        docu.setTextColor(220,38,38); docu.setFont('helvetica','bold'); docu.setFontSize(60);
+        docu.text('CANCELADA', PW/2, PH/2, {align:'center', angle:30});
+      }
+      // Emisor
+      docu.setTextColor(60,60,60); docu.setFont('helvetica','bold'); docu.setFontSize(8.5);
+      docu.text('HEDMA TECNOCONTROL S.A. DE C.V.', ML, y);
+      docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+      docu.text('RFC HTE1107133B3 · Av. Fuerza Aérea Mexicana 7030, Col. Tabalaopa, C.P. 31376, Chihuahua, Chih. · Tel. 614-484-2578', ML, y+4);
+      y += 9;
+      // Datos de la remisión
+      docu.setDrawColor(203,213,225); docu.setLineWidth(0.3);
+      var bx=PW-MR-62;
+      docu.roundedRect(bx, y, 62, 26, 1.5, 1.5);
+      var filasDato=[ ['Fecha', fechaTxt(d.fecha_doc)], ['Pedido portal', d.pedido_folio||'—'], ['Vendedor', d.vendedor||'—'], ['Su referencia', d.su_referencia||'—'], ['Condición', d.condicion||'—'] ];
+      filasDato.forEach(function(f, k){
+        docu.setFont('helvetica','bold'); docu.setFontSize(7.2); docu.setTextColor(100,116,139); docu.text(f[0]+':', bx+2.5, y+5+k*4.6);
+        docu.setFont('helvetica','normal'); docu.setTextColor(15,23,42); docu.text(docu.splitTextToSize(String(f[1]),36)[0], bx+24, y+5+k*4.6);
+      });
+      // Cliente
+      var cw=AW-66;
+      docu.roundedRect(ML, y, cw, 26, 1.5, 1.5);
+      docu.setFont('helvetica','bold'); docu.setFontSize(7.2); docu.setTextColor(100,116,139); docu.text('CLIENTE'+(d.cliente_clave?(' · '+d.cliente_clave):''), ML+2.5, y+5);
+      docu.setTextColor(15,23,42); docu.setFontSize(9); docu.text(docu.splitTextToSize(d.cliente_nombre||'—', cw-5)[0], ML+2.5, y+10);
+      docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+      var yy=y+14.5;
+      if (d.cliente_rfc){ docu.text('RFC: '+d.cliente_rfc, ML+2.5, yy); yy+=3.8; }
+      docu.splitTextToSize(d.cliente_direccion||'', cw-5).slice(0,2).forEach(function(l){ docu.text(l, ML+2.5, yy); yy+=3.6; });
+      if (d.cliente_telefono && yy < y+25){ docu.text('Tel. '+d.cliente_telefono, ML+2.5, yy); }
+      y += 31;
+
+      function cabeceraTabla(){
+        docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(ML, y, AW, 6.5, 'F');
+        docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(7.5);
+        var x=ML; cols.forEach(function(c){ docu.text(c.t, c.a==='right'?x+c.w-1.5:x+1.5, y+4.4, {align:c.a}); x+=c.w; });
+        y += 6.5;
+      }
+      cabeceraTabla();
+      docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+      var pars = Array.isArray(d.partidas) ? d.partidas : [];
+      if (!pars.length){ docu.setTextColor(148,163,184); docu.text('Sin partidas registradas en Aspel.', ML+2, y+5); y+=8; }
+      pars.forEach(function(p, k){
+        var desc = (p.descripcion||'') + (p.obs ? ('\n'+p.obs) : '');
+        var lineas = docu.splitTextToSize(desc||'—', cols[3].w-3);
+        var alto = Math.max(5.5, lineas.length*3.4+2.2);
+        if (y+alto > PH-55){ docu.addPage(); encabezado(true); y=28; cabeceraTabla(); docu.setFont('helvetica','normal'); docu.setFontSize(7.5); }
+        if (k%2===1){ docu.setFillColor(248,250,252); docu.rect(ML, y, AW, alto, 'F'); }
+        docu.setTextColor(15,23,42);
+        var vals=[ fnum(p.cantidad), p.unidad||'', p.clave||'', null, money(p.precio), (Number(p.descuento_pct)||0)?fnum(p.descuento_pct):'', money(p.importe) ];
+        var x=ML;
+        cols.forEach(function(c, ci){
+          if (ci===3) docu.text(lineas, x+1.5, y+3.8);
+          else docu.text(docu.splitTextToSize(String(vals[ci]), c.w-2)[0]||'', c.a==='right'?x+c.w-1.5:x+1.5, y+3.8, {align:c.a});
+          x+=c.w;
+        });
+        y += alto;
+        docu.setDrawColor(226,232,240); docu.line(ML, y, ML+AW, y);
+      });
+
+      // Totales
+      y += 4;
+      var tx=PW-MR-62, filasTot=[['Subtotal', d.subtotal]];
+      if (Number(d.descuento)) filasTot.push(['Descuento', -Math.abs(d.descuento)]);
+      if (Number(d.ieps)) filasTot.push(['IEPS', d.ieps]);
+      if (Number(d.impuesto2)) filasTot.push(['Impuesto 2', d.impuesto2]);
+      if (Number(d.impuesto3)) filasTot.push(['Impuesto 3', d.impuesto3]);
+      filasTot.push(['IVA', d.iva]);
+      filasTot.forEach(function(f){
+        docu.setFont('helvetica','normal'); docu.setFontSize(8); docu.setTextColor(71,85,105);
+        docu.text(f[0], tx, y); docu.setTextColor(15,23,42); docu.text(money(f[1]), PW-MR, y, {align:'right'}); y+=4.6;
+      });
+      docu.setFillColor(azul.r,azul.g,azul.b); docu.rect(tx-2, y-3.4, 64, 7, 'F');
+      docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(9.5);
+      docu.text('TOTAL', tx, y+1.2); docu.text(money(d.total)+(Number(d.moneda)>1?' (M.E.)':''), PW-MR-1, y+1.2, {align:'right'});
+      var yObs = y - 4.6*filasTot.length - 1;
+      if (d.observaciones){
+        docu.setTextColor(100,116,139); docu.setFont('helvetica','bold'); docu.setFontSize(7.2);
+        docu.text('OBSERVACIONES', ML, yObs);
+        docu.setTextColor(15,23,42); docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+        docu.text(docu.splitTextToSize(d.observaciones, AW-72).slice(0,8), ML, yObs+4);
+      }
+      // Firma de recibido
+      var yF = PH-30;
+      docu.setDrawColor(100,116,139); docu.line(ML+10, yF, ML+80, yF); docu.line(PW-MR-80, yF, PW-MR-10, yF);
+      docu.setTextColor(71,85,105); docu.setFont('helvetica','normal'); docu.setFontSize(7.5);
+      docu.text('Entregó (Almacén)', ML+45, yF+4, {align:'center'});
+      docu.text('Recibí de conformidad · nombre y firma', PW-MR-45, yF+4, {align:'center'});
+      docu.setFontSize(6.5); docu.setTextColor(148,163,184);
+      docu.text('Datos tomados de Aspel SAE (remisión '+String(d.cve_doc||'').trim()+') · generado en el Portal Operativo Tecnocontrol el '+new Date().toLocaleString('es-MX'), PW/2, PH-8, {align:'center'});
+    });
+    return docu;
+  }
+
   // ── Helpers ──
   function now(){ return Date.now(); }
   function toMs(v){
@@ -1298,6 +1487,7 @@
     construirShell();
     var kpisEl=cont.querySelector('#alm-kpis'), boardEl=cont.querySelector('#alm-board');
     if(!kpisEl||!boardEl) return;
+    cargarRemisionesAspel(false);
 
     // Barra de almacenes (plazas / Tecnoalmacén) con cuántos pedidos activos tiene cada uno
     var activosTodos = pedidos.filter(function(p){ return ['finalizado','cancelado','entregado'].indexOf(p.estado)===-1 && !p.eliminada && clasif(p)!=='servicio'; });
@@ -1581,6 +1771,7 @@
       + (esPro(p) ? '<div class="vend" style="color:#b45309;font-weight:700;">'+(p.compraEstado==='recibido'?'Material sobre pedido recibido':'Sobre pedido \u00b7 esperando material de Compras')+'</div>' : '')
       + '<div class="vend">Vendedor: '+esc(p.vendedor||'—')+'</div>'
       + destinoHtml(p)
+      + htmlRemisionesAspel(p)
       + (p.comentariosAlmacen ? ('<div class="alm-destino"><span class="alm-destino-chip" style="background:#8B4FD61c;color:#8B4FD6;border-color:#8B4FD655;">\ud83d\udcac '+esc(p.comentariosAlmacen)+'</span></div>') : '')
       + ((p.evidenciasCliente||[]).length ? ('<div class="alm-destino"><button type="button" class="alm-destino-chip" onclick="window.__almVerEvidVentas(\''+p.id+'\',0)" style="background:#1D2E731a;color:#1D2E73;border-color:#1D2E7355;cursor:pointer;font-weight:700;">'
       +   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
@@ -2293,7 +2484,7 @@
           piezas: (Array.isArray(d.productos)?d.productos:[]).reduce(function(a,x){return a+(Number(x.cant)||0);},0),
           productos: Array.isArray(d.productos)?d.productos:[],
           remisionado: !!d.remisionado, remisionadoPor: d.remisionadoPor||'',
-          remisionAspelFolio: d.remisionAspelFolio||'', remisionAspelFecha: d.remisionAspelFecha||null,
+          remisionAspelFolio: (remisionesDePedido(d).join(', ')||''), remisionAspelFecha: d.remisionAspelFecha||null,
           tienePdfOriginal: !!d.tienePdfOriginal, caratulaEnvio: d.caratulaEnvio||null,
           clasificacion: d.clasificacion||'',
           evidSalida: null, evidRemision: null, evidGeneral: null, numDocumentos: 0
@@ -2465,6 +2656,7 @@
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">'
       +   (e.tienePdfOriginal ? '<button type="button" onclick="event.stopPropagation();window.__almVerPDF(\''+e.id+'\')" style="border:1px solid #0891b2;background:#fff;color:#0891b2;border-radius:8px;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer;">📄 Ver PDF original del pedido</button>' : '')
+      +   (remisionesDePedido(e).length ? '<button type="button" onclick="event.stopPropagation();window.__almPDFRemisionAspel(\''+esc(e.folio||'')+'\',\'\')" style="border:1px solid #16a34a;background:#fff;color:#15803d;border-radius:8px;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer;">🧾 PDF remisión Aspel</button>' : '')
       +   (e.caratulaEnvio ? '<button type="button" onclick="event.stopPropagation();window.__almVerCaratula(\''+e.id+'\')" style="border:1px solid #8B4FD6;background:#fff;color:#8B4FD6;border-radius:8px;font-size:11.5px;font-weight:700;padding:6px 12px;cursor:pointer;">📦 Ver carátula de envío</button>' : '')
       + '</div>'
       + '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;">Artículos ('+e.piezas+' pzas)</div>'

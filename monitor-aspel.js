@@ -16,7 +16,7 @@
   if (window.tcMonitorAspel) return;
   var RESPONSABLES = ['mercadotecniatecnocontrol@gmail.com', 'mercadotecnia@tecnocontrol.com.mx'];
   var SIN_REPORTE_MIN = 10, CADA_MS = 2 * 60 * 1000;
-  var NOMBRES = { vigilante: 'Remisiones automáticas (vigilante)', aspel: 'Sincronizador Aspel', partidas: 'Sincronizador de partidas', productos: 'Sincronizador de productos' };
+  var NOMBRES = { vigilante: 'Remisiones automáticas (vigilante)', aspel: 'Sincronizador Aspel', partidas: 'Sincronizador de partidas', productos: 'Sincronizador de productos', remisiones: 'Sincronizador de remisiones' };
   var habiaFalla = false, ultimo = null;
 
   function yo() {
