@@ -7343,12 +7343,13 @@
     // estado "Incompleto" y versión "solo faltantes" con firmas.
     async function opsCargarRevisionPDF() {
         if (window.tcRevPDF) return;
-        await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "revision-herramienta.js?v=1"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar revision-herramienta.js")); document.head.appendChild(sc); });
+        await new Promise((ok, ko) => { const sc = document.createElement("script"); sc.src = "revision-herramienta.js?v=2"; sc.onload = ok; sc.onerror = () => ko(new Error("No se pudo cargar revision-herramienta.js")); document.head.appendChild(sc); });
     }
     async function opsGenerarPDFRevision(revision, revisionId, opts) {
         await opsCargarRevisionPDF();
         const { db, fs } = await opsGetFB();
         const cargarFoto = async herrId => { const f = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", herrId)); return f.exists() ? f.data().fotoBase64 : null; };
+        await opsRevPegarPreciosRequisicion(revision.herramientas || []);
         return window.tcRevPDF(revision, cargarFoto, opts || {});
     }
     async function opsGenerarPDFRevisionAnterior(revision, revisionId) {
@@ -7476,7 +7477,8 @@
             const colorEstado = e => e === "conforme" ? "#166534" : (e === "faltante" ? "#E7402B" : e === "incompleto" ? "#b45309" : "#c2410c");
             const etiqueta = e => (window.tcRevEstados && window.tcRevEstados[e] ? window.tcRevEstados[e].label : (e || "—"));
             const gestion = opsPuedeGestionar();
-            const totalDesc = piezas.reduce((s, h) => s + (h.reposicion && h.reposicion.descontar ? Number(h.reposicion.montoDescuento) || 0 : 0), 0);
+            await opsRevPegarPreciosRequisicion(piezas);
+            const totalDesc = piezas.reduce((s, h) => s + opsRevMontoDescuento(h.reposicion), 0);
             // Novedades primero, para que lo que hay que reponer/descontar quede arriba
             const orden = piezas.map((h, i) => ({ h, i })).sort((a, b) => (a.h.estado === "conforme") - (b.h.estado === "conforme"));
             cuerpo.innerHTML = `
@@ -7497,7 +7499,7 @@
                                 <div style="font-size:11.5px;">${opsEsc(h.descripcion || "")}</div>
                                 <div style="font-size:10.5px;font-weight:700;color:${colorEstado(h.estado)};text-transform:uppercase;margin-top:3px;">${opsEsc(etiqueta(h.estado))}${cant ? ` · <span style="text-transform:none;">${opsEsc(cant)}</span>` : ""}</div>
                                 ${h.observacion ? `<div style="font-size:11.5px;color:#475569;margin-top:4px;font-style:italic;">${opsEsc(h.observacion)}</div>` : ""}
-                                ${rep ? `<div style="margin-top:6px;background:#f5f3ff;border-radius:7px;padding:6px 8px;font-size:11px;color:#5b21b6;">Requisición <b>${opsEsc(rep.requisicionFolio || "")}</b> (${opsEsc(String(rep.cantidad || 1))} pza)${rep.descontar ? `<br><span style="color:#b91c1c;font-weight:700;">Se descuenta al técnico: ${opsDinero(rep.montoDescuento || 0)}</span>` : "<br>Sin descuento al técnico"}<br><span style="color:#94a3b8;">${opsEsc(rep.por || "")} · ${opsEsc(String(rep.en || "").slice(0, 10))}</span></div>` : ""}
+                                ${rep ? `<div style="margin-top:6px;background:#f5f3ff;border-radius:7px;padding:6px 8px;font-size:11px;color:#5b21b6;">Requisición <b>${opsEsc(rep.requisicionFolio || "")}</b> (${opsEsc(String(rep.cantidad || 1))} pza)${rep.descontar ? `<br><span style="color:#b91c1c;font-weight:700;">Se descuenta al técnico: ${opsDinero(opsRevMontoDescuento(rep))}</span><br><span style="color:#64748b;">${Number(rep.precioRequisicion) > 0 ? "Precio real de la requisición" : "Precio estimado (Compras aún no captura precio)" + (Number(rep.precioUnitario) > 0 ? ` · ${opsDinero(rep.precioUnitario)} por pieza` : "")}</span>` : "<br>Sin descuento al técnico"}<br><span style="color:#94a3b8;">${opsEsc(rep.por || "")} · ${opsEsc(String(rep.en || "").slice(0, 10))}</span></div>` : ""}
                             </div>
                             ${h.estado !== "conforme" && !rep && gestion ? `<button onclick="opsRevAbrirReposicion('${revisionId}', ${i})" style="margin:0 10px 10px;background:#7c3aed;border:none;color:#fff;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">Reponer: requisición / descuento</button>` : ""}
                         </div>`; }).join("")}
@@ -7555,15 +7557,16 @@
             <label style="font-size:11.5px;font-weight:700;color:#334155;">Qué se compra (va a la requisición)</label>
             <input id="rep-desc" value="${opsEsc(descSug)}" style="${inp}">
             <div style="display:flex;gap:10px;">
-              <div style="flex:1;"><label style="font-size:11.5px;font-weight:700;color:#334155;">Cantidad</label><input id="rep-cant" type="number" min="1" value="${falta}" style="${inp}"></div>
+              <div style="flex:1;"><label style="font-size:11.5px;font-weight:700;color:#334155;">Cantidad</label><input id="rep-cant" type="number" min="1" value="${falta}" oninput="opsRevRepTotal()" style="${inp}"></div>
               <div style="flex:1;"><label style="font-size:11.5px;font-weight:700;color:#334155;">Urgencia</label><select id="rep-urg" style="${inp}"><option value="media">Media</option><option value="alta">Alta</option><option value="baja">Baja</option></select></div>
             </div>
             <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#b91c1c;background:#fef2f2;border-radius:8px;padding:9px 10px;margin-bottom:8px;cursor:pointer;">
               <input type="checkbox" id="rep-desc-chk" ${h.estado === "danada" ? "" : "checked"} onchange="document.getElementById('rep-desc-box').style.display=this.checked?'block':'none'"> Descontar al técnico
             </label>
             <div id="rep-desc-box" style="display:${h.estado === "danada" ? "none" : "block"};">
-              <label style="font-size:11.5px;font-weight:700;color:#334155;">Monto a descontar ($) — costo estimado, se puede ajustar después</label>
-              <input id="rep-monto" type="number" min="0" step="0.01" placeholder="0.00" style="${inp}">
+              <label style="font-size:11.5px;font-weight:700;color:#334155;">${h.estado === "incompleto" ? "Precio de CADA pieza que falta ($)" : "Precio por pieza ($)"} — costo estimado; si Compras captura el precio real en la requisición, el PDF usa ese</label>
+              <input id="rep-monto" type="number" min="0" step="0.01" placeholder="0.00" oninput="opsRevRepTotal()" style="${inp}">
+              <div id="rep-total" style="font-size:12px;font-weight:800;color:#b91c1c;margin:-4px 0 10px;"></div>
             </div>
             <label style="font-size:11.5px;font-weight:700;color:#334155;">Nota para Compras / motivo</label>
             <textarea id="rep-nota" rows="2" style="${inp};resize:vertical;" placeholder="Ej. Lo tiene Sergio; se repone y se descuenta en su finiquito."></textarea>
@@ -7575,6 +7578,42 @@
           </div></div>`;
         document.body.appendChild(w);
     };
+    // Total del descuento = precio por pieza × cantidad (en incompletos, solo las piezas que faltan)
+    window.opsRevRepTotal = function () {
+        const pu = Number((document.getElementById("rep-monto") || {}).value) || 0;
+        const cant = parseInt((document.getElementById("rep-cant") || {}).value, 10) || 0;
+        const box = document.getElementById("rep-total");
+        if (box) box.textContent = pu > 0 && cant > 0 ? `Total a descontar: ${opsDinero(pu * cant)} (${cant} pza × ${opsDinero(pu)})` : "";
+    };
+
+    // Precio capturado por Compras en la requisición (cotización ganadora → propuesta → estimado → precios por partida)
+    function opsRevPrecioDeRequisicion(d) {
+        if (!d) return null;
+        const n = v => (v != null && v !== "" && !isNaN(Number(v)) && Number(v) > 0) ? Number(v) : null;
+        const c = n(d.cotizacionGanadora && d.cotizacionGanadora.monto) ?? n(d.cotizacionPropuesta && d.cotizacionPropuesta.monto) ?? n(d.montoEstimado);
+        if (c != null) return c;
+        const items = Array.isArray(d.items) ? d.items : [];
+        const suma = items.reduce((s, it) => s + (n(it.pu) != null ? n(it.pu) * (Number(it.cant) || 1) : 0), 0);
+        return suma > 0 ? suma : null;
+    }
+    // Pega a cada pieza el precio real de su requisición (para el PDF y el detalle)
+    async function opsRevPegarPreciosRequisicion(piezas) {
+        const conReq = (piezas || []).filter(h => h && h.reposicion && h.reposicion.requisicionId);
+        if (!conReq.length) return;
+        let SF; try { SF = await opsCargarPuenteCompras(); } catch (e) { console.warn("[auditoría] puente Compras:", e); return; }
+        await Promise.all(conReq.map(async h => {
+            try {
+                const s = await SF.getDoc(SF.doc(SF.collection(null, "requisiciones_compra"), h.reposicion.requisicionId));
+                const p = s && s.exists() ? opsRevPrecioDeRequisicion(s.data()) : null;
+                h.reposicion = { ...h.reposicion, precioRequisicion: p };
+            } catch (e) { console.warn("[auditoría] precio de requisición", h.reposicion.requisicionFolio, e); }
+        }));
+    }
+    // Lo que se descuenta de una pieza: precio real de la requisición si ya existe; si no, el estimado
+    function opsRevMontoDescuento(rep) {
+        if (!rep || !rep.descontar) return 0;
+        return Number(rep.precioRequisicion) > 0 ? Number(rep.precioRequisicion) : (Number(rep.montoDescuento) || 0);
+    }
 
     window.opsRevGuardarReposicion = async function (revisionId, idx) {
         const err = document.getElementById("rep-err"), btn = document.getElementById("rep-btn");
@@ -7582,11 +7621,12 @@
         const cant = parseInt(document.getElementById("rep-cant").value, 10) || 0;
         const urg = document.getElementById("rep-urg").value || "media";
         const descontar = document.getElementById("rep-desc-chk").checked;
-        const monto = Number(document.getElementById("rep-monto").value) || 0;
+        const precioUnitario = Number(document.getElementById("rep-monto").value) || 0;
+        const monto = Math.round(precioUnitario * cant * 100) / 100;
         const nota = (document.getElementById("rep-nota").value || "").trim();
         if (!desc) { err.textContent = "Escribe qué se va a comprar."; return; }
         if (cant < 1) { err.textContent = "La cantidad debe ser al menos 1."; return; }
-        if (descontar && !(monto > 0)) { err.textContent = "Escribe el monto a descontar (aunque sea estimado)."; return; }
+        if (descontar && !(precioUnitario > 0)) { err.textContent = "Escribe el precio por pieza (aunque sea estimado)."; return; }
         btn.disabled = true; btn.textContent = "Creando...";
         try {
             const { db, fs } = await opsGetFB();
@@ -7608,7 +7648,7 @@
             const data = { folio, folioNum: parseInt(String(folio).split("-")[1], 10) || null, folioPrefijo: "RC", empresa: "TECNOCONTROL",
                 urgencia: urg, tipoCompra: "insumo", motivo,
                 cliente: "TECNOCONTROL", razonSocial: "TECNOCONTROL", ciudad: "Chihuahua", estacionId: null, estacionNombre: null,
-                items: [{ cant: String(cant), unidad: "pza", parte: h.folio || "", desc, proveedor: "" }],
+                items: [{ cant: String(cant), unidad: "pza", parte: h.folio || "", desc, proveedor: "", ...(precioUnitario > 0 ? { pu: precioUnitario } : {}) }],
                 firma: null, solicitante: opsNombreActual(), solicitanteEmail: opsUsuarioActual(),
                 comentarios: [{ texto: `Generada desde la auditoría de herramienta de ${tecnico}. ${nota}`.trim(), autor: opsNombreActual(), autorEmail: opsUsuarioActual(), fecha: ahora }],
                 flujoAutorizacion: [{ orden: 1, rol: "solicitante", label: "Solicitante", estatus: "aprobado", uid: null, fecha: ahora }, { orden: 2, rol: "jefe_area", label: "Jefe de área", estatus: "aprobado", uid: null, fecha: ahora, nota: "Aprobado en Operaciones → Auditoría de herramienta" }, { orden: 3, rol: "compras", label: "Compras", estatus: "pendiente", uid: null, fecha: null }],
@@ -7629,7 +7669,7 @@
                     tecnicoId: r.tecnicoId || null, tecnicoNombre: tecnico, revisionId, revisionFecha: r.fecha || null,
                     herramientaId: h.herramientaId || null, folio: h.folio || "", descripcion: h.descripcion || "", estado: h.estado,
                     cantidadEncontrada: h.cantidadEncontrada ?? null, cantidadEsperada: h.cantidadEsperada ?? null, cantidad: cant,
-                    monto, motivo: nota || h.observacion || null, requisicionId: ref.id, requisicionFolio: folio,
+                    monto, precioUnitario, motivo: nota || h.observacion || null, requisicionId: ref.id, requisicionFolio: folio,
                     estatus: "pendiente", creadoPor: opsNombreActual(), creadoPorEmail: opsUsuarioActual(), creadoEn: ahora });
                 descuentoId = dref && dref.id ? dref.id : null;
                 const avisos = (typeof OPS_COM_AVISO_POR_AUTORIZAR !== "undefined" ? OPS_COM_AVISO_POR_AUTORIZAR : []);
@@ -7637,7 +7677,7 @@
             }
 
             // 3) Marca en la pieza de la revisión
-            piezas[idx] = { ...h, reposicion: { requisicionId: ref.id, requisicionFolio: folio, cantidad: cant, descontar, montoDescuento: descontar ? monto : 0, descuentoId, por: opsNombreActual(), en: ahora } };
+            piezas[idx] = { ...h, reposicion: { requisicionId: ref.id, requisicionFolio: folio, cantidad: cant, descontar, montoDescuento: descontar ? monto : 0, precioUnitario: descontar ? precioUnitario : 0, descuentoId, por: opsNombreActual(), en: ahora } };
             await fs.updateDoc(revRef, { herramientas: piezas });
 
             opsRevCerrarRepo();

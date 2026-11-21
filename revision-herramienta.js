@@ -31,6 +31,17 @@
   };
 
   function limpiar(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
+  function dinero(n) { return "$" + (Number(n) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  // Descuento al técnico por pieza: precio real de la requisición (lo captura Compras);
+  // si todavía no hay, el estimado que se capturó al pedir la reposición.
+  // null = sin reposición; 0 = reposición sin descuento.
+  window.tcRevMontoDescuento = function (h) {
+    var r = h && h.reposicion;
+    if (!r) return null;
+    if (!r.descontar) return 0;
+    return Number(r.precioRequisicion) > 0 ? Number(r.precioRequisicion) : (Number(r.montoDescuento) || 0);
+  };
 
   // Dibuja la imagen centrada dentro del recuadro, conservando su proporción.
   function imagenAjustada(doc, b64, x, y, w, h) {
@@ -82,16 +93,21 @@
         doc.text("Sin faltantes: todo se encontró conforme.", M, y + 4);
         return doc;
       }
-      var cx = [M, M + 26, M + 104, M + 132, M + 165];
+      var cx = [M, M + 22, M + 84, M + 106, M + 136, M + 160];
+      var totalDesc = 0, hayEstimado = false;
       doc.setFillColor(29, 46, 115); doc.rect(M, y, W, 7, "F");
       doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
-      ["Folio", "Descripción", "Estado", "Cantidad", "Observación"].forEach(function (t, i) { doc.text(t, cx[i] + 1.5, y + 4.8); });
+      ["Folio", "Descripción", "Estado", "Cantidad", "Descuento", "Observación"].forEach(function (t, i) { doc.text(t, cx[i] + 1.5, y + 4.8); });
       y += 7; doc.setFont("helvetica", "normal"); doc.setTextColor(20);
       piezas.forEach(function (h, i) {
-        var obs = doc.splitTextToSize(limpiar(h.observacion || ""), PW - M - cx[4] - 2);
+        var obs = doc.splitTextToSize(limpiar(h.observacion || ""), PW - M - cx[5] - 2);
         var des = doc.splitTextToSize(limpiar(h.descripcion || ""), cx[2] - cx[1] - 3);
         var cant = doc.splitTextToSize(window.tcRevTxtCantidad(h) || "—", cx[4] - cx[3] - 3);
-        var alto = Math.max(obs.length, des.length, cant.length, 1) * 3.8 + 3 + (h.reposicion && h.reposicion.requisicionFolio ? 3.5 : 0);
+        var md = window.tcRevMontoDescuento(h), rep = h.reposicion || {};
+        var real = Number(rep.precioRequisicion) > 0;
+        var descTxt = md == null ? ["—"] : (md === 0 ? ["Sin descuento"] : [dinero(md), real ? "precio real" : "estimado"]);
+        if (md) { totalDesc += md; if (!real) hayEstimado = true; }
+        var alto = Math.max(obs.length, des.length, cant.length, descTxt.length, 1) * 3.8 + 3 + (h.reposicion && h.reposicion.requisicionFolio ? 3.5 : 0);
         if (y + alto > PH - 20) { doc.addPage(); y = 16; encabezado(false); }
         if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(M, y, W, alto, "F"); }
         var est = ESTADOS[h.estado] || { label: h.estado, color: [90, 90, 90] };
@@ -102,7 +118,11 @@
         doc.text(est.label, cx[2] + 1.5, y + 4.2);
         doc.setTextColor(20); doc.setFont("helvetica", "normal");
         doc.text(cant, cx[3] + 1.5, y + 4.2);
-        doc.setTextColor(70); doc.text(obs, cx[4] + 1.5, y + 4.2); doc.setTextColor(20);
+        if (md) {
+          doc.setTextColor(185, 28, 28); doc.setFont("helvetica", "bold"); doc.text(descTxt[0], cx[4] + 1.5, y + 4.2);
+          doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(120); doc.text(descTxt[1], cx[4] + 1.5, y + 8); doc.setFontSize(8.5);
+        } else { doc.setTextColor(120); doc.text(descTxt[0], cx[4] + 1.5, y + 4.2); }
+        doc.setTextColor(70); doc.text(obs, cx[5] + 1.5, y + 4.2); doc.setTextColor(20);
         if (h.reposicion && h.reposicion.requisicionFolio) {
           doc.setFontSize(7); doc.setTextColor(109, 40, 217);
           doc.text("Req. " + h.reposicion.requisicionFolio + (h.reposicion.descontar ? " · se descuenta" : ""), cx[1] + 1.5, y + alto - 0.8);
@@ -110,6 +130,18 @@
         }
         y += alto;
       });
+      if (totalDesc > 0) {
+        if (y + 12 > PH - 20) { doc.addPage(); y = 16; encabezado(false); }
+        doc.setFillColor(254, 242, 242); doc.rect(M, y, W, 8, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(185, 28, 28);
+        doc.text("Total a descontar al técnico: " + dinero(totalDesc), M + 2, y + 5.4);
+        if (hayEstimado) {
+          doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(110);
+          doc.text("Incluye precios estimados (Compras aún sin precio real).", PW - M - 2, y + 5.4, { align: "right" });
+        }
+        doc.setFont("helvetica", "normal"); doc.setTextColor(20);
+        y += 8;
+      }
       y += 8;
     }
 
