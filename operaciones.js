@@ -3280,7 +3280,8 @@
                 <div style="font-size:11px;color:#94a3b8;margin:4px 0;">Revisó: ${opsEsc(r.realizadoPor || "—")} · ${(r.herramientas || []).length} pieza(s)${conFoto ? ` · ${conFoto} foto(s)` : ""}</div>
                 ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                 <div style="margin-top:8px;text-align:right;">
-                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF / WhatsApp</button>
+                    <button onclick="opsVerRevisionDetalle('${r.id}')" style="background:#1D2E73;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;margin-right:6px;">${ICON.camera} Ver fotos y comentarios</button>
+                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} Descargar PDF</button>
                 </div>
             </div>`;
         }).join("");
@@ -7069,7 +7070,8 @@
                         ${(r.herramientas || []).map(h => `<div style="font-size:11.5px;color:#334155;padding:2px 0;">${h.estado === "conforme" ? ICON.check : (h.estado === "faltante" ? ICON.xCircle : ICON.alert)} ${opsEsc(h.folio)} — ${opsEsc(h.descripcion)}${h.observacion ? ` · <em>${opsEsc(h.observacion)}</em>` : ""}${h.tieneFoto ? ` · ${ICON.camera}` : ""}</div>`).join("")}
                         ${r.observacionesGenerales ? `<div style="font-size:11.5px;color:#64748b;margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px;">${opsEsc(r.observacionesGenerales)}</div>` : ""}
                         <div style="margin-top:8px;text-align:right;">
-                            <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.file} PDF / WhatsApp</button>
+                            <button onclick="opsVerRevisionDetalle('${r.id}')" style="background:#1D2E73;border:none;color:#fff;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;margin-right:6px;">${ICON.camera} Ver fotos y comentarios</button>
+                    <button id="ops-rev-share-${r.id}" onclick="opsCompartirRevisionPDF('${r.id}')" style="background:#eef2f7;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:600;">${ICON.download} Descargar PDF</button>
                         </div>
                     </div>`;
                 }).join("") : '<div style="background:#fff;border-radius:14px;padding:16px 18px;color:#94a3b8;font-size:12px;">Sin revisiones registradas todavía.</div>'}`;
@@ -7384,11 +7386,14 @@
             if (!snap.exists()) { alert("No se encontró la revisión."); return; }
             const revision = snap.data();
             const doc = await opsGenerarPDFRevision(revision, revisionId);
-            const nombreArchivo = `Auditoria_${(revision.tecnicoNumero || "tec").replace(/\s+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
+            const nombreArchivo = `Auditoria_${String(revision.tecnicoNumero || revision.tecnicoNombre || revision.almacenNombre || "tec").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w-]+/g, "_")}_${(revision.fecha || "").slice(0, 10)}.pdf`;
             const blob = doc.output("blob");
             const file = new File([blob], nombreArchivo, { type: "application/pdf" });
 
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            // En computadora (Windows/Mac) navigator.share abre el panel de "Compartir" del sistema
+            // en lugar de descargar. Solo se usa en celular/tableta; en PC siempre se descarga.
+            const esMovil = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+            if (esMovil && navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({
                     files: [file],
                     title: "Reporte de auditoría de herramienta",
@@ -7396,14 +7401,79 @@
                 });
             } else {
                 doc.save(nombreArchivo);
-                const texto = encodeURIComponent(`Reporte de auditoría de herramienta de ${revision.tecnicoNombre || ""} (${(revision.fecha || "").slice(0, 10)}). Adjunto el PDF "${nombreArchivo}" que se acaba de descargar.`);
-                window.open(`https://wa.me/?text=${texto}`, "_blank");
             }
         } catch (err) {
             console.error("[operaciones.js] error al compartir PDF de revisión:", err);
             alert("No se pudo generar/compartir el PDF. Intenta de nuevo.");
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = "PDF / WhatsApp"; }
+            if (btn) { btn.disabled = false; btn.innerHTML = `${ICON.download} Descargar PDF`; }
+        }
+    };
+
+    // ── Ver detalle de una revisión/auditoría: cada pieza con su foto y comentario ──
+    window.opsVerRevisionDetalle = async function (revisionId) {
+        const wrap = document.getElementById("ops-modal-wrap");
+        if (!wrap) return;
+        const cerrar = `document.getElementById('ops-modal-wrap').innerHTML=''`;
+        wrap.innerHTML = `
+        <div onclick="if(event.target===this){${cerrar}}" style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#f8fafc;border-radius:14px;width:900px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+                <div style="background:#1D2E73;color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+                    <div id="ops-revdet-titulo" style="font-size:13.5px;font-weight:700;">Cargando revisión...</div>
+                    <div style="display:flex;gap:6px;">
+                        <button id="ops-rev-share-${revisionId}" onclick="opsCompartirRevisionPDF('${revisionId}')" style="background:#fff;border:none;color:#1D2E73;padding:6px 11px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">${ICON.download} Descargar PDF</button>
+                        <button onclick="${cerrar}" style="background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;padding:6px 10px;border-radius:7px;cursor:pointer;font-size:11px;">${ICON.close}</button>
+                    </div>
+                </div>
+                <div id="ops-revdet-cuerpo" style="padding:14px 18px;overflow:auto;font-size:12px;color:#334155;">Cargando...</div>
+            </div>
+        </div>`;
+        const cuerpo = document.getElementById("ops-revdet-cuerpo");
+        try {
+            const { db, fs } = await opsGetFB();
+            const snap = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId));
+            if (!snap.exists()) { cuerpo.innerHTML = "No se encontró la revisión."; return; }
+            const r = snap.data();
+            const piezas = r.herramientas || [];
+            const novedades = piezas.filter(h => h.estado !== "conforme").length;
+            const tit = document.getElementById("ops-revdet-titulo");
+            if (tit) tit.textContent = `${r.tecnicoNombre || r.almacenNombre || "—"} · ${(r.fecha || "").slice(0, 16).replace("T", " ")}`;
+            const colorEstado = e => e === "conforme" ? "#166534" : (e === "faltante" ? "#E7402B" : "#b45309");
+            cuerpo.innerHTML = `
+                <div style="margin-bottom:10px;color:#64748b;">Revisó: <b>${opsEsc(r.realizadoPor || "—")}</b> · ${piezas.length} pieza(s) · <span style="color:${novedades ? "#E7402B" : "#166534"};font-weight:700;">${novedades ? novedades + " con novedad" : "Todo conforme"}</span></div>
+                ${r.observacionesGenerales ? `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:12px;"><b>Observaciones generales:</b> ${opsEsc(r.observacionesGenerales)}</div>` : ""}
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+                    ${piezas.map((h, i) => `
+                        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;border-top:3px solid ${colorEstado(h.estado)};">
+                            <div id="ops-revdet-foto-${i}" style="height:150px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;">${h.tieneFoto ? "Cargando foto..." : "Sin foto"}</div>
+                            <div style="padding:8px 10px;">
+                                <div style="font-weight:700;color:#1e293b;">${opsEsc(h.folio || "")}</div>
+                                <div style="font-size:11.5px;">${opsEsc(h.descripcion || "")}</div>
+                                <div style="font-size:10.5px;font-weight:700;color:${colorEstado(h.estado)};text-transform:uppercase;margin-top:3px;">${opsEsc(h.estado || "—")}</div>
+                                ${h.observacion ? `<div style="font-size:11.5px;color:#475569;margin-top:4px;font-style:italic;">${opsEsc(h.observacion)}</div>` : ""}
+                            </div>
+                        </div>`).join("")}
+                </div>`;
+            // Fotos de 4 en 4 para no saturar la conexión
+            const conFoto = piezas.map((h, i) => ({ h, i })).filter(x => x.h.tieneFoto && x.h.herramientaId);
+            for (let k = 0; k < conFoto.length; k += 4) {
+                await Promise.all(conFoto.slice(k, k + 4).map(async ({ h, i }) => {
+                    const box = document.getElementById(`ops-revdet-foto-${i}`);
+                    try {
+                        const f = await fs.getDoc(fs.doc(db, COL_REVISIONES, revisionId, "fotos", h.herramientaId));
+                        const b64 = f.exists() ? f.data().fotoBase64 : null;
+                        if (box) box.innerHTML = b64
+                            ? `<img src="${b64}" onclick="window.open().document.write('<img src=&quot;'+this.src+'&quot; style=&quot;max-width:100%&quot;>')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block;">`
+                            : "Foto no disponible";
+                    } catch (e) {
+                        console.warn("[operaciones.js] foto de revisión", h.herramientaId, e);
+                        if (box) box.textContent = "No se pudo cargar la foto";
+                    }
+                }));
+            }
+        } catch (err) {
+            console.error("[operaciones.js] detalle de revisión:", err);
+            cuerpo.innerHTML = "No se pudo cargar la revisión. Intenta de nuevo.";
         }
     };
 
