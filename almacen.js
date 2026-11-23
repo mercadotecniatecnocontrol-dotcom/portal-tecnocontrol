@@ -231,9 +231,21 @@
     if (!forzar && _remAspel.cargado && (Date.now()-_remAspel.ts) < 5*60*1000) return;
     _remAspel.cargando = true;
     var desde = new Date(Date.now() - 180*86400000).toISOString();
-    cargarSupabaseStorage().then(function(sb){
+    // Supabase entrega máximo 1000 filas por consulta: se pide por páginas (de la más reciente a la más vieja).
+    var PAG = 1000, todas = [];
+    function pagina(sb, desdeFila){
       return sb.from('aspel_remisiones').select('cve_doc,pedido_folio,status,fecha_doc')
-        .gte('fecha_doc', desde).order('fecha_doc', { ascending: true }).limit(5000);
+        .gte('fecha_doc', desde).order('fecha_doc', { ascending: false }).order('cve_doc', { ascending: false })
+        .range(desdeFila, desdeFila + PAG - 1)
+        .then(function(r){
+          if (r.error) return r;
+          todas = todas.concat(r.data||[]);
+          if ((r.data||[]).length === PAG && desdeFila < 20000) return pagina(sb, desdeFila + PAG);
+          return { data: todas };
+        });
+    }
+    cargarSupabaseStorage().then(function(sb){
+      return pagina(sb, 0);
     }).then(function(r){
       _remAspel.cargando = false;
       if (r.error){ console.warn('[almacen] aspel_remisiones:', r.error.message); return; }
