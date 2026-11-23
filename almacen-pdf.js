@@ -780,14 +780,23 @@
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">'
       +   '<label style="' + lb + '">Fecha sugerida para el servicio<input type="date" style="' + inp + '" value="' + esc(f.fecha) + '" onchange="window.__almFicha(\'fecha\',this.value)"></label>'
-      +   '<label style="' + lb + '">¿Requiere viáticos? *<select style="' + inp + '" onchange="window.__almFicha(\'viaticos\',this.value)">'
-      +     '<option value=""' + (!f.viaticos ? ' selected' : '') + '>— Elige —</option><option value="si"' + (f.viaticos === 'si' ? ' selected' : '') + '>Sí (es fuera de la ciudad)</option><option value="no"' + (f.viaticos === 'no' ? ' selected' : '') + '>No</option>'
+      +   '<label style="' + lb + '">¿Aplica capturar viáticos? *<select style="' + inp + '" onchange="window.__almFicha(\'viaticos\',this.value)">'
+      +     '<option value=""' + (!f.viaticos ? ' selected' : '') + '>— Elige —</option>'
+      +     '<option value="si"' + (f.viaticos === 'si' ? ' selected' : '') + '>Aplica (es fuera de la ciudad)</option>'
+      +     '<option value="no"' + (f.viaticos === 'no' ? ' selected' : '') + '>No aplica (dentro de la ciudad)</option>'
+      +     '<option value="otro"' + (f.viaticos === 'otro' ? ' selected' : '') + '>No aplica (ya se gestionaron en otro pedido)</option>'
       +   '</select></label>'
       + '</div>'
+      + (f.viaticos === 'otro'
+        ? '<label style="' + lb + 'margin-top:8px;">Folio del pedido donde ya se gestionaron los viáticos (opcional)<input placeholder="Ej. PED000123" style="' + inp + '" value="' + esc(f.viaticosOtroPedido || '') + '" oninput="window.__almFicha(\'viaticosOtroPedido\',this.value)"></label>'
+        : '')
+      + (f.viaticos && f.viaticos !== 'si'
+        ? '<div style="font-size:11.5px;color:#15803d;margin-top:6px;">Como no aplica capturar viáticos, la ubicación de la estación ya no es obligatoria.</div>'
+        : '')
       + '<label style="' + lb + 'margin-top:8px;">Notas para Operaciones (acceso, horario de la estación, contacto, lo que deban saber)<textarea rows="2" style="' + inp + '" oninput="window.__almFicha(\'notas\',this.value)">' + esc(f.notas) + '</textarea></label>'
       + '</div>';
   }
-  window.__almFicha = function (k, v) { if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha[k] = v; };
+  window.__almFicha = function (k, v) { if (!estado.ficha) estado.ficha = fichaDefault(); estado.ficha[k] = v; if (k === 'viaticos') renderFicha(); };
   // ── Estación del servicio (22-oct-2026, urgente — Ricardo Torres): sin estación con dirección y
   // ubicación, Operaciones no puede calcular viáticos. Se elige del catálogo maestro (coordenadas de SUDI)
   // o, si el cliente NO está en SUDI, se captura completo: razón social, PL, dirección, ubicación y contacto.
@@ -1963,7 +1972,8 @@
         var bf = document.getElementById('alm-ficha'); if (bf) bf.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
-      var faltaEst = fichaFaltantes(fc);
+      // 23-nov-2026 (Glen): la ubicación de la estación solo es obligatoria si aplica capturar viáticos.
+      var faltaEst = fc.viaticos === 'si' ? fichaFaltantes(fc) : [];
       if (faltaEst.length) {
         msg('Ficha de servicio — falta: ' + faltaEst.join(', ') + '. Sin estación con dirección y ubicación, Operaciones no puede calcular los viáticos.', '#dc2626');
         var bf2 = document.getElementById('alm-ficha'); if (bf2) bf2.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1972,6 +1982,8 @@
       var yoF = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
       ficha = { estacion: String(fc.estacion || '').trim() || cliente, cantidad: Number(fc.cantidad), unidad: fc.unidad || 'tanques',
         fechaSugerida: fc.fecha || null, requiereViaticos: fc.viaticos === 'si', notas: String(fc.notas || '').trim() || null,
+        viaticosNoAplica: fc.viaticos === 'otro' ? 'Ya se gestionaron en otro pedido' : (fc.viaticos === 'no' ? 'Dentro de la ciudad' : null),
+        viaticosOtroPedido: fc.viaticos === 'otro' ? (String(fc.viaticosOtroPedido || '').trim().toUpperCase() || null) : null,
         completadaPor: yoF, completadaEn: new Date().toISOString() };
     }
     if (destinoTipo === 'entrega_chihuahua' && !estado.locUbic) { msg('Falta la ubicaci\u00f3n exacta de la entrega: usa la del cliente o m\u00e1rcala en el mapa.', '#dc2626'); var lu = document.getElementById('alm-loc-ubic'); if (lu) lu.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
@@ -2009,6 +2021,8 @@
           empresa: estado.empresa || '',
           clasificacion: clasificarPedido(productos),
           fichaServicio: ficha,
+          // Si el vendedor marcó que no aplican viáticos, Operaciones no lo frena al programar.
+          aplicaViaticos: ficha ? ficha.requiereViaticos : null,
           estacionId: (ficha && ficha.estacionCatalogoId) || datosDestino.estacionId || null,
           creadoPor: yo,
           tienePdfOriginal: adjuntarPdf,
