@@ -2607,11 +2607,14 @@
       var tagEstado = esCancelado
         ? '<span class="alm-rep-tag" style="background:rgba(220,38,38,.1);color:#dc2626">CANCELADO</span>'
         : '<span class="alm-rep-tag" style="background:rgba(22,163,74,.1);color:#16a34a">ENTREGADO</span>';
-      var colorBorde = esCancelado ? '#dc2626' : (e.remisionado ? '#16a34a' : '#f59e0b');
+      var colorBorde = esCancelado ? '#dc2626' : ((e.remisionado || remisionesDePedido(e).length) ? '#16a34a' : '#f59e0b');
 
       var chips = ''
         + chipAdjunto('Salida', !!e.evidSalida, e.evidSalida ? (e.evidSalida.imagen ? ('window.__almLightbox(\''+esc(e.evidSalida.imagen)+'\',\'Evidencia de salida\')') : ('window.open(\''+esc(e.evidSalida.url||'')+'\',\'_blank\')')) : '')
-        + chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? (e.evidRemision.imagen ? ('window.__almLightbox(\''+esc(e.evidRemision.imagen)+'\',\'Evidencia de remisión\')') : ('window.open(\''+esc(e.evidRemision.url||'')+'\',\'_blank\')')) : '')
+        + (e.evidRemision || !remisionesDePedido(e).length
+            ? chipAdjunto('Remisión', !!e.evidRemision, e.evidRemision ? (e.evidRemision.imagen ? ('window.__almLightbox(\''+esc(e.evidRemision.imagen)+'\',\'Evidencia de remisión\')') : ('window.open(\''+esc(e.evidRemision.url||'')+'\',\'_blank\')')) : '')
+            // (23-nov-2026) Sin evidencia subida pero con remisión en Aspel: verde y abre el PDF de Aspel
+            : chipAdjunto('Remisión', true, 'window.__almPDFRemisionAspel(\''+esc(e.folio||'')+'\',\'\')'))
         + chipAdjunto('Documento', e.numDocumentos>0, 'window.__almVerDetalleHistorial(\''+e.id+'\')')
         + chipAdjunto('PDF original', e.tienePdfOriginal, 'window.__almVerPDF(\''+e.id+'\')')
         + chipAdjunto('Carátula envío', !!e.caratulaEnvio, 'window.__almVerDetalleHistorial(\''+e.id+'\')');
