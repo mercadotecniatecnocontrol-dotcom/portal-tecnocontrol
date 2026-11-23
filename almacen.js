@@ -2711,6 +2711,11 @@
       window.tcCaratulaLocalHTML(p.caratulaEnvio, true).then(function(html){ if (w){ w.document.open(); w.document.write(html); w.document.close(); } });
       return;
     }
+    // Carátula de paquetería con ubicación exacta (QR + coordenadas) — también la arma almacen-pdf.js
+    if (window.tcCaratulaEnvioHTML){
+      window.tcCaratulaEnvioHTML(p.caratulaEnvio, true).then(function(html){ if (w){ w.document.open(); w.document.write(html); w.document.close(); } });
+      return;
+    }
     if (w){ w.document.write(construirCaratulaHTML(p.caratulaEnvio)); w.document.close(); }
   };
 

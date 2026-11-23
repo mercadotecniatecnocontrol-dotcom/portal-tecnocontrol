@@ -983,6 +983,7 @@
         +   '<div class="alm-destino-fld"><label>Ciudad, Estado</label><input id="cx-rem-ciu" value="' + esc(R.ciudadEstado) + '"></div>'
         +   '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-rem-tel" value="' + esc(R.telefono) + '"></div>'
         +   '<div class="alm-caratula-sub">Datos del destinatario</div>'
+        +   '<div id="alm-estacion-wrap"></div>'
         +   '<div class="alm-destino-fld"><label>Nombre / Empresa</label><input id="cx-dest-nombre" placeholder="Nombre de la estaci\u00f3n o cliente"></div>'
         +   '<div class="alm-destino-fld"><label>RFC</label><input id="cx-dest-rfc"></div>'
         +   '<div class="alm-destino-fld"><label>R\u00e9gimen fiscal</label><input id="cx-dest-regimen"></div>'
@@ -992,6 +993,7 @@
         +   '<div class="alm-destino-fld"><label>Ciudad, Estado</label><input id="cx-dest-ciu"></div>'
         +   '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-dest-tel"></div>'
         +   '<div class="alm-destino-fld"><label>Correo</label><input id="cx-dest-correo"></div>'
+        +   htmlSelectorUbic(true)
         +   '<div class="alm-caratula-sub">Datos del env\u00edo</div>'
         +   '<div class="alm-destino-fld"><label>Paqueter\u00eda</label><input id="cx-paqueteria" placeholder="Ej. Mensajer\u00eda Express"></div>'
         +   '<div class="alm-destino-fld"><label>Gu\u00eda (opcional)</label><input id="cx-guia"></div>'
@@ -1009,6 +1011,8 @@
         + '<button type="button" class="alm-addrow" style="margin-top:6px;" onclick="window.__almPdfElegirCaratula()">' + (estado.caratulaImg?'Cambiar foto':'Subir foto en su lugar') + '</button>'
         + '<input type="file" id="alm-destino-caratula-file" accept="image/*" style="display:none"></div>';
       extra.insertAdjacentHTML('afterbegin', '<div id="alm-libreta"></div>');
+      estado.locUbic = null; estado.estacionSeleccionada = null;
+      renderDestinoEstacion();
       renderPuntoRecoleccion();
       pintarLibreta('paqueteria');
     } else if (tipo === 'entrega_chihuahua'){
@@ -1039,8 +1043,9 @@
     if (sel){
       extra.innerHTML =
           '<div class="alm-estacion-selected">'
-        +   '<div class="n">' + esc(sel.razonSocial) + '</div>'
-        +   '<div class="d">' + esc(sel.direccionNormalizada) + '</div>'
+        +   '<div class="n">' + esc(sel.nombreComercial || sel.razonSocial) + '</div>'
+        +   (sel.nombreComercial && sel.razonSocial && sel.nombreComercial !== sel.razonSocial ? '<div class="d">' + esc(sel.razonSocial) + '</div>' : '')
+        +   '<div class="d">' + esc(sel.direccionNormalizada || sel.domicilioRaw || '') + (sel.municipio ? ' \u00b7 ' + esc(sel.municipio) : '') + '</div>'
         +   '<button type="button" onclick="window.__almPdfEstacionQuitar()">Cambiar estación</button>'
         + '</div>';
       return;
@@ -1053,7 +1058,7 @@
       +     'onblur="setTimeout(function(){var b=document.getElementById(\'alm-estacion-results\');if(b)b.style.display=\'none\';},150)">'
       +   '<div id="alm-estacion-results" class="alm-estacion-results" style="display:none;"></div>'
       + '</div>'
-      + '<button type="button" class="alm-estacion-link" onclick="window.__almPdfEstacionManual()">La estación no está en el catálogo / usar dirección escrita a mano</button>';
+      + (esPaqueteria() ? '' : '<button type="button" class="alm-estacion-link" onclick="window.__almPdfEstacionManual()">La estación no está en el catálogo / usar dirección escrita a mano</button>');
     cargarCatalogoEstaciones(); // precarga en cache; no bloquea el render del campo
   }
 
@@ -1066,7 +1071,7 @@
       var actual = document.getElementById('alm-estacion-q');
       if (!actual || actual.value.trim().toLowerCase() !== q) return; // el usuario ya escribió otra cosa mientras cargaba
       var resultados = lista.filter(function(e){
-        var texto = [e.razonSocial, e.municipio, e.colonia, e.permiso, e.domicilioRaw, e.codigoPostal].filter(Boolean).join(' ').toLowerCase();
+        var texto = [e.nombreComercial, e.razonSocial, e.municipio, e.colonia, e.permiso, e.domicilioRaw, e.codigoPostal].filter(Boolean).join(' ').toLowerCase();
         return texto.indexOf(q) !== -1;
       }).slice(0, 25);
       if (!resultados.length){
@@ -1076,7 +1081,7 @@
       }
       box.innerHTML = resultados.map(function(e){
         return '<div class="alm-estacion-item" onmousedown="window.__almPdfEstacionElegir(\'' + e.id + '\')">'
-          +   '<div class="n">' + esc(e.razonSocial) + '</div>'
+          +   '<div class="n">' + esc(e.nombreComercial || e.razonSocial) + (latLngEstacion(e) ? '' : ' <span style="color:#b91c1c;font-weight:600;font-size:11px">(sin ubicaci\u00f3n registrada)</span>') + '</div>'
           +   '<div class="d">' + esc(e.municipio) + ' · ' + esc(e.domicilioRaw) + '</div>'
           + '</div>';
       }).join('');
@@ -1089,12 +1094,21 @@
       var e = lista.find(function(x){ return x.id === estacionId; });
       if (!e) return;
       estado.estacionSeleccionada = e;
+      estado.locUbic = null;   // la ubicación pasa a ser la de la estación elegida
       renderDestinoEstacion();
+      if (esPaqueteria()) {     // llena el destinatario con los datos reales de la estación
+        ponerValor('cx-dest-nombre', e.nombreComercial || e.razonSocial);
+        if (e.rfc) ponerValor('cx-dest-rfc', e.rfc);
+        ponerValor('cx-dest-dir', e.direccionNormalizada || e.domicilioRaw);
+        ponerValor('cx-dest-col', e.colonia); ponerValor('cx-dest-cp', e.codigoPostal);
+        ponerValor('cx-dest-ciu', [e.municipio, e.estado].filter(Boolean).join(', '));
+      }
     });
   };
 
   window.__almPdfEstacionQuitar = function(){
     estado.estacionSeleccionada = null;
+    if (estado.locUbic && estado.locUbic.fuente === 'estacion') estado.locUbic = null;
     renderDestinoEstacion();
   };
 
@@ -1417,7 +1431,12 @@
       flete: (document.getElementById('cx-flete')||{}).value || 'pagado',
       entregaTipo: (document.getElementById('cx-entrega-tipo')||{}).value || 'oficina',
       folio: (document.getElementById('alm-folio')||{}).value || '', almacen: (document.getElementById('alm-almacen')||{}).value || '',
-      fecha: new Date().toLocaleDateString('es-MX')
+      fecha: new Date().toLocaleDateString('es-MX'),
+      tipo: 'paqueteria',
+      estacionId: estado.estacionSeleccionada ? estado.estacionSeleccionada.id : '',
+      permiso: estado.estacionSeleccionada ? (estado.estacionSeleccionada.permiso || '') : '',
+      lat: estado.locUbic ? estado.locUbic.lat : null, lng: estado.locUbic ? estado.locUbic.lng : null,
+      ubicacionFuente: estado.locUbic ? estado.locUbic.fuente : ''
     };
   }
  
@@ -1451,6 +1470,7 @@
       + '.ce-box2.on{background:#13246B;}'
       + '.ce-box2.on::after{content:"";position:absolute;left:3px;top:0px;width:4px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(40deg);}'
       + '.ce-foot{margin-top:30px;font-size:9.5px;color:#94a3b8;text-align:center;}'
+      + CSS_UBIC
       + '@media print{body{padding:6px;}}'
       + '</style></head><body>'
       + '<div class="ce-head"><img class="ce-logo" src="data:image/png;base64,' + LOGO_TECNOCONTROL_B64 + '" alt="Tecnocontrol">'
@@ -1467,8 +1487,9 @@
       +     fila('Colonia', D.colonia) + fila('C.P.', D.cp) + fila('Ciudad, Estado', D.ciudadEstado) + fila('Tel\u00e9fono', D.telefono) + fila('Correo', D.correo)
       +   '</table></div>'
       + '</div>'
+      + bloqueUbicacionHTML(c, [D.direccion, D.colonia, D.cp ? 'C.P. ' + D.cp : '', D.ciudadEstado].filter(Boolean).join(', '))
       + '<div class="ce-envio"><div class="ce-box-h">Datos del env\u00edo</div><table>'
-      +   fila('Paqueter\u00eda', c.paqueteria) + fila('Atenci\u00f3n a', c.atencion)
+      +   fila('Paqueter\u00eda', c.paqueteria) + fila('Gu\u00eda', c.guia) + fila('Atenci\u00f3n a', c.atencion)
       +   fila('Recolecci\u00f3n', c.recoleccion) + fila('Referencias', c.referencias) + fila('Instrucciones especiales', c.instrucciones)
       + '</table></div>'
       + '<div class="ce-flags">'
@@ -1483,7 +1504,14 @@
   window.__almPdfVerCaratula = function(){
     var c = leerCaratulaDelFormulario();
     var w = window.open();
-    if (w){ w.document.write(construirCaratulaHTML(c).replace('<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>','')); w.document.close(); }
+    window.tcCaratulaEnvioHTML(c, false).then(function (html) { if (w) { w.document.open(); w.document.write(html); w.document.close(); } });
+  };
+  // Para Almacén (almacen.js) y cualquier módulo que quiera imprimir la carátula de paquetería.
+  window.tcCaratulaEnvioHTML = function (c, imprimir) {
+    return completarUbicDesdeCatalogo(c).then(function () { return cargarQR().catch(function () { return null; }); }).then(function () {
+      var h = construirCaratulaHTML(c);
+      return imprimir === false ? h.replace('<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script>', '') : h;
+    });
   };
  
  
@@ -1503,6 +1531,25 @@
     return q ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q) : '';
   }
   function vCampo(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function esPaqueteria(){ return !!document.getElementById('cx-dest-nombre'); }
+  function htmlSelectorUbic(paq){
+    return '<div class="alm-destino-fld"><label>Ubicaci\u00f3n exacta de entrega (va escrita y en QR en la car\u00e1tula)</label><div id="alm-loc-ubic"></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">'
+      +   '<button type="button" class="alm-addrow" onclick="window.__almPdfLocCliente()">Usar la del cliente</button>'
+      +   '<button type="button" class="alm-addrow" onclick="window.__almPdfLocMapa()">Marcar en el mapa</button>'
+      +   '<button type="button" class="alm-addrow" onclick="window.__almPdfLocLiga()">Pegar liga de Google Maps</button>'
+      +   (paq ? '<button type="button" class="alm-addrow" onclick="window.__almPdfLocDireccion()">Buscar por la direcci\u00f3n</button>' : '')
+      + '</div><div id="alm-loc-mapa-wrap"></div></div>';
+  }
+  window.__almPdfLocDireccion = function () {
+    var dir = [vCampo('cx-dest-dir'), vCampo('cx-dest-col'), vCampo('cx-dest-cp'), vCampo('cx-dest-ciu')].filter(Boolean).join(', ');
+    if (!dir) { alert('Primero escribe la direcci\u00f3n del destinatario.'); return; }
+    geocodificarDireccion(dir + ', M\u00e9xico').then(function (r) {
+      if (!r) { alert('No se encontr\u00f3 esa direcci\u00f3n en el mapa. M\u00e1rcala en el mapa o pega la liga de Google Maps.'); return; }
+      estado.locUbic = { lat: r.lat, lng: r.lng, fuente: 'direccion' }; pintarUbicLocal();
+      window.__almPdfLocMapa();   // se abre el mapa para que confirmen o ajusten el punto
+    });
+  };
 
   function renderCajaLocal(){
     var box = document.getElementById('alm-local-box');
@@ -1510,12 +1557,7 @@
     box.innerHTML = '<div class="alm-caratula-box" style="margin-top:10px;">'
       + '<div class="alm-caratula-tit">Car\u00e1tula de entrega local</div>'
       + '<div style="font-size:11.5px;color:#64748b;margin:-4px 0 8px;">Se genera sola con la estaci\u00f3n, la direcci\u00f3n, un QR a la ubicaci\u00f3n y las partidas. Agrega qui\u00e9n recibe para que el chofer llegue directo.</div>'
-      + '<div class="alm-destino-fld"><label>Ubicaci\u00f3n exacta para el QR</label><div id="alm-loc-ubic"></div>'
-      +   '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">'
-      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocCliente()">Usar la del cliente</button>'
-      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocMapa()">Marcar en el mapa</button>'
-      +     '<button type="button" class="alm-addrow" onclick="window.__almPdfLocLiga()">Pegar liga de Google Maps</button>'
-      +   '</div><div id="alm-loc-mapa-wrap"></div></div>'
+      + htmlSelectorUbic(false)
       + '<div class="alm-destino-fld"><label>Recibe / contacto</label><input id="cx-loc-recibe" placeholder="Nombre de quien recibe"></div>'
       + '<div class="alm-destino-fld"><label>Tel\u00e9fono</label><input id="cx-loc-tel" placeholder="614..."></div>'
       + '<div class="alm-destino-fld"><label>Horario de recepci\u00f3n</label><input id="cx-loc-horario" placeholder="Ej. 8:00 a 14:00"></div>'
@@ -1534,7 +1576,12 @@
   function pintarUbicLocal(){
     var el = document.getElementById('alm-loc-ubic'); if (!el) return;
     var u = estado.locUbic;
-    var FUENTE = { mapa:'Marcada en el mapa', liga:'Tomada de la liga de Google Maps', estacion:'De la estaci\u00f3n del cat\u00e1logo', cliente:'De la ficha del cliente en Ventas' };
+    var FUENTE = { mapa:'Marcada en el mapa', liga:'Tomada de la liga de Google Maps', estacion:'De la estaci\u00f3n del cat\u00e1logo', cliente:'De la ficha del cliente en Ventas', direccion:'Buscada por direcci\u00f3n (revisa que el punto sea correcto)' };
+    var est = estado.estacionSeleccionada;
+    if (!u && est && !latLngEstacion(est)) {
+      el.innerHTML = '<div class="alm-loc-no">La estaci\u00f3n ' + esc(est.nombreComercial || est.razonSocial) + ' no tiene ubicaci\u00f3n registrada. M\u00e1rcala en el mapa o pega la liga de Google Maps: se guardar\u00e1 en el cat\u00e1logo para la pr\u00f3xima vez.</div>';
+      return;
+    }
     el.innerHTML = u
       ? '<div class="alm-loc-ok"><b>\u2713 ' + FUENTE[u.fuente] + '</b> \u00b7 ' + u.lat.toFixed(5) + ', ' + u.lng.toFixed(5)
         + ' \u00b7 <a href="https://www.google.com/maps/search/?api=1&query=' + u.lat + ',' + u.lng + '" target="_blank" rel="noopener">Ver en Google Maps</a></div>'
@@ -1552,8 +1599,11 @@
     if (u && (u.fuente === 'mapa' || u.fuente === 'liga')) { pintarUbicLocal(); return; }
     var ll = latLngEstacion(estado.estacionSeleccionada);
     if (ll) { estado.locUbic = { lat: ll.lat, lng: ll.lng, fuente: 'estacion' }; pintarUbicLocal(); return; }
+    if (u && (u.fuente === 'cliente' || u.fuente === 'direccion') && !estado.estacionSeleccionada) { pintarUbicLocal(); return; }
     estado.locUbic = null; pintarUbicLocal();
-    window.__almPdfLocCliente(true);
+    // Antes: con estación elegida sin coordenadas se ponía la ubicación del cliente (su oficina) y el QR
+    // llevaba al lugar equivocado. Ahora solo se sugiere la del cliente cuando NO hay estación elegida.
+    if (!estado.estacionSeleccionada && !esPaqueteria()) window.__almPdfLocCliente(true);
   }
   window.__almPdfLocCliente = function (silencioso) {
     var cliente = vCampo('alm-cliente');
@@ -1603,7 +1653,8 @@
       tipo: 'local', ubicacionFuente: estado.locUbic ? estado.locUbic.fuente : '',
       folio: vCampo('alm-folio'), cliente: vCampo('alm-cliente'), vendedor: vCampo('alm-vendedor'), almacen: vCampo('alm-almacen'),
       fechaEntrega: vCampo('alm-fecha-entrega'), fecha: new Date().toLocaleDateString('es-MX'),
-      destino: est ? (est.razonSocial || '') : (vCampo('alm-cliente') || ''),
+      destino: est ? (est.nombreComercial || est.razonSocial || '') : (vCampo('alm-cliente') || ''),
+      razonSocial: est ? (est.razonSocial || '') : '',
       estacionId: est ? est.id : '', permiso: est ? (est.permiso || '') : '',
       direccion: est ? (est.direccionNormalizada || est.domicilioRaw || '') : vCampo('alm-destino-dir'),
       municipio: est ? (est.municipio || '') : '',
@@ -1637,9 +1688,67 @@
     try { var q = window.qrcode(0, 'M'); q.addData(texto); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
     catch (e) { return ''; }
   }
+  // QR como imagen (se ve igual impreso y en el PDF que se manda por WhatsApp)
+  function qrImg(texto){
+    try { var q = window.qrcode(0, 'M'); q.addData(texto); q.make(); return '<img alt="QR" src="' + q.createDataURL(8, 2) + '">'; }
+    catch (e) { return '<img alt="QR" crossorigin="anonymous" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(texto) + '">'; }  // respaldo si no cargó la librería
+  }
+
+  // ── Ubicación "imposible de perder" (nov-2026): QR a Google Maps + QR a Waze + coordenadas
+  //    decimales y en grados/minutos/segundos + Plus Code + dirección escrita + ligas. ──
+  function gms(v, pos, neg){
+    var a = Math.abs(v), g = Math.floor(a), mf = (a - g) * 60, m = Math.floor(mf), s = ((mf - m) * 60).toFixed(1);
+    return g + '\u00b0 ' + m + '\' ' + s + '" ' + (v >= 0 ? pos : neg);
+  }
+  function plusCode(lat, lng){  // Open Location Code de 10 dígitos (precisión ~14 m)
+    var A = '23456789CFGHJMPQRVWX';
+    var la = Math.floor((Math.min(89.99999, Math.max(-90, lat)) + 90) * 8000);
+    var ln = Math.floor((((lng + 180) % 360 + 360) % 360) * 8000);
+    var div = [160000, 8000, 400, 20, 1], out = '';
+    for (var i = 0; i < 5; i++) { out += A[Math.floor(la / div[i]) % 20] + A[Math.floor(ln / div[i]) % 20]; if (i === 3) out += '+'; }
+    return out;
+  }
+  function ligasUbic(lat, lng){
+    lat = Number(lat); lng = Number(lng);
+    if (!isFinite(lat) || !isFinite(lng) || !lat || !lng) return null;
+    var ll = lat.toFixed(6) + ',' + lng.toFixed(6);
+    return { lat: lat, lng: lng, coords: lat.toFixed(6) + ', ' + lng.toFixed(6), gms: gms(lat, 'N', 'S') + ', ' + gms(lng, 'E', 'O'),
+      plus: plusCode(lat, lng),
+      maps: 'https://www.google.com/maps/search/?api=1&query=' + ll,
+      ruta: 'https://www.google.com/maps/dir/?api=1&destination=' + ll,
+      waze: 'https://waze.com/ul?ll=' + ll + '&navigate=yes' };
+  }
+  window.tcLigasUbicacion = ligasUbic;
+  var CSS_UBIC = '.ub{border:2px solid #13246B;border-radius:12px;padding:12px 14px;margin:14px 0;display:flex;gap:14px;align-items:flex-start;page-break-inside:avoid}'
+    + '.ub-qrs{display:flex;gap:10px;flex-shrink:0}.ub-q{text-align:center;font-size:9.5px;font-weight:700;color:#13246B}.ub-q img{width:132px;height:132px;display:block;image-rendering:pixelated}.ub-q.s img{width:96px;height:96px}'
+    + '.ub-t{flex:1;min-width:0;font-size:11.5px;line-height:1.45}.ub-h{font-size:11px;font-weight:800;color:#E2231A;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}'
+    + '.ub-dir{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px}.ub-r{display:flex;gap:6px}.ub-r span{color:#64748b;min-width:92px;flex-shrink:0}.ub-r b{word-break:break-all}'
+    + '.ub-l{font-size:9.5px;color:#1473E6;word-break:break-all}.ub-no{border-color:#dc2626;background:#fef2f2;color:#991b1b;font-weight:700;font-size:12px}';
+  function bloqueUbicacionHTML(c, direccion){
+    var u = ligasUbic(c.lat, c.lng);
+    if (!u) return '<div class="ub ub-no">SIN UBICACI\u00d3N EXACTA REGISTRADA. Direcci\u00f3n: ' + esc(direccion || 'sin direcci\u00f3n') + '. Confirmar con el cliente antes de salir.</div>';
+    var r = function (k, v) { return '<div class="ub-r"><span>' + k + '</span><b>' + esc(v) + '</b></div>'; };
+    return '<div class="ub"><div class="ub-qrs">'
+      +   '<div class="ub-q">' + qrImg(u.maps) + 'Google Maps</div>'
+      +   '<div class="ub-q s">' + qrImg(u.waze) + 'Waze</div>'
+      + '</div><div class="ub-t"><div class="ub-h">Ubicaci\u00f3n exacta de entrega</div>'
+      +   (direccion ? '<div class="ub-dir">' + esc(direccion) + '</div>' : '')
+      +   r('Coordenadas', u.coords) + r('Grados', u.gms) + r('Plus Code', u.plus)
+      +   '<div class="ub-l" style="margin-top:6px">Google Maps: ' + esc(u.maps) + '</div>'
+      +   '<div class="ub-l">Waze: ' + esc(u.waze) + '</div>'
+      + '</div></div>';
+  }
+  // Pedidos viejos guardados sin coordenadas: si traen la estación, se toman del catálogo al imprimir.
+  function completarUbicDesdeCatalogo(c){
+    if (!c || (c.lat && c.lng) || !c.estacionId) return Promise.resolve(c);
+    return cargarCatalogoEstaciones().then(function (lista) {
+      var ll = latLngEstacion(lista.find(function (e) { return e.id === c.estacionId; }));
+      if (ll) { c.lat = ll.lat; c.lng = ll.lng; c.maps = ligaMaps(c); }
+      return c;
+    }).catch(function () { return c; });
+  }
 
   function construirCaratulaLocalHTML(c, imprimir){
-    var qr = c.maps ? qrSvg(c.maps) : '';
     function dato(label, valor, grande){ return valor ? '<div class="cl-d"><span>' + esc(label) + '</span><b' + (grande ? ' class="g"' : '') + '>' + esc(valor) + '</b></div>' : ''; }
     var filas = (c.partidas || []).map(function (p) {
       return '<tr><td class="q">' + esc(p.cant) + '</td><td>' + esc(p.desc) + (p.espec ? '<div class="es">' + esc(p.espec) + '</div>' : '') + '</td><td class="cl">' + esc(p.clave) + '</td><td class="ck"><span></span></td></tr>';
@@ -1667,21 +1776,21 @@
       + '.cl-firmas{display:-webkit-box;display:flex;margin-top:38px}.cl-firmas div{-webkit-box-flex:1;flex:1;margin:0 9px;border-top:1.5px solid #0f172a;padding-top:5px;font-size:11px;color:#475569;text-align:center}'
       + '.cl-rem{margin-top:16px;font-size:10.5px;color:#64748b;text-align:center}'
       + '.cl-liga{font-size:10px;color:#1473E6;word-break:break-all;margin-top:4px}'
+      + CSS_UBIC
       + '@media print{.no-print{display:none}}'
       + '</style></head><body>'
       + '<div class="cl-h"><img src="data:image/png;base64,' + LOGO_TECNOCONTROL_B64 + '" alt="Tecnocontrol"><div class="t"><b>CAR\u00c1TULA DE ENTREGA LOCAL</b><span>Elaborada ' + esc(c.fecha) + (c.almacen ? ' \u00b7 Almac\u00e9n ' + esc(c.almacen) : '') + '</span></div></div>'
       + '<div class="cl-fol"><div class="f">' + esc(c.folio || '\u2014') + '</div><div class="x">' + (c.fechaEntrega ? 'Entregar el <b>' + esc(String(c.fechaEntrega).slice(0, 10)) + '</b><br>' : '') + 'Vendedor: ' + esc(c.vendedor || '\u2014') + '</div></div>'
       + '<div class="cl-main"><div class="cl-box">'
       +   '<div class="cl-lb">Entregar a</div><div class="cl-dest">' + esc(c.destino || c.cliente || '\u2014') + '</div>'
+      +   (c.razonSocial && c.razonSocial !== c.destino ? '<div class="cl-d"><span>Raz\u00f3n social</span><b>' + esc(c.razonSocial) + '</b></div>' : '')
       +   (c.destino && c.cliente && c.destino !== c.cliente ? '<div class="cl-d"><span>Cliente</span><b>' + esc(c.cliente) + '</b></div>' : '')
       +   '<div class="cl-dir">' + esc(c.direccion || 'Sin direcci\u00f3n capturada') + (c.municipio ? '<br><b>' + esc(c.municipio) + '</b>' : '') + '</div>'
       +   dato('Recibe', c.recibe, true) + dato('Tel\u00e9fono', c.telefono, true) + dato('Horario', c.horario) + dato('Permiso (PL)', c.permiso)
       +   dato('Referencias', c.referencias) + dato('Instrucciones', c.instrucciones) + dato('Comentarios', c.comentarios)
       + '</div>'
-      + '<div class="cl-qr">' + (qr || '<div style="font-size:11px;color:#94a3b8;padding:30px 0">Sin ubicaci\u00f3n</div>') + '<div class="c">Escanea para abrir la ubicaci\u00f3n en el mapa</div>'
-      +   (c.lat && c.lng ? '<div style="font-size:10px;color:#64748b;margin-top:2px">' + Number(c.lat).toFixed(5) + ', ' + Number(c.lng).toFixed(5) + '</div>' : '')
       + '</div></div>'
-      + (c.maps ? '<div class="cl-liga no-print">Liga: <a href="' + esc(c.maps) + '" target="_blank">' + esc(c.maps) + '</a></div>' : '')
+      + bloqueUbicacionHTML(c, [c.direccion, c.municipio].filter(Boolean).join(', '))
       + '<table><thead><tr><th>Cant.</th><th>Descripci\u00f3n</th><th>Clave</th><th>Revisado</th></tr></thead><tbody>' + (filas || '<tr><td colspan="4" style="color:#94a3b8">Sin partidas</td></tr>') + '</tbody></table>'
       + '<div class="cl-firmas"><div>Entreg\u00f3 (chofer)</div><div>Recibi\u00f3 (nombre y firma)</div><div>Fecha y hora</div></div>'
       + '<div class="cl-rem">Remite: ' + esc((c.remitente || {}).nombre || '') + ' \u00b7 ' + esc((c.remitente || {}).direccion || '') + ' \u00b7 Tel. ' + esc((c.remitente || {}).telefono || '') + '</div>'
@@ -1690,7 +1799,8 @@
   }
   // Para Almacén (almacen.js) y cualquier módulo que quiera imprimir una carátula local.
   window.tcCaratulaLocalHTML = function (c, imprimir) {
-    return cargarQR().catch(function () { return null; }).then(function () { return construirCaratulaLocalHTML(c, imprimir !== false); });
+    return completarUbicDesdeCatalogo(c).then(function () { return cargarQR().catch(function () { return null; }); })
+      .then(function () { return construirCaratulaLocalHTML(c, imprimir !== false); });
   };
   window.__almPdfVerCaratulaLocal = function () {
     var w = window.open('', '_blank');
@@ -1738,6 +1848,7 @@
       ponerValor('cx-paqueteria', d.paqueteria); ponerValor('cx-tipo-envio', d.tipoEnvio); ponerValor('cx-atencion', d.atencion);
       ponerValor('cx-referencias', d.referencias); ponerValor('cx-instrucciones', d.instrucciones);
       ponerValor('cx-flete', d.flete); ponerValor('cx-entrega-tipo', d.entregaTipo);
+      if (d.lat != null && d.lng != null) { estado.locUbic = { lat: Number(d.lat), lng: Number(d.lng), fuente: 'mapa' }; pintarUbicLocal(); }
     } else {
       var aplicarCampos = function () {
         if (d.lat != null && d.lng != null) { estado.locUbic = { lat: Number(d.lat), lng: Number(d.lng), fuente: 'mapa' }; pintarUbicLocal(); }
@@ -1774,7 +1885,7 @@
         if (!D.nombre && !D.direccion) return;
         reg = { tipo: 'paqueteria', nombre: D.nombre, rfc: D.rfc, regimen: D.regimen, direccion: D.direccion, colonia: D.colonia, cp: D.cp, ciudadEstado: D.ciudadEstado,
           telefono: D.telefono, correo: D.correo, paqueteria: k.paqueteria, tipoEnvio: k.tipoEnvio, atencion: k.atencion, referencias: k.referencias,
-          instrucciones: k.instrucciones, flete: k.flete, entregaTipo: k.entregaTipo };
+          instrucciones: k.instrucciones, flete: k.flete, entregaTipo: k.entregaTipo, estacionId: k.estacionId || '', lat: k.lat, lng: k.lng };
       }
       if (!reg) return;
       Object.keys(reg).forEach(function (x) { if (reg[x] == null || reg[x] === '') delete reg[x]; });
@@ -1986,6 +2097,7 @@
         viaticosOtroPedido: fc.viaticos === 'otro' ? (String(fc.viaticosOtroPedido || '').trim().toUpperCase() || null) : null,
         completadaPor: yoF, completadaEn: new Date().toISOString() };
     }
+    if (destinoTipo === 'paqueteria' && !estado.locUbic) { msg('Falta la ubicaci\u00f3n exacta del destinatario: elige la estaci\u00f3n, b\u00fascala por direcci\u00f3n, m\u00e1rcala en el mapa o pega la liga de Google Maps.', '#dc2626'); var lu2 = document.getElementById('alm-loc-ubic'); if (lu2) lu2.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
     if (destinoTipo === 'entrega_chihuahua' && !estado.locUbic) { msg('Falta la ubicaci\u00f3n exacta de la entrega: usa la del cliente o m\u00e1rcala en el mapa.', '#dc2626'); var lu = document.getElementById('alm-loc-ubic'); if (lu) lu.scrollIntoView({ behavior:'smooth', block:'center' }); return; }
  
     if (!window.db) { msg('Firestore no está disponible (window.db).', '#dc2626'); return; }
@@ -2047,13 +2159,23 @@
       else msg('✔ Surtido ' + folio + ' creado' + (estado.documentosPendientes.length ? ' con ' + estado.documentosPendientes.length + ' documento(s) adjunto(s).' : '.'), '#059669');
       if (window.mostrarPush) window.mostrarPush('📦 Surtido creado', 'Folio ' + folio + ' · ' + cliente, '✅');
       guardarEnLibreta(cliente, destinoTipo, datosDestino);
+      // La estación no tenía coordenadas y la marcaron a mano: se guardan en el catálogo para la próxima vez.
+      var estG = estado.estacionSeleccionada, uG = estado.locUbic;
+      if (estG && uG && !latLngEstacion(estG) && (uG.fuente === 'mapa' || uG.fuente === 'liga') && window.tcCatEstacionActualizar) {
+        var yoG = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || '';
+        window.tcCatEstacionActualizar(estG.id, { lat: uG.lat, lng: uG.lng, ubicacionVerificada: true, ubicacionCapturadaPor: yoG, ubicacionCapturadaEn: new Date().toISOString() })
+          .then(function () { estG.lat = uG.lat; estG.lng = uG.lng; _estacionesCache = null; })
+          .catch(function (e) { console.warn('[almacen-pdf] no se guard\u00f3 la ubicaci\u00f3n en el cat\u00e1logo:', e && e.message); });
+      }
       estado.ultimoGuardado = { folio: folio, cliente: cliente, vendedor: vendedor, prioridad: prioridad, fechaEntrega: fechaEntrega, destinoTipo: destinoTipo,
-        productos: productos, clasificacion: clasificarPedido(productos) };
+        productos: productos, clasificacion: clasificarPedido(productos), caratula: datosDestino.caratulaEnvio || null, datosDestino: datosDestino };
       btn.style.display = 'none';
       var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'inline-block';
       var hayPro = productos.some(function (p) { return p.tipo === 'pro'; });
       var waC = document.getElementById('alm-wa-compras'); if (waC) waC.style.display = hayPro ? 'inline-block' : 'none';
       var cancelBtn = document.getElementById('alm-pdf-cancelbtn'); if (cancelBtn) cancelBtn.textContent = 'Cerrar';
+      // Al guardar se abre de una vez el envío por WhatsApp: resumen + dirección + liga de ubicación + PDF de la carátula.
+      if (destinoTipo === 'paqueteria' || destinoTipo === 'entrega_chihuahua') setTimeout(window.__almPdfWhatsApp, 300);
     })
     .catch(function (e) {
       if (e && e.message === 'cancelado') { msg('Operación cancelada.', '#64748b'); }
@@ -2091,6 +2213,7 @@
     if (rv) rv.style.display = 'none';
     var cf = document.getElementById('alm-confirm');
     if (cf) { cf.style.display = 'none'; cf.innerHTML = 'Confirmar y crear surtido'; }
+    estado.locUbic = null;
     var wa = document.getElementById('alm-whatsapp'); if (wa) wa.style.display = 'none';
     var waC0 = document.getElementById('alm-wa-compras'); if (waC0) waC0.style.display = 'none';
     estado.empresa = ''; estado.clasificacion = '';
@@ -2122,10 +2245,72 @@
       'Fecha de entrega: ' + g.fechaEntrega
     ];
     if (g.destinoTipo) lineas.push('Destino: ' + (DESTINO_TIPOS[g.destinoTipo] || g.destinoTipo));
+    var c = g.caratula, dd = g.datosDestino || {};
+    if (c) {
+      var D = c.destinatario || {};
+      var nombreDest = c.tipo === 'local' ? (c.destino || c.cliente) : D.nombre;
+      var dir = c.tipo === 'local' ? [c.direccion, c.municipio].filter(Boolean).join(', ')
+        : [D.direccion, D.colonia, D.cp ? 'C.P. ' + D.cp : '', D.ciudadEstado].filter(Boolean).join(', ');
+      lineas.push('');
+      if (nombreDest) lineas.push('Entregar a: ' + nombreDest);
+      if (dir) lineas.push('Direcci\u00f3n: ' + dir);
+      var recibe = c.tipo === 'local' ? c.recibe : (c.atencion || '');
+      var tel = c.tipo === 'local' ? c.telefono : D.telefono;
+      if (recibe) lineas.push('Recibe: ' + recibe);
+      if (tel) lineas.push('Tel\u00e9fono: ' + tel);
+      if (c.tipo !== 'local' && c.paqueteria) lineas.push('Paqueter\u00eda: ' + c.paqueteria + (c.guia ? ' \u00b7 Gu\u00eda ' + c.guia : ''));
+      if (c.referencias) lineas.push('Referencias: ' + c.referencias);
+      var u = ligasUbic(c.lat, c.lng);
+      if (u) {
+        lineas.push('', '\ud83d\udccd Ubicaci\u00f3n exacta: ' + u.maps, 'Waze: ' + u.waze, 'Coordenadas: ' + u.coords + ' \u00b7 Plus Code ' + u.plus);
+      } else lineas.push('', '\u26a0\ufe0f Sin ubicaci\u00f3n exacta registrada');
+    } else if (dd.destinoLat && dd.destinoLng) {
+      var u2 = ligasUbic(dd.destinoLat, dd.destinoLng);
+      if (u2) lineas.push('', '\ud83d\udccd Ubicaci\u00f3n: ' + u2.maps);
+    }
     var texto = lineas.join('\n');
-    if (window.tcAbrirPanelEnvio) { window.tcAbrirPanelEnvio(null, g.folio, texto); return; }
-    window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+    if (!window.tcAbrirPanelEnvio) { window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank'); return; }
+    if (!c) { window.tcAbrirPanelEnvio(null, g.folio, texto); return; }
+    if (window.mostrarPush) window.mostrarPush('WhatsApp', 'Preparando el PDF de la car\u00e1tula\u2026', '\u23f3');
+    var html = c.tipo === 'local' ? window.tcCaratulaLocalHTML(c, false) : window.tcCaratulaEnvioHTML(c, false);
+    html.then(htmlAPdf).then(function (docu) { window.tcAbrirPanelEnvio(docu, g.folio, texto); })
+      .catch(function (e) { console.warn('[almacen-pdf] PDF de car\u00e1tula:', e && e.message); window.tcAbrirPanelEnvio(null, g.folio, texto); });
   };
+
+  // Convierte el HTML de una carátula en un PDF (jsPDF) para mandarlo por WhatsApp.
+  var _h2cPromise = null;
+  function cargarHtml2canvas(){
+    if (window.html2canvas) return Promise.resolve(window.html2canvas);
+    if (_h2cPromise) return _h2cPromise;
+    _h2cPromise = new Promise(function (res, rej) {
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      sc.onload = function () { window.html2canvas ? res(window.html2canvas) : rej(new Error('html2canvas no disponible')); };
+      sc.onerror = function () { _h2cPromise = null; rej(new Error('No se pudo cargar html2canvas')); };
+      document.head.appendChild(sc);
+    });
+    return _h2cPromise;
+  }
+  function htmlAPdf(html){
+    if (!window.jspdf) return Promise.reject(new Error('jsPDF no disponible'));
+    return cargarHtml2canvas().then(function (h2c) {
+      return new Promise(function (res, rej) {
+        var fr = document.createElement('iframe');
+        fr.style.cssText = 'position:fixed;left:-10000px;top:0;width:820px;height:1100px;border:0;';
+        document.body.appendChild(fr);
+        var d = fr.contentDocument; d.open(); d.write(html); d.close();
+        setTimeout(function () {
+          h2c(d.body, { scale: 2, backgroundColor: '#ffffff', windowWidth: 820, height: Math.ceil(d.body.getBoundingClientRect().height) + 4 }).then(function (cv) {
+            var pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'letter' });
+            var W = 215.9, H = 279.4, m = 8, w = W - 2 * m, h = cv.height * w / cv.width, img = cv.toDataURL('image/jpeg', 0.92);
+            var pagH = H - 2 * m, y = 0;
+            while (true) { pdf.addImage(img, 'JPEG', m, m - y, w, h); y += pagH; if (y >= h - 15) break; pdf.addPage(); }
+            fr.remove(); res(pdf);
+          }).catch(function (e) { fr.remove(); rej(e); });
+        }, 400);
+      });
+    });
+  }
  
   // =====================================================================
   //  WhatsApp a Compras (PRO): manda el PDF original y el resumen de partidas PRO.
