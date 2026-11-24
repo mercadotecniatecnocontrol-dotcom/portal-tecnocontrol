@@ -84,49 +84,53 @@
       area({ codigo: 'PUERTA-1', nombre: 'Entrada', x: 15, y: 0.3, ancho: 4, alto: 0.6, altura: 0.2, meta: { forma: 'puerta' } });
       return items;
     }
-    // Fuerza Aérea — propuesta a partir de las fotos (medidas aproximadas, ajustables en el editor)
-    area({ codigo: 'NAVE', nombre: 'Nave Fuerza Aérea', x: 16, y: 32, ancho: 32, alto: 64, altura: 8, meta: { forma: 'nave' } });
-    area({ codigo: 'PUERTA-1', nombre: 'Andén principal', x: 16, y: 0.3, ancho: 4, alto: 0.6, altura: 0.2, meta: { forma: 'puerta' } });
-    area({ codigo: 'PUERTA-2', nombre: 'Andén trasero', x: 9, y: 63.7, ancho: 4, alto: 0.6, altura: 0.2, meta: { forma: 'puerta' } });
-    area({ codigo: 'ZONA-1', nombre: 'Recepción: dispensarios y tarimas', x: 16, y: 6, ancho: 31, alto: 10, altura: 0, meta: { forma: 'piso', color: '#dbeafe' } });
-    area({ codigo: 'OFI-1', nombre: 'Oficinas y mostrador', x: 7, y: 16, ancho: 13, alto: 7, altura: 3, meta: { forma: 'oficina' } });
-    area({ codigo: 'MEZZ-1', nombre: 'Planta alta (racks blancos)', x: 16, y: 17.5, ancho: 31, alto: 11, altura: 0.25, elevacion: 3.2, meta: { forma: 'mezzanine' } });
-    area({ codigo: 'ZONA-2', nombre: 'Equipos Wayne en caja', x: 9, y: 26, ancho: 16, alto: 5, altura: 0, meta: { forma: 'piso', color: '#fef3c7' } });
-    area({ codigo: 'MEZZ-2', nombre: 'Mezzanine de madera', x: 28.4, y: 46, ancho: 7, alto: 30, altura: 0.25, elevacion: 3.4, meta: { forma: 'mezzanine', madera: true } });
-    area({ codigo: 'ZONA-3', nombre: 'Piso: perfiles, tarimas y tubería', x: 11, y: 58.5, ancho: 20, alto: 9, altura: 0, meta: { forma: 'piso', color: '#e0e7ff' } });
+    // Fuerza Aérea — forma y medidas de la nave tomadas del plano AR.09 (34.60 × 34.00 m, muro oriente en diagonal);
+    // acomodo de racks, mezzanines y zonas tomado de las fotos. Todo es ajustable en "Editar distribución".
+    area({ codigo: 'NAVE', nombre: 'Nave Fuerza Aérea', x: 21.2, y: 17, ancho: 42.4, alto: 34, altura: 8,
+      meta: { forma: 'nave', poligono: [[0, 0], [34.6, 0], [42.4, 29.4], [31.4, 29.6], [31.9, 34], [0, 34]] } });
+    area({ codigo: 'PUERTA-1', nombre: 'Andén principal', x: 0.3, y: 6, ancho: 4, alto: 0.6, altura: 0.2, rotacion: 90, meta: { forma: 'puerta' } });
+    area({ codigo: 'PUERTA-2', nombre: 'Cortina norte', x: 14, y: 0.3, ancho: 4, alto: 0.6, altura: 0.2, meta: { forma: 'puerta' } });
+    area({ codigo: 'ZONA-1', nombre: 'Recepción: dispensarios, tarimas y montacargas', x: 6.25, y: 8.5, ancho: 11.5, alto: 16, altura: 0, meta: { forma: 'piso', color: '#dbeafe' } });
+    area({ codigo: 'OFI-2', nombre: 'Acceso y escalera a planta alta', x: 15, y: 12.7, ancho: 6, alto: 8.6, altura: 3.3, meta: { forma: 'oficina' } });
+    area({ codigo: 'MEZZ-1', nombre: 'Planta alta (racks blancos)', x: 9, y: 25.5, ancho: 18, alto: 17, altura: 0.25, elevacion: 3.34, meta: { forma: 'mezzanine' } });
+    area({ codigo: 'OFI-1', nombre: 'Oficinas, mostrador y comedor', x: 5.75, y: 29, ancho: 11, alto: 10, altura: 3.0, meta: { forma: 'oficina' } });
+    area({ codigo: 'ZONA-2', nombre: 'Equipos Wayne en caja', x: 6, y: 20.75, ancho: 11, alto: 6.5, altura: 0, meta: { forma: 'piso', color: '#fef3c7' } });
+    area({ codigo: 'MEZZ-2', nombre: 'Mezzanine de madera', x: 26.5, y: 5, ancho: 15, alto: 9, altura: 0.25, elevacion: 3.4, meta: { forma: 'mezzanine', madera: true } });
+    area({ codigo: 'ZONA-3', nombre: 'Piso: perfiles, tarimas y tubería', x: 26.5, y: 12.9, ancho: 15, alto: 6, altura: 0, meta: { forma: 'piso', color: '#e0e7ff' } });
 
-    function dims(num, defS, defN, alto) {
+    function dims(num, defS, defN, alto, bahia) {
       var r = est.racks['A:R' + num];
       var S = Math.max(r ? r.maxS : 0, defS), N = Math.max(r ? r.maxN : 0, defN);
-      return { secciones: S, niveles: N, ancho: +(S * 2.4).toFixed(2), alto: 1.1, altura: alto };
+      return { secciones: S, niveles: N, ancho: +(S * bahia).toFixed(2), alto: 0.9, altura: alto };
     }
-    function rack(num, x, y, rot, defS, defN, h, elev) {
-      var d = dims(num, defS, defN, h);
+    function rack(num, x, y, rot, defS, defN, h, bahia, elev, largoFijo) {
+      var d = dims(num, defS, defN, h, bahia);
+      if (largoFijo) d.ancho = largoFijo;
       items.push(Object.assign({ tipo: 'rack', codigo: 'R' + num, nombre: 'Rack ' + num, x: x, y: y, rotacion: rot, elevacion: elev || 0, meta: { area: 'A' } }, d));
     }
-    // Bajo la planta alta (racks metálicos)
-    rack(1, 23.5, 13.5, 0, 2, 3, 2.8);
-    rack(2, 23.5, 16.5, 0, 2, 3, 2.8);
-    rack(3, 23.5, 19.5, 0, 2, 3, 2.8);
-    rack(4, 23.5, 22.5, 0, 3, 3, 2.8);
-    // Nave principal: filas de racks amarillos (espalda con espalda, pasillos de 3.4 m)
-    var xs = [2, 3.1, 6.6, 7.7, 11.2, 12.3, 15.8, 16.9, 20.4, 21.5];
-    for (var i = 0; i < 10; i++) {
-      var d0 = dims(5 + i, 2, 4, 4.5);
-      rack(5 + i, xs[i], 31 + d0.ancho / 2, 90, 2, 4, 4.5);
-    }
-    // Bajo el mezzanine de madera (racks azul/naranja)
-    var xm = [25.8, 26.9, 30.9];
-    for (var j = 0; j < 6; j++) {
-      var d1 = dims(15 + j, 3, 3, 3);
-      rack(15 + j, xm[j % 3], (j < 3 ? 34 : 47) + d1.ancho / 2, 90, 3, 3, 3);
-    }
-    // Racks blancos al fondo de la nave
-    var xb = [2, 3.1, 6.6, 7.7];
-    for (var k = 0; k < 4; k++) {
-      var d2 = dims(21 + k, 4, 3, 3.5);
-      rack(21 + k, xb[k], 43 + d2.ancho / 2, 90, 4, 3, 3.5);
-    }
+    // Bajo la planta alta: racks metálicos azul/rojo (junto a los equipos Wayne)
+    [[1, 12.6], [2, 13.5], [3, 16.2], [4, 17.1]].forEach(function (r) {
+      var d = dims(r[0], 2, 3, 2.8, 1.6);
+      rack(r[0], r[1], 24.2 + d.ancho / 2, 90, 2, 3, 2.8, 1.6);
+    });
+    // Nave principal: racks amarillos y azul marino, en las filas del plano (A a J)
+    var filas = [
+      [5, 18.5, 24.85, 15.7], [6, 21.1, 25.37, 17.07], [7, 22.0, 25.37, 17.07], [8, 24.6, 25.37, 17.07], [9, 25.5, 25.37, 17.07],
+      [10, 28.1, 25.37, 17.07], [11, 30.67, 22.93, 12.2], [12, 31.6, 22.93, 12.2], [13, 34.2, 22.93, 12.2], [14, 35.1, 22.93, 12.2]
+    ];
+    filas.forEach(function (f) { rack(f[0], f[1], f[2], 90, 2, 4, 4.5, 2.4, 0, f[3]); });
+    // Bajo el mezzanine de madera: racks azul/naranja
+    rack(15, 22.5, 1.5, 0, 3, 3, 3, 2.0);
+    rack(16, 22.5, 2.4, 0, 3, 3, 3, 2.0);
+    rack(17, 22.5, 6.2, 0, 3, 3, 3, 2.0);
+    rack(18, 22.5, 7.1, 0, 3, 3, 3, 2.0);
+    rack(19, 30.0, 1.5, 0, 4, 3, 3, 2.0);
+    rack(20, 30.0, 2.4, 0, 4, 3, 3, 2.0);
+    // Racks blancos sobre la planta alta
+    rack(21, 9, 19.0, 0, 4, 3, 2.2, 2.0, 3.6);
+    rack(22, 9, 19.9, 0, 4, 3, 2.2, 2.0, 3.6);
+    rack(23, 9, 23.0, 0, 4, 3, 2.2, 2.0, 3.6);
+    rack(24, 9, 23.9, 0, 4, 3, 2.2, 2.0, 3.6);
     return items;
   }
 
@@ -165,14 +169,30 @@
     function caja(w, h, d, m) { var o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.castShadow = true; o.receiveShadow = true; return o; }
 
     // Piso y muros cortados (para ver adentro)
-    var piso = new THREE.Mesh(new THREE.PlaneGeometry(NW, ND), mat(COL.piso));
+    var poli = nave.meta && Array.isArray(nave.meta.poligono) && nave.meta.poligono.length >= 3 ? nave.meta.poligono : null;
+    var piso;
+    if (poli) {
+      var sh = new THREE.Shape();
+      poli.forEach(function (p, k) { var px = ox + n(p[0], 0), pz = -(oz + n(p[1], 0)); if (k) sh.lineTo(px, pz); else sh.moveTo(px, pz); });
+      piso = new THREE.Mesh(new THREE.ShapeGeometry(sh), mat(COL.piso));
+    } else piso = new THREE.Mesh(new THREE.PlaneGeometry(NW, ND), mat(COL.piso));
     piso.rotation.x = -Math.PI / 2; piso.receiveShadow = true; raiz.add(piso);
     var grid = new THREE.GridHelper(Math.max(NW, ND), Math.round(Math.max(NW, ND) / 2), 0x94a3b8, 0xcbd5e1);
     grid.material.transparent = true; grid.material.opacity = 0.25; grid.position.y = 0.005;
     grid.scale.set(NW / Math.max(NW, ND), 1, ND / Math.max(NW, ND));
     raiz.add(grid);
     var hm = 1.4, gm = 0.25, mm = mat(COL.muro);
-    [[NW, ND / 2 + gm / 2, 0, 0], [NW, -ND / 2 - gm / 2, 0, 0], [ND + gm * 2, 0, NW / 2 + gm / 2, 1], [ND + gm * 2, 0, -NW / 2 - gm / 2, 1]].forEach(function (w) {
+    if (poli) {
+      for (var w = 0; w < poli.length; w++) {
+        var p1 = poli[w], p2 = poli[(w + 1) % poli.length];
+        var x1 = ox + n(p1[0], 0), z1 = oz + n(p1[1], 0), x2 = ox + n(p2[0], 0), z2 = oz + n(p2[1], 0);
+        var lg = Math.hypot(x2 - x1, z2 - z1); if (lg < 0.01) continue;
+        var mu = caja(lg + gm, hm, gm, mm);
+        mu.position.set((x1 + x2) / 2, hm / 2, (z1 + z2) / 2);
+        mu.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+        raiz.add(mu);
+      }
+    } else [[NW, ND / 2 + gm / 2, 0, 0], [NW, -ND / 2 - gm / 2, 0, 0], [ND + gm * 2, 0, NW / 2 + gm / 2, 1], [ND + gm * 2, 0, -NW / 2 - gm / 2, 1]].forEach(function (w) {
       var m = caja(w[3] ? gm : w[0], hm, w[3] ? w[0] : gm, mm);
       m.position.set(w[2], hm / 2, w[1]); raiz.add(m);
     });
@@ -411,8 +431,12 @@
         '<div style="padding:0 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">';
       if (forma !== 'nave') h += campo('Código', 'codigo', it.codigo, 'text', forma === 'rack' ? 'placeholder="R13"' : '');
       if (forma !== 'rack') h += campo('Nombre', 'nombre', it.nombre, 'text');
-      h += campo(forma === 'nave' ? 'Ancho (m)' : 'Largo (m)', 'ancho', it.ancho, 'number', 'step="0.1" min="0.3"');
-      h += campo(forma === 'nave' ? 'Largo (m)' : 'Fondo (m)', 'alto', it.alto, 'number', 'step="0.1" min="0.3"');
+      var conPoli = forma === 'nave' && it.meta && it.meta.poligono;
+      if (conPoli) h += '<div style="grid-column:1/-1;font-size:12px;color:#475569">La forma de la nave viene del plano arquitectónico (muro en diagonal). Mide ' + num(it.ancho) + ' × ' + num(it.alto) + ' m en su parte más amplia.</div>';
+      else {
+        h += campo(forma === 'nave' ? 'Ancho (m)' : 'Largo (m)', 'ancho', it.ancho, 'number', 'step="0.1" min="0.3"');
+        h += campo(forma === 'nave' ? 'Largo (m)' : 'Fondo (m)', 'alto', it.alto, 'number', 'step="0.1" min="0.3"');
+      }
       if (forma === 'rack' || forma === 'oficina') h += campo('Alto (m)', 'altura', it.altura, 'number', 'step="0.1" min="0.5"');
       if (forma === 'rack' || forma === 'mezzanine') h += campo('Elevación (m)', 'elevacion', it.elevacion, 'number', 'step="0.1" min="0"');
       if (forma === 'rack') { h += campo('Secciones', 'secciones', it.secciones, 'number', 'step="1" min="1" max="20"'); h += campo('Niveles', 'niveles', it.niveles, 'number', 'step="1" min="1" max="10"'); h += campo('Área Aspel', 'area', (it.meta && it.meta.area) || 'A', 'text'); }
@@ -434,8 +458,12 @@
           if (k === 'color' || k === 'area') { it.meta = Object.assign({}, it.meta, k === 'area' ? { area: v.toUpperCase().trim() || 'A' } : { color: v }); }
           else if (k === 'codigo') it.codigo = v.toUpperCase().trim();
           else if (k === 'nombre') it.nombre = v;
+          else if (k === 'secciones' && it.tipo === 'rack') {
+            var bahia = n(it.ancho, 2.4) / Math.max(1, n(it.secciones, 1));
+            it.secciones = Math.max(1, Math.round(Number(v)) || 1);
+            it.ancho = +(it.secciones * bahia).toFixed(2);
+          }
           else it[k] = Number(v);
-          if (k === 'secciones' && it.tipo === 'rack') it.ancho = +(Math.max(1, it.secciones) * 2.4).toFixed(2);
           reconstruir(); panelEdicion(idx);
         };
       });
