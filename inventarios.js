@@ -26,6 +26,21 @@
     buscaAlm: ''
   };
   var tabsCtl = null;
+  var v3d = null;            // vista 3D abierta (se destruye al salir)
+  function cerrar3d() { if (v3d) { try { v3d.destruir(); } catch (e) { } v3d = null; } }
+  var _carga3d = null;
+  function cargar3d() {
+    if (window.Inv3D) return Promise.resolve();
+    if (_carga3d) return _carga3d;
+    _carga3d = new Promise(function (ok, mal) {
+      var sc = document.createElement('script');
+      sc.src = 'inventarios-3d.js?v=1';
+      sc.onload = function () { ok(); };
+      sc.onerror = function () { _carga3d = null; mal(new Error('No se pudo cargar inventarios-3d.js')); };
+      document.head.appendChild(sc);
+    });
+    return _carga3d;
+  }
 
   var TIPOS = {
     fisico:         { t: 'Bodegas físicas', d: 'Lugares con anaqueles y racks. Tienen mapa.', c: NAVY },
@@ -231,6 +246,7 @@
   }
 
   function irAProductos(filtro, alm, ubic) {
+    cerrar3d();
     estado.prod.filtro = filtro || 'todos';
     estado.prod.alm = alm == null ? '' : String(alm);
     estado.prod.ubic = ubic || null;
@@ -250,6 +266,7 @@
 
   // ---------------------------------------------------------------- Resumen
   async function pintarResumen(panel) {
+    cerrar3d();
     panel.innerHTML =
       '<div class="inv-row"><select id="inv-r-alm" class="inv-sel" aria-label="Almacén">' + opcionesAlm(estado.almResumen) + '</select>' +
       '<span style="font-size:12px;color:#64748b">Elige un almacén para ver solo sus números.</span></div>' +
@@ -309,6 +326,7 @@
 
   // ---------------------------------------------------------------- Almacenes
   function pintarAlmacenes(panel) {
+    cerrar3d();
     if (estado.almSel != null) { pintarAlmacen(panel, estado.almSel); return; }
     var fis = estado.alms.filter(function (a) { return a.tipo === 'fisico'; });
     panel.innerHTML =
@@ -368,6 +386,7 @@
   }
 
   async function pintarAlmacen(panel, cve) {
+    cerrar3d();
     var a = estado.alms.find(function (x) { return x.cve_alm === cve; });
     if (!a) { estado.almSel = null; pintarAlmacenes(panel); return; }
     var t = TIPOS[a.tipo] || TIPOS.sin_clasificar;
@@ -391,7 +410,9 @@
           '<div class="inv-kpi" style="cursor:default"><div class="k-v" style="color:' + (a.criticos > 0 ? RED : '#0f172a') + '">' + num(a.criticos, 0) + '</div><div class="k-l">Bajo el mínimo</div></div>' +
         '</div>' +
       '</div>' +
-      (a.tipo === 'fisico' ? '<div class="inv-sec">' + ICO.map + ' Mapa de ubicaciones <small>Según el campo de ubicación de Aspel</small></div><div id="inv-a-mapa"></div>' : '') +
+      (a.tipo === 'fisico' ? '<div class="inv-sec">' + ICO.map + ' Mapa del almacén <small>Racks y espacios con productos según Aspel</small></div>' +
+        '<div class="inv-row"><button class="inv-btn pri" id="inv-a-v3d">Vista 3D</button><button class="inv-btn" id="inv-a-vcu">Cuadros de ubicaciones</button></div>' +
+        '<div id="inv-a-mapa"></div><div id="inv-a-mal"></div>' : '') +
       '<div class="inv-sec">' + ICO.list + ' Productos en este almacén</div>' +
       '<div class="inv-row"><button class="inv-btn pri" id="inv-a-verprod">Ver todos los productos de ' + esc(a.nombre) + '</button></div>';
     el('inv-a-volver').onclick = function () { estado.almSel = null; pintarAlmacenes(panel); };
@@ -411,7 +432,50 @@
         } catch (e) { alert('No se pudo guardar: ' + (e.message || e)); this.value = a.tipo || 'sin_clasificar'; }
       };
     }
-    if (a.tipo === 'fisico') pintarMapa(el('inv-a-mapa'), a);
+    if (a.tipo === 'fisico') {
+      var b3 = el('inv-a-v3d'), bc = el('inv-a-vcu');
+      var modo = function (m) {
+        b3.className = 'inv-btn' + (m === '3d' ? ' pri' : ''); bc.className = 'inv-btn' + (m === 'cuadros' ? ' pri' : '');
+        cerrar3d();
+        if (m === '3d') pintar3d(el('inv-a-mapa'), a); else pintarMapa(el('inv-a-mapa'), a);
+      };
+      b3.onclick = function () { modo('3d'); };
+      bc.onclick = function () { modo('cuadros'); };
+      tip(b3, 'Ver el almacén en 3D con sus racks y niveles');
+      tip(bc, 'Ver cada ubicación de Aspel como un cuadro');
+      modo('3d');
+      pintarMalCapturadas(el('inv-a-mal'), a);
+    }
+  }
+
+  async function pintar3d(box, a) {
+    cargando(box);
+    try {
+      var c = sb();
+      var r = await c.from('inv_almacenes').select('id').eq('empresa', 1).eq('cve_alm', a.cve_alm).limit(1);
+      if (r.error) throw r.error;
+      var ubs = (await rpc('inv_ubicaciones_aspel', { p_cve_alm: a.cve_alm })) || [];
+      await cargar3d();
+      box.removeAttribute('data-ui-state');
+      box.innerHTML = '';
+      v3d = window.Inv3D.montar(box, {
+        almacen: { id: r.data && r.data[0] ? r.data[0].id : null, cve_alm: a.cve_alm, nombre: a.nombre },
+        ubicaciones: ubs,
+        esAdmin: esAdmin(),
+        onCelda: function (codigo) { irAProductos('todos', a.cve_alm, codigo); }
+      });
+    } catch (e) { errorEn(box, e); }
+  }
+
+  async function pintarMalCapturadas(box, a) {
+    if (!box) return;
+    try {
+      var filas = (await rpc('inv_ubicaciones_mal_capturadas', { p_cve_alm: a.cve_alm })) || [];
+      if (!filas.length) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="inv-nota" style="border-color:#fca5a5;background:#fef2f2;color:#7f1d1d"><b>Ubicaciones mal capturadas en Aspel (' + filas.length + ').</b> ' +
+        'El portal ya las acomoda en su lugar, pero conviene corregirlas en Aspel para que todos usen el mismo código:<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">' +
+        filas.map(function (f) { return '<span class="inv-chip" style="background:#fff;color:#7f1d1d">' + esc(f.original) + ' → ' + esc(f.sugerido) + ' (' + f.productos + ')</span>'; }).join('') + '</div></div>';
+    } catch (e) { box.innerHTML = ''; console.warn('[inventarios] mal capturadas:', e); }
   }
 
   async function pintarMapa(box, a) {
@@ -446,6 +510,7 @@
   // ---------------------------------------------------------------- Productos
   var _tBusca = null;
   function pintarProductos(panel) {
+    cerrar3d();
     var p = estado.prod;
     panel.innerHTML =
       '<div class="inv-row">' +
