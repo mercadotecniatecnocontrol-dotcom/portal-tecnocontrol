@@ -92,7 +92,7 @@
     area({ codigo: 'PUERTA-2', nombre: 'Cortina norte', x: 14, y: 0.3, ancho: 4, alto: 0.6, altura: 0.2, meta: { forma: 'puerta' } });
     area({ codigo: 'ZONA-1', nombre: 'Recepción: dispensarios, tarimas y montacargas', x: 6.25, y: 8.5, ancho: 11.5, alto: 16, altura: 0, meta: { forma: 'piso', color: '#dbeafe' } });
     area({ codigo: 'OFI-2', nombre: 'Acceso y escalera a planta alta', x: 15, y: 12.7, ancho: 6, alto: 8.6, altura: 3.3, meta: { forma: 'oficina' } });
-    area({ codigo: 'MEZZ-1', nombre: 'Planta alta (racks blancos)', x: 9, y: 25.5, ancho: 18, alto: 17, altura: 0.25, elevacion: 3.34, meta: { forma: 'mezzanine' } });
+    area({ codigo: 'MEZZ-1', nombre: 'Segundo piso (racks blancos)', x: 27, y: 23.05, ancho: 18, alto: 13.1, altura: 0.25, elevacion: 3.34, meta: { forma: 'mezzanine' } });
     area({ codigo: 'OFI-1', nombre: 'Oficinas, mostrador y comedor', x: 5.75, y: 29, ancho: 11, alto: 10, altura: 3.0, meta: { forma: 'oficina' } });
     area({ codigo: 'ZONA-2', nombre: 'Equipos Wayne en caja', x: 6, y: 20.75, ancho: 11, alto: 6.5, altura: 0, meta: { forma: 'piso', color: '#fef3c7' } });
     area({ codigo: 'MEZZ-2', nombre: 'Mezzanine de madera', x: 26.5, y: 5, ancho: 15, alto: 9, altura: 0.25, elevacion: 3.4, meta: { forma: 'mezzanine', madera: true } });
@@ -108,17 +108,17 @@
       if (largoFijo) d.ancho = largoFijo;
       items.push(Object.assign({ tipo: 'rack', codigo: 'R' + num, nombre: 'Rack ' + num, x: x, y: y, rotacion: rot, elevacion: elev || 0, meta: { area: 'A' } }, d));
     }
-    // Bajo la planta alta: racks metálicos azul/rojo (junto a los equipos Wayne)
+    // Planta baja junto a oficinas: racks metálicos azul/rojo (junto a los equipos Wayne)
     [[1, 12.6], [2, 13.5], [3, 16.2], [4, 17.1]].forEach(function (r) {
       var d = dims(r[0], 2, 3, 2.8, 1.6);
       rack(r[0], r[1], 24.2 + d.ancho / 2, 90, 2, 3, 2.8, 1.6);
     });
-    // Nave principal: racks amarillos y azul marino, en las filas del plano (A a J)
+    // Nave principal: racks amarillos y azul marino en las filas del plano (A a J), debajo del segundo piso
     var filas = [
       [5, 18.5, 24.85, 15.7], [6, 21.1, 25.37, 17.07], [7, 22.0, 25.37, 17.07], [8, 24.6, 25.37, 17.07], [9, 25.5, 25.37, 17.07],
       [10, 28.1, 25.37, 17.07], [11, 30.67, 22.93, 12.2], [12, 31.6, 22.93, 12.2], [13, 34.2, 22.93, 12.2], [14, 35.1, 22.93, 12.2]
     ];
-    filas.forEach(function (f) { rack(f[0], f[1], f[2], 90, 2, 4, 4.5, 2.4, 0, f[3]); });
+    filas.forEach(function (f) { rack(f[0], f[1], f[2], 90, 2, 4, 3.0, 2.4, 0, f[3]); });
     // Bajo el mezzanine de madera: racks azul/naranja
     rack(15, 22.5, 1.5, 0, 3, 3, 3, 2.0);
     rack(16, 22.5, 2.4, 0, 3, 3, 3, 2.0);
@@ -126,11 +126,11 @@
     rack(18, 22.5, 7.1, 0, 3, 3, 3, 2.0);
     rack(19, 30.0, 1.5, 0, 4, 3, 3, 2.0);
     rack(20, 30.0, 2.4, 0, 4, 3, 3, 2.0);
-    // Racks blancos sobre la planta alta
-    rack(21, 9, 19.0, 0, 4, 3, 2.2, 2.0, 3.6);
-    rack(22, 9, 19.9, 0, 4, 3, 2.2, 2.0, 3.6);
-    rack(23, 9, 23.0, 0, 4, 3, 2.2, 2.0, 3.6);
-    rack(24, 9, 23.9, 0, 4, 3, 2.2, 2.0, 3.6);
+    // Racks blancos sobre el segundo piso (encima de la nave principal)
+    rack(21, 21.0, 23.0, 90, 4, 3, 2.2, 2.0, 3.6);
+    rack(22, 21.9, 23.0, 90, 4, 3, 2.2, 2.0, 3.6);
+    rack(23, 25.0, 23.0, 90, 4, 3, 2.2, 2.0, 3.6);
+    rack(24, 25.9, 23.0, 90, 4, 3, 2.2, 2.0, 3.6);
     return items;
   }
 
