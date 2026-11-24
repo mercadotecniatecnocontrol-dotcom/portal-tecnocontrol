@@ -17467,9 +17467,16 @@
         <div class="opsas-sec ${cls}">
             <div class="opsas-sh"><div class="opsas-num">${numero}</div><div class="opsas-tt">Comisiones al personal</div><div class="opsas-hint">Avisa a Pagos y RH al guardar y al finalizar</div></div>
             ${porNorma ? `<div class="opsas-note" style="margin:0 0 8px;">Esta visita lleva ${normasV.length} normas (${normasV.map(opsEsc).join(", ")}). Cada comisión se paga en el servicio de <b>su norma</b>; si es porcentaje, se calcula sobre el precio de esa norma.</div>` : ""}
-            ${(() => { const rc = s.tipo === "receta" ? opsRecComision(opsAsReceta()) : null; if (!rc) return "";
-                const n = (s.comisiones || []).filter(c => c.tecId && !c.pendienteMonto).length, tot = rc.tipo === "pct" ? rc.valor + "% del precio" : opsDinero(rc.valor);
-                return `<div class="opsas-note" style="margin:0 0 8px;background:#eef2ff;color:#1D2E73;">Comisión de la receta: <b>${tot}</b> en total${rc.nota ? " (" + opsEsc(rc.nota) + ")" : ""}. ${s.comRecAuto === true ? (n ? `Se reparte en partes iguales entre ${n} persona(s).` : "Se reparte en partes iguales entre quienes elijas.") : `Ya la cambiaste a mano. <a href="#" onclick="event.preventDefault();opsAsComRecetaReactivar()" style="color:#1D2E73;font-weight:800;">Volver a repartir según la receta</a>`}</div>`; })()}
+            ${(() => { const rcs = s.tipo === "receta" ? opsRecComisiones(opsAsReceta()) : []; if (!rcs.length) return "";
+                const filasP = (s.comisiones || []).map((c, i) => ({ c, i })).filter(x => x.c.tecId && !x.c.pendienteMonto), n = filasP.length;
+                const fmtR = rc => rc.tipo === "pct" ? rc.valor + "% del precio" : opsDinero(rc.valor);
+                if (rcs.length === 1) { const rc = rcs[0];
+                    return `<div class="opsas-note" style="margin:0 0 8px;background:#eef2ff;color:#1D2E73;">Comisión de la receta: <b>${fmtR(rc)}</b> en total${rc.nota ? " (" + opsEsc(rc.nota) + ")" : ""}. ${s.comRecAuto === true ? (n ? `Se reparte en partes iguales entre ${n} persona(s).` : "Se reparte en partes iguales entre quienes elijas.") : `Ya la cambiaste a mano. <a href="#" onclick="event.preventDefault();opsAsComRecetaReactivar()" style="color:#1D2E73;font-weight:800;">Volver a repartir según la receta</a>`}</div>`; }
+                // 24-nov-2026 (Idaly): varias comisiones por rol → cada persona elige qué rol cobra.
+                const nomT = id => (cacheTec.find(t => t.id === id) || {}).nombre || "Persona";
+                return `<div class="opsas-note" style="margin:0 0 8px;background:#eef2ff;color:#1D2E73;">Comisiones de la receta por rol: ${rcs.map(rc => `<b>${opsEsc(rc.nota || "Comisión")} ${fmtR(rc)}</b>`).join(" + ")}. Si de un mismo rol van varias personas, se reparte en partes iguales entre ellas.
+                    ${s.comRecAuto === true ? (n ? `<div style="display:flex;flex-direction:column;gap:5px;margin-top:7px;">${filasP.map(({ c, i }) => `<label style="display:flex;align-items:center;gap:8px;font-weight:700;flex-wrap:wrap;">${opsEsc(nomT(c.tecId))} cobra como <select class="opsas-in" style="width:auto;padding:4px 8px;" onchange="opsAsComRecPartida(${i},this.value)">${rcs.map((rc, k) => `<option value="${k}" ${c.recPartida === k ? "selected" : ""}>${opsEsc(rc.nota || "Comisión " + (k + 1))} (${fmtR(rc)})</option>`).join("")}</select></label>`).join("")}</div>` : " Elige al personal y luego indica qué rol cobra cada quien.")
+                    : ` Ya la cambiaste a mano. <a href="#" onclick="event.preventDefault();opsAsComRecetaReactivar()" style="color:#1D2E73;font-weight:800;">Volver a repartir según la receta</a>`}</div>`; })()}
             <datalist id="opsas-conceptos">${cacheConceptosCom.map(x => `<option value="${opsEsc(x)}"></option>`).join("")}</datalist>
             ${filas ? `<div class="opsas-note" style="margin:0 0 8px;">El personal que eliges en la programación aparece aquí solo. Si todavía no sabes el monto, marca <b>"Monto por revisar"</b> y se llena después en Operaciones → Comisiones.</div>` + filas : `<div class="opsas-note" style="margin:0 0 8px;">Sin comisiones capturadas. Cuando elijas personal en la programación, aparece aquí solo.</div>`}
             ${(s.comisiones || []).some(c => c.tipo === "pct") && !R.precioVisita ? `<div class="opsas-box" style="margin:0 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -20448,20 +20455,50 @@
 
     function opsAsReceta() { return opsAS && opsAS.recetaId ? cacheServiciosCatalogo.find(r => r.id === opsAS.recetaId) : null; }
     // 18-nov-2026 (Glen): comisión total de la receta → { tipo: "monto"|"pct", valor } o null si no tiene.
-    function opsRecComision(r) {
-        const c = (r && r.comision) || {}, v = Number(c.valor) || 0;
-        return v > 0 ? { tipo: c.tipo === "pct" ? "pct" : "monto", valor: v, nota: c.nota || "" } : null;
+    // 24-nov-2026 (Idaly): la receta puede tener varias comisiones por rol (comisionesRol[]); las viejas solo traen "comision".
+    function opsRecComLista(r) {
+        if (r && Array.isArray(r.comisionesRol) && r.comisionesRol.length) return r.comisionesRol;
+        const c = r && r.comision;
+        return [c ? Object.assign({ tipo: "monto", valor: null, nota: "" }, c) : { tipo: "monto", valor: null, nota: "" }];
     }
-    // Reparte la comisión de la receta en partes iguales entre las personas de "Comisiones al personal".
+    function opsRecComisiones(r) {
+        return opsRecComLista(r).map(c => ({ tipo: c.tipo === "pct" ? "pct" : "monto", valor: Number(c.valor) || 0, nota: c.nota || "" })).filter(c => c.valor > 0);
+    }
+    function opsRecComision(r) { const l = opsRecComisiones(r); return l.length ? l[0] : null; }
+    // Reparte cada comisión de la receta en partes iguales entre las personas asignadas a ese rol.
+    // Cada persona queda ligada a un rol (recPartida): primero por concepto igual al rol; si no, al rol con menos gente.
     // Solo mientras esté en automático: si alguien cambia un monto o el tipo a mano, ya no se toca.
     function opsAsComRecetaAplicar() {
         const s = opsAS; if (!s || s.comRecAuto !== true) return;
-        const rc = s.tipo === "receta" ? opsRecComision(opsAsReceta()) : null; if (!rc) return;
+        const parts = s.tipo === "receta" ? opsRecComisiones(opsAsReceta()) : []; if (!parts.length) return;
         const filas = (s.comisiones || []).filter(c => c.tecId && !c.pendienteMonto);
         if (!filas.length) return;
-        const parte = rc.tipo === "pct" ? Math.round(rc.valor / filas.length * 1000) / 1000 : Math.round(rc.valor / filas.length * 100) / 100;
-        filas.forEach(c => { c.tipo = rc.tipo; c.valor = String(parte); c.deReceta = true; });
+        filas.forEach(c => { if (!(Number.isInteger(c.recPartida) && c.recPartida >= 0 && c.recPartida < parts.length)) c.recPartida = null; });
+        filas.forEach(c => {
+            if (c.recPartida != null) return;
+            const k = parts.findIndex(p => p.nota && opsAsNorm(p.nota).trim() === opsAsNorm(c.concepto).trim());
+            if (k >= 0) c.recPartida = k;
+        });
+        filas.forEach(c => {
+            if (c.recPartida != null) return;
+            const cuenta = parts.map((p, i) => filas.filter(x => x.recPartida === i).length);
+            c.recPartida = cuenta.indexOf(Math.min(...cuenta));
+            if (parts.length > 1 && parts[c.recPartida].nota) c.concepto = parts[c.recPartida].nota;
+        });
+        filas.forEach(c => {
+            const p = parts[c.recPartida], n = filas.filter(x => x.recPartida === c.recPartida).length;
+            const parte = p.tipo === "pct" ? Math.round(p.valor / n * 1000) / 1000 : Math.round(p.valor / n * 100) / 100;
+            c.tipo = p.tipo; c.valor = String(parte); c.deReceta = true;
+        });
     }
+    // Cambia el rol (comisión de la receta) que cobra una persona y vuelve a repartir.
+    window.opsAsComRecPartida = function (i, k) {
+        const s = opsAS; if (!s || !s.comisiones[i]) return;
+        const parts = opsRecComisiones(opsAsReceta()); const p = parts[Number(k)]; if (!p) return;
+        s.comisiones[i].recPartida = Number(k);
+        if (p.nota) s.comisiones[i].concepto = p.nota;
+        s.comRecAuto = true; opsAsPintar();
+    };
     window.opsAsComRecetaReactivar = function () { if (!opsAS) return; opsAS.comRecAuto = true; opsAsPintar(); };
     // Calibración de dispensarios (SCFI): tiempo de ejecución = 1 hora por dispensario (Glen, oct-2026).
     const OPS_HORAS_POR_DISPENSARIO = 1;
@@ -24123,7 +24160,7 @@
             else if (JSON.stringify(antes[campo]) !== JSON.stringify(despues[campo])) cambios.push(`${label} editado(s)`);
         });
         if (JSON.stringify(antes.vehiculos) !== JSON.stringify(despues.vehiculos)) cambios.push("Vehículos modificados");
-        if (JSON.stringify(antes.comision || null) !== JSON.stringify(despues.comision || null)) cambios.push("Comisión editada");
+        if (JSON.stringify(antes.comision || null) !== JSON.stringify(despues.comision || null) || JSON.stringify(antes.comisionesRol || null) !== JSON.stringify(despues.comisionesRol || null)) cambios.push("Comisión editada");
         if ((antes.avisoProgramacion || "") !== (despues.avisoProgramacion || "")) cambios.push("Aviso al programar editado");
         return cambios.length ? cambios.join(" · ") : "Guardado sin cambios de contenido detectados";
     }
@@ -24218,11 +24255,31 @@
         window.opsServSegToggle(n, true);
     };
     // 18-nov-2026 (Glen): comisión total de la receta.
-    window.opsServCom = function (k, v, sinPintar) {
-        if (!servicioEditDraft) return;
-        const c = servicioEditDraft.comision = Object.assign({ tipo: "monto", valor: null, nota: "" }, servicioEditDraft.comision || {});
-        c[k] = k === "valor" ? (v === "" ? null : Math.max(0, Number(v) || 0)) : v;
+    // 24-nov-2026 (Idaly): varias comisiones por rol → comisionesRol[]; "comision" queda con la primera (compatibilidad).
+    function opsServComMaterializar() {
+        const d = servicioEditDraft; if (!d) return null;
+        if (!Array.isArray(d.comisionesRol) || !d.comisionesRol.length) d.comisionesRol = opsRecComLista(d).map(c => ({ ...c }));
+        return d.comisionesRol;
+    }
+    function opsServComSincronizar() {
+        const d = servicioEditDraft, l = d.comisionesRol || [];
+        d.comision = { ...(l.find(c => Number(c.valor) > 0) || l[0] || { tipo: "monto", valor: null, nota: "" }) };
+    }
+    window.opsServCom = function (i, k, v, sinPintar) {
+        const l = opsServComMaterializar(); if (!l || !l[i]) return;
+        l[i][k] = k === "valor" ? (v === "" ? null : Math.max(0, Number(v) || 0)) : v;
+        opsServComSincronizar();
         if (sinPintar) opsServPintarEstado(); else opsRenderFichaServicio();
+    };
+    window.opsServComAgregar = function () {
+        const l = opsServComMaterializar(); if (!l) return;
+        l.push({ tipo: "monto", valor: null, nota: "" });
+        opsServComSincronizar(); opsRenderFichaServicio();
+    };
+    window.opsServComQuitar = function (i) {
+        const l = opsServComMaterializar(); if (!l || l.length < 2) return;
+        l.splice(i, 1);
+        opsServComSincronizar(); opsRenderFichaServicio();
     };
     window.opsServQuitarFila = function (lista, idx) {
         servicioEditDraft[lista].splice(idx, 1);
@@ -24653,27 +24710,36 @@
         // 18-nov-2026 (Glen): comisión del servicio (una bolsa que se reparte entre quienes van) y aviso
         // que sale al programarlo (ej. "lo hacen Pepito e Ismael de Desarrollos, no llevan auxiliares").
         const tabComision = (() => {
-            const c = s.comision || {}, verCom = opsComVer(), editaCom = gestion && verCom;
-            const rc = opsRecComision(s), nRec = (s.personal || []).reduce((a, p) => a + (Number(p.cantidad) || 0), 0);
-            const fmt = v => rc && rc.tipo === "pct" ? (Math.round(v * 1000) / 1000) + "% del precio" : opsDinero(v);
-            const tabla = rc ? [1, 2, 3, 4, 5, 6].map(n => `<tr style="${n === nRec ? "background:#eef2ff;font-weight:700;" : ""}"><td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;">${n} ${n === 1 ? "persona" : "personas"}${n === nRec ? " (lo que pide la receta)" : ""}</td><td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#1D2E73;">${fmt(rc.valor / n)} c/u</td></tr>`).join("") : "";
-            return `
-                <div style="margin-top:14px;">
-                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Comisión por realizar este servicio</div>
-                    ${verCom ? `
-                    <div style="font-size:10.5px;color:#64748b;margin-bottom:8px;line-height:1.45;">Escribe la comisión <b>total</b> del servicio. Si lo hace una sola persona se la lleva completa; si van más, se reparte en partes iguales entre todos los que van. Al programarlo se llena sola en "Comisiones al personal" y se puede cambiar a mano.</div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            // 24-nov-2026 (Idaly): varias comisiones por servicio, una por rol (ej. Inspector $200 + Documento $100).
+            const verCom = opsComVer(), editaCom = gestion && verCom;
+            const lista = opsRecComLista(s), rcs = opsRecComisiones(s), nRec = (s.personal || []).reduce((a, p) => a + (Number(p.cantidad) || 0), 0);
+            const fmtC = (rc, v) => rc.tipo === "pct" ? (Math.round(v * 1000) / 1000) + "%" : opsDinero(v);
+            const th = "padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:right;color:#475569;font-size:10.5px;";
+            const tabla = rcs.length ? `<tr><td style="${th}text-align:left;">Si lo hacen…</td>${rcs.map(rc => `<td style="${th}">${opsEsc(rc.nota || "Comisión")}</td>`).join("")}</tr>` + [1, 2, 3, 4, 5, 6].map(n => `<tr style="${n === nRec && rcs.length === 1 ? "background:#eef2ff;font-weight:700;" : ""}"><td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;">${n} ${n === 1 ? "persona" : "personas"}${n === nRec && rcs.length === 1 ? " (lo que pide la receta)" : ""}</td>${rcs.map(rc => `<td style="padding:5px 8px;border-bottom:1px solid #f1f5f9;text-align:right;color:#1D2E73;">${fmtC(rc, rc.valor / n)} c/u</td>`).join("")}</tr>`).join("") : "";
+            const totMonto = rcs.filter(r => r.tipo !== "pct").reduce((a, r) => a + r.valor, 0), totPct = rcs.filter(r => r.tipo === "pct").reduce((a, r) => a + r.valor, 0);
+            const inp = "border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;";
+            const filasCom = lista.map((c, i) => `
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;">
+                        <div style="flex:1;min-width:150px;"><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">Rol / ¿quién la cobra?</div>
+                            <input ${editaCom ? "" : "disabled"} value="${opsEsc(c.nota || "")}" placeholder="${i === 0 ? "Ej. Inspector" : "Ej. Quien hace el documento"}" oninput="opsServCom(${i},'nota',this.value,true)" style="width:100%;box-sizing:border-box;${inp}"></div>
                         <div><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">Tipo</div>
-                            <select ${editaCom ? "" : "disabled"} onchange="opsServCom('tipo',this.value)" style="border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;">
+                            <select ${editaCom ? "" : "disabled"} onchange="opsServCom(${i},'tipo',this.value)" style="${inp}">
                                 <option value="monto" ${c.tipo !== "pct" ? "selected" : ""}>$ fijo (total)</option>
                                 <option value="pct" ${c.tipo === "pct" ? "selected" : ""}>% del precio (total)</option>
                             </select></div>
                         <div><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">${c.tipo === "pct" ? "Porcentaje total" : "Monto total"}</div>
-                            <input type="number" min="0" step="0.01" ${editaCom ? "" : "disabled"} value="${opsEsc(c.valor ?? "")}" placeholder="${c.tipo === "pct" ? "Ej. 10" : "Ej. 1200"}" onchange="opsServCom('valor',this.value)" style="width:130px;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;"></div>
-                        <div style="flex:1;min-width:180px;"><div style="font-size:10.5px;color:#475569;font-weight:600;margin-bottom:3px;">Nota (opcional)</div>
-                            <input ${editaCom ? "" : "disabled"} value="${opsEsc(c.nota || "")}" placeholder="Ej. incluye obra civil" oninput="opsServCom('nota',this.value,true)" style="width:100%;border:1px solid #cbd5e1;border-radius:6px;padding:6px 8px;font-size:12px;"></div>
-                    </div>
-                    ${rc ? `<table style="width:100%;max-width:380px;border-collapse:collapse;font-size:11.5px;margin-top:10px;color:#334155;">${tabla}</table>` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Sin comisión capturada.</div>`}`
+                            <input type="number" min="0" step="0.01" ${editaCom ? "" : "disabled"} value="${opsEsc(c.valor ?? "")}" placeholder="${c.tipo === "pct" ? "Ej. 10" : "Ej. 200"}" onchange="opsServCom(${i},'valor',this.value)" style="width:120px;${inp}"></div>
+                        ${editaCom && lista.length > 1 ? `<button type="button" title="Quitar esta comisión" onclick="opsServComQuitar(${i})" style="height:32px;width:32px;background:#fef2f2;border:none;color:#E7402B;border-radius:6px;cursor:pointer;font-weight:800;">×</button>` : ""}
+                    </div>`).join("");
+            return `
+                <div style="margin-top:14px;">
+                    <div style="font-size:11px;font-weight:700;color:#1D2E73;text-transform:uppercase;margin-bottom:6px;">Comisión por realizar este servicio</div>
+                    ${verCom ? `
+                    <div style="font-size:10.5px;color:#64748b;margin-bottom:8px;line-height:1.45;">Escribe la comisión <b>total</b> de cada rol. Si el servicio paga distinto según lo que hace cada quien (ej. <b>Inspector $200</b> y <b>quien hace el documento $100</b>), agrega una comisión por rol. Si de un mismo rol van varias personas, esa comisión se reparte en partes iguales entre ellas. Al programarlo se llena sola en "Comisiones al personal" y se puede cambiar a mano.</div>
+                    ${filasCom}
+                    ${editaCom ? `<button type="button" onclick="opsServComAgregar()" style="background:#eef2ff;color:#1D2E73;border:1px dashed #1D2E73;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">+ Agregar otra comisión (otro rol)</button>` : ""}
+                    ${rcs.length ? `<table style="width:100%;max-width:${260 + rcs.length * 120}px;border-collapse:collapse;font-size:11.5px;margin-top:10px;color:#334155;">${tabla}</table>
+                    ${rcs.length > 1 ? `<div style="font-size:12px;font-weight:800;color:#1D2E73;margin-top:8px;">Comisión total del servicio: ${[totMonto ? opsDinero(totMonto) : "", totPct ? totPct + "% del precio" : ""].filter(Boolean).join(" + ")}</div>` : ""}` : `<div style="font-size:11px;color:#94a3b8;margin-top:8px;">Sin comisión capturada.</div>`}`
                     : `<div style="font-size:11px;color:#94a3b8;">No tienes permiso para ver montos de comisión.</div>`}
                 </div>
                 <div style="margin-top:18px;">
