@@ -62,6 +62,12 @@
   }
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  // Número de parte de una partida (25-nov-2026): kiosco/Flotilla guardan 'parte',
+  // cotizaciones guardan 'numeroParte'. Se muestra en todas las pantallas de seguimiento.
+  function _cpParte(it){ return String((it&&(it.parte||it.numeroParte))||'').trim(); }
+  function _cpPartesTxt(d){ return (d.items||[]).map(_cpParte).filter(Boolean).join(', '); }
+  function _cpParteChip(it){ var x=_cpParte(it); return x?'<span title="Número de parte" style="display:inline-block;background:#EEF2FF;color:#1D2E73;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:6px;margin-left:6px;white-space:nowrap">No. parte '+esc(x)+'</span>':''; }
+  function _cpExtrasTxt(it){ var dsc=String(it.desc||''); return [['Marca',it.marca],['Modelo',it.modelo]].filter(function(e){ return e[1] && dsc.indexOf(String(e[1]))===-1; }).map(function(e){ return e[0]+': '+e[1]; }).join(' · '); }
 
   // ══════════════════════════════════════════════════════════════════
   //  FASE 0 — CONSUMO DE FIREBASE (plan Spark: 50,000 lecturas y 20,000
@@ -1223,7 +1229,7 @@
       var t = _cpNorm(_cpF.texto);
       var prov = (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'';
       var bolsa = _cpNorm([d.folio, d.ocFolio, nombrePorCorreo(d.solicitante), d.solicitante, d.empresa, d.ciudad, prov,
-        (d.items||[]).map(function(i){ return (i.desc||'')+' '+(i.proveedor||''); }).join(' ')].join(' '));
+        (d.items||[]).map(function(i){ return (i.desc||'')+' '+(i.proveedor||'')+' '+_cpParte(i); }).join(' ')].join(' '));
       if(bolsa.indexOf(t)===-1) return false;
     }
     return true;
@@ -1433,6 +1439,7 @@
     var e = _cpEstadoAmigable(d);
     var items = d.items||[];
     var resumen = items.length ? (items[0].desc||'') + (items.length>1?' (+'+(items.length-1)+' más)':'') : '';
+    var partesCard = _cpPartesTxt(d);
     var monto = d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+Number(d.cotizacionGanadora.monto).toLocaleString('es-MX')) : null;
     return '<div class="cp-card" style="--c:'+color+'" role="button" tabindex="0" aria-label="Abrir '+esc(d.folio||d.id)+'" onclick="window.__cpAbrirDetalle(\''+d.id+'\')" onkeydown="if(event.key===\'Enter\')window.__cpAbrirDetalle(\''+d.id+'\')">' +
       '<div style="display:flex;align-items:center;gap:6px">' +
@@ -1443,6 +1450,7 @@
       '</div>' +
       '<p style="font-size:11.5px;color:#334155;margin:4px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||'—'))+(d.empresa?' · <span style="color:#94A3B8">'+esc(d.empresa)+'</span>':'')+'</p>' +
       (resumen?'<p style="font-size:11px;color:#64748B;margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(resumen)+'">'+esc(resumen)+'</p>':'') +
+      (partesCard?'<p style="font-size:10.5px;color:#1D2E73;font-weight:700;margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Número de parte: '+esc(partesCard)+'">No. parte: '+esc(partesCard)+'</p>':'') +
       '<p style="font-size:11px;color:#0A1628;margin:7px 0 0;font-weight:600">'+esc(e.txt)+'</p>' +
       (e.quien?'<p style="font-size:10.5px;color:#5C7089;margin:1px 0 0;display:flex;align-items:center;gap:4px">'+_cpIco('persona')+'Le toca a: <b>'+esc(e.quien)+'</b></p>':'') +
       (e.falta?'<p style="font-size:10.5px;color:#B45309;margin:1px 0 0;font-weight:700">Nadie asignado para aprobar</p>':'') +
@@ -3355,7 +3363,7 @@
     var comprados = docs.filter(function(d){ return d.estatus==='orden_generada'; });
     var conEnvio = comprados.filter(function(d){ return d.envio; });
     var t=_cpNorm(_rasF.texto);
-    var pasa=function(d){ if(!t) return true; return _cpNorm([d.folio,d.ocFolio,d.envio&&d.envio.guia,d.cotizacionGanadora&&d.cotizacionGanadora.proveedor,nombrePorCorreo(d.solicitante),(d.items||[]).map(function(i){return i.desc;}).join(' ')].join(' ')).indexOf(t)>-1; };
+    var pasa=function(d){ if(!t) return true; return _cpNorm([d.folio,d.ocFolio,d.envio&&d.envio.guia,d.cotizacionGanadora&&d.cotizacionGanadora.proveedor,nombrePorCorreo(d.solicitante),(d.items||[]).map(function(i){return i.desc+' '+_cpParte(i);}).join(' ')].join(' ')).indexOf(t)>-1; };
     var tiene=function(id){ return function(d){ return d.envio && _envAlertas(d.envio).some(function(a){ return a.id===id; }); }; };
     var K=[
       {id:'',         lbl:'Compras por llegar', fn:function(){return true;}, col:'#0A1628'},
@@ -3382,7 +3390,7 @@
     cont.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">'+lista.map(function(d){
       var item=(d.items||[])[0]||{};
       var head='<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px"><div style="min-width:0"><b style="font-size:13px">'+esc(d.folio||'')+'</b> <span style="font-size:11px;color:#5C7089">'+esc(d.ocFolio||'')+'</span>' +
-        '<div style="font-size:11.5px;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(item.desc||'')+'</div><div style="font-size:11px;color:#94A3B8">'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||''))+' · '+esc((d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'')+'</div></div>' +
+        '<div style="font-size:11.5px;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(item.desc||'')+'</div>'+(_cpPartesTxt(d)?'<div style="font-size:10.5px;color:#1D2E73;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">No. parte: '+esc(_cpPartesTxt(d))+'</div>':'')+'<div style="font-size:11px;color:#94A3B8">'+esc(_cpTitulo(nombrePorCorreo(d.solicitante)||''))+' · '+esc((d.cotizacionGanadora&&d.cotizacionGanadora.proveedor)||'')+'</div></div>' +
         '<button class="cp-btn" style="flex-shrink:0;height:fit-content" onclick="window.__cpAbrirDetalle(\''+d.id+'\')">Abrir</button></div>';
       if(!d.envio) return '<div class="cp-card" style="--c:#B45309;cursor:default">'+head+'<p style="font-size:12px;color:#92400E;margin:0 0 8px">'+_cpIco('alerta')+' Aún no tiene datos de envío.</p><button class="cp-btn prim" onclick="window.__cpAbrirDetalle(\''+d.id+'\')">Agregar guía</button></div>';
       var al=_envAlertas(d.envio), col = al.some(function(a){ return a.id==='retrasado'||a.id==='detenido'; })?'#E23B2E':al.some(function(a){return a.id==='recoger';})?'#5B21B6':'#1473E6';
@@ -3518,7 +3526,7 @@
     } else {
       var reqs=docs.filter(function(d){ return _cpdEsMio(deptoSolicitante(d), _cpCorreoDe(d)); })
         .filter(function(d){ return _cpdTab!=='camino' || (d.envio && d.estatus!=='recibida' && d.estatus!=='rechazada'); })
-        .filter(function(d){ return !t || _cpNorm([d.folio, d.ocFolio, (d.items||[]).map(function(i){return i.desc;}).join(' ')].join(' ')).indexOf(t)>-1; });
+        .filter(function(d){ return !t || _cpNorm([d.folio, d.ocFolio, (d.items||[]).map(function(i){return i.desc+' '+_cpParte(i);}).join(' ')].join(' ')).indexOf(t)>-1; });
       if(!reqs.length){ cont.innerHTML='<div style="text-align:center;padding:30px 10px;background:#F8FAFC;border-radius:12px;font-size:13px;color:#334155">'+(_cpdTab==='camino'?'No hay nada en camino para '+esc(_cpdArea)+' ahorita.':'No hay requisiciones de '+esc(_cpdArea)+' todavía.')+'</div>'; return; }
       var ord=function(d){ return d.estatus==='recibida'||d.estatus==='rechazada'?1:0; };
       cont.innerHTML = reqs.slice().sort(function(a,b){ return ord(a)-ord(b) || ((_cpFechaDoc(b)||0)-(_cpFechaDoc(a)||0)); }).slice(0,80).map(function(d){
@@ -3526,6 +3534,7 @@
         return '<div class="cp-card" style="--c:'+col+'" role="button" tabindex="0" onclick="window.__cpdVerReq(\''+d.id+'\')" onkeydown="if(event.key===\'Enter\')window.__cpdVerReq(\''+d.id+'\')">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div style="min-width:0"><b style="font-size:13px">'+esc(d.folio||'')+'</b> '+_cpChipDirecto(d) +
           '<div style="font-size:12px;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(item.desc||'')+'</div>' +
+          (_cpPartesTxt(d)?'<div style="font-size:10.5px;color:#1D2E73;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">No. parte: '+esc(_cpPartesTxt(d))+'</div>':'') +
           '<div style="font-size:11.5px;color:#5C7089;margin-top:3px"><b>'+esc(d.envio&&d.estatus!=='recibida'?(ENV_EST[d.envio.estado]||{}).lbl:e.txt)+'</b>'+(e.quien?' — le toca a '+esc(e.quien):'')+'</div></div>' +
           '<div style="text-align:right">'+(d.envio&&d.estatus!=='recibida'?_envCuentaSpan(d.envio)+'<div>'+_envChips(d.envio)+'</div>':_cpChipEspera(d))+'</div></div></div>';
       }).join('');
@@ -3544,7 +3553,7 @@
       '<button aria-label="Cerrar" onclick="document.getElementById(\'cpd-req-overlay\').remove()" style="background:#F1F5F9;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer">✕</button></div>' +
       '<div style="background:#F8FAFC;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px"><b>Ahora:</b> '+esc(e.txt)+(e.quien?' — le toca a <b>'+esc(e.quien)+'</b>':'')+' '+_cpChipEspera(d)+(sig?'<div style="color:#5C7089;margin-top:4px"><b>Sigue:</b> '+esc(sig)+'</div>':'')+'</div>' +
       (d.autorizacionDirecta?'<div style="margin-bottom:10px">'+_cpChipDirecto(d)+'</div>':'') +
-      (d.items||[]).map(function(it){ return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:9px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span>'+esc(it.desc||'')+'</span><b>×'+esc(it.cant||'')+' '+esc(it.unidad||'')+'</b></div>'; }).join('') +
+      (d.items||[]).map(function(it){ return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:9px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px;font-size:12.5px"><span>'+esc(it.desc||'')+_cpParteChip(it)+(_cpExtrasTxt(it)?'<br><span style="font-size:11px;color:#5C7089">'+esc(_cpExtrasTxt(it))+'</span>':'')+'</span><b style="white-space:nowrap">×'+esc(it.cant||'')+' '+esc(it.unidad||'')+'</b></div>'; }).join('') +
       (d.envio?'<p style="font-size:11px;font-weight:700;color:#5C7089;margin:14px 0 8px;text-transform:uppercase">¿Dónde viene?</p>'+_envResumenHTML(d, false, 'cpd-env-mapa'):(d.estatus==='orden_generada'?'<p style="font-size:12px;color:#5C7089;margin:12px 0">Ya se compró. Compras capturará los datos del envío pronto.</p>':'')) +
       (d.recepcion?'<div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#14532D"><b>Recibido</b> el '+_scFmt(d.recepcion.fecha,true)+' por '+esc(_cpTitulo(d.recepcion.nombre||''))+(d.recepcion.observaciones?' — '+esc(d.recepcion.observaciones):'')+'</div>':'') +
       ((d.origen==='cotizacion' && _cpNorm(deptoSolicitante(d))!=='ventas')?'':'<div style="display:flex;gap:6px;margin-top:14px"><button class="cp-btn" onclick="window.__cpDescargarRequisicion(\''+d.id+'\')">'+_cpIco('bajar')+'PDF</button></div>');
@@ -3614,7 +3623,8 @@
     htmlIzq += '<p style="font-size:11px;font-weight:700;color:#5C7089;margin:0 0 8px">Partidas</p>';
     htmlIzq += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' + (d.items||[]).map(function(it){
       return '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px">' +
-        '<div style="min-width:0"><p style="font-size:13px;font-weight:600;color:#0A1628;margin:0;overflow-wrap:break-word">'+esc(it.desc||'—')+'</p>' +
+        '<div style="min-width:0"><p style="font-size:13px;font-weight:600;color:#0A1628;margin:0;overflow-wrap:break-word">'+esc(it.desc||'—')+_cpParteChip(it)+'</p>' +
+        (_cpExtrasTxt(it)?'<p style="font-size:11px;color:#5C7089;margin:2px 0 0">'+esc(_cpExtrasTxt(it))+'</p>':'') +
         '<p style="font-size:11px;color:#94A3B8;margin:2px 0 0">Proveedor sugerido: '+esc(it.proveedor||'—')+'</p></div>' +
         '<span style="flex-shrink:0;background:#F1F5F9;color:#0A1628;font-size:12px;font-weight:800;padding:5px 10px;border-radius:8px;white-space:nowrap">×'+esc(it.cant||'—')+' '+esc(it.unidad||'')+'</span>' +
         '</div>';
