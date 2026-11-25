@@ -4130,7 +4130,13 @@
       y += 5+lns.length*5+6;
     }
     campoAncho('Cliente / razón social', d.razonSocial||d.cliente);
-    if(d.estacionNombre||d.direccion) campoAncho('Estación / ubicación', d.estacionNombre||d.direccion);
+    // Datos de ubicación y solicitante completos (24-nov-2026)
+  if(d.estacionNombre) campoAncho('Estación', d.estacionNombre);
+  if(d.direccion) campoAncho('Dirección', d.direccion);
+  if(d.lat!=null && d.lng!=null) campoAncho('Coordenadas', Number(d.lat).toFixed(6)+', '+Number(d.lng).toFixed(6));
+  if(d.cliente && d.cliente!==d.razonSocial) campoAncho('Cliente', d.cliente);
+  if(d.departamento||d.departamentoSolicitante) campoAncho('Departamento', d.departamento||d.departamentoSolicitante);
+  if(d.vehiculoEco) campoAncho('Vehículo (ECO)', d.vehiculoEco);
     campoAncho('Motivo', d.motivo);
     var nProveedor = campo(ML,'Proveedor ganador', (d.cotizacionGanadora&&d.cotizacionGanadora.proveedor));
     var nMonto = campo(xMid,'Monto', d.cotizacionGanadora&&d.cotizacionGanadora.monto!=null ? ('$'+d.cotizacionGanadora.monto) : null);
@@ -4146,18 +4152,35 @@
     if(y>PH-70){ y=nuevaPagina(); }
     docu.setFillColor(AZUL.r,AZUL.g,AZUL.b); docu.rect(ML,y-5,PW-ML-MR,8,'F');
     docu.setTextColor(255,255,255); docu.setFont('helvetica','bold'); docu.setFontSize(8);
-    docu.text('CANT.',ML+2,y); docu.text('UNIDAD',ML+18,y); docu.text('DESCRIPCIÓN',ML+42,y); docu.text('PROVEEDOR',PW-MR-2,y,{align:'right'});
-    y+=8;
-    docu.setFont('helvetica','normal'); docu.setFontSize(9.5);
-    (d.items||[]).forEach(function(it,idx){
-      var lns = docu.splitTextToSize(String(it.desc||'—'), PW-ML-MR-42-35);
-      if(y+lns.length*5>PH-25){ y=nuevaPagina(); }
-      if(idx%2===1){ docu.setFillColor(248,250,252); docu.rect(ML,y-4,PW-ML-MR,lns.length*5+2,'F'); }
-      docu.setTextColor(15,23,42);
-      docu.text(String(it.cant||'—'),ML+2,y); docu.text(String(it.unidad||'—'),ML+18,y);
-      docu.text(lns,ML+42,y); docu.text(String(it.proveedor||'—'),PW-MR-2,y,{align:'right'});
-      y += Math.max(6, lns.length*5+1.5);
-    });
+    docu.text('CANT.',ML+2,y); docu.text('UNIDAD',ML+15,y); docu.text('NO. PARTE',ML+34,y); docu.text('DESCRIPCIÓN',ML+68,y); docu.text('PROVEEDOR',PW-MR-2,y,{align:'right'});
+  y+=8;
+  // Partidas completas (24-nov-2026): número de parte en su propia columna y,
+  // debajo de la descripción, marca/modelo/especificaciones cuando se capturaron.
+  // Acepta 'parte' (kiosco, Flotilla) y 'numeroParte' (cotizaciones).
+  (d.items||[]).forEach(function(it,idx){
+    docu.setFont('helvetica','normal'); docu.setFontSize(9);
+    var descTxt = String(it.desc||'—');
+    var parteTxt = String(it.parte||it.numeroParte||'').trim() || '—';
+    var extras = [['Marca',it.marca],['Modelo',it.modelo],['Especificaciones',it.especificaciones]]
+      .filter(function(e){ return e[1] && descTxt.indexOf(String(e[1]))===-1; })
+      .map(function(e){ return e[0]+': '+e[1]; }).join(' · ');
+    var lnsD = docu.splitTextToSize(descTxt, 76);
+    var lnsP = docu.splitTextToSize(parteTxt, 32);
+    var lnsU = docu.splitTextToSize(String(it.unidad||'—'), 18);
+    var lnsPr = docu.splitTextToSize(String(it.proveedor||'—'), 38);
+    docu.setFontSize(7.5);
+    var lnsX = extras ? docu.splitTextToSize(extras, 76) : [];
+    var nL = Math.max(lnsD.length+lnsX.length*0.85, lnsP.length, lnsU.length, lnsPr.length);
+    var alto = nL*4.6+2;
+    if(y+alto>PH-25){ y=nuevaPagina(); }
+    if(idx%2===1){ docu.setFillColor(248,250,252); docu.rect(ML,y-4,PW-ML-MR,alto,'F'); }
+    docu.setFontSize(9); docu.setTextColor(15,23,42);
+    docu.text(String(it.cant||'—'),ML+2,y); docu.text(lnsU,ML+15,y);
+    docu.setFont('helvetica','bold'); docu.text(lnsP,ML+34,y); docu.setFont('helvetica','normal');
+    docu.text(lnsD,ML+68,y); docu.text(lnsPr,PW-MR-2,y,{align:'right'});
+    if(lnsX.length){ docu.setFontSize(7.5); docu.setTextColor(100,116,139); docu.text(lnsX,ML+68,y+lnsD.length*4.6); }
+    y += Math.max(6, alto+1);
+  });
 
     // ── Flujo de autorización (con nombre resuelto donde hay correo) ──
     y+=8; if(y>PH-40){ y=nuevaPagina(); }
