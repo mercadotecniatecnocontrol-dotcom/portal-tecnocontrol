@@ -12815,6 +12815,9 @@
                   <input id="opsrev-monto" type="number" min="0" step="0.01" value="${opsEsc(c.monto ?? "")}" placeholder="Monto ($)" style="${inp};margin-bottom:6px;">
                   <input id="opsrev-concepto" type="text" value="${opsEsc(c.concepto || "")}" placeholder="Concepto (qué se cobró)" style="${inp}">
                 </div>
+                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de orden de servicio</div>
+                <input id="opsrev-os" type="text" value="${opsEsc(opsRevOS(f))}" placeholder="Cópialo de la foto de la O.S. (ej. 2449)" style="${inp}">
+                ${opsRevOS(f) ? "" : `<div style="font-size:11px;color:#b45309;font-weight:700;margin:4px 0 0;">El técnico no lo escribió. Si se lee en la foto de la O.S., cópialo aquí (queda registrado que lo capturaste tú).</div>`}
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de cotización</div>
                 <input id="opsrev-cotizacion" type="text" value="${opsEsc(r.cotizacion || "")}" placeholder="Ej. C*SER 2091" style="${inp}">
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Observaciones (salen en el PDF para el cliente)</div>
@@ -12859,7 +12862,8 @@
         if (revisado === true) {
             // Candado de DONE: no se cierra si falta algo obligatorio.
             const falta = [];
-            if (!opsRevOS(f)) falta.push("número de orden de servicio");
+            const osRevTxt = ((document.getElementById("opsrev-os") || {}).value || "").trim();
+            if (!osRevTxt) falta.push("número de orden de servicio (cópialo de la foto de la O.S.)");
             const grupo = opsGrupoClienteFolio(f);
             const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
             if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
@@ -12887,10 +12891,20 @@
         });
         if (rc.estatus === "revisado") { rc.revisadoPor = yo; rc.revisadoEn = ahora; }
         const idCli = document.getElementById("opsrev-idcliente").value.trim();
+        // 26-nov-2026 (Glen): el revisor puede capturar/corregir el No. de O.S. desde la foto; queda quién y cuándo.
+        const osIn = document.getElementById("opsrev-os");
+        const osNuevo = osIn ? osIn.value.trim() : opsRevOS(f);
+        const cambiosOS = {};
+        if (osIn && osNuevo && osNuevo !== opsRevOS(f)) {
+            cambiosOS.osTecnico = osNuevo;
+            if (!f.folioOS) cambiosOS.folioOS = osNuevo;
+            rc.osCapturada = { anterior: opsRevOS(f) || null, nueva: osNuevo, por: yo, en: ahora };
+        }
         try {
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc, ...(idCli !== String(f.folioClienteId || "") ? { folioClienteId: idCli || null } : {}) });
-            f.revisionCierre = rc; if (idCli) f.folioClienteId = idCli;
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc, ...cambiosOS, ...(idCli !== String(f.folioClienteId || "") ? { folioClienteId: idCli || null } : {}) });
+            f.revisionCierre = rc; if (idCli) f.folioClienteId = idCli; Object.assign(f, cambiosOS);
+            if (cambiosOS.osTecnico) { try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] No. de O.S. capturado por revisión: " + osNuevo + (rc.osCapturada.anterior ? " (antes " + rc.osCapturada.anterior + ")" : " (el técnico no lo escribió)"), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {} }
             try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] " + OPS_REV_ESTATUS[rc.estatus][0] + (rc.cobro.si ? " · Se cobró $" + rc.cobro.monto + (rc.cobro.concepto ? " (" + rc.cobro.concepto + ")" : "") : " · No se cobró") + (rc.cotizacion ? " · Cotización " + rc.cotizacion : "") + (rc.nota ? " · " + rc.nota : ""), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {}
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión guardada", texto: "O.S. " + (opsRevOS(f) || f.estacion) + " · " + OPS_REV_ESTATUS[rc.estatus][0], nivel: "normal", modulo: "Operaciones" });

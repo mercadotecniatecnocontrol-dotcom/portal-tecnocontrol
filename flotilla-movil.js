@@ -8605,10 +8605,11 @@ window.fmOpsServTerminar=async function(id){
       '<div id="fm-term-os-aviso" style="display:'+(fmOsVarias(f.osTecnico)?'block':'none')+';font-size:11.5px;font-weight:700;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:8px 10px;margin:-6px 0 12px;line-height:1.4">Solo va UNA orden de servicio por registro. Cada O.S. de otra estación se registra aparte con «Servicio no programado».</div>'+
       ((f.folioClienteId||f.folioOS)?'<div style="font-size:11px;color:#64748B;margin:-8px 0 12px">Folio de Operaciones: '+opsSvEsc([f.folioClienteId,f.folioOS].filter(Boolean).join(' · '))+'</div>':'')+
       (fmPideIdFolio(f)?'<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
-        '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO DEL CLIENTE — no olvides llenarlo</div>'+
-        '<div style="font-size:11px;color:#92400E;margin-bottom:6px">Es el folio de ServiceNow, Fractal o el que te dio el cliente. Escríbelo aquí y también en la hoja de la orden de servicio. Si el servicio no tiene folio, déjalo vacío y explica por qué en la descripción.</div>'+
+        '<div style="font-size:12.5px;font-weight:900;color:#92400E;margin-bottom:4px">ID DEL FOLIO DEL CLIENTE — OBLIGATORIO</div>'+
+        '<div style="font-size:11px;color:#92400E;margin-bottom:6px">Es el folio de ServiceNow, Fractal o el que te dio el cliente. Escríbelo aquí y también en la hoja de la orden de servicio. Sin este dato no se puede cerrar el servicio.'+(fmGrupoCliente(f)==='externos'?' Si de verdad este cliente no maneja folio, marca la casilla de abajo y explica por qué en el punto 7.':'')+'</div>'+
         '<input id="fm-term-idfolio" type="text" autocapitalize="characters" value="" placeholder="Ej. INC0012345" style="'+FM_TERM_INP+';margin-bottom:6px">'+
-        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#92400E"><input type="checkbox" id="fm-term-idexc" style="margin-top:2px"> Operaciones me autorizó un ID distinto al programado (queda registrado)</label></div>':'')+
+        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#92400E"><input type="checkbox" id="fm-term-idexc" style="margin-top:2px"> Operaciones me autorizó un ID distinto al programado (queda registrado)</label>'+
+        (fmGrupoCliente(f)==='externos'?'<label style="display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:#92400E;margin-top:6px"><input type="checkbox" id="fm-term-sinfolio" style="margin-top:2px"> Este cliente no maneja folio (lo explico en el punto 7)</label>':'')+'</div>':'')+
       ro('5','Estación de servicio',ni.titulo,'La ubicación GPS se toma sola cuando guardas, desde donde estás.')+
       '<div id="fm-term-bloq-fin">'+
         (sinOrden?fmTermTit('6','Orden de servicio',false)+'<div style="font-size:11.5px;color:#0E7490;background:#ECFEFF;border-radius:8px;padding:7px 10px;margin-bottom:12px">Este servicio no lleva orden de servicio: solo evidencia fotográfica.</div>'
@@ -8689,7 +8690,9 @@ window.fmOpsServGuardarTermino=async function(id){
   // se avisa, el técnico confirma y Operaciones ve en el servicio qué quedó pendiente.
   const faltan=[]; const blando=function(t){faltan.push(String(t).replace(/^Falta (el )?/,''));};
   const res=rb.getAttribute('data-r'), ev=window.__fmEv||{orden_servicio:[],foto:[]};
-  if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){blando('Falta el punto 4: No. folio / O.S.');}
+  // 26-nov-2026 (Glen): el No. de O.S. vuelve a ser OBLIGATORIO (bloquea). Revisión de cierres no podía
+  // marcar DONE sin él y el servicio quedaba como «O.S. sin número».
+  if(res!=='no_realizado'&&res!=='avance_dia'&&!osNum){err('Falta el punto 4: No. folio / O.S. Escribe el número de la orden de servicio en papel. Sin él no se puede cerrar.');document.getElementById('fm-term-os')?.focus();return;}
   // 19-nov-2026: UNA sola O.S. por servicio (esto sí bloquea). Antes se cerraban 15 O.S. de varias
   // estaciones en un solo registro y Operaciones tuvo que separarlas a mano.
   if(fmOsVarias(osNum)){err('En el punto 4 va UNA sola orden de servicio. Si hiciste varias, cierra aquí solo la de esta estación y registra cada una de las demás con «Servicio no programado» (una por O.S., con su hoja y sus fotos).');document.getElementById('fm-term-os')?.focus();return;}
@@ -8700,7 +8703,14 @@ window.fmOpsServGuardarTermino=async function(id){
   if(res!=='no_realizado'&&res!=='avance_dia'&&fmPideIdFolio(f)){
     idFolio=(document.getElementById('fm-term-idfolio')?.value||'').trim().toUpperCase();
     idExc=!!document.getElementById('fm-term-idexc')?.checked;
-    if(!idFolio){blando('Falta el ID del folio del cliente (ServiceNow / Fractal / cliente). Si no tiene folio, explícalo en la descripción.');}
+    // 26-nov-2026 (Glen): el ID del folio del cliente es OBLIGATORIO (bloquea). En OXXO y Petro Seven
+    // siempre; en otros clientes solo se libra marcando «no maneja folio» y explicándolo en el punto 7.
+    if(!idFolio){
+      const sinFolio=fmGrupoCliente(f)==='externos'&&!!document.getElementById('fm-term-sinfolio')?.checked;
+      if(!sinFolio){err('Falta el ID del folio del cliente (ServiceNow / Fractal / cliente). Escríbelo igual que en la hoja de la O.S. Sin él no se puede cerrar.');document.getElementById('fm-term-idfolio')?.focus();return;}
+      if(txt.length<10){err('Marcaste que el cliente no maneja folio: explica por qué en el punto 7.');return;}
+      blando('Sin ID del folio: el técnico indica que el cliente no maneja folio.');
+    }
     const norm=function(x){return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,'');};
     if(f.folioClienteId&&norm(idFolio)!==norm(f.folioClienteId)&&!idExc){blando('El ID '+idFolio+' no coincide con el folio programado ('+f.folioClienteId+'). Revisa la hoja. Si Operaciones autorizó otro, marca la casilla.');}
   }
@@ -8711,7 +8721,8 @@ window.fmOpsServGuardarTermino=async function(id){
     if(!ev.foto.length){blando('Sube al menos una foto del avance de hoy.');}
     if(txt.length<10){blando('En el punto 7 explica qué se avanzó hoy y qué falta.');}
   }else if(res==='finalizado'){
-    if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){blando('Falta el punto 6: foto de la Orden de servicio.');}
+    // 26-nov-2026 (Glen): la foto de la orden de servicio es OBLIGATORIA (bloquea).
+    if(!esPol&&!window.__fmTermSinOrden&&!ev.orden_servicio.length){err('Falta el punto 6: foto de la Orden de servicio firmada. Sin ella no se puede cerrar.');return;}
     if(!esPol&&!ev.foto.length){blando('Falta el punto 12: Evidencia del servicio realizado (al menos una foto).');}
   }else if(res==='no_finalizado'){
     if(!mb){blando('Elige por qué no se finalizó.');}
@@ -8860,6 +8871,13 @@ async function fmComisionesAlTerminar(id,f,quien){
 }
 
 // ¿Este servicio es un folio de OXXO o Petro Seven? (mismas reglas que el portal)
+// 26-nov-2026 (Glen): grupo del cliente para el candado del ID del folio (misma regla que Operaciones).
+function fmGrupoCliente(f){
+  const t=[f&&f.clienteNombre,f&&f.estacionRazonSocial,f&&f.facturarA,f&&f.estacion,f&&f.estacionNombreComercial].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(/petro\s*(seven|siete|7)\b|petro\s*-?\s*max/.test(t)) return 'petro';
+  if(/oxxo|servicios gasolineros de mexico/.test(t)) return 'oxxo';
+  return 'externos';
+}
 function fmPideIdFolio(f){
   // 9-nov-2026: aviso SIEMPRE, en todos los servicios (programados y no programados). Solo avisa, no bloquea.
   return !!f;
