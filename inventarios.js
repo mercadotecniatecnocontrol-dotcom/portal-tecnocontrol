@@ -1,5 +1,5 @@
 /* ============================================================================
- * inventarios.js · Departamento de Inventarios — Fase 3 (consulta)
+ * inventarios.js · Departamento de Inventarios — Fase 4 (consulta + conteos por partes)
  * ----------------------------------------------------------------------------
  * Mismo contrato que almacen.js / compras.js / cobranza.js: vive dentro de
  * index.html, que ya resuelve sesión y permisos de menú.
@@ -27,7 +27,23 @@
   };
   var tabsCtl = null;
   var v3d = null;            // vista 3D abierta (se destruye al salir)
-  function cerrar3d() { if (v3d) { try { v3d.destruir(); } catch (e) { } v3d = null; } }
+  function cerrar3d() {
+    if (v3d) { try { v3d.destruir(); } catch (e) { } v3d = null; }
+    if (window.InvConteos) { try { window.InvConteos.salir(); } catch (e) { } }
+  }
+  var _cargaConteos = null;
+  function cargarConteos() {
+    if (window.InvConteos) return Promise.resolve();
+    if (_cargaConteos) return _cargaConteos;
+    _cargaConteos = new Promise(function (ok, mal) {
+      var sc = document.createElement('script');
+      sc.src = 'inventarios-conteos.js?v=1';
+      sc.onload = function () { ok(); };
+      sc.onerror = function () { _cargaConteos = null; mal(new Error('No se pudo cargar inventarios-conteos.js')); };
+      document.head.appendChild(sc);
+    });
+    return _cargaConteos;
+  }
   var _carga3d = null;
   function cargar3d() {
     if (window.Inv3D) return Promise.resolve();
@@ -231,7 +247,8 @@
     var tabs = [
       { id: 'resumen', label: 'Resumen', tip: 'Números generales del inventario', render: pintarResumen },
       { id: 'almacenes', label: 'Almacenes', count: estado.alms.length, tip: 'Mapa de bodegas y almacenes de técnicos, proyectos y clientes', render: pintarAlmacenes },
-      { id: 'productos', label: 'Productos', tip: 'Buscar cualquier producto y ver en qué almacén está', render: pintarProductos }
+      { id: 'productos', label: 'Productos', tip: 'Buscar cualquier producto y ver en qué almacén está', render: pintarProductos },
+      { id: 'conteos', label: 'Conteos', tip: 'Conteos físicos por partes, en vivo desde celular, iPad o laptop', render: pintarConteos }
     ];
     var tb = el('inv-tabs');
     if (window.UI && window.UI.tabs) {
@@ -565,6 +582,18 @@
       el('inv-p-ant').onclick = function () { if (p.pagina > 0) { p.pagina--; cargarProductos(); } };
       el('inv-p-sig').onclick = function () { if (hasta < total) { p.pagina++; cargarProductos(); } };
     } catch (e) { errorEn(body, e); pag.innerHTML = ''; }
+  }
+
+  // ---------------------------------------------------------------- Conteos (inventarios-conteos.js)
+  async function pintarConteos(panel) {
+    cerrar3d();
+    cargando(panel);
+    try {
+      await cargarConteos();
+      panel.removeAttribute('data-ui-state');
+      panel.innerHTML = '';
+      window.InvConteos.montar(panel, { alms: estado.alms, rpc: rpc, esAdmin: esAdmin, opcionesAlm: opcionesAlm, abrirFicha: abrirFicha });
+    } catch (e) { errorEn(panel, e); }
   }
 
   // ---------------------------------------------------------------- Ficha
