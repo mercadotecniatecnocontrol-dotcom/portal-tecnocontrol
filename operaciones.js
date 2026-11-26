@@ -12815,9 +12815,6 @@
                   <input id="opsrev-monto" type="number" min="0" step="0.01" value="${opsEsc(c.monto ?? "")}" placeholder="Monto ($)" style="${inp};margin-bottom:6px;">
                   <input id="opsrev-concepto" type="text" value="${opsEsc(c.concepto || "")}" placeholder="Concepto (qué se cobró)" style="${inp}">
                 </div>
-                <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de orden de servicio</div>
-                <input id="opsrev-os" type="text" value="${opsEsc(opsRevOS(f))}" placeholder="Cópialo de la foto de la O.S. (ej. 2449)" style="${inp}">
-                ${opsRevOS(f) ? "" : `<div style="font-size:11px;color:#b45309;font-weight:700;margin:4px 0 0;">El técnico no lo escribió. Si se lee en la foto de la O.S., cópialo aquí (queda registrado que lo capturaste tú).</div>`}
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">No. de cotización</div>
                 <input id="opsrev-cotizacion" type="text" value="${opsEsc(r.cotizacion || "")}" placeholder="Ej. C*SER 2091" style="${inp}">
                 <div style="font-size:11.5px;font-weight:700;color:#334155;margin:10px 0 4px;">Observaciones (salen en el PDF para el cliente)</div>
@@ -12862,8 +12859,7 @@
         if (revisado === true) {
             // Candado de DONE: no se cierra si falta algo obligatorio.
             const falta = [];
-            const osRevTxt = ((document.getElementById("opsrev-os") || {}).value || "").trim();
-            if (!osRevTxt) falta.push("número de orden de servicio (cópialo de la foto de la O.S.)");
+            if (!opsRevOS(f)) falta.push("número de orden de servicio");
             const grupo = opsGrupoClienteFolio(f);
             const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
             if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
@@ -12891,20 +12887,10 @@
         });
         if (rc.estatus === "revisado") { rc.revisadoPor = yo; rc.revisadoEn = ahora; }
         const idCli = document.getElementById("opsrev-idcliente").value.trim();
-        // 26-nov-2026 (Glen): el revisor puede capturar/corregir el No. de O.S. desde la foto; queda quién y cuándo.
-        const osIn = document.getElementById("opsrev-os");
-        const osNuevo = osIn ? osIn.value.trim() : opsRevOS(f);
-        const cambiosOS = {};
-        if (osIn && osNuevo && osNuevo !== opsRevOS(f)) {
-            cambiosOS.osTecnico = osNuevo;
-            if (!f.folioOS) cambiosOS.folioOS = osNuevo;
-            rc.osCapturada = { anterior: opsRevOS(f) || null, nueva: osNuevo, por: yo, en: ahora };
-        }
         try {
             const { db, fs } = await opsGetFB();
-            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc, ...cambiosOS, ...(idCli !== String(f.folioClienteId || "") ? { folioClienteId: idCli || null } : {}) });
-            f.revisionCierre = rc; if (idCli) f.folioClienteId = idCli; Object.assign(f, cambiosOS);
-            if (cambiosOS.osTecnico) { try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] No. de O.S. capturado por revisión: " + osNuevo + (rc.osCapturada.anterior ? " (antes " + rc.osCapturada.anterior + ")" : " (el técnico no lo escribió)"), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {} }
+            await fs.updateDoc(fs.doc(db, COL_FOLIOS, id), { revisionCierre: rc, ...(idCli !== String(f.folioClienteId || "") ? { folioClienteId: idCli || null } : {}) });
+            f.revisionCierre = rc; if (idCli) f.folioClienteId = idCli;
             try { await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "comentarios"), { texto: "[Revisión de cierre] " + OPS_REV_ESTATUS[rc.estatus][0] + (rc.cobro.si ? " · Se cobró $" + rc.cobro.monto + (rc.cobro.concepto ? " (" + rc.cobro.concepto + ")" : "") : " · No se cobró") + (rc.cotizacion ? " · Cotización " + rc.cotizacion : "") + (rc.nota ? " · " + rc.nota : ""), autor: yo, tipo: "revision", createdAt: ahora }); } catch (e) {}
             document.getElementById("ops-modal-wrap").innerHTML = "";
             if (window.tcNotif) window.tcNotif.agregar({ titulo: "Revisión guardada", texto: "O.S. " + (opsRevOS(f) || f.estacion) + " · " + OPS_REV_ESTATUS[rc.estatus][0], nivel: "normal", modulo: "Operaciones" });
@@ -16714,7 +16700,8 @@
     function opsViaDesglose(v) {
         const comidas = [v.desayunos ? v.desayunos + " desayuno(s)" : "", v.comidas ? v.comidas + " comida(s)" : "", v.cenas ? v.cenas + " cena(s)" : ""].filter(Boolean).join(", ");
         return [["Gasolina", v.gasolina, v.km_sencillo ? `${v.km_sencillo} km sencillo${v.tipo_vehiculo ? " · " + v.tipo_vehiculo : ""}` : ""],
-            ["Alimentos", v.alimentos, comidas], ["Hospedaje", v.hospedaje, v.hotel_nombre || ""], ["Casetas", v.casetas, ""], ["Otros", v.otros, ""]]
+            ["Alimentos", v.alimentos, comidas], ["Hospedaje", v.hospedaje, v.hotel_nombre || ""], ["Casetas", v.casetas, ""], ["Otros", v.otros, ""],
+            ["Vuelo y renta de auto", ((v.tarifas || {}).vuelo || {}).total || 0, ((v.tarifas || {}).vuelo || {}).aerolinea || ""]]
             .filter(x => Number(x[1]) > 0);
     }
 
@@ -25694,6 +25681,10 @@
             casetas: [], aplicaCasetas: false, casetasEstado: "", casetasTotal: 0,
             otros: 0, notas: "",
             rendimiento: null, precioLitro: opsViaCfg.precioLitro, factor: opsViaCfg.factor,
+            // Transporte (26-nov-2026): "terrestre" = vehículo de Flotilla (gasolina + casetas);
+            // "vuelo" = boletos de avión + renta de auto en destino (sin gasolina de Flotilla ni casetas).
+            transporte: "terrestre", vueloAerolinea: "", vueloCostoPersona: 0, vueloHoras: 3, vueloDeposito: false,
+            rentaDias: 0, rentaDiasManual: false, rentaTarifa: 0, rentaGasolina: 0, rentaDeposito: false, trasladosAero: 0,
         };
         opsViaRegistrarCombos();
         opsViaRecalcular();
@@ -25935,6 +25926,15 @@
             filas.push({ concepto: "Hospedaje", importe: num(s.hospedaje), si: s.hotel_modo !== "compras", calculo: s.rol_viaje === "cuadrilla" && t.hospedajeViaje ? `Su parte: ${din(t.hospedajeViaje)} del hotel ÷ ${t.hojas || 2} técnicos · ${calc}` : calc, medio: "Lo paga Compras directo al hotel" });
         }
         if (num(s.otros)) filas.push({ concepto: "Otros", importe: num(s.otros), si: true, calculo: "Gastos adicionales" });
+        const vu = t.transporte === "vuelo" ? (t.vuelo || null) : null;
+        if (vu) {
+            filas.push({ concepto: "Boletos de avión", importe: num(vu.boletos), si: !!vu.boletosDeposito, calculo: `${din(vu.costoPersona)} × ${vu.personas || personas} persona(s)${vu.aerolinea ? " · " + vu.aerolinea : ""}`, medio: "Los compra Compras" });
+            if (num(vu.renta) + num(vu.rentaGasolina)) filas.push({ concepto: "Renta de auto", importe: num(vu.renta) + num(vu.rentaGasolina), si: !!vu.rentaDeposito, calculo: `${vu.rentaDias} día(s) × ${din(vu.rentaTarifa)}${num(vu.rentaGasolina) ? " + gasolina " + din(vu.rentaGasolina) : ""}`, medio: "Compras / tarjeta de la empresa" });
+            if (num(vu.traslados)) filas.push({ concepto: "Traslados aeropuerto", importe: num(vu.traslados), si: true, calculo: "Taxis / traslados" });
+            const si0 = filas.filter(x => x.si), no0 = filas.filter(x => !x.si);
+            const sum0 = l => Math.round(l.reduce((a, x) => a + x.importe, 0) * 100) / 100;
+            return { si: si0, no: no0, totalSi: sum0(si0), totalNo: sum0(no0) };
+        }
         if (s.rol_viaje === "cuadrilla" && (t.hoja || 1) > 1 && t.trasladoViaje) {
             const tv = t.trasladoViaje, ref = "del viaje · se contabiliza en la hoja 1";
             filas.push({ concepto: "Gasolina", importe: num(tv.gasolina), si: false, soloInfo: true, calculo: `${s.km_sencillo} km × 2 ÷ ${s.rendimiento} km/l × $${s.precio_litro}/l × factor ${s.factor} (${ref})`, medio: "Tag de gasolina (OXXO)" });
@@ -25972,8 +25972,14 @@
             fila("Alimentos", f.alimentos, true, "Siempre se deposita"),
             f.noches > 0 ? fila("Hospedaje", f.hospedaje, f.hotelDepositado, f.hotelDepositado ? "El técnico busca el hotel (se cambia arriba, en Hospedaje)" : "Lo paga Compras directo al hotel") : "",
             opsViaNum(f.otros) ? fila("Otros", opsViaNum(f.otros), true, "Siempre se deposita") : "",
-            fila("Gasolina", f.gasolina, !!f.gasolinaDeposito, elegir("gasolinaDeposito", !!f.gasolinaDeposito, "Tag de gasolina (OXXO): no se deposita", "En la ruta no hay OXXO: depositar")),
-            fila("Casetas", f.casetasTotal, !!f.casetasDeposito, elegir("casetasDeposito", !!f.casetasDeposito, "Tag Fibra Estatal: no se deposita", "Casetas sin tag: depositar")),
+            ...(f.transporte === "vuelo" ? [
+                fila("Boletos de avión", f.vueloBoletos, !!f.vueloDeposito, elegir("vueloDeposito", !!f.vueloDeposito, "Los compra Compras: no se deposita", "Depositar al técnico")),
+                (f.vueloRenta + f.vueloRentaGas) > 0 ? fila("Renta de auto", f.vueloRenta + f.vueloRentaGas, !!f.rentaDeposito, elegir("rentaDeposito", !!f.rentaDeposito, "Compras / tarjeta: no se deposita", "Depositar al técnico")) : "",
+                f.vueloTraslados > 0 ? fila("Traslados aeropuerto", f.vueloTraslados, true, "Siempre se deposita") : "",
+            ] : [
+                fila("Gasolina", f.gasolina, !!f.gasolinaDeposito, elegir("gasolinaDeposito", !!f.gasolinaDeposito, "Tag de gasolina (OXXO): no se deposita", "En la ruta no hay OXXO: depositar")),
+                fila("Casetas", f.casetasTotal, !!f.casetasDeposito, elegir("casetasDeposito", !!f.casetasDeposito, "Tag Fibra Estatal: no se deposita", "Casetas sin tag: depositar")),
+            ]),
         ].join("");
         const noDep = Math.round((f.total - f.deposito) * 100) / 100;
         return `<div style="border:1.5px solid #cbd5e1;border-radius:12px;overflow:hidden;margin-top:12px;">
@@ -26076,15 +26082,18 @@
         const f = opsViaForm; if (!f) return;
         const cfg = opsViaCfg;
         // Si viene de un folio con hora de llegada, la salida se calcula restando el manejo.
-        if (f.llegadaObjetivo && !f.salidaManual && opsViaNum(f.horasIda) > 0) {
+        const esVuelo = f.transporte === "vuelo";
+        const hIda = esVuelo ? opsViaNum(f.vueloHoras) : opsViaNum(f.horasIda);
+        const hReg = esVuelo ? opsViaNum(f.vueloHoras) : (opsViaRegresaAlInicio() ? opsViaNum(f.horasIda) : opsViaNum(f.horasRegreso));
+        if (f.llegadaObjetivo && !f.salidaManual && hIda > 0) {
             const lleg = new Date(f.llegadaObjetivo);
-            const s = new Date(lleg.getTime() - opsViaNum(f.horasIda) * 3600000);
+            const s = new Date(lleg.getTime() - hIda * 3600000);
             s.setMinutes(Math.floor(s.getMinutes() / 5) * 5, 0, 0);
             f.salida = opsViaLocalISO(s);
         }
         if (!f.regresoManual && f.salida) {
             const s = new Date(f.salida);
-            const horas = opsViaNum(f.horasIda) + (opsViaRegresaAlInicio() ? opsViaNum(f.horasIda) : opsViaNum(f.horasRegreso)) + opsViaNum(f.horasServicio);
+            const horas = hIda + hReg + opsViaNum(f.horasServicio);
             f.regreso = opsViaLocalISO(new Date(s.getTime() + horas * 3600000));
         }
         // ¿Requiere viáticos? (corregido 14-oct-2026): los viáticos existen solo FUERA DE LA CIUDAD.
@@ -26141,7 +26150,7 @@
             c.subtotal = c.aplica ? c.costo * opsViaNum(c.cruces) : 0;
             f.casetasTotal += c.subtotal;
         });
-        if (!f.aplicaCasetas) f.casetasTotal = 0;
+        if (!f.aplicaCasetas || esVuelo) f.casetasTotal = 0;
         // Días del viaje (para validar comidas y aplicar el tope diario por persona).
         f.dias = 1;
         if (f.salida && f.regreso) {
@@ -26161,7 +26170,17 @@
         // Regresan al inicio: km sencillo × multiplicador (como siempre). Terminan en otro lugar:
         // km de ida + km de regreso reales.
         f.kmTotal = opsViaRegresaAlInicio() ? opsViaNum(f.kmSencillo) * opsViaNum(cfg.multiplicadorKm || 2) : opsViaNum(f.kmSencillo) + opsViaNum(f.kmRegreso);
-        f.gasolina = Math.round((f.kmTotal / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
+        f.gasolina = esVuelo ? 0 : Math.round((f.kmTotal / rend) * opsViaNum(f.precioLitro) * opsViaNum(f.factor) * 100) / 100;
+        // Vuelo: boletos por persona + renta de auto (días × tarifa) + gasolina del auto rentado + traslados.
+        if (!f.rentaDiasManual) f.rentaDias = esVuelo && opsViaNum(f.rentaTarifa) > 0 ? f.dias : 0;
+        f.rentaDias = Math.max(0, Math.round(opsViaNum(f.rentaDias)));
+        const r2v = n => Math.round((Number(n) || 0) * 100) / 100;
+        f.vueloBoletos = esVuelo ? r2v(opsViaNum(f.vueloCostoPersona) * personas) : 0;
+        f.vueloRenta = esVuelo ? r2v(f.rentaDias * opsViaNum(f.rentaTarifa)) : 0;
+        f.vueloRentaGas = esVuelo ? r2v(opsViaNum(f.rentaGasolina)) : 0;
+        f.vueloTraslados = esVuelo ? r2v(opsViaNum(f.trasladosAero)) : 0;
+        f.transporteTotal = r2v(f.vueloBoletos + f.vueloRenta + f.vueloRentaGas + f.vueloTraslados);
+        f.transporteDeposito = r2v((f.vueloDeposito ? f.vueloBoletos : 0) + (f.rentaDeposito ? f.vueloRenta + f.vueloRentaGas : 0) + f.vueloTraslados);
         const sumaAlim = f.desayunos * opsViaNum(cfg.desayuno) + f.comidas * opsViaNum(cfg.comida) + f.cenas * opsViaNum(cfg.cena);
         const topeViaje = opsViaNum(cfg.topeDiario) > 0 ? opsViaNum(cfg.topeDiario) * f.dias : Infinity;
         f.alimentosTopados = sumaAlim > topeViaje;
@@ -26172,13 +26191,13 @@
         if (hz && !f.hotelPrecioManual && !f.hotelId) { f.precioSencilla = Number(hz.monto); f.precioDoble = Number(hz.monto); }
         f.hospedajePorNocheTotal = f.habSencillas * opsViaNum(f.precioSencilla) + f.habDobles * opsViaNum(f.precioDoble);
         f.hospedaje = f.requiere ? Math.round(opsViaNum(f.noches) * f.hospedajePorNocheTotal * 100) / 100 : 0;
-        f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros)) * 100) / 100;
+        f.total = Math.round((f.gasolina + f.alimentos + f.hospedaje + f.casetasTotal + opsViaNum(f.otros) + f.transporteTotal) * 100) / 100;
         f.personas = personas;
         // Dos bloques (Etapa B): lo que se DEPOSITA al técnico (Pagos) y lo que se COBRA al cliente (Ingresos).
         // Gasolina y casetas no se depositan (tanque de la unidad y tag con crédito Fibra Estatal).
         f.hotelDepositado = f.hotelModo !== "compras";
         f.deposito = Math.round((f.alimentos + (f.hotelDepositado ? f.hospedaje : 0) + opsViaNum(f.otros)
-            + (f.gasolinaDeposito ? f.gasolina : 0) + (f.casetasDeposito ? f.casetasTotal : 0)) * 100) / 100;
+            + (f.gasolinaDeposito ? f.gasolina : 0) + (f.casetasDeposito ? f.casetasTotal : 0) + f.transporteDeposito) * 100) / 100;
         f.cobroSugerido = Math.ceil(f.total / 100) * 100;
         // Petro Seven y OXXO no pagan viáticos, salvo proyecto especial (23-oct-2026).
         f.grupoCliente = opsViaGrupoCliente(f);
@@ -26291,6 +26310,34 @@
         opsViaRecalcular(); opsViaPintarFormulario();
     };
 
+    function opsViaHTMLVuelo() {
+        const f = opsViaForm;
+        const quien = (campo, si, textoNo, textoSi) => `<select onchange="opsViaCampo('${campo}', this.value==='1', true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:12px;margin:4px 0 10px;box-sizing:border-box;">
+            <option value="0" ${!si ? "selected" : ""}>${textoNo}</option><option value="1" ${si ? "selected" : ""}>${textoSi}</option></select>`;
+        return `<div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">Vuelo — boleto redondo × persona(s)</div>
+            <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:0 8px;">
+                <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Aerolínea / vuelo
+                    <input value="${opsEsc(f.vueloAerolinea || "")}" oninput="opsViaForm.vueloAerolinea=this.value" placeholder="Ej. Viva · CUU → SJD" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;box-sizing:border-box;"></label>
+                ${opsViaInput("Boleto redondo $/persona", "via-vuelo-costo", f.vueloCostoPersona, `onchange="opsViaCampo('vueloCostoPersona', this.value, true)" step="1" min="0"`, "number")}
+                ${opsViaInput("Horas de traslado (puerta a puerta)", "via-vuelo-horas", f.vueloHoras, `onchange="opsViaCampo('vueloHoras', this.value, true)" step="0.5" min="0"`, "number")}
+            </div>
+            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">¿Quién paga los boletos?${quien("vueloDeposito", !!f.vueloDeposito, "Los compra Compras (no se deposita)", "Se depositan al técnico")}</label>
+            <div style="text-align:right;font-weight:700;color:#334155;">Boletos: ${opsViaDinero(opsViaNum(f.vueloCostoPersona))} × ${f.personas} persona(s) = ${opsViaDinero(f.vueloBoletos)}</div>
+
+            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:12px 0 8px;">Renta de auto en destino</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;">
+                ${opsViaInput("Días de renta" + (f.rentaDiasManual ? " (editado)" : " (días del viaje)"), "via-renta-dias", f.rentaDias, `onchange="opsViaForm.rentaDiasManual=true; opsViaCampo('rentaDias', this.value, true)" step="1" min="0"`, "number")}
+                ${opsViaInput("Tarifa $/día", "via-renta-tarifa", f.rentaTarifa, `onchange="opsViaCampo('rentaTarifa', this.value, true)" step="1" min="0"`, "number")}
+                ${opsViaInput("Gasolina del auto rentado $", "via-renta-gas", f.rentaGasolina, `onchange="opsViaCampo('rentaGasolina', this.value, true)" step="1" min="0"`, "number")}
+            </div>
+            <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">¿Quién paga la renta y su gasolina?${quien("rentaDeposito", !!f.rentaDeposito, "Compras / tarjeta de la empresa (no se deposita)", "Se deposita al técnico")}</label>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;">
+                ${opsViaInput("Taxis / traslados aeropuerto $ (se deposita)", "via-traslados", f.trasladosAero, `onchange="opsViaCampo('trasladosAero', this.value, true)" step="1" min="0"`, "number")}
+            </div>
+            <div style="text-align:right;font-weight:700;color:#334155;">Renta: ${f.rentaDias} día(s) × ${opsViaDinero(opsViaNum(f.rentaTarifa))} = ${opsViaDinero(f.vueloRenta)}${f.vueloRentaGas ? " + gasolina " + opsViaDinero(f.vueloRentaGas) : ""}</div>
+            <div style="text-align:right;font-weight:800;color:#1D2E73;margin-top:4px;">Vuelo y renta: ${opsViaDinero(f.transporteTotal)}</div>
+            <div style="font-size:10.5px;color:#94a3b8;">Con vuelo no se calcula gasolina de Flotilla ni casetas; la distancia del mapa queda solo de referencia.</div>`;
+    }
     function opsViaPintarFormulario() {
         const f = opsViaForm, cfg = opsViaCfg;
         const wrap = document.getElementById("ops-modal-wrap");
@@ -26341,8 +26388,13 @@
                         <div style="font-size:10.5px;color:#94a3b8;margin:-4px 0 10px;">Regla: requiere viáticos si la estación está fuera de la ciudad (otro municipio) o a ${cfg.kmMinimoViaticos} km o más.${f.requiere && f.requiereMotivo ? " Aquí: " + opsEsc(f.requiereMotivo) + "." : ""} Puedes cambiarlo.</div>
                         ${!f.requiere && (opsViaNum(f.desayunos) + opsViaNum(f.comidas) + opsViaNum(f.cenas)) > 0 ? `<div style="font-size:11px;color:#b45309;background:#fffbeb;border-radius:8px;padding:6px 9px;margin:-4px 0 10px;">Marcaste "No requiere viáticos": las comidas capturadas NO se suman. Si salen de la ciudad, cámbialo a "Sí".</div>` : ""}
 
+                        <label style="display:block;font-size:11.5px;font-weight:600;color:#475569;">Transporte
+                            <select onchange="opsViaCampo('transporte', this.value, true)" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px;margin:4px 0 10px;font-weight:700;color:#1D2E73;">
+                                <option value="terrestre" ${f.transporte !== "vuelo" ? "selected" : ""}>Terrestre — vehículo de Flotilla (gasolina y casetas)</option>
+                                <option value="vuelo" ${f.transporte === "vuelo" ? "selected" : ""}>Aéreo — vuelo + renta de auto en destino</option>
+                            </select></label>
                         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
-                            <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">${opsViaRegresaAlInicio() ? `Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor` : "Gasolina — (km ida + km regreso) ÷ rendimiento × precio × factor"}</div>
+                            ${f.transporte === "vuelo" ? opsViaHTMLVuelo() : `<div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin-bottom:8px;">${opsViaRegresaAlInicio() ? `Gasolina — km × ${cfg.multiplicadorKm} ÷ rendimiento × precio × factor` : "Gasolina — (km ida + km regreso) ÷ rendimiento × precio × factor"}</div>
                             <div style="display:grid;grid-template-columns:repeat(${opsViaRegresaAlInicio() ? 4 : 5},1fr);gap:0 8px;">
                                 ${opsViaInput(opsViaRegresaAlInicio() ? "Km sencillo" : "Km ida", "via-km", f.kmSencillo, `onchange="opsViaCampo('kmSencillo', this.value, true)" step="0.1" min="0"`, "number")}
                                 ${opsViaRegresaAlInicio() ? "" : opsViaInput("Km regreso", "via-km-reg", f.kmRegreso, `onchange="opsViaCampo('kmRegreso', this.value, true)" step="0.1" min="0"`, "number")}
@@ -26350,7 +26402,7 @@
                                 ${opsViaInput("$/litro", "via-precio", f.precioLitro, `onchange="opsViaCampo('precioLitro', this.value, true)" step="0.01"`, "number")}
                                 ${opsViaInput("Factor", "via-factor", f.factor, `onchange="opsViaCampo('factor', this.value, true)" step="0.01"`, "number")}
                             </div>
-                            <div style="text-align:right;font-weight:700;color:#334155;">Gasolina: ${opsViaDinero(f.gasolina)}</div>
+                            <div style="text-align:right;font-weight:700;color:#334155;">Gasolina: ${opsViaDinero(f.gasolina)}</div>`}
 
                             <div style="font-weight:700;font-size:12.5px;color:#1D2E73;margin:12px 0 8px;">Alimentos por persona ${f.comidasManual ? "(editado)" : "(automático por horario)"}</div>
                             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0 8px;">
@@ -26367,7 +26419,7 @@
                                 ${opsViaInput("Otros $ (se deposita)", "via-otros", f.otros, `onchange="opsViaCampo('otros', this.value, true)"`, "number")}
                             </div>
 
-                            ${opsViaHTMLCasetas()}
+                            ${f.transporte === "vuelo" ? "" : opsViaHTMLCasetas()}
 
                             ${opsViaHTMLBloques()}
                             ${f.tecnicos.length >= 2 ? `<div style="margin-top:10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px;font-size:12px;color:#1e3a8a;">
@@ -26742,7 +26794,7 @@
             // ponía 0 noches un viaje de 6 días quedaba como de 1 (VIA-00019).
             dias: Math.max(1, opsViaNum(f.dias) || 1), personas: f.personas,
             integrantes: f.tecnicos.map(t => t.nombre).join(", "),
-            km_sencillo: opsViaNum(f.kmSencillo), tipo_vehiculo: veh.nombre || f.tipoVehiculo, vehiculo: f.vehiculo || null,
+            km_sencillo: opsViaNum(f.kmSencillo), tipo_vehiculo: f.transporte === "vuelo" ? "Vuelo + renta de auto" : (veh.nombre || f.tipoVehiculo), vehiculo: f.transporte === "vuelo" ? (f.vueloAerolinea || "Vuelo") : (f.vehiculo || null),
             rendimiento: opsViaNum(f.rendimiento), precio_litro: opsViaNum(f.precioLitro), factor: opsViaNum(f.factor), gasolina: f.gasolina,
             desayunos: f.desayunos, comidas: f.comidas, cenas: f.cenas, alimentos: f.alimentos,
             hospedaje: f.hospedaje, casetas: f.casetasTotal, otros: opsViaNum(f.otros), total: f.total,
@@ -26767,6 +26819,13 @@
                 final: { nombre: opsViaFinal().nombre || null, lat: opsViaFinal().lat, lng: opsViaFinal().lng },
                 regresaAlInicio: opsViaRegresaAlInicio(), kmRegreso: opsViaNum(f.kmRegreso), horasRegreso: opsViaNum(f.horasRegreso), kmTotal: opsViaNum(f.kmTotal),
                 kmRuta: f.kmRuta != null ? opsViaNum(f.kmRuta) : null, kmExtraPorTrayecto: f.kmExtraAplicado || 0, cobroTarifaDestino: f.cobroTarifaDestino || null,
+                transporte: f.transporte === "vuelo" ? "vuelo" : "terrestre",
+                vuelo: f.transporte === "vuelo" ? {
+                    aerolinea: f.vueloAerolinea || null, costoPersona: opsViaNum(f.vueloCostoPersona), horas: opsViaNum(f.vueloHoras), personas: f.personas,
+                    boletos: f.vueloBoletos, boletosDeposito: !!f.vueloDeposito,
+                    rentaDias: f.rentaDias, rentaTarifa: opsViaNum(f.rentaTarifa), renta: f.vueloRenta, rentaGasolina: f.vueloRentaGas, rentaDeposito: !!f.rentaDeposito,
+                    traslados: f.vueloTraslados, total: f.transporteTotal, deposito: f.transporteDeposito,
+                } : null,
             },
         };
         // ── Cuadrilla = una requisición POR TÉCNICO (14-oct-2026) ──
@@ -26787,14 +26846,23 @@
             filas = f.tecnicos.map((t, k) => {
                 const primera = k === 0;
                 const gas = primera ? f.gasolina : 0, cas = primera ? f.casetasTotal : 0;
-                const dep = r2(porPersona + (f.hotelDepositado ? hotelPorPersona : 0) + otrosPorPersona
+                // Vuelo en cuadrilla: cada hoja lleva su boleto; renta y traslados van en la hoja 1.
+                const vu = fila.tarifas.vuelo;
+                const vueloHoja = vu ? { ...vu, personas: 1, boletos: r2(vu.costoPersona),
+                    renta: primera ? vu.renta : 0, rentaGasolina: primera ? vu.rentaGasolina : 0, traslados: primera ? vu.traslados : 0 } : null;
+                if (vueloHoja) {
+                    vueloHoja.total = r2(vueloHoja.boletos + vueloHoja.renta + vueloHoja.rentaGasolina + vueloHoja.traslados);
+                    vueloHoja.deposito = r2((vu.boletosDeposito ? vueloHoja.boletos : 0) + (vu.rentaDeposito ? vueloHoja.renta + vueloHoja.rentaGasolina : 0) + vueloHoja.traslados);
+                }
+                const vTot = vueloHoja ? vueloHoja.total : 0, vDep = vueloHoja ? vueloHoja.deposito : 0;
+                const dep = r2(porPersona + (f.hotelDepositado ? hotelPorPersona : 0) + otrosPorPersona + vDep
                     + (primera && f.gasolinaDeposito ? f.gasolina : 0) + (primera && f.casetasDeposito ? f.casetasTotal : 0));
                 return { ...fila, personas: 1, grupo_viaje: grupo, rol_viaje: "cuadrilla", integrantes: t.nombre,
                     responsable_nombre: t.nombre || null, responsable_email: t.correo ? String(t.correo).toLowerCase() : null,
                     alimentos: porPersona, hospedaje: hotelPorPersona, otros: otrosPorPersona, gasolina: gas, casetas: cas,
-                    total: r2(porPersona + hotelPorPersona + otrosPorPersona + gas + cas), deposito: dep,
+                    total: r2(porPersona + hotelPorPersona + otrosPorPersona + gas + cas + vTot), deposito: dep,
                     cobro_cliente: primera ? trasladoViaje.cobro : 0,
-                    tarifas: { ...fila.tarifas, tecnicos: [t], rolViaje: "cuadrilla", hoja: k + 1, hojas: personasViaje,
+                    tarifas: { ...fila.tarifas, vuelo: vueloHoja, tecnicos: [t], rolViaje: "cuadrilla", hoja: k + 1, hojas: personasViaje,
                         companeros: nombres.filter((n, x) => x !== k), personasViaje, trasladoViaje,
                         habitacionesViaje: fila.tarifas.habitaciones, hospedajeViaje: f.hospedaje } };
             });
@@ -26877,7 +26945,8 @@
         if (f.requiere && diasCal > 1 && n(f.noches) === 0) avisos.push(`El viaje dura ${diasCal} días y no lleva hotel. Si se quedan en otro lado está bien; si no, captura las noches.`);
         if (f.requiere && diasCal >= 1 && n(f.desayunos) + n(f.comidas) + n(f.cenas) === 0) avisos.push("El viaje sale de la ciudad y no lleva ninguna comida.");
         if (n(f.personas) !== (f.tecnicos || []).length) errores.push(`Se calcularon ${f.personas} persona(s) pero hay ${(f.tecnicos || []).length} marcada(s). Quita y vuelve a marcar al personal.`);
-        const suma = Math.round((n(f.gasolina) + n(f.alimentos) + n(f.hospedaje) + n(f.casetasTotal) + n(f.otros)) * 100) / 100;
+        const suma = Math.round((n(f.gasolina) + n(f.alimentos) + n(f.hospedaje) + n(f.casetasTotal) + n(f.otros) + n(f.transporteTotal)) * 100) / 100;
+        if (f.transporte === "vuelo" && !n(f.vueloCostoPersona)) avisos.push("Elegiste vuelo pero el costo del boleto está en $0.");
         if (Math.abs(suma - n(f.total)) > 1) errores.push(`El total (${opsViaDinero(f.total)}) no es la suma de los conceptos (${opsViaDinero(suma)}).`);
         if (![f.total, f.deposito, f.alimentos, f.hospedaje, f.gasolina].every(x => isFinite(Number(x)))) errores.push("Algún importe salió inválido (no es número). Revisa rendimiento, precio de litro y tarifas.");
         if (errores.length) {
@@ -26927,7 +26996,12 @@
             + `Personal (${s.personas}): ${s.integrantes || ""}\n`
             + `Salida: ${(t.salida || s.fecha_salida || "").replace("T", " ")} · Regreso: ${(t.regreso || s.fecha_regreso || "").replace("T", " ")}\n`
             + (t.inicio && t.inicio.nombre ? `Inicio: ${t.inicio.nombre} · Final: ${t.regresaAlInicio === false && t.final ? t.final.nombre : "regresan al inicio"}\n` : "")
-            + (t.regresaAlInicio === false
+            + (t.transporte === "vuelo" && t.vuelo
+                ? `Transporte: VUELO${t.vuelo.aerolinea ? " (" + t.vuelo.aerolinea + ")" : ""} + renta de auto · ${opsViaNum(s.km_sencillo).toFixed(1)} km de referencia\n\n`
+                  + `Boletos: ${opsViaDinero(t.vuelo.boletos)} (${opsViaDinero(t.vuelo.costoPersona)} × ${t.vuelo.personas} persona(s))${t.vuelo.boletosDeposito ? "" : " · los compra Compras"}\n`
+                  + `Renta de auto: ${opsViaDinero(opsViaNum(t.vuelo.renta) + opsViaNum(t.vuelo.rentaGasolina))} (${t.vuelo.rentaDias} día(s) × ${opsViaDinero(t.vuelo.rentaTarifa)}${opsViaNum(t.vuelo.rentaGasolina) ? " + gasolina " + opsViaDinero(t.vuelo.rentaGasolina) : ""})\n`
+                  + (opsViaNum(t.vuelo.traslados) ? `Traslados aeropuerto: ${opsViaDinero(t.vuelo.traslados)}\n` : "")
+                : t.regresaAlInicio === false
                 ? `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km ida + ${opsViaNum(t.kmRegreso).toFixed(1)} km regreso · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
                   + `Gasolina: ${opsViaDinero(s.gasolina)} ((${s.km_sencillo} + ${t.kmRegreso}) km ÷ ${s.rendimiento} km/l × $${s.precio_litro} × ${s.factor})\n`
                 : `Distancia: ${opsViaNum(s.km_sencillo).toFixed(1)} km sencillo · Vehículo: ${s.vehiculo || ""} (${s.tipo_vehiculo || ""})\n\n`
@@ -26937,7 +27011,7 @@
             + `Casetas: ${opsViaDinero(s.casetas)}${t.aplicaCasetas === false ? " (no aplica)" : ""}${det ? "\n" + det : ""}\n`
             + `Otros: ${opsViaDinero(s.otros)}\n`
             + `TOTAL: ${opsViaDinero(s.total)}\n`
-            + `DEPOSITAR AL TÉCNICO: ${opsViaDinero(opsViaDeposito(s))} (gasolina y casetas no se depositan${s.hotel_modo === "compras" ? "; hotel lo paga Compras" : ""})\nCOBRAR AL CLIENTE: ${opsViaDinero(opsViaCobroCliente(s))}\n`
+            + `DEPOSITAR AL TÉCNICO: ${opsViaDinero(opsViaDeposito(s))} (${t.transporte === "vuelo" ? "boletos y renta según quién los paga" : "gasolina y casetas no se depositan"}${s.hotel_modo === "compras" ? "; hotel lo paga Compras" : ""})\nCOBRAR AL CLIENTE: ${opsViaDinero(opsViaCobroCliente(s))}\n`
             + (s.notas ? `\nNotas: ${s.notas}\n` : "");
     }
     // ── PDF profesional de la solicitud (jsPDF, mismo diseño que la responsiva) ──
@@ -27282,7 +27356,7 @@
             const antes = s[k] == null ? null : (tipo === "num" ? Number(s[k]) : s[k]); if (String(antes) !== String(v)) { nuevos[k] = v; cambios.push({ campo: t, antes: antes == null ? "—" : antes, despues: v == null ? "—" : v }); } });
         if (!cambios.length) { alert("No cambiaste nada."); return; }
         const n = k => Number(k in nuevos ? nuevos[k] : s[k]) || 0;
-        const total = Math.round((n("alimentos") + n("hospedaje") + n("gasolina") + n("casetas") + n("otros")) * 100) / 100;
+        const total = Math.round((n("alimentos") + n("hospedaje") + n("gasolina") + n("casetas") + n("otros") + (Number(((s.tarifas || {}).vuelo || {}).total) || 0)) * 100) / 100;
         if (total !== Number(s.total)) { nuevos.total = total; cambios.push({ campo: "Total", antes: s.total, despues: total }); }
         const reg = { por: opsNombreActual(), correo: opsUsuarioActual(), en: new Date().toISOString(), motivo, cambios };
         nuevos.tarifas = { ...(s.tarifas || {}), correcciones: ((s.tarifas || {}).correcciones || []).concat([reg]) };
