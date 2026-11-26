@@ -1706,7 +1706,7 @@ function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=
     cuerpo=calendarioHTML(C,ev,[{k:'vencido',t:'Vencido sin comprobar',c:CC.vencido},{k:'pend',t:'Pendiente de comprobar',c:CC.pend},{k:'revisar',t:'Por revisar',c:CC.revisar},{k:'comprobado',t:'Comprobado',c:CC.comprobado},{k:'cerrado',t:'Cerrado',c:CC.cerrado},{k:'pagado',t:'Día en que se pagó',c:CC.pagado}],'c');
   } else if(C.secc==='sobrantes'){ titulo='Sobrantes'; sub='Cuando un técnico comprueba más de lo que se le depositó, la diferencia es un sobrante: la empresa se lo debe. Captúralo, destínalo a una cuenta de acreedor y márcalo como saldado cuando se le pague.'; cuerpo=sobrantesHTML();
   } else if(C.secc==='seguimiento'){ titulo='Seguimiento general'; sub='Las mismas vistas de Operaciones, para consulta: todos los viáticos por etapa (desde que se piden), quién debe comprobar y qué falta por empresa. Haz clic en cualquiera para ver su ficha.'; cuerpo=segHTML();
-  } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
+  } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (Excel, XML o CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
   } else { titulo='Aspel / CONTPAQi'; sub='Pólizas de los viáticos listas para importar. Captura una vez tu catálogo de cuentas; el archivo sale con cargos y abonos cuadrados. Revisa siempre antes de importar.'; cuerpo=polizasHTML(); }
   const pend=cnt('vencido')+porRev, sobP=sobPendientes();
   p.innerHTML='<div class="vp2c"><nav class="vp2c-nav"><div class="marca">'+svgP('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6')+'Contabilidad</div><div class="grp">Trabajo diario</div>'+
@@ -1735,8 +1735,8 @@ function bancosHTML(){ const b=C.banco||{};
   let h='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">'+
     '<label class="vp2-lb">Banco<input id="vp2b-banco" class="vp2-fi" style="margin-bottom:0;width:170px" value="'+esc(b.banco||'')+'" placeholder="Ej. BBVA, Banorte"></label>'+
     '<label class="vp2-lb">Cuenta<input id="vp2b-cuenta" class="vp2-fi" style="margin-bottom:0;width:150px" value="'+esc(b.cuenta||'')+'" placeholder="Últimos 4 dígitos"></label>'+
-    '<label class="vp2-lb">Estado de cuenta (CSV)<input id="vp2b-file" type="file" accept=".csv,.txt,text/csv" class="vp2-fi" style="margin-bottom:0;padding:7px;width:260px" onchange="window.__vp2BLeer(this)"></label>'+
-    '<span style="font-size:11.5px;color:#6b7280;max-width:360px">Desde la banca en línea descarga los movimientos en CSV (o guarda tu Excel como CSV). Debe traer fecha, descripción y cargo/abono o importe.</span></div></div></div>';
+    '<label class="vp2-lb">Estado de cuenta (Excel, XML o CSV)<input id="vp2b-file" type="file" accept=".xlsx,.xls,.xlsm,.xml,.csv,.txt" class="vp2-fi" style="margin-bottom:0;padding:7px;width:260px" onchange="window.__vp2BLeer(this)"></label>'+
+    '<span style="font-size:11.5px;color:#6b7280;max-width:360px">Sube el archivo tal como lo descargas (Excel, XML o CSV), sin convertirlo. Debe traer fecha, descripción y cargo/abono o importe.</span></div></div></div>';
   if(b.filas){ const enc=b.filas[0]||[]; const op=i=>'<option value="">—</option>'+enc.map((x,j)=>'<option value="'+j+'" '+(i===j?'selected':'')+'>'+esc(x||('Columna '+(j+1)))+'</option>').join('');
     h+='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1"><b style="font-size:13px">1. ¿Qué columna es cada dato?</b> <span style="font-size:12px;color:#6b7280">('+(b.filas.length-1)+' movimientos leídos de '+esc(b.nombre)+')</span><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">'+
       [['fecha','Fecha'],['desc','Descripción'],['cargo','Cargo / retiro'],['abono','Abono / depósito'],['importe','Importe (si viene en una sola columna)'],['ref','Referencia']].map(([k,t])=>'<label class="vp2-lb">'+t+'<select class="vp2-fi" style="margin-bottom:0;width:180px" onchange="window.__vp2BCol(\''+k+'\',this.value)">'+op(b.col[k])+'</select></label>').join('')+
@@ -1753,12 +1753,31 @@ function bancosHTML(){ const b=C.banco||{};
   h+='<div class="vp2-sec" style="margin-top:18px">Conciliaciones guardadas</div>'+((C.concil||[]).length?'<table class="vp2c-tbl"><tr><th>Fecha</th><th>Banco</th><th>Periodo</th><th>Archivo</th><th>Conciliados</th><th>Sin respaldo</th><th>Sin banco</th><th>Hizo</th></tr>'+
     C.concil.map(x=>'<tr><td>'+fh(x.creado_en)+'</td><td>'+esc(x.banco||'')+' '+esc(x.cuenta||'')+'</td><td>'+esc(x.periodo||'')+'</td><td>'+esc(x.archivo_nombre||'')+'</td><td>'+x.conciliados+'</td><td style="color:#b91c1c;font-weight:700">'+x.sin_respaldo+'</td><td style="color:#a16207;font-weight:700">'+x.sin_banco+'</td><td>'+esc(x.hecho_por||'')+'</td></tr>').join('')+'</table>':'<div class="vp2-empty" style="padding:14px">Todavía no hay conciliaciones guardadas.</div>');
   return h; }
-window.__vp2BLeer=function(inp){ const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ const filas=leerCSV(String(r.result||'')); if(filas.length<2){ alert('El archivo no trae movimientos.'); return; }
-    const enc=filas[0].map(norm), busca=re=>enc.findIndex(x=>re.test(x));
+function celdaTabla(v){ if(v==null) return ''; if(v instanceof Date){ if(isNaN(v)) return ''; const d=new Date(v.getTime()+60000); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } return String(v); }
+function idxEncabezado(filas){ for(let i=0;i<Math.min(filas.length,80);i++){ const r=(filas[i]||[]).map(x=>norm(String(x||''))); if(r.some(x=>/fecha/.test(x)) && r.some(x=>/cargo|abono|retiro|deposito|importe|monto|debe|haber|debito|credito/.test(x))) return i; } return -1; }
+function recortarEncabezado(filas){ filas=(filas||[]).map(r=>(r||[]).map(celdaTabla)).filter(r=>r.some(x=>String(x).trim()!=='')); const h=idxEncabezado(filas); return h>0?filas.slice(h):filas; }
+function hojaConMovimientos(wb){ let mejor=null, pts=-1; wb.SheetNames.forEach(n=>{ const filas=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:'',blankrows:false}).map(r=>r.map(celdaTabla)); const p=(idxEncabezado(filas)>=0?1e7:0)+filas.length; if(p>pts){ pts=p; mejor=filas; } }); return mejor||[]; }
+function leerXMLFilas(txt){ const doc=new DOMParser().parseFromString(txt,'application/xml'); if(doc.getElementsByTagName('parsererror').length) throw new Error('El XML no es válido.');
+  const cnt={}; const todos=doc.getElementsByTagName('*'); for(let i=0;i<todos.length;i++){ const k=todos[i].tagName; cnt[k]=(cnt[k]||0)+1; }
+  let best=null, bestN=0; Object.keys(cnt).forEach(k=>{ const n=cnt[k]; if(n<2) return; const el=doc.getElementsByTagName(k)[0]; const campos=el.attributes.length+[...el.children].filter(c=>!c.children.length).length; if(campos>=2&&n>bestN){ best=k; bestN=n; } });
+  if(!best) return [];
+  const regs=[...doc.getElementsByTagName(best)].map(el=>{ const o={}; [...el.attributes].forEach(a=>{ o[a.name]=a.value; }); [...el.children].forEach(c=>{ if(!c.children.length) o[c.tagName.replace(/^.*:/,'')]=c.textContent.trim(); }); return o; });
+  const enc=[]; regs.forEach(o=>Object.keys(o).forEach(k=>{ if(!enc.includes(k)) enc.push(k); }));
+  return [enc].concat(regs.map(o=>enc.map(k=>o[k]==null?'':o[k]))); }
+async function leerArchivoTabla(f){ const buf=new Uint8Array(await f.arrayBuffer()); const ext=(f.name.split('.').pop()||'').toLowerCase();
+  const esZip=buf[0]===0x50&&buf[1]===0x4B, esOLE=buf[0]===0xD0&&buf[1]===0xCF; let filas;
+  if(esZip||esOLE||['xlsx','xls','xlsm','xlsb','ods'].includes(ext)){ if(!window.XLSX) throw new Error('No cargó el lector de Excel. Recarga la página e intenta de nuevo.'); filas=hojaConMovimientos(XLSX.read(buf,{type:'array',cellDates:true})); }
+  else { let txt=new TextDecoder('utf-8').decode(buf); if(txt.includes('�')) txt=new TextDecoder('windows-1252').decode(buf); txt=txt.replace(/^﻿/,'');
+    if(ext==='xml'||/^\s*<(\?xml|[A-Za-z])/.test(txt)){ if(/urn:schemas-microsoft-com:office:spreadsheet/.test(txt)&&window.XLSX) filas=hojaConMovimientos(XLSX.read(txt,{type:'string',cellDates:true})); else filas=leerXMLFilas(txt); }
+    else filas=leerCSV(txt); }
+  return recortarEncabezado(filas); }
+window.__vp2BLeer=async function(inp){ const f=inp.files[0]; if(!f) return; let filas=[];
+  try{ filas=await leerArchivoTabla(f); }catch(e){ console.error(e); alert('No pude leer el archivo: '+(e.message||e)); inp.value=''; return; }
+  if(filas.length<2){ alert('El archivo no trae movimientos reconocibles. Verifica que sea el estado de cuenta en Excel, XML o CSV.'); inp.value=''; return; }
+    const enc=filas[0].map(x=>norm(String(x||''))), busca=re=>enc.findIndex(x=>re.test(x));
     C.banco={ banco:document.getElementById('vp2b-banco').value, cuenta:document.getElementById('vp2b-cuenta').value, nombre:f.name, filas,
-      col:{ fecha:busca(/fecha/), desc:busca(/desc|concepto|movimiento|detalle/), cargo:busca(/cargo|retiro|debito|egreso/), abono:busca(/abono|deposito|credito|ingreso/), importe:busca(/^importe|^monto/), ref:busca(/refer|folio|clave/) } };
+      col:{ fecha:busca(/fecha/), desc:busca(/desc|concepto|movimiento|detalle/), cargo:busca(/cargo|retiro|debito|egreso|^debe/), abono:busca(/abono|deposito|credito|ingreso|^haber/), importe:busca(/^importe|^monto/), ref:busca(/refer|folio|clave/) } };
     Object.keys(C.banco.col).forEach(k=>{ if(C.banco.col[k]<0) C.banco.col[k]=null; }); pintarConta(); };
-  r.readAsText(f,'utf-8'); };
 window.__vp2BCol=(k,v)=>{ C.banco.col[k]=v===''?null:Number(v); };
 window.__vp2BConciliar=async function(){ const b=C.banco; if(!b||!b.filas) return; const col=b.col; if(col.fecha==null||(col.cargo==null&&col.importe==null)){ alert('Indica al menos la columna de fecha y la de cargo (o importe).'); return; }
   b.banco=document.getElementById('vp2b-banco').value; b.cuenta=document.getElementById('vp2b-cuenta').value;
