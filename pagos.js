@@ -1644,7 +1644,7 @@ async function cargarConta(){ tecnicos(); const p=contConta(); if(!p) return; p.
     pintarConta(); if(C.concil===null) cargarConcil(); }
   catch(e){ p.innerHTML='<div class="vp2"><div class="vp2-empty" style="color:#b91c1c">No se pudieron cargar los viáticos: '+esc(e.message||e)+'</div></div>'; } }
 // ── Interfaz de Contabilidad (29-oct-2026): menú lateral + secciones, preparada para Aspel, CONTPAQi y bancos ──
-const C_SECC=[['inicio','Inicio','M3 12l9-9 9 9M5 10v10h14V10'],['viaticos','Viáticos','M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],['calendario','Calendario','M3 4h18v18H3zM16 2v4M8 2v4M3 10h18'],['sobrantes','Sobrantes','M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'],['seguimiento','Seguimiento general','M3 3v18h18M7 14l4-4 4 4 5-5'],['bancos','Bancos · conciliación','M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z'],['polizas','Aspel / CONTPAQi','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8']];
+const C_SECC=[['inicio','Inicio','M3 12l9-9 9 9M5 10v10h14V10'],['viaticos','Viáticos','M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z'],['calendario','Calendario','M3 4h18v18H3zM16 2v4M8 2v4M3 10h18'],['sobrantes','Sobrantes','M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'],['seguimiento','Seguimiento general','M3 3v18h18M7 14l4-4 4 4 5-5'],['bancos','Bancos · conciliación','M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 21h20M12 3l9 5H3z'],['cruce','Cargos vs abonos','M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3'],['polizas','Aspel / CONTPAQi','M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8']];
 function svgP(d){ return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+d+'"/></svg>'; }
 function cssConta(){ if(document.getElementById('vp2c-css')) return; const st=document.createElement('style'); st.id='vp2c-css'; st.textContent=`
 .vp2c{display:grid;grid-template-columns:230px 1fr;gap:0;background:#f4f5f7;border-radius:18px;overflow:hidden;margin-bottom:22px;min-height:640px}
@@ -1707,6 +1707,7 @@ function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=
   } else if(C.secc==='sobrantes'){ titulo='Sobrantes'; sub='Cuando un técnico comprueba más de lo que se le depositó, la diferencia es un sobrante: la empresa se lo debe. Captúralo, destínalo a una cuenta de acreedor y márcalo como saldado cuando se le pague.'; cuerpo=sobrantesHTML();
   } else if(C.secc==='seguimiento'){ titulo='Seguimiento general'; sub='Las mismas vistas de Operaciones, para consulta: todos los viáticos por etapa (desde que se piden), quién debe comprobar y qué falta por empresa. Haz clic en cualquiera para ver su ficha.'; cuerpo=segHTML();
   } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (Excel, XML o CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
+  } else if(C.secc==='cruce'){ titulo='Cargos vs abonos'; sub='Sube el auxiliar de CONTPAQi y el portal empareja cada cargo con su abono por importe exacto. Revisa por cuenta lo conciliado, los cargos sin abono y los abonos sin cargo.'; cuerpo=cruceHTML();
   } else { titulo='Aspel / CONTPAQi'; sub='Pólizas de los viáticos listas para importar. Captura una vez tu catálogo de cuentas; el archivo sale con cargos y abonos cuadrados. Revisa siempre antes de importar.'; cuerpo=polizasHTML(); }
   const pend=cnt('vencido')+porRev, sobP=sobPendientes();
   p.innerHTML='<div class="vp2c"><nav class="vp2c-nav"><div class="marca">'+svgP('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6')+'Contabilidad</div><div class="grp">Trabajo diario</div>'+
@@ -1778,6 +1779,108 @@ window.__vp2BLeer=async function(inp){ const f=inp.files[0]; if(!f) return; let 
     C.banco={ banco:document.getElementById('vp2b-banco').value, cuenta:document.getElementById('vp2b-cuenta').value, nombre:f.name, filas,
       col:{ fecha:busca(/fecha/), desc:busca(/desc|concepto|movimiento|detalle/), cargo:busca(/cargo|retiro|debito|egreso|^debe/), abono:busca(/abono|deposito|credito|ingreso|^haber/), importe:busca(/^importe|^monto/), ref:busca(/refer|folio|clave/) } };
     Object.keys(C.banco.col).forEach(k=>{ if(C.banco.col[k]<0) C.banco.col[k]=null; }); pintarConta(); };
+// ── Cargos vs abonos (CONTPAQi) · 26-nov-2026: empareja 1 a 1 por importe exacto, revisión por cuenta como el Excel de referencia ──
+const CR={ cuentas:null, nombre:'', sel:0, tab:'cargos', q:'', n:200, cargando:false };
+const crMon=n=>'$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+const crRef=s=>String(s||'').toUpperCase().replace(/^F-?/,'').replace(/[^A-Z0-9]/g,'');
+function crFechaTxt(f){ if(!f) return ''; const M=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; const p=f.split('-'); return p[2]+'/'+(M[Number(p[1])-1]||p[1])+'/'+p[0]; }
+function crBloques(filas){ const enc=filas[0].map(x=>norm(String(x||''))); const bloques=[]; let ini=0;
+  for(let i=0;i<=enc.length;i++){ if(i===enc.length||enc[i]===''){ if(i>ini) bloques.push([ini,i]); ini=i+1; } }
+  const res={abono:null,cargo:null};
+  bloques.forEach(([a,b])=>{ const det={}; let ca=null,cc=null;
+    for(let i=a;i<b;i++){ const h=enc[i];
+      if(/abono|haber|deposito|credito/.test(h)){ if(ca==null) ca=i; }
+      else if(/cargo|debe|retiro|debito/.test(h)){ if(cc==null) cc=i; }
+      else if(/fecha/.test(h)){ if(det.fecha==null) det.fecha=i; }
+      else if(/tipo/.test(h)){ if(det.tipo==null) det.tipo=i; }
+      else if(/refer/.test(h)){ if(det.ref==null) det.ref=i; }
+      else if(/concepto|desc|proveedor|nombre/.test(h)){ if(det.concepto==null) det.concepto=i; }
+      else if(/^num|^no\b|poliza|folio/.test(h)){ if(det.num==null) det.num=i; } }
+    if(ca!=null&&!res.abono) res.abono=Object.assign({monto:ca},det);
+    if(cc!=null&&!res.cargo) res.cargo=Object.assign({monto:cc},det); });
+  return res; }
+function crMovs(filas,cols,lado){ if(!cols) return []; const out=[]; const v=(f,k)=>cols[k]!=null?String(f[cols[k]]==null?'':f[cols[k]]).trim():'';
+  for(let r=1;r<filas.length;r++){ const f=filas[r]; const m=Math.round(Math.abs(numMX(f[cols.monto]))*100)/100; if(!m) continue;
+    const fecha=cols.fecha!=null?fechaMX(f[cols.fecha]):''; const concepto=v(f,'concepto');
+    if(!fecha&&/total|saldo|suma/.test(norm(f.join(' ')))) continue;
+    out.push({lado,fecha,tipo:v(f,'tipo'),num:v(f,'num'),concepto,ref:v(f,'ref'),monto:m}); }
+  return out; }
+function crEmparejar(abonos,cargos){ const key=x=>Math.round(x.monto*100); const gA={},gC={};
+  abonos.forEach(x=>{ (gA[key(x)]=gA[key(x)]||[]).push(x); }); cargos.forEach(x=>{ (gC[key(x)]=gC[key(x)]||[]).push(x); });
+  const pares=[], sa=[], sc=[], porF=(x,y)=>(x.fecha||'').localeCompare(y.fecha||'');
+  Object.keys(gA).forEach(k=>{ const A=gA[k], L=gC[k]||[]; delete gC[k]; const usados=new Set(), restA=[];
+    A.forEach(a=>{ const ra=crRef(a.ref); let j=-1;
+      if(ra){ j=L.findIndex((c,ix)=>!usados.has(ix)&&crRef(c.ref)===ra); if(j<0&&ra.length>=4) j=L.findIndex((c,ix)=>!usados.has(ix)&&!c.ref&&crRef(c.concepto).includes(ra)); }
+      if(j>=0){ usados.add(j); pares.push({a,c:L[j],por:'Referencia'}); } else restA.push(a); });
+    const restC=L.filter((c,ix)=>!usados.has(ix)); restA.sort(porF); restC.sort(porF); const n=Math.min(restA.length,restC.length);
+    for(let i=0;i<n;i++) pares.push({a:restA[i],c:restC[i],por:'Importe'});
+    sa.push(...restA.slice(n)); sc.push(...restC.slice(n)); });
+  Object.keys(gC).forEach(k=>sc.push(...gC[k]));
+  const porM=(x,y)=>y.monto-x.monto; pares.sort((x,y)=>y.a.monto-x.a.monto); sa.sort(porM); sc.sort(porM);
+  return {pares,sa,sc}; }
+function crCuentaDeFilas(nombre,raw){ raw=raw.filter(r=>r.some(x=>String(x).trim()!=='')); const i=idxEncabezado(raw); if(i<0) return null;
+  const titulo=raw.slice(0,i).map(r=>r.filter(x=>String(x).trim()).join(' ')).filter(Boolean).join(' · ').slice(0,160);
+  const filas=raw.slice(i), b=crBloques(filas); if(!b.abono&&!b.cargo) return null;
+  const abonos=crMovs(filas,b.abono,'abono'), cargos=crMovs(filas,b.cargo,'cargo'); if(!abonos.length&&!cargos.length) return null;
+  const r=crEmparejar(abonos,cargos), s=L=>L.reduce((t,x)=>t+x.monto,0);
+  const tA=s(abonos), tC=s(cargos), tE=r.pares.reduce((t,p)=>t+p.a.monto,0);
+  return { hoja:nombre, titulo, abonos:abonos.length, cargos:cargos.length, tA, tC, tE, tSA:s(r.sa), tSC:s(r.sc), pct:(tA+tC)?(2*tE/(tA+tC)*100):0, pares:r.pares, sa:r.sa, sc:r.sc }; }
+async function crLeerCuentas(f){ const buf=new Uint8Array(await f.arrayBuffer()); const ext=(f.name.split('.').pop()||'').toLowerCase();
+  const esZip=buf[0]===0x50&&buf[1]===0x4B, esOLE=buf[0]===0xD0&&buf[1]===0xCF; const hojas=[];
+  if(esZip||esOLE||['xlsx','xls','xlsm','xlsb','ods'].includes(ext)){ if(!window.XLSX) throw new Error('No cargó el lector de Excel. Recarga la página e intenta de nuevo.');
+    const wb=XLSX.read(buf,{type:'array',cellDates:true});
+    wb.SheetNames.forEach(n=>hojas.push([n,XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:'',blankrows:false}).map(r=>r.map(celdaTabla))])); }
+  else hojas.push([f.name.replace(/\.[^.]+$/,''),await leerArchivoTabla(f)]);
+  return hojas.map(([n,raw])=>crCuentaDeFilas(n,raw)).filter(Boolean); }
+function crFiltra(L,fn){ const q=norm(CR.q||''); return q?L.filter(x=>norm(fn(x)).includes(q)):L; }
+function cruceHTML(){
+  let h='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap"><label class="vp2-lb">Auxiliar de CONTPAQi (Excel, XML o CSV)<input type="file" accept=".xlsx,.xls,.xlsm,.xml,.csv,.txt" class="vp2-fi" style="margin-bottom:0;padding:7px;width:280px" onchange="window.__crLeer(this)"></label>'+
+    '<span style="font-size:11.5px;color:#6b7280;max-width:460px">Sube el archivo tal como sale de CONTPAQi. Cada hoja con columnas de Cargos y Abonos se toma como una cuenta. Se empareja 1 a 1 por importe exacto; si hay varios con el mismo importe, primero por referencia y luego por la fecha más cercana.</span></div></div>';
+  if(CR.cargando) return h+'<div class="vp2-empty" style="padding:14px">Leyendo y conciliando '+esc(CR.nombre)+'…</div>';
+  if(!CR.cuentas) return h+'<div class="vp2-empty" style="padding:14px">Todavía no has subido ningún archivo.</div>';
+  const cs=CR.cuentas, tot=k=>cs.reduce((t,c)=>t+c[k],0), th='style="text-align:right"', td=v=>'<td style="text-align:right;white-space:nowrap">'+v+'</td>';
+  const fila=(c,i)=>'<tr style="cursor:pointer;'+(i===CR.sel?'background:#fef9c3':'')+'" onclick="window.__crSet(\'sel\','+i+')"><td><b>'+esc(c.hoja)+'</b>'+(c.titulo?'<div style="font-size:11px;color:#6b7280">'+esc(c.titulo)+'</div>':'')+'</td>'+td(c.abonos)+td(crMon(c.tA))+td(c.cargos)+td(crMon(c.tC))+td(c.pares.length)+td(crMon(c.tE))+
+    '<td style="text-align:right;color:#b91c1c;font-weight:700;white-space:nowrap">'+c.sc.length+' · '+crMon(c.tSC)+'</td><td style="text-align:right;color:#a16207;font-weight:700;white-space:nowrap">'+c.sa.length+' · '+crMon(c.tSA)+'</td>'+td('<b>'+c.pct.toFixed(1)+'%</b>')+'</tr>';
+  const tA=tot('tA'),tC=tot('tC'),tE=tot('tE');
+  h+='<div class="vp2-sec" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">Resumen · '+esc(CR.nombre)+'<button class="vp2-btn" style="background:#15803d;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" onclick="window.__crExcel()">Descargar Excel</button></div>'+
+    '<div style="overflow:auto"><table class="vp2c-tbl"><tr><th>Cuenta / hoja</th><th '+th+'>Movs. abono</th><th '+th+'>Importe abonos</th><th '+th+'>Movs. cargo</th><th '+th+'>Importe cargos</th><th '+th+'>Pares</th><th '+th+'>Importe emparejado</th><th '+th+'>Cargos sin abono</th><th '+th+'>Abonos sin cargo</th><th '+th+'>% conciliado</th></tr>'+
+    cs.map(fila).join('')+(cs.length>1?'<tr style="font-weight:700;background:#f3f4f6"><td>TOTAL CONSOLIDADO ('+cs.length+' cuentas)</td>'+td(tot('abonos'))+td(crMon(tA))+td(tot('cargos'))+td(crMon(tC))+td(cs.reduce((t,c)=>t+c.pares.length,0))+td(crMon(tE))+
+    td(cs.reduce((t,c)=>t+c.sc.length,0)+' · '+crMon(tot('tSC')))+td(cs.reduce((t,c)=>t+c.sa.length,0)+' · '+crMon(tot('tSA')))+td(((tA+tC)?2*tE/(tA+tC)*100:0).toFixed(1)+'%')+'</tr>':'')+'</table></div>';
+  const c=cs[CR.sel]||cs[0];
+  const tab=(k,t,n,col)=>'<button onclick="window.__crSet(\'tab\',\''+k+'\')" style="border:1px solid '+(CR.tab===k?col:'#e5e7eb')+';background:'+(CR.tab===k?col:'#fff')+';color:'+(CR.tab===k?'#fff':'#374151')+';border-radius:999px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer">'+t+' ('+n.toLocaleString('es-MX')+')</button>';
+  h+='<div class="vp2-sec" style="margin-top:18px">Revisión · '+esc(c.hoja)+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
+    tab('cargos','Cargos sin abono',c.sc.length,'#b91c1c')+tab('abonos','Abonos sin cargo',c.sa.length,'#a16207')+tab('pares','Emparejados',c.pares.length,'#15803d')+
+    '<input id="cr-q" placeholder="Buscar concepto, referencia o monto" value="'+esc(CR.q||'')+'" oninput="window.__crBuscar(this.value)" style="margin-left:auto;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;min-width:260px"></div>';
+  const badge=(t,col)=>'<span style="background:'+col+'1a;color:'+col+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">'+t+'</span>';
+  let L, filasH, enc;
+  if(CR.tab==='pares'){ L=crFiltra(c.pares,p=>[p.a.concepto,p.a.ref,p.c.concepto,p.c.ref,p.a.monto,p.a.monto.toFixed(2)].join(' '));
+    enc='<tr><th colspan="5" style="background:#fef3c7">Registro en abono (origen)</th><th></th><th colspan="5" style="background:#dbeafe">Registro en cargo (aplicación)</th></tr><tr><th>#</th><th>Fecha</th><th>Póliza</th><th>Concepto</th><th>Referencia</th><th '+th+'>Monto</th><th>Fecha</th><th>Póliza</th><th>Concepto</th><th>Referencia</th><th>Criterio</th></tr>';
+    filasH=L.slice(0,CR.n).map((p,i)=>'<tr><td>'+(i+1)+'</td><td style="white-space:nowrap">'+crFechaTxt(p.a.fecha)+'</td><td style="white-space:nowrap">'+esc(p.a.tipo)+' '+esc(p.a.num)+'</td><td>'+esc(p.a.concepto)+'</td><td>'+esc(p.a.ref)+'</td>'+td('<b>'+crMon(p.a.monto)+'</b>')+
+      '<td style="white-space:nowrap">'+crFechaTxt(p.c.fecha)+'</td><td style="white-space:nowrap">'+esc(p.c.tipo)+' '+esc(p.c.num)+'</td><td>'+esc(p.c.concepto)+'</td><td>'+esc(p.c.ref)+'</td><td>'+badge(p.por==='Referencia'?'Importe + referencia':'Importe','#15803d')+'</td></tr>').join(''); }
+  else { const esC=CR.tab==='cargos'; L=crFiltra(esC?c.sc:c.sa,x=>[x.concepto,x.ref,x.monto,x.monto.toFixed(2)].join(' '));
+    enc='<tr><th>#</th><th>Fecha</th><th>Tipo póliza</th><th>Núm. póliza</th><th>Concepto / proveedor</th><th>Referencia</th><th '+th+'>Monto</th><th>Estado</th></tr>';
+    filasH=L.slice(0,CR.n).map((x,i)=>'<tr><td>'+(i+1)+'</td><td style="white-space:nowrap">'+crFechaTxt(x.fecha)+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.num)+'</td><td>'+esc(x.concepto)+'</td><td>'+esc(x.ref)+'</td>'+td('<b>'+crMon(x.monto)+'</b>')+'<td>'+badge(esC?'CARGO SIN ABONO':'ABONO SIN CARGO',esC?'#b91c1c':'#a16207')+'</td></tr>').join(''); }
+  const sumaL=L.reduce((t,x)=>t+(x.a?x.a.monto:x.monto),0);
+  h+='<div style="font-size:12px;color:#6b7280;margin-bottom:6px">'+L.length.toLocaleString('es-MX')+' movimientos · '+crMon(sumaL)+(L.length>CR.n?' · mostrando '+CR.n.toLocaleString('es-MX'):'')+'</div>';
+  h+=L.length?'<div style="overflow:auto"><table class="vp2c-tbl">'+enc+filasH+'</table></div>'+(L.length>CR.n?'<div style="text-align:center;margin-top:10px"><button onclick="window.__crSet(\'n\','+(CR.n+500)+')" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">Ver 500 más</button></div>':''):'<div class="vp2-empty" style="padding:14px">Sin movimientos en esta vista.</div>';
+  return h; }
+window.__crLeer=async function(inp){ const f=inp.files[0]; if(!f) return; CR.cargando=true; CR.nombre=f.name; pintarConta(); await new Promise(r=>setTimeout(r,40));
+  try{ const cs=await crLeerCuentas(f); if(!cs.length) alert('No encontré en el archivo una tabla con Fecha y columnas de Cargos/Abonos. Revisa que sea el auxiliar exportado de CONTPAQi.'); else { CR.cuentas=cs; CR.sel=0; CR.tab='cargos'; CR.q=''; CR.n=200; } }
+  catch(e){ console.error(e); alert('No pude leer el archivo: '+(e.message||e)); }
+  CR.cargando=false; pintarConta(); };
+window.__crSet=function(k,v){ CR[k]=v; if(k!=='n') CR.n=200; if(k==='sel') CR.q=''; pintarConta(); };
+let crT=null; window.__crBuscar=function(v){ clearTimeout(crT); crT=setTimeout(()=>{ CR.q=v; CR.n=200; pintarConta(); const el=document.getElementById('cr-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },300); };
+window.__crExcel=function(){ if(!CR.cuentas||!window.XLSX) return; const wb=XLSX.utils.book_new(), cs=CR.cuentas, r2=n=>Math.round(n*100)/100;
+  const res=[['CONCILIACIÓN DE CARGOS Y ABONOS — '+CR.nombre],['Cruce 1 a 1 por importe exacto · generado en Portal Tecnocontrol '+new Date().toLocaleString('es-MX')],[],['Cuenta / hoja','Detalle','Movs. abono','Importe abonos','Movs. cargo','Importe cargos','Pares emparejados','Importe emparejado','Cargos sin abono (cant.)','Cargos sin abono ($)','Abonos sin cargo (cant.)','Abonos sin cargo ($)','% conciliado']];
+  cs.forEach(c=>res.push([c.hoja,c.titulo,c.abonos,r2(c.tA),c.cargos,r2(c.tC),c.pares.length,r2(c.tE),c.sc.length,r2(c.tSC),c.sa.length,r2(c.tSA),r2(c.pct)]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(res),'Resumen');
+  const nom=(c,s)=>(c.hoja.replace(/[\\\/\?\*\[\]:]/g,'').slice(0,12)+'_'+s).slice(0,31);
+  cs.forEach(c=>{ const enc=['#','Fecha','Tipo póliza','Núm. póliza','Concepto / proveedor','Referencia','Monto','Estado'];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([enc].concat(c.sc.map((x,i)=>[i+1,crFechaTxt(x.fecha),x.tipo,x.num,x.concepto,x.ref,x.monto,'CARGO SIN ABONO']))),nom(c,'Cargos_Sin_Abono'));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([enc].concat(c.sa.map((x,i)=>[i+1,crFechaTxt(x.fecha),x.tipo,x.num,x.concepto,x.ref,x.monto,'ABONO SIN CARGO']))),nom(c,'Abonos_Sin_Cargo'));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['#','Fecha abono','Tipo abono','Póliza abono','Concepto abono','Ref. abono','Monto emparejado','Fecha cargo','Tipo cargo','Póliza cargo','Concepto cargo','Ref. cargo','Criterio']].concat(c.pares.map((p,i)=>[i+1,crFechaTxt(p.a.fecha),p.a.tipo,p.a.num,p.a.concepto,p.a.ref,p.a.monto,crFechaTxt(p.c.fecha),p.c.tipo,p.c.num,p.c.concepto,p.c.ref,p.por==='Referencia'?'Importe + referencia':'Importe']))),nom(c,'Emparejados')); });
+  XLSX.writeFile(wb,'Conciliacion_'+CR.nombre.replace(/\.[^.]+$/,'')+'.xlsx'); };
+
 window.__vp2BCol=(k,v)=>{ C.banco.col[k]=v===''?null:Number(v); };
 window.__vp2BConciliar=async function(){ const b=C.banco; if(!b||!b.filas) return; const col=b.col; if(col.fecha==null||(col.cargo==null&&col.importe==null)){ alert('Indica al menos la columna de fecha y la de cargo (o importe).'); return; }
   b.banco=document.getElementById('vp2b-banco').value; b.cuenta=document.getElementById('vp2b-cuenta').value;
