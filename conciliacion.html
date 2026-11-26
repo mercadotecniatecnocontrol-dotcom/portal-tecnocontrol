@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conciliación de cargos y abonos · Tecnocontrol</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--navy:#1D2E73;--rojo:#E7402B;--bg:#f4f6fb;--card:#fff;--txt:#1b2240;--sub:#5b6385;--borde:#e2e6f0;--ok:#1f9d55;--warn:#d97706;--gris:#8a93ad}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt)}
+header{background:var(--navy);color:#fff;padding:14px 22px;display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;margin:0;font-weight:600}
+header a{color:#fff;opacity:.85;text-decoration:none;font-size:13px;margin-left:auto;display:flex;align-items:center;gap:6px}
+main{max-width:1250px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--borde);border-radius:12px;padding:18px;margin-bottom:16px}
+.ayuda{font-size:14px;color:var(--sub);line-height:1.55;margin:0}
+.ayuda b{color:var(--txt)}
+.drop{display:block;border:2px dashed #b9c1dc;border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:.15s;margin-top:14px}
+.drop:hover,.drop.sobre{border-color:var(--navy);background:#eef1fa}
+.drop svg{width:42px;height:42px;color:var(--navy)}
+.drop p{margin:8px 0 0;color:var(--sub);font-size:14px}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{filter:brightness(1.15)}.btn.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+.btn svg{width:16px;height:16px}
+.fila{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+select,input[type=search]{border:1px solid var(--borde);border-radius:8px;padding:8px 10px;font-size:14px;background:#fff}
+input[type=search]{min-width:260px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.kpi{background:#fff;border:1px solid var(--borde);border-radius:12px;padding:14px;border-left:5px solid var(--navy)}
+.kpi.r{border-left-color:var(--rojo)}.kpi.v{border-left-color:var(--ok)}.kpi.n{border-left-color:var(--warn)}
+.kpi small{color:var(--sub);font-size:12px;display:flex;align-items:center;gap:5px}
+.kpi b{display:block;font-size:21px;margin-top:4px}
+.kpi span{font-size:12px;color:var(--sub)}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--borde);margin:6px 0 12px;flex-wrap:wrap}
+.tab{background:none;border:0;padding:10px 14px;font-size:14px;cursor:pointer;color:var(--sub);border-bottom:3px solid transparent;margin-bottom:-2px;display:flex;align-items:center;gap:7px}
+.tab.act{color:var(--navy);border-bottom-color:var(--navy);font-weight:600}
+.badge{border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;background:#e8ebf5;color:var(--navy)}
+.badge.r{background:#fde5e1;color:#b42d1a}.badge.v{background:#dcf3e5;color:#16733f}.badge.n{background:#fdf0d8;color:#9a5a05}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;background:#f0f2f8;color:var(--sub);font-weight:600;padding:8px;position:sticky;top:0;cursor:pointer;white-space:nowrap}
+td{padding:7px 8px;border-top:1px solid var(--borde);vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.gp td{background:#f7f8fc}
+.tbl{max-height:62vh;overflow:auto;border:1px solid var(--borde);border-radius:10px}
+.pag{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px;color:var(--sub)}
+.pag button{background:#fff;border:1px solid var(--borde);border-radius:6px;padding:5px 10px;cursor:pointer}
+.pag button:disabled{opacity:.4;cursor:default}
+.vacio{text-align:center;padding:40px 10px;color:var(--sub)}
+.vacio svg{width:48px;height:48px;color:var(--ok)}
+.sk{height:14px;border-radius:6px;background:linear-gradient(90deg,#e8ebf3 25%,#f4f6fb 50%,#e8ebf3 75%);background-size:200% 100%;animation:sk 1.2s infinite;margin:10px 0}
+@keyframes sk{to{background-position:-200% 0}}
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:50%;top:110%;transform:translateX(-50%);background:#1b2240;color:#fff;font-size:12px;padding:6px 9px;border-radius:6px;white-space:normal;width:max-content;max-width:260px;z-index:9;font-weight:400;line-height:1.35}
+.ic{width:15px;height:15px;color:var(--gris);vertical-align:middle}
+.oculto{display:none}
+.aviso{background:#fdf0d8;border:1px solid #f3cf8c;color:#7a4704;border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+  <h1>Conciliación de cargos y abonos</h1>
+  <a href="index.html" data-tip="Regresar al Portal Operativo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Volver al portal</a>
+</header>
+<main>
+  <section class="card">
+    <p class="ayuda"><b>¿Qué hace esta pantalla?</b> Compara los <b>abonos</b> (facturas o provisiones) contra los <b>cargos</b> (pagos) de una cuenta de CONTPAQi y te dice cuáles ya tienen pareja y cuáles no.
+    Primero empareja por <b>número de factura y monto</b>, luego <b>solo por monto</b> (como el filtro de duplicados de Excel) y al final busca un pago que sea <b>la suma de varias facturas</b> del mismo proveedor.
+    Lo que quede sin pareja es lo que hay que revisar a mano. <b>El archivo no se guarda en ningún lado</b>: todo se procesa en tu computadora.</p>
+    <label class="drop" id="drop" data-tip="Puedes arrastrar el archivo aquí o dar clic para buscarlo">
+      <input type="file" id="archivo" accept=".xlsx,.xls,.csv" class="oculto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+      <p><b>Sube el auxiliar exportado de CONTPAQi</b> (Excel). Clic aquí o arrastra el archivo.</p>
+      <p id="nombreArchivo" style="font-weight:600;color:var(--navy)"></p>
+    </label>
+    <div class="fila oculto" id="barraHoja" style="margin-top:12px">
+      <span class="ayuda">Hoja del archivo:</span>
+      <select id="hoja" data-tip="Si tu Excel tiene varias hojas, elige cuál conciliar"></select>
+    </div>
+    <div id="aviso"></div>
+  </section>
+
+  <section id="carga" class="card oculto">
+    <div class="sk" style="width:40%"></div><div class="sk"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div>
+    <p class="ayuda">Conciliando movimientos…</p>
+  </section>
+
+  <section id="resultado" class="oculto">
+    <div class="kpis" id="kpis"></div>
+    <div class="card" style="margin-top:16px">
+      <div class="fila" style="justify-content:space-between">
+        <div class="tabs" id="tabs"></div>
+        <div class="fila">
+          <input type="search" id="buscar" placeholder="Buscar proveedor, factura o importe…">
+          <button class="btn" id="descargar" data-tip="Descarga el resultado completo en Excel, con una hoja por pestaña">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Descargar Excel</button>
+        </div>
+      </div>
+      <p class="ayuda" id="explica" style="margin-bottom:10px"></p>
+      <div class="tbl"><table id="tabla"></table></div>
+      <div class="pag"><span id="infoPag"></span><span><button id="ant">Anterior</button> <button id="sig">Siguiente</button></span></div>
+    </div>
+  </section>
+</main>
+<script>
+/* ===== MOTOR DE CONCILIACIÓN (Cargos vs Abonos, CONTPAQi) ===== */
+var CNC = (function () {
+  var MESES = { ENE:0, FEB:1, MAR:2, ABR:3, MAY:4, JUN:5, JUL:6, AGO:7, SEP:8, OCT:9, NOV:10, DIC:11 };
+  var RX_FECHA = /^\s*(\d{1,2})\/([A-Za-z]{3})\/(\d{4})\s*$/;
+  var RX_CTA = /^\s*\d{4}-\d{4}-\d{4}/;
+
+  function esFecha(v) {
+    if (v instanceof Date) return !isNaN(v);
+    return typeof v === 'string' && RX_FECHA.test(v) && MESES[v.match(RX_FECHA)[2].toUpperCase()] !== undefined;
+  }
+  function aFecha(v) {
+    if (v instanceof Date) return v;
+    var m = v.match(RX_FECHA);
+    return new Date(+m[3], MESES[m[2].toUpperCase()], +m[1]);
+  }
+  function txt(v) { return v == null ? '' : String(v).replace(/\s+/g, ' ').trim(); }
+  function num(v) {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && v.trim() !== '') { var n = Number(v.replace(/[$,\s]/g, '')); return isNaN(n) ? null : n; }
+    return null;
+  }
+  function etiqueta(v) {
+    var s = txt(v).toUpperCase().replace(/\s/g, '');
+    if (s === 'CARGOS' || s === 'CARGO') return 'C';
+    if (s === 'ABONOS' || s === 'ABONO') return 'A';
+    return null;
+  }
+
+  /* Folio: toma la parte numérica de la factura (Referencia o Concepto) */
+  function folio(ref, concepto) {
+    var r = txt(ref).toUpperCase().replace(/^F-/, '').replace(/[^A-Z0-9]/g, '');
+    var c = txt(concepto).toUpperCase();
+    if (!r) {
+      var m = c.match(/F-\s*([A-Z0-9]*)\s*-\s*([A-Z0-9]+)/) || c.match(/F-\s*([A-Z0-9]+)/);
+      if (m) r = (m[1] || '') + (m[2] || '');
+    }
+    var d = (r.match(/\d+/g) || []).join('').replace(/^0+/, '');
+    return d.length >= 3 ? d : '';
+  }
+  /* Proveedor: nombre limpio sin "PROVISION F- X - 123 /" ni "F-123" */
+  function proveedor(concepto) {
+    var c = txt(concepto).toUpperCase();
+    if (c.indexOf('/') >= 0 && /PROVISION/.test(c)) c = c.split('/').pop();
+    c = c.replace(/F-\s*[A-Z0-9-]*/g, ' ').replace(/[^A-ZÑ&\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return c;
+  }
+
+  /* Lee filas (array de arrays) y devuelve movimientos */
+  function leer(filas) {
+    var totales = [], movs = [], cuenta = '', nombreCta = '', cols = null, empresa = '', periodo = '';
+    for (var i = 0; i < filas.length; i++) {
+      var r = filas[i] || [];
+      var c0 = txt(r[0]);
+      if (!empresa && /CONTPAQ/i.test(c0)) { for (var k = 1; k < r.length; k++) if (txt(r[k])) { empresa = txt(r[k]); break; } }
+      if (!periodo && /^del\s+\d/i.test(c0)) periodo = c0;
+      if (r.some(function (v) { return /^T\s*o\s*t\s*a\s*l\s*:?$/i.test(txt(v)); })) { r.forEach(function (v) { if (typeof v === 'number') totales.push(Math.round(v * 100)); }); continue; }
+      if (RX_CTA.test(c0)) { cuenta = c0.match(/\d{4}-\d{4}-\d{4}/)[0]; nombreCta = txt(r[1]); continue; }
+      var tieneFecha = r.some(function (v) { return txt(v).toUpperCase() === 'FECHA'; });
+      var tieneMonto = r.some(function (v) { return etiqueta(v); });
+      if (tieneFecha && tieneMonto) {
+        cols = [];
+        r.forEach(function (v, j) { var e = etiqueta(v); if (e) cols.push({ j: j, t: e }); });
+        continue;
+      }
+      if (!cols) continue;
+      var fechas = [];
+      r.forEach(function (v, j) { if (esFecha(v)) fechas.push(j); });
+      if (!fechas.length) continue;
+      var montos = [];
+      cols.forEach(function (cl) { var n = num(r[cl.j]); if (n !== null && Math.abs(n) >= 0.005) montos.push({ j: cl.j, t: cl.t, n: n }); });
+      montos.forEach(function (m, idx) {
+        var d;
+        if (montos.length === fechas.length) d = fechas[idx];
+        else d = fechas.reduce(function (a, b) { return Math.abs(b - m.j) < Math.abs(a - m.j) ? b : a; });
+        movs.push({
+          id: movs.length, lado: m.t, fila: i + 1, cuenta: cuenta, nombreCta: nombreCta,
+          fecha: aFecha(r[d]), tipo: txt(r[d + 1]), numero: txt(r[d + 2]), concepto: txt(r[d + 3]), referencia: txt(r[d + 4]),
+          monto: m.n, cent: Math.round(m.n * 100)
+        });
+      });
+    }
+    movs.forEach(function (m) { m.folio = folio(m.referencia, m.concepto); m.prov = proveedor(m.concepto); m.pk = m.prov.split(' ').filter(function (w) { return w.length > 2; }).slice(0, 2).join(' '); m.grupo = null; m.cruce = ''; });
+    return { movs: movs, empresa: empresa, periodo: periodo, totales: totales };
+  }
+
+  function dias(a, b) { return Math.abs(a.fecha - b.fecha) / 864e5; }
+
+  function conciliar(movs, opt) {
+    opt = opt || {};
+    var VENTANA = opt.ventanaDias || 365, MAXN = opt.maxPartidas || 6;
+    var grupos = [], g = 0;
+    function cerrar(lista, cruce) {
+      g++; lista.forEach(function (m) { m.grupo = g; m.cruce = cruce; });
+      grupos.push({ id: g, cruce: cruce, movs: lista });
+    }
+    var A = movs.filter(function (m) { return m.lado === 'A'; });
+    var C = movs.filter(function (m) { return m.lado === 'C'; });
+
+    /* 1) Mismo folio y mismo monto */
+    var idx = {};
+    C.forEach(function (c) { if (c.folio) (idx[c.folio + '|' + c.cent] = idx[c.folio + '|' + c.cent] || []).push(c); });
+    A.forEach(function (a) {
+      if (!a.folio) return;
+      var cand = (idx[a.folio + '|' + a.cent] || []).filter(function (c) { return !c.grupo; });
+      if (!cand.length) return;
+      cand.sort(function (x, y) { return dias(a, x) - dias(a, y); });
+      cerrar([a, cand[0]], 'Folio y monto');
+    });
+
+    /* 2) Mismo monto (prefiere mismo proveedor y fecha cercana) */
+    var porMonto = {};
+    C.forEach(function (c) { if (!c.grupo) (porMonto[c.cent] = porMonto[c.cent] || []).push(c); });
+    A.slice().sort(function (x, y) { return x.fecha - y.fecha; }).forEach(function (a) {
+      if (a.grupo) return;
+      var cand = (porMonto[a.cent] || []).filter(function (c) { return !c.grupo; });
+      if (!cand.length) return;
+      cand.sort(function (x, y) {
+        var px = x.pk && x.pk === a.pk ? 0 : 1, py = y.pk && y.pk === a.pk ? 0 : 1;
+        return px - py || dias(a, x) - dias(a, y);
+      });
+      cerrar([a, cand[0]], cand[0].pk && cand[0].pk === a.pk ? 'Monto y proveedor' : 'Monto');
+    });
+
+    /* 3) Un movimiento = suma de varios del otro lado (mismo proveedor) */
+    function sumas(objetivos, fuente, etiq) {
+      var porProv = {};
+      fuente.forEach(function (m) { if (!m.grupo && m.pk && m.cent > 0) (porProv[m.pk] = porProv[m.pk] || []).push(m); });
+      objetivos.filter(function (t) { return !t.grupo && t.pk && t.cent > 0; })
+        .sort(function (x, y) { return y.cent - x.cent; })
+        .forEach(function (t) {
+          var cand = (porProv[t.pk] || []).filter(function (m) { return !m.grupo && m.cent < t.cent && dias(t, m) <= VENTANA; });
+          if (cand.length < 2) return;
+          cand.sort(function (x, y) { return dias(t, x) - dias(t, y); });
+          cand = cand.slice(0, 28).sort(function (x, y) { return y.cent - x.cent; });
+          var suf = []; for (var k = cand.length - 1, s = 0; k >= 0; k--) { s += cand[k].cent; suf[k] = s; }
+          var nodos = 0, sol = null, pila = [];
+          (function dfs(i, resto) {
+            if (sol || ++nodos > 40000) return;
+            if (resto === 0 && pila.length >= 2) { sol = pila.slice(); return; }
+            if (pila.length >= MAXN || i >= cand.length || suf[i] < resto) return;
+            for (var k = i; k < cand.length && !sol; k++) {
+              if (cand[k].cent > resto) continue;
+              pila.push(cand[k]); dfs(k + 1, resto - cand[k].cent); pila.pop();
+            }
+          })(0, t.cent);
+          if (sol) cerrar([t].concat(sol), etiq + ' (' + sol.length + ' partidas)');
+        });
+    }
+    sumas(C, A, 'Un cargo = suma de abonos');
+    sumas(A, C, 'Un abono = suma de cargos');
+
+    /* 4) Sugerencias: mismo folio, monto distinto (pagos parciales o mal asociados) */
+    var parciales = [];
+    var cf = {};
+    C.forEach(function (c) { if (!c.grupo && c.folio) (cf[c.folio] = cf[c.folio] || []).push(c); });
+    A.forEach(function (a) {
+      if (a.grupo || !a.folio || !cf[a.folio]) return;
+      cf[a.folio].forEach(function (c) { if (!c.grupo) parciales.push({ abono: a, cargo: c, dif: (a.cent - c.cent) / 100 }); });
+    });
+
+    var res = {
+      grupos: grupos, parciales: parciales,
+      abonosSin: A.filter(function (m) { return !m.grupo; }),
+      cargosSin: C.filter(function (m) { return !m.grupo; }),
+      totA: A.reduce(function (s, m) { return s + m.cent; }, 0) / 100,
+      totC: C.reduce(function (s, m) { return s + m.cent; }, 0) / 100,
+      nA: A.length, nC: C.length
+    };
+    res.totAsin = res.abonosSin.reduce(function (s, m) { return s + m.cent; }, 0) / 100;
+    res.totCsin = res.cargosSin.reduce(function (s, m) { return s + m.cent; }, 0) / 100;
+    return res;
+  }
+
+  /* Convierte grupos a renglones lado a lado (abono | cargo), como el ejemplo de Gemini */
+  function pares(res) {
+    var out = [];
+    res.grupos.forEach(function (gr) {
+      var A = gr.movs.filter(function (m) { return m.lado === 'A'; }), C = gr.movs.filter(function (m) { return m.lado === 'C'; });
+      var n = Math.max(A.length, C.length);
+      for (var i = 0; i < n; i++) out.push({ g: gr, a: A.length === 1 ? (i === 0 ? A[0] : null) : A[i], c: C.length === 1 ? (i === 0 ? C[0] : null) : C[i], primero: i === 0 });
+    });
+    return out;
+  }
+
+  function fmtFecha(d) {
+    var M = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return ('0' + d.getDate()).slice(-2) + '/' + M[d.getMonth()] + '/' + d.getFullYear();
+  }
+
+  /* Libro de Excel con el resultado (requiere SheetJS como XLSX) */
+  function libro(XLSX, res, info) {
+    var wb = XLSX.utils.book_new();
+    function fila(m) { return [fmtFecha(m.fecha), m.tipo, m.numero, m.concepto, m.referencia, m.monto]; }
+    var H = ['Fecha', 'Tipo', 'Número', 'Concepto', 'Referencia', 'Importe'];
+    var resumen = [
+      ['Conciliación de cargos y abonos'], ['Empresa', info.empresa || ''], ['Archivo', info.archivo || ''], ['Periodo', info.periodo || ''], [],
+      ['Concepto', 'Movimientos', 'Importe'],
+      ['Abonos (total)', res.nA, res.totA], ['Cargos (total)', res.nC, res.totC],
+      ['Diferencia abonos - cargos', '', +(res.totA - res.totC).toFixed(2)], [],
+      ['Abonos sin cargo', res.abonosSin.length, res.totAsin], ['Cargos sin abono', res.cargosSin.length, res.totCsin],
+      ['Grupos conciliados', res.grupos.length, ''], ['Posibles pagos parciales', res.parciales.length, '']
+    ];
+    var ws = XLSX.utils.aoa_to_sheet(resumen); ws['!cols'] = [{ wch: 30 }, { wch: 16 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+    function hoja(nombre, lista, estado) {
+      var s = XLSX.utils.aoa_to_sheet([['#'].concat(H, ['Estado'])].concat(lista.slice().sort(function (a, b) { return b.monto - a.monto; }).map(function (m, i) { return [i + 1].concat(fila(m), [estado]); })));
+      s['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 9 }, { wch: 8 }, { wch: 48 }, { wch: 30 }, { wch: 14 }, { wch: 18 }];
+      s['!autofilter'] = { ref: 'A1:H1' };
+      XLSX.utils.book_append_sheet(wb, s, nombre);
+    }
+    hoja('Abonos sin cargo', res.abonosSin, 'ABONO SIN CARGO');
+    hoja('Cargos sin abono', res.cargosSin, 'CARGO SIN ABONO');
+    var p = [['Folio', 'Fecha abono', 'Concepto abono', 'Importe abono', 'Fecha cargo', 'Concepto cargo', 'Importe cargo', 'Diferencia']]
+      .concat(res.parciales.map(function (x) { return [x.abono.folio, fmtFecha(x.abono.fecha), x.abono.concepto, x.abono.monto, fmtFecha(x.cargo.fecha), x.cargo.concepto, x.cargo.monto, x.dif]; }));
+    var sp = XLSX.utils.aoa_to_sheet(p); sp['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 40 }, { wch: 14 }, { wch: 12 }, { wch: 40 }, { wch: 14 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, sp, 'Posibles parciales');
+    var vac = ['', '', '', '', '', ''];
+    var lado = function (m) { return m ? [fmtFecha(m.fecha), m.tipo, m.numero, m.concepto, m.referencia, m.monto] : vac; };
+    var cj = [['', 'REGISTRO EN ABONO (ORIGEN)', '', '', '', '', '', 'REGISTRO EN CARGO (APLICACIÓN)'],
+      ['Grupo', 'Fecha abono', 'Tipo', 'Póliza', 'Concepto abono', 'Ref. abono', 'Importe abono', 'Fecha cargo', 'Tipo', 'Póliza', 'Concepto cargo', 'Ref. cargo', 'Importe cargo', 'Tipo de cruce']];
+    pares(res).forEach(function (x) { cj.push([x.primero ? x.g.id : ''].concat(lado(x.a), lado(x.c), [x.primero ? x.g.cruce : ''])); });
+    var sc = XLSX.utils.aoa_to_sheet(cj);
+    sc['!cols'] = [{ wch: 7 }, { wch: 12 }, { wch: 8 }, { wch: 7 }, { wch: 40 }, { wch: 22 }, { wch: 13 }, { wch: 12 }, { wch: 8 }, { wch: 7 }, { wch: 40 }, { wch: 22 }, { wch: 13 }, { wch: 30 }];
+    sc['!merges'] = [{ s: { r: 0, c: 1 }, e: { r: 0, c: 6 } }, { s: { r: 0, c: 7 }, e: { r: 0, c: 12 } }];
+    sc['!autofilter'] = { ref: 'A2:N2' };
+    XLSX.utils.book_append_sheet(wb, sc, 'Conciliados');
+    return wb;
+  }
+
+  return { leer: leer, conciliar: conciliar, libro: libro, pares: pares, fmtFecha: fmtFecha };
+})();
+if (typeof module !== 'undefined') module.exports = CNC;
+(function () {
+  var POR_PAG = 50;
+  var wb = null, nombre = '', L = null, R = null, tabAct = 'abonos', pag = 0, orden = { k: 'monto', d: 1 };
+  var $ = function (id) { return document.getElementById(id); };
+  var mx = function (n) { return n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var ICO_INFO = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>';
+
+  var TABS = [
+    { k: 'abonos', t: 'Abonos sin cargo', b: 'r', tip: 'Facturas registradas que no tienen un pago que les corresponda', ex: 'Abonos (facturas o provisiones) que no encontraron ningún cargo (pago) que les corresponda. Revisa si falta registrar o asociar el pago.' },
+    { k: 'cargos', t: 'Cargos sin abono', b: 'r', tip: 'Pagos que no tienen una factura que les corresponda', ex: 'Cargos (pagos) que no encontraron factura. Puede ser una factura no registrada o un pago que cubre facturas que faltan por relacionar.' },
+    { k: 'parciales', t: 'Posibles parciales', b: 'n', tip: 'Mismo número de factura pero con monto distinto', ex: 'Abono y cargo con el mismo número de factura pero distinto monto. Suele ser un pago parcial o una factura mal asociada; la columna Diferencia te dice cuánto falta.' },
+    { k: 'conciliados', t: 'Conciliados', b: 'v', tip: 'Movimientos que ya tienen pareja', ex: 'Movimientos que ya tienen pareja. La columna "Tipo de cruce" dice cómo se emparejaron; los de tipo "Monto" (sin proveedor) conviene revisarlos.' }
+  ];
+
+  function cargarArchivo(f) {
+    nombre = f.name; $('nombreArchivo').textContent = f.name;
+    var rd = new FileReader();
+    rd.onload = function (e) {
+      try {
+        wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+      } catch (err) { aviso('No se pudo leer el archivo. Verifica que sea un Excel exportado de CONTPAQi.'); return; }
+      var sel = $('hoja'); sel.innerHTML = '';
+      var mejor = 0, maxMov = -1;
+      wb.SheetNames.forEach(function (n, i) {
+        var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+        var c = CNC.leer(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null })).movs.length;
+        if (c > maxMov) { maxMov = c; mejor = i; }
+      });
+      sel.selectedIndex = mejor;
+      $('barraHoja').classList.toggle('oculto', wb.SheetNames.length < 2);
+      procesar();
+    };
+    rd.readAsArrayBuffer(f);
+  }
+
+  function aviso(t) { $('aviso').innerHTML = t ? '<div class="aviso">' + t + '</div>' : ''; }
+
+  function procesar() {
+    aviso(''); $('resultado').classList.add('oculto'); $('carga').classList.remove('oculto');
+    setTimeout(function () {
+      var hoja = $('hoja').value || wb.SheetNames[0];
+      L = CNC.leer(XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, raw: true, defval: null }));
+      $('carga').classList.add('oculto');
+      if (!L.movs.length) { aviso('No encontré movimientos en la hoja "' + esc(hoja) + '". Debe tener encabezados <b>Fecha</b> y <b>Cargos</b>/<b>Abonos</b>, como el auxiliar de CONTPAQi.'); return; }
+      R = CNC.conciliar(L.movs);
+      validarTotales();
+      pintarKpis(); pag = 0; pintarTabs(); pintarTabla();
+      $('resultado').classList.remove('oculto');
+    }, 60);
+  }
+
+  function validarTotales() {
+    if (!L.totales.length) return;
+    var set = {}; L.totales.forEach(function (t) { set[t] = 1; });
+    var distintos = Object.keys(set).length, a = Math.round(R.totA * 100), c = Math.round(R.totC * 100);
+    var faltaA = !set[a], faltaC = !set[c], msg = [];
+    if (distintos >= 2) {
+      if (faltaA) msg.push('los <b>abonos</b> suman ' + mx(R.totA));
+      if (faltaC) msg.push('los <b>cargos</b> suman ' + mx(R.totC));
+    } else if (faltaA && faltaC) msg.push('ni abonos (' + mx(R.totA) + ') ni cargos (' + mx(R.totC) + ')');
+    if (msg.length) aviso('Ojo: el total que trae el reporte (' + Object.keys(set).map(function (k) { return mx(k / 100); }).join(' / ') + ') no coincide con lo que se leyó: ' + msg.join(' y ') + '. Puede que se hayan borrado o movido renglones en el Excel; conviene exportarlo de nuevo de CONTPAQi sin modificar.');
+  }
+
+  function pintarKpis() {
+    var dif = +(R.totA - R.totC).toFixed(2);
+    $('kpis').innerHTML =
+      kpi('', 'Abonos (facturas)', mx(R.totA), R.nA + ' movimientos', 'Suma de todos los abonos de la cuenta') +
+      kpi('', 'Cargos (pagos)', mx(R.totC), R.nC + ' movimientos', 'Suma de todos los cargos de la cuenta') +
+      kpi(Math.abs(dif) < 0.01 ? 'v' : 'r', 'Diferencia', mx(dif), Math.abs(dif) < 0.01 ? 'La cuenta cuadra' : 'Debe ser cero para que cuadre', 'Abonos menos cargos. Es igual a lo que queda sin pareja de un lado menos el otro') +
+      kpi('r', 'Abonos sin cargo', mx(R.totAsin), R.abonosSin.length + ' por revisar', 'Facturas que no tienen pago que les corresponda') +
+      kpi('r', 'Cargos sin abono', mx(R.totCsin), R.cargosSin.length + ' por revisar', 'Pagos que no tienen factura que les corresponda') +
+      kpi('v', 'Conciliados', R.grupos.length + ' grupos', (R.nA + R.nC - R.abonosSin.length - R.cargosSin.length) + ' movimientos', 'Movimientos que ya tienen pareja');
+  }
+  function kpi(c, t, v, s, tip) { return '<div class="kpi ' + c + '"><small data-tip="' + tip + '">' + t + ' ' + ICO_INFO + '</small><b>' + v + '</b><span>' + s + '</span></div>'; }
+
+  function datos() {
+    if (tabAct === 'abonos') return R.abonosSin;
+    if (tabAct === 'cargos') return R.cargosSin;
+    if (tabAct === 'parciales') return R.parciales;
+    return CNC.pares(R);
+  }
+  function contar(k) { var t = tabAct; tabAct = k; var n = k === 'conciliados' ? R.grupos.length : datos().length; tabAct = t; return n; }
+
+  function pintarTabs() {
+    $('tabs').innerHTML = TABS.map(function (t) {
+      return '<button class="tab' + (t.k === tabAct ? ' act' : '') + '" data-k="' + t.k + '" data-tip="' + t.tip + '">' + t.t + ' <span class="badge ' + t.b + '">' + contar(t.k).toLocaleString('es-MX') + '</span></button>';
+    }).join('');
+    $('explica').textContent = TABS.filter(function (t) { return t.k === tabAct; })[0].ex;
+  }
+
+  function filtrar(lista) {
+    var q = $('buscar').value.trim().toUpperCase(); if (!q) return lista;
+    var qn = q.replace(/[$,\s]/g, '');
+    return lista.filter(function (x) {
+      var ms = x.g ? [x.a, x.c].filter(Boolean) : x.abono ? [x.abono, x.cargo] : [x];
+      return ms.some(function (m) { return (m.concepto + ' ' + m.referencia + ' ' + m.folio).toUpperCase().indexOf(q) >= 0 || String(m.monto).indexOf(qn) === 0 || m.monto.toFixed(2).indexOf(qn) === 0; });
+    });
+  }
+  function ordenar(lista) {
+    if (tabAct === 'conciliados') return lista;
+    var k = orden.k, d = orden.d;
+    var val = function (x) { var m = x.abono || x; if (k === 'dif') return x.dif; if (k === 'fecha') return +m.fecha; if (k === 'concepto') return m.concepto; return m.monto; };
+    return lista.slice().sort(function (a, b) { var va = val(a), vb = val(b); return (va > vb ? 1 : va < vb ? -1 : 0) * d; });
+  }
+
+  function pintarTabla() {
+    var lista = ordenar(filtrar(datos())), tot = lista.length, pags = Math.max(1, Math.ceil(tot / POR_PAG));
+    if (pag >= pags) pag = pags - 1;
+    var vis = lista.slice(pag * POR_PAG, (pag + 1) * POR_PAG), h = '';
+    var th = function (k, t, n) { return '<th class="' + (n ? 'n' : '') + '" data-o="' + k + '" data-tip="Clic para ordenar">' + t + (orden.k === k ? (orden.d > 0 ? ' ▲' : ' ▼') : '') + '</th>'; };
+    if (!tot) {
+      h = '<tr><td><div class="vacio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg><p>' + ($('buscar').value ? 'No hay resultados para esa búsqueda.' : 'Nada por revisar aquí.') + '</p></div></td></tr>';
+    } else if (tabAct === 'parciales') {
+      h = '<tr><th>Folio</th>' + th('fecha', 'Fecha abono') + '<th>Concepto abono</th>' + th('monto', 'Abono', 1) + '<th>Fecha cargo</th><th>Concepto cargo</th><th class="n">Cargo</th>' + th('dif', 'Diferencia', 1) + '</tr>' +
+        vis.map(function (x) { return '<tr><td>' + esc(x.abono.folio) + '</td><td>' + CNC.fmtFecha(x.abono.fecha) + '</td><td>' + esc(x.abono.concepto) + '</td><td class="n">' + mx(x.abono.monto) + '</td><td>' + CNC.fmtFecha(x.cargo.fecha) + '</td><td>' + esc(x.cargo.concepto) + '</td><td class="n">' + mx(x.cargo.monto) + '</td><td class="n"><b>' + mx(x.dif) + '</b></td></tr>'; }).join('');
+    } else if (tabAct === 'conciliados') {
+      var cel = function (m) { return m ? '<td>' + CNC.fmtFecha(m.fecha) + '<br><small>' + esc(m.tipo + ' ' + m.numero) + '</small></td><td>' + esc(m.concepto) + '<br><small>' + esc(m.referencia) + '</small></td><td class="n">' + mx(m.monto) + '</td>' : '<td></td><td></td><td></td>'; };
+      h = '<tr><th>Grupo</th><th>Fecha abono</th><th>Concepto abono</th><th class="n">Abono</th><th>Fecha cargo</th><th>Concepto cargo</th><th class="n">Cargo</th><th>Tipo de cruce</th></tr>' +
+        vis.map(function (x) { return '<tr class="' + (x.g.id % 2 ? 'gp' : '') + '"><td>' + (x.primero ? x.g.id : '') + '</td>' + cel(x.a) + cel(x.c) + '<td>' + (x.primero ? '<span class="badge ' + (/proveedor|Folio/.test(x.g.cruce) ? 'v' : /suma/.test(x.g.cruce) ? '' : 'n') + '">' + esc(x.g.cruce) + '</span>' : '') + '</td></tr>'; }).join('');
+    } else {
+      h = '<tr>' + th('fecha', 'Fecha') + '<th>Póliza</th>' + th('concepto', 'Concepto') + '<th>Referencia</th>' + th('monto', 'Importe', 1) + '</tr>' +
+        vis.map(function (m) { return '<tr><td>' + CNC.fmtFecha(m.fecha) + '</td><td>' + esc(m.tipo + ' ' + m.numero) + '</td><td>' + esc(m.concepto) + '</td><td>' + esc(m.referencia) + '</td><td class="n">' + mx(m.monto) + '</td></tr>'; }).join('');
+    }
+    $('tabla').innerHTML = h;
+    $('infoPag').textContent = tot ? 'Mostrando ' + (pag * POR_PAG + 1) + '–' + Math.min(tot, (pag + 1) * POR_PAG) + ' de ' + tot.toLocaleString('es-MX') + (tabAct === 'conciliados' ? ' renglones' : '') : '';
+    $('ant').disabled = pag === 0; $('sig').disabled = pag >= pags - 1;
+  }
+
+  $('archivo').addEventListener('change', function (e) { if (e.target.files[0]) cargarArchivo(e.target.files[0]); e.target.value = ''; });
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('sobre'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('sobre'); }); });
+  drop.addEventListener('drop', function (e) { if (e.dataTransfer.files[0]) cargarArchivo(e.dataTransfer.files[0]); });
+  $('hoja').addEventListener('change', procesar);
+  $('tabs').addEventListener('click', function (e) { var b = e.target.closest('.tab'); if (!b) return; tabAct = b.dataset.k; pag = 0; orden = { k: 'monto', d: 1 }; pintarTabs(); pintarTabla(); });
+  $('tabla').addEventListener('click', function (e) { var t = e.target.closest('th[data-o]'); if (!t) return; orden = { k: t.dataset.o, d: orden.k === t.dataset.o ? -orden.d : 1 }; pintarTabla(); });
+  $('buscar').addEventListener('input', function () { pag = 0; pintarTabla(); });
+  $('ant').addEventListener('click', function () { pag--; pintarTabla(); });
+  $('sig').addEventListener('click', function () { pag++; pintarTabla(); });
+  $('descargar').addEventListener('click', function () {
+    var hoja = $('hoja').value || '';
+    var wbOut = CNC.libro(XLSX, R, { empresa: L.empresa, periodo: L.periodo, archivo: nombre + (hoja ? ' – ' + hoja : '') });
+    XLSX.writeFile(wbOut, 'Conciliacion_' + (L.empresa || 'cuenta').replace(/[^A-Za-z0-9]+/g, '_') + '.xlsx');
+  });
+})();
+</script>
+</body>
+</html>
