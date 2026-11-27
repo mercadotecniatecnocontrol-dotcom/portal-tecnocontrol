@@ -8080,14 +8080,19 @@
         return opsGdDias(sem).map(dia => {
             const cubre = g && (g.coberturas || {})[dia];
             const tec = cubre || (g ? g.tecnicoId : null);
-            const aus = opsGdAusencia(tec, dia), rev = g && (g.revision || {})[dia];
+            const aus0 = opsGdAusencia(tec, dia), rev = g && (g.revision || {})[dia];
+            // 27-nov-2026: un permiso (ej. home office) no siempre es ausencia de guardia. Si Operaciones confirma
+            // en el día que la persona SÍ cubrió su guardia, ese día se paga normal.
+            const ausCubierta = aus0 && aus0.tipo !== "falta" && rev && rev.estado !== "no_cumplio" && rev.cubrioAus === tec ? aus0 : null;
+            const aus = ausCubierta ? null : aus0;
             const fs_ = folios.filter(f => opsGdDiaFolio(f) === dia);
             let pagar = !!tec, motivo = "", color = "#15803d", bg = "#dcfce7";
             if (!tec) { motivo = "Sin asignar"; color = "#64748b"; bg = "#f1f5f9"; }
+            else if (ausCubierta) { motivo = "Cubrió su guardia aunque tenía " + String(ausCubierta.tipo).toLowerCase() + " (confirmado por Operaciones)"; color = "#b45309"; bg = "#fef3c7"; }
             else if (aus) { pagar = false; motivo = aus.tipo === "falta" ? "Falta: no se paga" : "Ausente (" + aus.tipo + "): ¿quién cubrió?"; color = "#b91c1c"; bg = "#fee2e2"; }
             else if (rev && rev.estado === "no_cumplio") { pagar = false; motivo = "No cumplió: " + (rev.motivo || ""); color = "#b91c1c"; bg = "#fee2e2"; }
             else if (cubre) { motivo = "Cubrió " + opsNombreTecnico(cubre); color = "#b45309"; bg = "#fef3c7"; }
-            return { dia, tec, cubre: !!cubre, aus, rev, folios: fs_, pagar, motivo, color, bg };
+            return { dia, tec, cubre: !!cubre, aus, ausCubierta, rev, folios: fs_, pagar, motivo, color, bg };
         });
     }
     function opsGdPuedeAprobar() { return opsAccEsAdminPortal() || opsPuedeHacer("admin_operaciones"); }
@@ -8347,7 +8352,7 @@
         const lista = opsPersonalGuardiaTipo(tipo).concat(tipo === "tecnica" ? [] : []);
         const d = new Date(dia + "T12:00:00");
         opsMiniModal(`${OPS_GD_DIAS_TXT[d.getDay()]} ${opsEsc(opsFechaCorta(dia))} · ${OPS_GUARDIA_TIPOS[tipo].n} · ${opsEsc(opsGdPlaza)}`, `
-            ${x.aus ? `<div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;"><b>${opsEsc(opsNombreTecnico(x.tec))}</b> tiene ${opsEsc(x.aus.tipo)} este día. Si alguien más cubrió, elígelo abajo.</div>` : ""}
+            ${x.aus || x.ausCubierta ? (() => { const A = x.aus || x.ausCubierta; return `<div style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;"><b>${opsEsc(opsNombreTecnico(x.tec))}</b> tiene ${opsEsc(A.tipo)} este día${A.motivo ? " (" + opsEsc(A.motivo) + ")" : ""}. Si alguien más cubrió, elígelo abajo.${A.tipo !== "falta" ? `<label style="display:flex;gap:7px;align-items:flex-start;margin-top:8px;color:#1e293b;font-weight:700;cursor:pointer;"><input type="checkbox" id="gd-dia-cubrioaus" ${x.ausCubierta ? "checked" : ""} style="margin-top:2px;"> Sí cubrió su guardia aunque tenía ${opsEsc(String(A.tipo).toLowerCase())} (por ejemplo, home office). Se le paga este día.</label>` : ""}</div>`; })() : ""}
             <label style="font-size:12px;font-weight:700;color:#334155;">¿Quién estuvo de guardia este día?</label>
             <select id="gd-dia-tec" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px;font-size:13px;margin:5px 0 12px;">
                 <option value="">${opsEsc(opsNombreTecnico(g.tecnicoId))} (el de la semana)</option>
@@ -8369,7 +8374,9 @@
             if ((g.pago || {}).estado) { err.textContent = "Esta guardia ya se aprobó para pago; ya no se puede cambiar."; return false; }
             const cob = { ...(g.coberturas || {}) }; if (tec) cob[dia] = tec; else delete cob[dia];
             const revs = { ...(g.revision || {}) }; const antes = revs[dia] && revs[dia].estado;
-            revs[dia] = { estado: est, motivo: est === "no_cumplio" ? mot : null, por: opsNombreActual(), en: opsFechaHora() };
+            const chkAus = document.getElementById("gd-dia-cubrioaus");
+            revs[dia] = { estado: est, motivo: est === "no_cumplio" ? mot : null, por: opsNombreActual(), en: opsFechaHora(),
+                cubrioAus: chkAus && chkAus.checked && est === "cumplio" ? (tec || g.tecnicoId) : null };
             await opsGdGuardarProg(g, { coberturas: cob, revision: revs });
             const quien = tec || g.tecnicoId, fTxt = opsFechaCorta(dia);
             if (tec && tec !== (x.cubre ? x.tec : null)) opsGdAvisar([opsGdCorreoDe(tec)], `Quedaste registrado como guardia del ${fTxt} (${OPS_GUARDIA_TIPOS[tipo].n.toLowerCase()}).`);
