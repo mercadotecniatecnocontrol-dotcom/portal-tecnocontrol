@@ -12862,16 +12862,18 @@
             if (!opsRevOS(f)) falta.push("número de orden de servicio");
             const grupo = opsGrupoClienteFolio(f);
             const idCliTxt = document.getElementById("opsrev-idcliente").value.trim();
-            if ((grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
+            // 27-nov-2026: a magali@ y clientes@ el ID del folio del cliente y la foto de la O.S. no les bloquean DONE.
+            const sinCandadoID = ["magali@tecnocontrol.com.mx", "clientes@tecnocontrol.com.mx"].includes(String(opsUsuarioActual()).toLowerCase().trim());
+            if (!sinCandadoID && (grupo === "petro" || grupo === "oxxo") && !idCliTxt) falta.push("ID del folio del cliente (ServiceNow / Fractal)");
             if (cobroSi && !document.getElementById("opsrev-cotizacion").value.trim()) falta.push("número de cotización de Aspel (se cobró algo)");
             const chkHoja = document.getElementById("opsrev-idhoja");
-            if (chkHoja && !chkHoja.checked) falta.push("confirmar que el ID del folio está escrito en la hoja de la O.S.");
+            if (!sinCandadoID && chkHoja && !chkHoja.checked) falta.push("confirmar que el ID del folio está escrito en la hoja de la O.S.");
             if (opsDictAplica(f) && !((f.dictamen || {}).folio && (f.dictamen || {}).pdf && (f.dictamen || {}).firmadoPor)) falta.push("dictamen ASEA / Anexo 21 y 22 (folio, firma del cliente y PDF) — se captura en el servicio");
             try {
                 const { db, fs } = await opsGetFB();
                 const snap = await fs.getDocs(fs.collection(db, COL_FOLIOS, id, "evidencias"));
                 const tipos = snap.docs.map(d => (d.data() || {}).tipo);
-                if (!tipos.includes("orden_servicio")) falta.push("foto de la orden de servicio física");
+                if (!sinCandadoID && !tipos.includes("orden_servicio")) falta.push("foto de la orden de servicio física");
                 if (!tipos.includes("foto")) falta.push("al menos una foto de evidencia");
             } catch (e) { falta.push("no se pudieron revisar las evidencias (sin conexión)"); }
             if (falta.length) { if (msg) msg.innerHTML = "<b>No se puede marcar DONE.</b> Falta: " + falta.map(opsEsc).join(", ") + ". Usa WORKING ON IT y anota qué falta."; return; }
@@ -13468,6 +13470,9 @@
                 ${opsPuedeGestionar() ? `<label title="Puedes elegir varias a la vez" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;font-size:12px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:8px 10px;border-radius:8px;cursor:pointer;">
                     + Agregar fotos de evidencia
                     <input type="file" accept="image/*" multiple style="display:none;" onchange="opsEvidAgregar('${f.id}', this)"></label>
+                    <label title="Foto de la hoja de la orden de servicio física (cuenta para poder marcar DONE)" style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:6px;font-size:12px;font-weight:700;color:#1D2E73;background:#e8ecf8;padding:8px 10px;border-radius:8px;cursor:pointer;">
+                    + Agregar foto de la O.S. física
+                    <input type="file" accept="image/*" multiple style="display:none;" onchange="opsEvidAgregar('${f.id}', this, 'orden_servicio')"></label>
                     <div id="ops-evid-estado" style="font-size:11px;color:#64748b;text-align:center;margin-top:3px;"></div>` : ""}</div>`;
         } catch (e) {
             const b2 = document.getElementById("ops-panel-evidencias");
@@ -13476,7 +13481,8 @@
     }
     // Agregar fotos de evidencia desde el portal (17-nov-2026): para servicios que el técnico cerró sin foto.
     // Se guardan igual que las de la app: imagen en ops-evidencias + registro tipo "foto" en evidencias del folio.
-    window.opsEvidAgregar = async function (id, input) {
+    window.opsEvidAgregar = async function (id, input, tipoEv) {
+        const tipo = tipoEv === "orden_servicio" ? "orden_servicio" : "foto"; // 27-nov-2026: el revisor puede subir la foto de la O.S. física
         if (!opsPuedeGestionar()) return;
         const f = cacheFolios.find(x => x.id === id); if (!f) return;
         const files = [...(input.files || [])].filter(x => /^image\//.test(x.type || "image/"));
@@ -13492,10 +13498,10 @@
                 const dataUrl = await opsComprimirImagenBase64(files[i], 1600, 0.8);
                 const blob = await (await fetch(dataUrl)).blob();
                 const r = await opsSubirArchivo("folios/" + id + "/evidencias", new File([blob], "foto_" + (i + 1) + ".jpg", { type: "image/jpeg" }));
-                await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "evidencias"), { tipo: "foto", por: yo, en: new Date().toISOString(), origen: "portal", bucket: r.bucket, ruta: r.ruta, nota: "Agregada desde el portal por " + yo, orden: Date.now() });
+                await fs.addDoc(fs.collection(db, COL_FOLIOS, id, "evidencias"), { tipo: tipo, por: yo, en: new Date().toISOString(), origen: "portal", bucket: r.bucket, ruta: r.ruta, nota: "Agregada desde el portal por " + yo, orden: Date.now() });
                 ok++;
             }
-            if (est) est.textContent = ok + " foto(s) agregada(s)";
+            if (est) est.textContent = ok + (tipo === "orden_servicio" ? " foto(s) de O.S. agregada(s)" : " foto(s) agregada(s)");
         } catch (e) {
             alert("Se subieron " + ok + " de " + files.length + " foto(s). Error: " + (e.message || e));
         }
