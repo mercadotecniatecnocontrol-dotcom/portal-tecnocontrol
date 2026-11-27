@@ -1467,6 +1467,7 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
     const l=pagMes.filter(pasa);
     cuerpo=l.length?l.map(s=>filaViatico(s,{t:'Pagado '+fc(s.entregado_en),c:'#15803d',bg:'#dcfce7'},'<div><div class="vp2-k">Depositado</div><div class="vp2-saldo" style="color:#15803d"><i style="background:#16a34a"></i>'+din(s.monto_entregado)+'</div></div>','window.__vp2Detalle('+s.id+',\'pagos\')')).join('')
       :'<div class="vp2-empty">No hay viáticos pagados en '+MES(P.mes)+'.</div>';
+  } else if(P.tab==='cruce'){ cuerpo=cruceHTML('pagos');
   } else {
     const ev=[];
     P.pend.filter(pasa).forEach(s=>{ const e=E(s); if(s.fecha_salida) ev.push({d:s.fecha_salida,k:e.k==='hoy'?'atrasado':e.k,c:e.k==='atrasado'||e.k==='hoy'?'#ef4444':e.k==='semana'?'#f59e0b':'#6366f1',t:(s.integrantes||'').split(',')[0]+' · '+s.folio,s:s.destino||'',m:'Depositar '+din(depositoDe(s)),fn:'window.__vp2Detalle('+s.id+',\'pagos\')'}); });
@@ -1475,21 +1476,32 @@ function pintarPagos(){ const p=contPagos(); if(!p) return; const H=hoy(), q=nor
     (P.fl||[]).forEach(s=>{ if(s.fechaPagoProgramada) ev.push({d:s.fechaPagoProgramada,k:'flotilla',c:'#0891b2',t:'ECO '+(s.vehiculoEco||'')+' · '+(s.tipo||''),s:flTaller(s),m:'Pagar '+din(flMonto(s)),fn:'window.__vp2FlDetalle(\''+s.id+'\')'}); });
     cuerpo=calendarioHTML(P,ev,[{k:'flotilla',t:'Flotilla',c:'#0891b2'},{k:'atrasado',t:'Ya salió / sale hoy',c:'#ef4444'},{k:'semana',t:'Sale esta semana',c:'#f59e0b'},{k:'futuro',t:'Por depositar',c:'#6366f1'},{k:'extra',t:'Viático extra',c:'#ea580c'},{k:'pagado',t:'Pagado',c:'#16a34a'}],'p');
   }
-  const tab=(k,t,n,ico)=>'<button class="vp2-tab'+(P.tab===k?' on':'')+'" onclick="window.__vp2P(\'tab\',\''+k+'\')">'+ico+t+(n!=null?' <b>'+n+'</b>':'')+'</button>';
-  p.innerHTML='<div class="vp2"><div class="vp2-hd"><div><div class="vp2-t">Pagos</div><div class="vp2-s">Viáticos por depositar, viático extra, pagos de Flotilla y lo que ya se pagó. Haz clic en cualquier viático para ver toda su información.</div></div>'+
-    '<div class="vp2-tabs">'+tab('lista','Por depositar',P.pend.length,IC.lista)+tab('extra','Viático extra',extraAut.length+extraPend.length,IC.rayo)+(P.fl&&P.fl.length||P.tab==='flotilla'?tab('flotilla','Flotilla',(P.fl||[]).length,IC.ruta.replace(/20/g,'16')):(P.fl?tab('flotilla','Flotilla',0,IC.ruta.replace(/20/g,'16')):''))+tab('pagados','Pagados',pagMes.length,IC.ok)+tab('cal','Calendario',null,IC.cal)+'</div></div>'+
-    '<div class="vp2-sec">Pendientes de atender</div><div class="vp2-cards">'+
+  // ── Diseño con menú lateral como Contabilidad, en azul y rojo de Pagos (27-nov-2026) ──
+  cssConta();
+  const PSECC=[['lista','Por depositar',P.pend.length,'M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z','Viáticos aprobados que falta depositar. Haz clic en cualquiera para ver toda su información.'],
+    ['extra','Viático extra',extraAut.length+extraPend.length,'M13 2L3 14h9l-1 8 10-12h-9z','Dinero adicional que se pidió durante el viaje: espera autorización o ya está listo para depositar.'],
+    ['flotilla','Flotilla',(P.fl||[]).length,'M1 3h15v13H1zM16 8h4l3 3v5h-7zM5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z','Servicios de vehículos que Flotilla mandó a pagar, con su fecha programada.'],
+    ['pagados','Pagados',pagMes.length,'M20 6L9 17l-5-5','Lo que ya se depositó en el mes elegido.'],
+    ['cal','Calendario',null,'M3 4h18v18H3zM16 2v4M8 2v4M3 10h18','Todo lo que hay que pagar, acomodado por día.'],
+    ['cruce','Cargos vs abonos',null,'M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3','Sube el auxiliar de CONTPAQi y el portal empareja cada cargo con su abono por importe exacto. Esta conciliación es solo de Pagos: no se mezcla con la de otros departamentos.']];
+  const sel=PSECC.find(x=>x[0]===P.tab)||PSECC[0];
+  const navBtn=([k,t,n,d])=>'<button class="'+(P.tab===k?'on':'')+'" title="'+esc(t)+'" onclick="window.__vp2P(\'tab\',\''+k+'\')">'+svgP(d)+t+(n?'<b>'+n+'</b>':'')+'</button>';
+  const tarjetas='<div class="vp2-sec">Pendientes de atender</div><div class="vp2-cards">'+
       card({ico:IC.dinero,warn:atras.length?'Ya salieron sin depósito':'',wc:'#dc2626',num:din(tot(atras)),nc:atras.length?'#dc2626':'#111827',lbl:atras.length+' viático(s) atrasados o de hoy',fn:"window.__vp2P('ver','atrasado')"})+
       card({ico:IC.reloj,warn:sem.length?'Salen en los próximos 7 días':'',num:din(tot(sem)),lbl:sem.length+' viático(s) esta semana',fn:"window.__vp2P('ver','semana')"})+
       card({ico:IC.rayo,warn:extraAut.length?'Autorizado, falta depositar':extraPend.length?'Esperando autorización':'',num:din(extraAut.concat(extraPend).reduce((a,x)=>a+(Number(x.monto)||0),0)),lbl:(extraAut.length+extraPend.length)+' viático(s) extra',fn:"window.__vp2P('tab','extra')"})+
       (P.fl?card({ico:IC.ruta.replace(/20/g,'18'),warn:(P.fl.filter(s=>['vencida','hoy'].includes(flEstado(s).k)).length?'Flotilla: vencidas o de hoy':''),wc:'#dc2626',num:din(P.fl.reduce((a,s)=>a+flMonto(s),0)),lbl:P.fl.length+' pago(s) de Flotilla',fn:"window.__vp2P('tab','flotilla')"}):'')+
       card({ico:IC.ok,num:din(pagMes.reduce((a,s)=>a+(Number(s.monto_entregado)||0),0)),nc:'#15803d',lbl:pagMes.length+' pagado(s) en '+MES(P.mes),fn:"window.__vp2P('tab','pagados')"})+
-    '</div>'+
-    (P.tab==='cal'?'':'<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-pq" class="vp2-in" style="min-width:260px" placeholder="Buscar folio, técnico, destino, cliente…" value="'+esc(P.q)+'" oninput="window.__vp2P(\'q\',this.value)">'+
+    '</div>';
+  const barra=(P.tab==='cal'||P.tab==='cruce')?'':'<div class="vp2-bar"><span class="vp2-ib">'+IC.buscar+'</span><input id="vp2-pq" class="vp2-in" style="min-width:260px" placeholder="Buscar folio, técnico, destino, cliente…" value="'+esc(P.q)+'" oninput="window.__vp2P(\'q\',this.value)">'+
       '<div class="vp2-mes"><button onclick="window.__vp2P(\'mes\',-1)">‹</button><span>'+IC.cal+MES(P.mes)+'</span><button onclick="window.__vp2P(\'mes\',1)">›</button></div>'+
       '<select class="vp2-in" onchange="window.__vp2P(\'empresa\',this.value)"><option value="">Todas las empresas</option>'+empresas.map(e=>'<option '+(P.empresa===e?'selected':'')+'>'+esc(e)+'</option>').join('')+'</select>'+
-      '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2Recargar(\'p\')">↻ Actualizar</button><button class="vp2-btn" onclick="window.__vp2ExportP()">'+IC.exp+' Exportar a Excel</button></div>')+
-    cuerpo+'</div>';
+      '<span style="margin-left:auto"></span><button class="vp2-btn" onclick="window.__vp2Recargar(\'p\')">↻ Actualizar</button><button class="vp2-btn" onclick="window.__vp2ExportP()">'+IC.exp+' Exportar a Excel</button></div>';
+  p.innerHTML='<div class="vp2c pg"><nav class="vp2c-nav"><div class="marca">'+svgP('M2 6h20v12H2zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z')+'Pagos</div><div class="grp">Trabajo diario</div>'+
+    PSECC.slice(0,5).map(navBtn).join('')+'<div class="grp">Conciliación</div>'+PSECC.slice(5).map(navBtn).join('')+
+    '<div class="pie">Aquí se depositan viáticos y pagos de Flotilla. Contabilidad recibe cada depósito con su evidencia.</div></nav>'+
+    '<div class="vp2c-main vp2" style="margin:0;border-radius:0"><div class="vp2-hd"><div><div class="vp2-t">'+esc(sel[1])+'</div><div class="vp2-s">'+esc(sel[4])+'</div></div></div>'+
+    (P.tab==='cruce'?'':tarjetas)+barra+cuerpo+'</div></div>';
 }
 window.__vp2P=function(k,v){ if(k==='mes'){ const d=dObj(P.mes+'-01'); d.setMonth(d.getMonth()+v); P.mes=iso(d).slice(0,7); }
   else if(k==='ver'){ P.tab='lista'; P.filtro=v; } else P[k]=v;
@@ -1661,6 +1673,7 @@ function cssConta(){ if(document.getElementById('vp2c-css')) return; const st=do
 .vp2c-int>div{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px}
 .vp2c-tag{display:inline-block;font-size:10.5px;font-weight:800;border-radius:99px;padding:2px 9px}
 .vp2c-tbl{width:100%;border-collapse:separate;border-spacing:0 6px;font-size:12.5px}.vp2c-tbl th{text-align:left;font-size:10.5px;color:#9ca3af;text-transform:uppercase;font-weight:800;padding:0 10px}
+.vp2c.pg .vp2c-nav{background:#1D2E73}.vp2c.pg .vp2c-nav button.on{background:#E7402B;color:#fff}.vp2c.pg .vp2c-nav button b{background:#E7402B}.vp2c.pg .vp2c-nav button.on b{background:#fff;color:#E7402B}.vp2c.pg .vp2c-nav .grp,.vp2c.pg .vp2c-nav .pie{color:#aab4dc}
 .vp2c-tbl td{background:#fff;padding:9px 10px;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}.vp2c-tbl td:first-child{border-left:1px solid #e5e7eb;border-radius:10px 0 0 10px}.vp2c-tbl td:last-child{border-right:1px solid #e5e7eb;border-radius:0 10px 10px 0}
 `; document.head.appendChild(st); }
 function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=norm(C.q);
@@ -1707,7 +1720,7 @@ function pintarConta(){ const p=contConta(); if(!p) return; cssConta(); const q=
   } else if(C.secc==='sobrantes'){ titulo='Sobrantes'; sub='Cuando un técnico comprueba más de lo que se le depositó, la diferencia es un sobrante: la empresa se lo debe. Captúralo, destínalo a una cuenta de acreedor y márcalo como saldado cuando se le pague.'; cuerpo=sobrantesHTML();
   } else if(C.secc==='seguimiento'){ titulo='Seguimiento general'; sub='Las mismas vistas de Operaciones, para consulta: todos los viáticos por etapa (desde que se piden), quién debe comprobar y qué falta por empresa. Haz clic en cualquiera para ver su ficha.'; cuerpo=segHTML();
   } else if(C.secc==='bancos'){ titulo='Bancos · conciliación'; sub='Sube el estado de cuenta del banco (Excel, XML o CSV) y el portal lo cruza contra los depósitos registrados: qué movimientos sí tienen respaldo, cuáles salieron del banco sin registro en el portal y cuáles se registraron pero no aparecen en el banco.'; cuerpo=bancosHTML();
-  } else if(C.secc==='cruce'){ titulo='Cargos vs abonos'; sub='Sube el auxiliar de CONTPAQi y el portal empareja cada cargo con su abono por importe exacto. Revisa por cuenta lo conciliado, los cargos sin abono y los abonos sin cargo.'; cuerpo=cruceHTML();
+  } else if(C.secc==='cruce'){ titulo='Cargos vs abonos'; sub='Sube el auxiliar de CONTPAQi y el portal empareja cada cargo con su abono por importe exacto. Revisa por cuenta lo conciliado, los cargos sin abono y los abonos sin cargo.'; cuerpo=cruceHTML('conta');
   } else { titulo='Aspel / CONTPAQi'; sub='Pólizas de los viáticos listas para importar. Captura una vez tu catálogo de cuentas; el archivo sale con cargos y abonos cuadrados. Revisa siempre antes de importar.'; cuerpo=polizasHTML(); }
   const pend=cnt('vencido')+porRev, sobP=sobPendientes();
   p.innerHTML='<div class="vp2c"><nav class="vp2c-nav"><div class="marca">'+svgP('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6')+'Contabilidad</div><div class="grp">Trabajo diario</div>'+
@@ -1780,7 +1793,11 @@ window.__vp2BLeer=async function(inp){ const f=inp.files[0]; if(!f) return; let 
       col:{ fecha:busca(/fecha/), desc:busca(/desc|concepto|movimiento|detalle/), cargo:busca(/cargo|retiro|debito|egreso|^debe/), abono:busca(/abono|deposito|credito|ingreso|^haber/), importe:busca(/^importe|^monto/), ref:busca(/refer|folio|clave/) } };
     Object.keys(C.banco.col).forEach(k=>{ if(C.banco.col[k]<0) C.banco.col[k]=null; }); pintarConta(); };
 // ── Cargos vs abonos (CONTPAQi) · 26-nov-2026: empareja 1 a 1 por importe exacto, revisión por cuenta como el Excel de referencia ──
-const CR={ cuentas:null, nombre:'', sel:0, tab:'cargos', q:'', n:200, cargando:false };
+// Cargos vs abonos: cada departamento (Contabilidad, Pagos, Egresos, Ingresos) tiene su propia conciliación, independiente de las demás (27-nov-2026)
+const CRS={}; function crEstado(k){ return CRS[k]||(CRS[k]={ cuentas:null, nombre:'', sel:0, tab:'cargos', q:'', n:200, cargando:false, abierto:false }); }
+let CR=crEstado('conta'), CRK='conta';
+function crUsar(k){ CRK=k||'conta'; CR=crEstado(CRK); return CR; }
+function crPintar(k){ crUsar(k); if(k==='pagos') pintarPagos(); else if(k==='egresos'||k==='ingresos') pintarCruceDep(k); else pintarConta(); }
 const crMon=n=>'$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 const crRef=s=>String(s||'').toUpperCase().replace(/^F-?/,'').replace(/[^A-Z0-9]/g,'');
 function crFechaTxt(f){ if(!f) return ''; const M=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']; const p=f.split('-'); return p[2]+'/'+(M[Number(p[1])-1]||p[1])+'/'+p[0]; }
@@ -1833,24 +1850,24 @@ async function crLeerCuentas(f){ const buf=new Uint8Array(await f.arrayBuffer())
   else hojas.push([f.name.replace(/\.[^.]+$/,''),await leerArchivoTabla(f)]);
   return hojas.map(([n,raw])=>crCuentaDeFilas(n,raw)).filter(Boolean); }
 function crFiltra(L,fn){ const q=norm(CR.q||''); return q?L.filter(x=>norm(fn(x)).includes(q)):L; }
-function cruceHTML(){
-  let h='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap"><label class="vp2-lb">Auxiliar de CONTPAQi (Excel, XML o CSV)<input type="file" accept=".xlsx,.xls,.xlsm,.xml,.csv,.txt" class="vp2-fi" style="margin-bottom:0;padding:7px;width:280px" onchange="window.__crLeer(this)"></label>'+
+function cruceHTML(k){ crUsar(k); const K="'"+CRK+"'";
+  let h='<div class="vp2c-int" style="margin-bottom:14px"><div style="grid-column:1/-1;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap"><label class="vp2-lb">Auxiliar de CONTPAQi (Excel, XML o CSV)<input type="file" accept=".xlsx,.xls,.xlsm,.xml,.csv,.txt" class="vp2-fi" style="margin-bottom:0;padding:7px;width:280px" onchange="window.__crLeer(this,'+K+')"></label>'+
     '<span style="font-size:11.5px;color:#6b7280;max-width:460px">Sube el archivo tal como sale de CONTPAQi. Cada hoja con columnas de Cargos y Abonos se toma como una cuenta. Se empareja 1 a 1 por importe exacto; si hay varios con el mismo importe, primero por referencia y luego por la fecha más cercana.</span></div></div>';
   if(CR.cargando) return h+'<div class="vp2-empty" style="padding:14px">Leyendo y conciliando '+esc(CR.nombre)+'…</div>';
   if(!CR.cuentas) return h+'<div class="vp2-empty" style="padding:14px">Todavía no has subido ningún archivo.</div>';
   const cs=CR.cuentas, tot=k=>cs.reduce((t,c)=>t+c[k],0), th='style="text-align:right"', td=v=>'<td style="text-align:right;white-space:nowrap">'+v+'</td>';
-  const fila=(c,i)=>'<tr style="cursor:pointer;'+(i===CR.sel?'background:#fef9c3':'')+'" onclick="window.__crSet(\'sel\','+i+')"><td><b>'+esc(c.hoja)+'</b>'+(c.titulo?'<div style="font-size:11px;color:#6b7280">'+esc(c.titulo)+'</div>':'')+'</td>'+td(c.abonos)+td(crMon(c.tA))+td(c.cargos)+td(crMon(c.tC))+td(c.pares.length)+td(crMon(c.tE))+
+  const fila=(c,i)=>'<tr style="cursor:pointer;'+(i===CR.sel?'background:#fef9c3':'')+'" onclick="window.__crSet(\'sel\','+i+','+K+')"><td><b>'+esc(c.hoja)+'</b>'+(c.titulo?'<div style="font-size:11px;color:#6b7280">'+esc(c.titulo)+'</div>':'')+'</td>'+td(c.abonos)+td(crMon(c.tA))+td(c.cargos)+td(crMon(c.tC))+td(c.pares.length)+td(crMon(c.tE))+
     '<td style="text-align:right;color:#b91c1c;font-weight:700;white-space:nowrap">'+c.sc.length+' · '+crMon(c.tSC)+'</td><td style="text-align:right;color:#a16207;font-weight:700;white-space:nowrap">'+c.sa.length+' · '+crMon(c.tSA)+'</td>'+td('<b>'+c.pct.toFixed(1)+'%</b>')+'</tr>';
   const tA=tot('tA'),tC=tot('tC'),tE=tot('tE');
-  h+='<div class="vp2-sec" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">Resumen · '+esc(CR.nombre)+'<button class="vp2-btn" style="background:#15803d;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" onclick="window.__crExcel()">Descargar Excel</button></div>'+
+  h+='<div class="vp2-sec" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">Resumen · '+esc(CR.nombre)+'<button class="vp2-btn" style="background:#15803d;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer" onclick="window.__crExcel('+K+')">Descargar Excel</button></div>'+
     '<div style="overflow:auto"><table class="vp2c-tbl"><tr><th>Cuenta / hoja</th><th '+th+'>Movs. abono</th><th '+th+'>Importe abonos</th><th '+th+'>Movs. cargo</th><th '+th+'>Importe cargos</th><th '+th+'>Pares</th><th '+th+'>Importe emparejado</th><th '+th+'>Cargos sin abono</th><th '+th+'>Abonos sin cargo</th><th '+th+'>% conciliado</th></tr>'+
     cs.map(fila).join('')+(cs.length>1?'<tr style="font-weight:700;background:#f3f4f6"><td>TOTAL CONSOLIDADO ('+cs.length+' cuentas)</td>'+td(tot('abonos'))+td(crMon(tA))+td(tot('cargos'))+td(crMon(tC))+td(cs.reduce((t,c)=>t+c.pares.length,0))+td(crMon(tE))+
     td(cs.reduce((t,c)=>t+c.sc.length,0)+' · '+crMon(tot('tSC')))+td(cs.reduce((t,c)=>t+c.sa.length,0)+' · '+crMon(tot('tSA')))+td(((tA+tC)?2*tE/(tA+tC)*100:0).toFixed(1)+'%')+'</tr>':'')+'</table></div>';
   const c=cs[CR.sel]||cs[0];
-  const tab=(k,t,n,col)=>'<button onclick="window.__crSet(\'tab\',\''+k+'\')" style="border:1px solid '+(CR.tab===k?col:'#e5e7eb')+';background:'+(CR.tab===k?col:'#fff')+';color:'+(CR.tab===k?'#fff':'#374151')+';border-radius:999px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer">'+t+' ('+n.toLocaleString('es-MX')+')</button>';
+  const tab=(k,t,n,col)=>'<button onclick="window.__crSet(\'tab\',\''+k+'\','+K+')" style="border:1px solid '+(CR.tab===k?col:'#e5e7eb')+';background:'+(CR.tab===k?col:'#fff')+';color:'+(CR.tab===k?'#fff':'#374151')+';border-radius:999px;padding:6px 14px;font-weight:700;font-size:12.5px;cursor:pointer">'+t+' ('+n.toLocaleString('es-MX')+')</button>';
   h+='<div class="vp2-sec" style="margin-top:18px">Revisión · '+esc(c.hoja)+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
     tab('cargos','Cargos sin abono',c.sc.length,'#b91c1c')+tab('abonos','Abonos sin cargo',c.sa.length,'#a16207')+tab('pares','Emparejados',c.pares.length,'#15803d')+
-    '<input id="cr-q" placeholder="Buscar concepto, referencia o monto" value="'+esc(CR.q||'')+'" oninput="window.__crBuscar(this.value)" style="margin-left:auto;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;min-width:260px"></div>';
+    '<input id="cr-q" placeholder="Buscar concepto, referencia o monto" value="'+esc(CR.q||'')+'" oninput="window.__crBuscar(this.value,'+K+')" style="margin-left:auto;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;min-width:260px"></div>';
   const badge=(t,col)=>'<span style="background:'+col+'1a;color:'+col+';border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">'+t+'</span>';
   let L, filasH, enc;
   if(CR.tab==='pares'){ L=crFiltra(c.pares,p=>[p.a.concepto,p.a.ref,p.c.concepto,p.c.ref,p.a.monto,p.a.monto.toFixed(2)].join(' '));
@@ -1862,15 +1879,15 @@ function cruceHTML(){
     filasH=L.slice(0,CR.n).map((x,i)=>'<tr><td>'+(i+1)+'</td><td style="white-space:nowrap">'+crFechaTxt(x.fecha)+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.num)+'</td><td>'+esc(x.concepto)+'</td><td>'+esc(x.ref)+'</td>'+td('<b>'+crMon(x.monto)+'</b>')+'<td>'+badge(esC?'CARGO SIN ABONO':'ABONO SIN CARGO',esC?'#b91c1c':'#a16207')+'</td></tr>').join(''); }
   const sumaL=L.reduce((t,x)=>t+(x.a?x.a.monto:x.monto),0);
   h+='<div style="font-size:12px;color:#6b7280;margin-bottom:6px">'+L.length.toLocaleString('es-MX')+' movimientos · '+crMon(sumaL)+(L.length>CR.n?' · mostrando '+CR.n.toLocaleString('es-MX'):'')+'</div>';
-  h+=L.length?'<div style="overflow:auto"><table class="vp2c-tbl">'+enc+filasH+'</table></div>'+(L.length>CR.n?'<div style="text-align:center;margin-top:10px"><button onclick="window.__crSet(\'n\','+(CR.n+500)+')" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">Ver 500 más</button></div>':''):'<div class="vp2-empty" style="padding:14px">Sin movimientos en esta vista.</div>';
+  h+=L.length?'<div style="overflow:auto"><table class="vp2c-tbl">'+enc+filasH+'</table></div>'+(L.length>CR.n?'<div style="text-align:center;margin-top:10px"><button onclick="window.__crSet(\'n\','+(CR.n+500)+','+K+')" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">Ver 500 más</button></div>':''):'<div class="vp2-empty" style="padding:14px">Sin movimientos en esta vista.</div>';
   return h; }
-window.__crLeer=async function(inp){ const f=inp.files[0]; if(!f) return; CR.cargando=true; CR.nombre=f.name; pintarConta(); await new Promise(r=>setTimeout(r,40));
-  try{ const cs=await crLeerCuentas(f); if(!cs.length) alert('No encontré en el archivo una tabla con Fecha y columnas de Cargos/Abonos. Revisa que sea el auxiliar exportado de CONTPAQi.'); else { CR.cuentas=cs; CR.sel=0; CR.tab='cargos'; CR.q=''; CR.n=200; } }
+window.__crLeer=async function(inp,k){ const f=inp.files[0]; if(!f) return; crUsar(k); const st=CR; st.cargando=true; st.nombre=f.name; crPintar(k); await new Promise(r=>setTimeout(r,40));
+  try{ const cs=await crLeerCuentas(f); if(!cs.length) alert('No encontré en el archivo una tabla con Fecha y columnas de Cargos/Abonos. Revisa que sea el auxiliar exportado de CONTPAQi.'); else { st.cuentas=cs; st.sel=0; st.tab='cargos'; st.q=''; st.n=200; } }
   catch(e){ console.error(e); alert('No pude leer el archivo: '+(e.message||e)); }
-  CR.cargando=false; pintarConta(); };
-window.__crSet=function(k,v){ CR[k]=v; if(k!=='n') CR.n=200; if(k==='sel') CR.q=''; pintarConta(); };
-let crT=null; window.__crBuscar=function(v){ clearTimeout(crT); crT=setTimeout(()=>{ CR.q=v; CR.n=200; pintarConta(); const el=document.getElementById('cr-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },300); };
-window.__crExcel=function(){ if(!CR.cuentas||!window.XLSX) return; const wb=XLSX.utils.book_new(), cs=CR.cuentas, r2=n=>Math.round(n*100)/100;
+  st.cargando=false; crPintar(k); };
+window.__crSet=function(k,v,d){ crUsar(d); CR[k]=v; if(k!=='n') CR.n=200; if(k==='sel') CR.q=''; crPintar(CRK); };
+let crT=null; window.__crBuscar=function(v,d){ clearTimeout(crT); crT=setTimeout(()=>{ crUsar(d); CR.q=v; CR.n=200; crPintar(CRK); const el=document.getElementById('cr-q'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },300); };
+window.__crExcel=function(d){ crUsar(d); if(!CR.cuentas||!window.XLSX) return; const wb=XLSX.utils.book_new(), cs=CR.cuentas, r2=n=>Math.round(n*100)/100;
   const res=[['CONCILIACIÓN DE CARGOS Y ABONOS — '+CR.nombre],['Cruce 1 a 1 por importe exacto · generado en Portal Tecnocontrol '+new Date().toLocaleString('es-MX')],[],['Cuenta / hoja','Detalle','Movs. abono','Importe abonos','Movs. cargo','Importe cargos','Pares emparejados','Importe emparejado','Cargos sin abono (cant.)','Cargos sin abono ($)','Abonos sin cargo (cant.)','Abonos sin cargo ($)','% conciliado']];
   cs.forEach(c=>res.push([c.hoja,c.titulo,c.abonos,r2(c.tA),c.cargos,r2(c.tC),c.pares.length,r2(c.tE),c.sc.length,r2(c.tSC),c.sa.length,r2(c.tSA),r2(c.pct)]));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(res),'Resumen');
@@ -2231,6 +2248,19 @@ function segHTML(){ if(!C.todas){ cargarTodas(); return '<div class="vp2-empty">
   }
   return h; }
 
+// ── Cargos vs abonos en Egresos e Ingresos: botón propio en cada departamento, cada uno con su propia conciliación (27-nov-2026) ──
+const CR_DEP={ egresos:{n:'Egresos',c:'#1a7fe8'}, ingresos:{n:'Ingresos',c:'#00c9a7'} };
+function contCruceDep(){ css(); cssConta(); let p=document.getElementById('vp-cruce-dep'); if(p) return p;
+  const ancla=document.getElementById('egresos-dashboard')||document.getElementById('area-actividades-wrap'); if(!ancla||!ancla.parentNode) return null;
+  p=document.createElement('div'); p.id='vp-cruce-dep'; ancla.parentNode.insertBefore(p,ancla); return p; }
+function pintarCruceDep(k){ const p=contCruceDep(); if(!p) return; const d=CR_DEP[k]; if(!d) return; const st=crEstado(k); p.style.display='block';
+  p.innerHTML='<div class="vp2" style="border-top:4px solid '+d.c+'"><div class="vp2-hd" style="margin-bottom:'+(st.abierto?'14px':'0')+'"><div style="display:flex;gap:12px;align-items:center">'+
+    '<span style="width:40px;height:40px;border-radius:12px;background:'+d.c+'1f;color:'+d.c+';display:flex;align-items:center;justify-content:center">'+svgP('M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3')+'</span>'+
+    '<div><div class="vp2-t">Conciliación de cargos y abonos · '+d.n+'</div><div class="vp2-s">Sube el auxiliar de CONTPAQi y el portal empareja cada cargo con su abono. Lo que concilies aquí es solo de '+d.n+'.</div></div></div>'+
+    '<button class="vp2-btn" title="'+(st.abierto?'Ocultar la conciliación':'Abrir la conciliación de cargos y abonos')+'" style="background:'+d.c+';border-color:'+d.c+';color:#fff" onclick="window.__crAbrir(\''+k+'\')">'+(st.abierto?'Ocultar':'Cargos y abonos')+'</button></div>'+
+    (st.abierto?cruceHTML(k):'')+'</div>'; }
+window.__crAbrir=function(k){ const st=crEstado(k); st.abierto=!st.abierto; pintarCruceDep(k); };
+
 // ───────────── Enganche con las áreas ─────────────
 // En Contabilidad se ocultan los tableros anteriores (indicadores y la bandeja de Flotilla que se colaba desde Pagos).
 const OCULTAR_EN_CONTA=['conta-dashboard','pfl-cont','pagos-cxp','pagos-dashboard'];
@@ -2241,6 +2271,7 @@ const T=setInterval(()=>{ if(typeof window.verArea!=='function') return; clearIn
       if(area==='Pagos'){ cargarPagos(); ['pagos-dashboard','pfl-cont'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; }); } else if(pp) pp.style.display='none';
       if(area==='Contabilidad'){ cargarConta(); OCULTAR_EN_CONTA.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; }); }
       else { if(pc) pc.style.display='none'; }
+      const pd=document.getElementById('vp-cruce-dep'); if(area==='Egresos'||area==='Ingresos') pintarCruceDep(area.toLowerCase()); else if(pd) pd.style.display='none';
       if(area!=='Pagos'){ const pf=document.getElementById('pfl-cont'); if(pf) pf.style.display='none'; const cx=document.getElementById('pagos-cxp'); if(cx&&area!=='Pagos') cx.style.display='none'; }
 
     },80);
