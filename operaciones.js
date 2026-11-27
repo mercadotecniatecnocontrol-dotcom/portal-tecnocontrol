@@ -28235,11 +28235,14 @@
     function opsExtFotos(s) { return (s.evidencias || []).filter(e => e && e.clase !== "soporte_pago" && e.clase !== "orden_servicio"); }
     function opsExtChecklist(s) {
         const g = opsExtGrupoCliente(s);
+        // 27-nov-2026: a magali@ y clientes@ la foto de la O.S. y el ID del folio del cliente no les bloquean la entrega (igual que en Revisión de cierres).
+        const sinCandado = ["magali@tecnocontrol.com.mx", "clientes@tecnocontrol.com.mx"].includes(String(opsUsuarioActual()).toLowerCase().trim());
+        const tieneOS = opsExtOrdenes(s).length > 0, tieneFolio = opsExtFolioCliOk(s.folio_cliente);
         const r = [
-            { txt: "Foto de la orden de servicio (O.S.) firmada", ok: opsExtOrdenes(s).length > 0 },
+            { txt: "Foto de la orden de servicio (O.S.) firmada" + (sinCandado && !tieneOS ? " — no aplica para tu usuario" : ""), ok: tieneOS || sinCandado },
             { txt: "Al menos una foto de evidencia del trabajo", ok: opsExtFotos(s).length > 0 },
         ];
-        if (g === "petro" || g === "oxxo") r.push({ txt: "ID del folio del cliente (ServiceNow / Fractal)", ok: opsExtFolioCliOk(s.folio_cliente) });
+        if (g === "petro" || g === "oxxo") r.push({ txt: "ID del folio del cliente (ServiceNow / Fractal)" + (sinCandado && !tieneFolio ? " — no aplica para tu usuario" : ""), ok: tieneFolio || sinCandado });
         r.push({ txt: "No. de cotización de Aspel (SER…, CHH…)", ok: !!String(s.folio_aspel || "").trim() });
         return r;
     }
